@@ -3,36 +3,33 @@
 
 // Package assert reports test failures that stop the test.
 //
-// Every assertion takes a seat implementing [TB] first and a message
-// last. The message states the contract under test and appears as the
-// first line of a failure.
-//
-// # Call styles
-//
-//   - Function: assert.Equal(t, got, want, "Get returns the stored item")
-//   - Chain:    assert.That(t, got).Equal(want, "Get returns the stored item")
-//
-// Both carry the same members under the same names.
+// An assertion does not call the test framework. It reports through a
+// seat, so one assertion serves a real test, a benchmark and a
+// recorder without knowing which it holds. [TB] is that seat, and
+// [testing.T], [testing.B] and [Recorder] all satisfy it.
 //
 // # Failure semantics
 //
-// An assertion here calls Fatalf, which stops the test at the first
-// failure. [go.dokimi.dev/assert/expect] carries the same members
-// reporting through Errorf, which records the failure and returns.
+//   - An assertion that passes reports nothing and returns.
+//   - An assertion that fails reports through Fatalf, which stops the
+//     test. Nothing after it in the same test body runs.
+//   - Every assertion takes a message last, and that message is the
+//     first line of the failure. It states the contract under test, so
+//     a failure says what was supposed to be true rather than only
+//     what was observed.
 //
-// # Equality
+// # Testing an assertion
 //
-//   - A nil collection does not equal an empty one. [EquateEmpty] reverses this.
-//   - Values of different types do not compare; the type parameter refuses them.
-//   - NaN does not equal NaN. [EquateNaNs] reverses this.
-//   - Floats compare exactly.
-//   - Unexported fields take part in the comparison.
-//   - Two references to one function are equal.
+// [Recorder] is a seat that records a failure instead of stopping the
+// test, which is what lets an assertion be tested by reading what it
+// reported rather than suffering it. Drive an assertion with a
+// Recorder in place of a [testing.T], then read [Recorder.Failed] and
+// [Recorder.Msg].
 //
 // # Dependency position
 //
-// Imports internal/matcher, embed, fmt, io/fs, runtime, strings and
-// sync. Depends on no other package in this module.
+// Imports fmt, runtime and sync. Depends on no other package in this
+// module.
 package assert
 
 //go:generate go run ./internal/gen
