@@ -6,4 +6,4 @@ they record why not.
 
 | # | Title | Status |
 |---|---|---|
-| [0001](0001-the-go-implementation.md) | The Go assertion library | Draft |
+| [0001](0001-the-go-implementation.md) | The Go assertion library | Accepted |

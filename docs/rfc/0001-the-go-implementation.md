@@ -2,13 +2,13 @@
 rfc: 0001
 title: The Go assertion library
 author: Roy Klopper <roy.klopper@stealthscale.io>
-status: Draft
+status: Accepted
 created: 2026-08-30
 updated: 2026-08-30
 discussion: none
 supersedes: none
 superseded-by: none
-produces-adr: tbd
+produces-adr: none
 ---
 
 # RFC-0001: The Go assertion library
