@@ -4,11 +4,15 @@
 package conformance_test
 
 import (
-	"slices"
 	"testing"
 
+	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/conformance"
 )
+
+// This package is a consumer of the library, so its tests are written
+// with it. The assertion core cannot do the same: a package that tests
+// itself with itself lets one bug hide another.
 
 // abortingOnly names members the recording surface is not expected to
 // carry, with the reason. An entry here is a claim someone can argue
@@ -24,13 +28,10 @@ func TestSurface(t *testing.T) {
 	t.Parallel()
 
 	aborting, err := conformance.Members(conformance.Aborting)
-	if err != nil {
-		t.Fatalf("read the aborting surface: %v", err)
-	}
+	assert.NoError(t, err, "the aborting surface can be read")
+
 	recording, err := conformance.Members(conformance.Recording)
-	if err != nil {
-		t.Fatalf("read the recording surface: %v", err)
-	}
+	assert.NoError(t, err, "the recording surface can be read")
 
 	t.Run("Members", func(t *testing.T) {
 		t.Parallel()
@@ -38,10 +39,8 @@ func TestSurface(t *testing.T) {
 		t.Run("both surfaces declare something", func(t *testing.T) {
 			t.Parallel()
 
-			if len(aborting) == 0 || len(recording) == 0 {
-				t.Fatalf("read %d and %d members; this test would pass having checked nothing",
-					len(aborting), len(recording))
-			}
+			assert.NotEmpty(t, aborting, "the aborting surface declares members")
+			assert.NotEmpty(t, recording, "the recording surface declares members")
 		})
 
 		t.Run("every aborting member has a recording twin", func(t *testing.T) {
@@ -51,9 +50,8 @@ func TestSurface(t *testing.T) {
 				if _, excused := abortingOnly[name]; excused {
 					continue
 				}
-				if !slices.Contains(recording, name) {
-					t.Errorf("%s is missing from the recording surface", name)
-				}
+				assert.Contains(t, recording, name,
+					"the recording surface carries "+name)
 			}
 		})
 
@@ -61,9 +59,8 @@ func TestSurface(t *testing.T) {
 			t.Parallel()
 
 			for _, name := range recording {
-				if !slices.Contains(aborting, name) {
-					t.Errorf("%s is in the recording surface but not the aborting one", name)
-				}
+				assert.Contains(t, aborting, name,
+					"the aborting surface carries "+name)
 			}
 		})
 
@@ -71,14 +68,10 @@ func TestSurface(t *testing.T) {
 			t.Parallel()
 
 			for name, why := range abortingOnly {
-				if !slices.Contains(aborting, name) {
-					t.Errorf("%s is excused (%s) but the aborting surface does not declare it",
-						name, why)
-				}
-				if slices.Contains(recording, name) {
-					t.Errorf("%s is excused (%s) but the recording surface declares it anyway",
-						name, why)
-				}
+				assert.Contains(t, aborting, name,
+					"the aborting surface declares "+name+", excused because it "+why)
+				assert.NotContains(t, recording, name,
+					"the recording surface omits "+name+", excused because it "+why)
 			}
 		})
 	})
