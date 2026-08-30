@@ -102,38 +102,41 @@ func Equal[T any](tb TB, got, want T, msg string, opts ...Option) {
 }
 ```
 
-### The chain holds its mode
+### Each surface declares its own chain
 
-The chain is one type with a mode field, so both namespaces construct it
-and neither needs its own copy:
-
-```go
-type Chain[T any] struct {
-	seat Seat
-	mode Mode
-	got  T
-}
-
-func (c *Chain[T]) Equal(want T, msg string, opts ...Option) *Chain[T] {
-	c.seat.Helper()
-	Equal(c.seat, c.mode, c.got, want, msg, opts...)
-	return c
-}
-```
-
-Each public package aliases it and supplies the mode:
+A chain is a real struct in each public package, holding the seat and
+the value. Its methods name the mode directly:
 
 ```go
 // assert
-type Assertion[T any] = matcher.Chain[T]
+type Assertion[T any] struct {
+	tb  TB
+	got T
+}
 
 func That[T any](tb TB, got T) *Assertion[T] {
 	tb.Helper()
-	return matcher.NewChain(tb, matcher.Fatal, got)
+	return &Assertion[T]{tb: tb, got: got}
+}
+
+func (a *Assertion[T]) Equal(want T, msg string, opts ...Option) *Assertion[T] {
+	a.tb.Helper()
+	matcher.Equal(a.tb, matcher.Fatal, a.got, want, msg, opts...)
+	return a
 }
 ```
 
-Generic type aliases have been legal since Go 1.24.
+One shared type carrying a mode field would avoid writing the methods
+twice, and a generic type alias would expose it from both packages.
+That was the first design, and it fails on documentation: `go doc`
+renders `type Assertion[T any] = matcher.Chain[T]` and lists no
+methods, because the methods belong to a package under `internal` that
+no documentation tool will open. A fluent surface whose methods are
+invisible is worse than the duplication it saves, and the cost grows
+with every assertion added.
+
+The methods are generated instead, so the duplication is mechanical
+rather than maintained by hand.
 
 ### The recording package is generated
 
@@ -143,7 +146,8 @@ parameters are `Seat` and `Mode` as an assertion, and writes one wrapper
 each.
 
 Adding an assertion therefore adds its `expect` wrapper with no second
-edit. The chain needs no generation, because it already holds a mode.
+edit. The generator emits the chain methods on the same pass, from the
+same discovery.
 
 ### Comparison rules
 
@@ -186,17 +190,30 @@ records that rather than hiding a gap.
 
 ### The completeness gate
 
-Go cannot enumerate package-level functions at runtime, so the gate loads
-the packages and reads their type information:
+Go cannot enumerate package-level functions at runtime, so the gate reads
+the surfaces as source:
 
 ```go
-cfg := &packages.Config{Mode: packages.NeedTypes | packages.NeedSyntax | packages.NeedName}
-pkgs, err := packages.Load(cfg, "go.dokimi.dev/assert", "go.dokimi.dev/assert/expect")
+file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
+for _, decl := range file.Decls {
+	out = append(out, exported(decl)...)
+}
 ```
 
-It then walks `pkgs[i].Types.Scope().Names()` and checks each assertion in
-the definition against the names it found. The gate reads the compiled
-packages, so nobody can satisfy it with a list that has gone stale.
+It collects every exported package-level declaration and checks each
+assertion in the definition against the names it found. Reading the files
+means nobody can satisfy the gate with a list that has gone stale.
+
+`golang.org/x/tools/go/packages` would type-check as well as parse, and
+would honour build tags. It also lands in the module graph of everything
+that imports this library, which is too much to ask of a consumer for a
+check only this repository runs. `go/parser` costs nothing and answers
+the question. The price is that a surface split across build-tagged
+files would be read as one; neither is, and one that started to would
+need this reconsidered.
+
+Note that `parser.ParseDir` is deprecated for exactly the build-tag
+reason. `ParseFile` is not, so the directory walk is done here.
 
 The corpus needs a second table, because dispatching a case by its
 assertion ID also cannot use reflection:
@@ -235,10 +252,10 @@ stops implementing fails the build until an overlay entry says why.
 
 Write `assert` and `expect` as two independent packages.
 
-**Why not:** about 76 functions across two packages, each pair required
-to stay identical, with nothing checking that they do. The first bug
-fixed in one and not the other is a silent disagreement between two
-namespaces the standard says agree.
+**Why not:** about 76 functions and 76 methods across two packages,
+each pair required to stay identical, with nothing checking that they
+do. The first bug fixed in one and not the other is a silent
+disagreement between two namespaces the standard says agree.
 
 ### B. One package, with the mode as an argument
 
@@ -274,9 +291,10 @@ committed copy.
 committed, so a reviewer reads generated code in diffs. Regenerating is a
 build step someone can forget, though the gate catches the result.
 
-**The gate depends on `golang.org/x/tools`.** That is a large dependency
-for a test-only library, and it pulls the Go toolchain's package loader
-into the module graph.
+**The gate does not evaluate build tags.** It reads the surfaces with
+`go/parser` rather than loading them, so a surface split across tagged
+files would be read as one. This buys a module graph holding one
+dependency, `github.com/google/go-cmp`.
 
 **Two tables to keep aligned.** The public surface and the corpus
 registry both list every assertion. The gate checks the second against
@@ -309,5 +327,4 @@ here.
 | What | Where |
 |---|---|
 | go-cmp, comparison options | https://pkg.go.dev/github.com/google/go-cmp/cmp |
-| Generic type aliases, Go 1.24 | https://go.dev/doc/go1.24#language |
-| `golang.org/x/tools/go/packages` | https://pkg.go.dev/golang.org/x/tools/go/packages |
+| `go/parser`, and ParseDir's deprecation | https://pkg.go.dev/go/parser |
