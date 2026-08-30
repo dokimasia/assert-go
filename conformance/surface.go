@@ -23,7 +23,25 @@ const (
 	Aborting Surface = ".."
 	// Recording records a failure and lets the test continue.
 	Recording Surface = "../expect"
+	// Golden compares output against a recorded file.
+	Golden Surface = "../golden"
+	// Bench fails a benchmark that exceeds a ceiling.
+	Bench Surface = "../bench"
 )
+
+// subpackages maps the name the definition gives a subpackage to the
+// surface holding it, so a qualified name resolves to somewhere to
+// look.
+var subpackages = map[string]Surface{
+	"golden": Golden,
+	"bench":  Bench,
+}
+
+// Subpackage answers where an assertion's package name says to look.
+func Subpackage(name string) (Surface, bool) {
+	s, ok := subpackages[name]
+	return s, ok
+}
 
 // The files a surface's members are read from.
 const (

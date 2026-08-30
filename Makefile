@@ -5,7 +5,7 @@
 # and prints an aligned list of targets — keep the annotations in
 # sync when you add a target.
 
-.PHONY: help bootstrap install fmt license generate build clean \
+.PHONY: help bootstrap install fmt license generate build clean spec-sync \
         lint lint-vet lint-go lint-md lint-license \
         lint-skip-expiry lint-error-prefix lint-vuln \
         tidy check-tidy \
@@ -96,3 +96,10 @@ release: ## Bump versions and tag (MESSAGE="..." FLAGS=--major)
 	$(ERGON) release $(if $(MESSAGE),-m "$(MESSAGE)",) $(FLAGS)
 
 .DEFAULT_GOAL := help
+
+spec-sync: ## Refresh the vendored definition from ../assert-spec
+	@test -d ../assert-spec || { echo "spec-sync: ../assert-spec not found"; exit 1; }
+	cp ../assert-spec/spec/assertions.json conformance/spec/assertions.json
+	cp ../assert-spec/spec/naming.json     conformance/spec/naming.json
+	cp ../assert-spec/overlays/go.json     conformance/spec/overlay.json
+	cp ../assert-spec/VERSION              conformance/spec/VERSION
