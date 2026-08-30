@@ -4,6 +4,7 @@
 package conformance_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -43,4 +44,75 @@ func TestCorpus(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestCorpusRules drives the corpus reader's own rules, which the
+// cases cannot: a corpus that passes every case still has to refuse a
+// case it does not understand.
+func TestCorpusRules(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Check", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("an unknown expectation is refused", func(t *testing.T) {
+			t.Parallel()
+
+			c := conformance.Case{ID: "made-up", Expect: "maybe"}
+			assert.HasError(t, c.Check(assert.NewRecorder()),
+				"a case stating neither pass nor fail is refused")
+		})
+
+		t.Run("a failure missing a required substring is refused", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			r.Fatalf("reported without the detail")
+
+			c := conformance.Case{ID: "x", Expect: "fail", MessageContains: []string{"absent"}}
+			assert.HasError(t, c.Check(r),
+				"a failure that drops a required substring is refused")
+		})
+
+		t.Run("a failure carrying every substring is accepted", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			r.Fatalf("want 1, got 2")
+
+			c := conformance.Case{ID: "x", Expect: "fail", MessageContains: []string{"want", "got"}}
+			assert.NoError(t, c.Check(r), "a failure carrying every substring is accepted")
+		})
+	})
+
+	t.Run("Decoded", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("a literal it cannot read is refused", func(t *testing.T) {
+			t.Parallel()
+
+			c := conformance.Case{ID: "x", Args: []json.RawMessage{[]byte(`{"type":"widget"}`)}}
+			_, err := c.Decoded()
+			assert.HasError(t, err, "an argument the encoding does not cover is refused")
+		})
+	})
+
+	t.Run("SkipReason", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("a case with no skip table applies", func(t *testing.T) {
+			t.Parallel()
+
+			_, skipped := conformance.Case{ID: "x"}.SkipReason()
+			assert.False(t, skipped, "a case naming no skip applies to this language")
+		})
+
+		t.Run("a skip for another language does not apply here", func(t *testing.T) {
+			t.Parallel()
+
+			c := conformance.Case{ID: "x", Skip: map[string]string{"php": "no generics"}}
+			_, skipped := c.SkipReason()
+			assert.False(t, skipped, "a skip naming another language does not apply here")
+		})
+	})
 }

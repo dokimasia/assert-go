@@ -310,11 +310,25 @@ a copy of the definition that is three versions old.
 
 ## Open questions
 
-- Should `bench.Contract` keep a `Loop()` method shaped as a drop-in for
-  `testing.B.Loop`, or take the benchmark function as an argument?
-- Does the recording chain report accumulated failures when the chain
-  ends, or leave them to `testing.T` to report at test end? `Errorf`
-  already defers to test end, so doing nothing is the cheaper answer.
+None. The two this RFC carried were settled by building it.
+
+`bench.Contract` keeps `Loop()` as a drop-in for `testing.B.Loop`, so a
+benchmark reads the same with a contract as without one:
+
+```go
+for c.Loop() {
+    _, _ = store.Get(ctx, id)
+}
+```
+
+Taking the body as an argument would have measured the same thing and
+read as a different kind of code. Keeping the loop shape is why `B`
+declares `Loop` at all.
+
+The recording chain reports nothing of its own at chain end. Every
+method reports through `Errorf` as it runs, and `testing.T` collects
+those and prints them when the test ends. A summary at chain end would
+be a second copy of what the framework already prints.
 
 ## Unresolved and future work
 

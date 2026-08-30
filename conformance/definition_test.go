@@ -166,3 +166,42 @@ func holds(members []string, name string) bool {
 	}
 	return slices.Contains(members, name)
 }
+
+// TestOverlayRules drives the overlay's own rule, which this
+// library's empty overlay cannot: a divergence has to be found when
+// one is declared.
+func TestOverlayRules(t *testing.T) {
+	t.Parallel()
+
+	declared := conformance.OverlayDoc{
+		Language: "php",
+		Diverge: []conformance.Divergence{
+			{ID: "bench-max-allocs", Stance: "blocked", Why: "no allocation counter"},
+		},
+	}
+
+	t.Run("Diverges", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("finds a declared divergence", func(t *testing.T) {
+			t.Parallel()
+
+			assert.True(t, declared.Diverges("bench-max-allocs"),
+				"a declared divergence is found")
+		})
+
+		t.Run("does not find one that was not declared", func(t *testing.T) {
+			t.Parallel()
+
+			assert.False(t, declared.Diverges("equal"),
+				"an assertion nobody declared absent is not a divergence")
+		})
+
+		t.Run("an empty overlay declares nothing", func(t *testing.T) {
+			t.Parallel()
+
+			assert.False(t, conformance.OverlayDoc{}.Diverges("equal"),
+				"an overlay with no entries declares no divergence")
+		})
+	})
+}
