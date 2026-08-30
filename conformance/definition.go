@@ -21,7 +21,7 @@ const (
 // goLanguage keys this language's entries in the naming table.
 const goLanguage = "go"
 
-//go:embed spec/assertions.json spec/naming.json spec/overlay.json spec/VERSION
+//go:embed spec/assertions.json spec/naming.json spec/overlay.json spec/VERSION spec/corpus
 var definition embed.FS
 
 // ID is an assertion's canonical name.

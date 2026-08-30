@@ -103,3 +103,4 @@ spec-sync: ## Refresh the vendored definition from ../assert-spec
 	cp ../assert-spec/spec/naming.json     conformance/spec/naming.json
 	cp ../assert-spec/overlays/go.json     conformance/spec/overlay.json
 	cp ../assert-spec/VERSION              conformance/spec/VERSION
+	rm -rf conformance/spec/corpus && cp -r ../assert-spec/corpus conformance/spec/corpus
