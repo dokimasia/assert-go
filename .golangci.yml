@@ -98,6 +98,14 @@ formatters:
     golines:
       max-len: 120
     gofumpt: {}
+    # Match what `ergon fmt` writes, which puts this module's own
+    # imports in a group of their own. Without this gci defaults to
+    # two sections, and fmt and lint undo each other's work.
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(go.dokimi.dev/assert)
 
 issues:
   max-issues-per-linter: 0
