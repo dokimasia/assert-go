@@ -4,6 +4,7 @@
 package assert_test
 
 import (
+	"fmt"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -96,4 +97,12 @@ func TestRecorder(t *testing.T) {
 			}
 		})
 	})
+}
+
+// A Recorder stands in for *testing.T so the example prints the
+// outcome instead of failing.
+func ExampleNewRecorder() {
+	r := assert.NewRecorder()
+	fmt.Println(r.Failed())
+	// Output: false
 }

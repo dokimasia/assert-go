@@ -8,6 +8,8 @@
 // recorder without knowing which it holds. [TB] is that seat, and
 // [testing.T], [testing.B] and [Recorder] all satisfy it.
 //
+//	assert.Equal(t, store.Get(ctx, id), item, "Get returns the stored item")
+//
 // # Failure semantics
 //
 //   - An assertion that passes reports nothing and returns.
@@ -17,6 +19,20 @@
 //     first line of the failure. It states the contract under test, so
 //     a failure says what was supposed to be true rather than only
 //     what was observed.
+//
+// # Equality
+//
+//   - Comparison is structural and reaches every field, including
+//     unexported ones.
+//   - A nil map or slice does not equal an empty one. Pass
+//     [EquateEmpty] where that difference does not matter.
+//   - NaN does not equal NaN. Pass [EquateNaNs] to reverse that.
+//   - Floats compare exactly.
+//   - Two references to one function are equal; two functions are not.
+//   - Values of different types never compare. The assertions take a
+//     type parameter, so a mismatch is a compile error.
+//
+// An [Option] applies to the call it is passed to and to nothing else.
 //
 // # Testing an assertion
 //
@@ -28,8 +44,5 @@
 //
 // # Dependency position
 //
-// Imports fmt, runtime and sync. Depends on no other package in this
-// module.
+// Imports internal/matcher, fmt, runtime and sync.
 package assert
-
-//go:generate go run ./internal/gen

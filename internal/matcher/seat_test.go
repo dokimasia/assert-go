@@ -4,29 +4,16 @@
 package matcher_test
 
 import (
-	"fmt"
 	"testing"
 
+	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/matcher"
+	"go.dokimi.dev/assert/internal/matchertest"
 )
 
-// seat records what a matcher reported, so a test reads the failure
-// instead of suffering it. It stands in for the whole package's tests,
-// which is why it lives beside the interface it implements.
-type seat struct {
-	fatals []string
-	errs   []string
-}
-
-func (*seat) Helper() {}
-
-func (s *seat) Fatalf(format string, args ...any) {
-	s.fatals = append(s.fatals, fmt.Sprintf(format, args...))
-}
-
-func (s *seat) Errorf(format string, args ...any) {
-	s.errs = append(s.errs, fmt.Sprintf(format, args...))
-}
+// The public seat satisfies this one by method set alone, which is
+// what lets neither package import the other for its interface.
+var _ matcher.Seat = assert.TB(nil)
 
 func TestSeat(t *testing.T) {
 	t.Parallel()
@@ -37,39 +24,50 @@ func TestSeat(t *testing.T) {
 		t.Run("Fatal reports through Fatalf", func(t *testing.T) {
 			t.Parallel()
 
-			s := &seat{}
+			s := &matchertest.Seat{}
 			matcher.Report(s, matcher.Fatal, "boom %d", 1)
 
-			if got, want := len(s.fatals), 1; got != want {
-				t.Fatalf("len(fatals) = %d, want %d", got, want)
+			if got, want := len(s.Fatals()), 1; got != want {
+				t.Fatalf("len(Fatals()) = %d, want %d", got, want)
 			}
-			if len(s.errs) != 0 {
-				t.Fatalf("errs = %v, want none", s.errs)
+			if len(s.Errs()) != 0 {
+				t.Fatalf("Errs() = %v, want none", s.Errs())
 			}
 		})
 
 		t.Run("Soft reports through Errorf", func(t *testing.T) {
 			t.Parallel()
 
-			s := &seat{}
+			s := &matchertest.Seat{}
 			matcher.Report(s, matcher.Soft, "boom")
 
-			if got, want := len(s.errs), 1; got != want {
-				t.Fatalf("len(errs) = %d, want %d", got, want)
+			if got, want := len(s.Errs()), 1; got != want {
+				t.Fatalf("len(Errs()) = %d, want %d", got, want)
 			}
-			if len(s.fatals) != 0 {
-				t.Fatalf("fatals = %v, want none", s.fatals)
+			if len(s.Fatals()) != 0 {
+				t.Fatalf("Fatals() = %v, want none", s.Fatals())
 			}
 		})
 
 		t.Run("formats its arguments", func(t *testing.T) {
 			t.Parallel()
 
-			s := &seat{}
+			s := &matchertest.Seat{}
 			matcher.Report(s, matcher.Fatal, "%s has %d", "list", 2)
 
-			if got, want := s.fatals[0], "list has 2"; got != want {
-				t.Fatalf("fatals[0] = %q, want %q", got, want)
+			if got, want := s.First(), "list has 2"; got != want {
+				t.Fatalf("First() = %q, want %q", got, want)
+			}
+		})
+
+		t.Run("marks the calling frame as a helper", func(t *testing.T) {
+			t.Parallel()
+
+			s := &matchertest.Seat{}
+			matcher.Report(s, matcher.Fatal, "boom")
+
+			if s.HelperCalls() == 0 {
+				t.Fatal("Report did not mark its frame as a helper")
 			}
 		})
 	})
