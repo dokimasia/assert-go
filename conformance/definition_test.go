@@ -99,6 +99,30 @@ func TestDefinition(t *testing.T) {
 		})
 	})
 
+	t.Run("Overlay", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("this library declares no divergence", func(t *testing.T) {
+			t.Parallel()
+
+			// An empty overlay is a claim, not an absence: this
+			// language can express every assertion the standard states.
+			// A divergence appearing here is a deliberate change to
+			// what the library promises, so it changes this case too.
+			assert.Empty(t, overlay.Diverge,
+				"Go implements the whole standard, so it declares nothing absent")
+		})
+
+		t.Run("it names the definition it was written against", func(t *testing.T) {
+			t.Parallel()
+
+			assert.HasPrefix(t, overlay.Extends, "spec://",
+				"the overlay names the definition it extends")
+			assert.Equal(t, overlay.Language, "go",
+				"the overlay names the language it speaks for")
+		})
+	})
+
 	t.Run("Version", func(t *testing.T) {
 		t.Parallel()
 
