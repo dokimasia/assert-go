@@ -14,6 +14,11 @@ vendor/
 # Editors and IDEs
 .idea/
 .vscode/
+
+# Zed: settings.json is the shared config that points the formatter at
+# golangci-lint and turns on the gopls analyses. Nothing else in .zed is.
+.zed/*
+!.zed/settings.json
 *.swp
 *.swo
 *~
