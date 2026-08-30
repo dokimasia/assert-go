@@ -1,0 +1,73 @@
+name: Bug report
+description: An assertion does not do what it says.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: if another implementation of the standard
+        answers the same test differently, use the divergence report
+        instead. It asks for both sides, and the answer may be that
+        this library is right and the other is wrong.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The `go.dokimi.dev/assert` version, from `go list -m`.
+      placeholder: v0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: go
+    attributes:
+      label: Go version
+      description: Output of `go version`.
+      placeholder: go version go1.27.0 linux/amd64
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface
+      options:
+        - assert (stops the test)
+        - expect (records and continues)
+        - both
+        - not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: A test that shows it
+      description: >
+        A whole test, please, including the seat. Use `assert.Recorder`
+        where you want to read a failure back rather than suffer it.
+      render: go
+      value: |
+        func TestReproduce(t *testing.T) {
+            r := assert.NewRecorder()
+
+            assert.Equal(r, got, want, "the contract under test")
+
+            t.Log(r.Msg())
+        }
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened
+      description: >
+        Both, please. "It fails" does not say whether the assertion
+        reported the wrong thing or reported nothing at all.
+      placeholder: |
+        Expected: a failure naming both values.
+        Got: it passed.
+    validations:
+      required: true
