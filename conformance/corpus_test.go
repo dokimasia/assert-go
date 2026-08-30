@@ -15,16 +15,27 @@ import (
 // library. It is what checks meaning rather than membership: the
 // completeness gate says an assertion exists, and this says it answers
 // what the standard says it should.
+//
+// Written with testing rather than with this library. Every assertion
+// reports through one function, so a verdict written with the subject
+// goes quiet exactly when the subject does: silencing that function
+// leaves every case passing, having checked nothing.
 func TestCorpus(t *testing.T) {
 	t.Parallel()
 
 	byAssertion, err := conformance.Cases()
-	assert.NoError(t, err, "the corpus can be read")
-	assert.NotEmpty(t, byAssertion, "the corpus states something")
+	if err != nil {
+		t.Fatalf("the corpus can be read: %v", err)
+	}
+	if len(byAssertion) == 0 {
+		t.Fatal("the corpus states something, but it read no assertions")
+	}
 
 	for id, cases := range byAssertion {
 		invoke, registered := conformance.Registry[id]
-		assert.True(t, registered, "an invoker is registered for "+string(id))
+		if !registered {
+			t.Fatalf("an invoker is registered for %s", id)
+		}
 
 		for _, tc := range cases {
 			t.Run(tc.ID, func(t *testing.T) {
@@ -35,12 +46,16 @@ func TestCorpus(t *testing.T) {
 				}
 
 				args, err := tc.Decoded()
-				assert.NoError(t, err, "the case's arguments decode")
+				if err != nil {
+					t.Fatalf("the case's arguments decode: %v", err)
+				}
 
 				r := assert.NewRecorder()
 				invoke(r, args, tc.ID)
 
-				assert.NoError(t, tc.Check(r), "the outcome is what the case states")
+				if err := tc.Check(r); err != nil {
+					t.Fatalf("the outcome is what the case states: %v", err)
+				}
 			})
 		}
 	}
@@ -59,8 +74,9 @@ func TestCorpusRules(t *testing.T) {
 			t.Parallel()
 
 			c := conformance.Case{ID: "made-up", Expect: "maybe"}
-			assert.HasError(t, c.Check(assert.NewRecorder()),
-				"a case stating neither pass nor fail is refused")
+			if c.Check(assert.NewRecorder()) == nil {
+				t.Fatal("a case stating neither pass nor fail is refused")
+			}
 		})
 
 		t.Run("a failure missing a required substring is refused", func(t *testing.T) {
@@ -70,8 +86,9 @@ func TestCorpusRules(t *testing.T) {
 			r.Fatalf("reported without the detail")
 
 			c := conformance.Case{ID: "x", Expect: "fail", MessageContains: []string{"absent"}}
-			assert.HasError(t, c.Check(r),
-				"a failure that drops a required substring is refused")
+			if c.Check(r) == nil {
+				t.Fatal("a failure that drops a required substring is refused")
+			}
 		})
 
 		t.Run("a failure carrying every substring is accepted", func(t *testing.T) {
@@ -81,7 +98,9 @@ func TestCorpusRules(t *testing.T) {
 			r.Fatalf("want 1, got 2")
 
 			c := conformance.Case{ID: "x", Expect: "fail", MessageContains: []string{"want", "got"}}
-			assert.NoError(t, c.Check(r), "a failure carrying every substring is accepted")
+			if err := c.Check(r); err != nil {
+				t.Fatalf("a failure carrying every substring is accepted: %v", err)
+			}
 		})
 	})
 
@@ -92,8 +111,9 @@ func TestCorpusRules(t *testing.T) {
 			t.Parallel()
 
 			c := conformance.Case{ID: "x", Args: []json.RawMessage{[]byte(`{"type":"widget"}`)}}
-			_, err := c.Decoded()
-			assert.HasError(t, err, "an argument the encoding does not cover is refused")
+			if _, err := c.Decoded(); err == nil {
+				t.Fatal("an argument the encoding does not cover is refused")
+			}
 		})
 	})
 
@@ -103,16 +123,18 @@ func TestCorpusRules(t *testing.T) {
 		t.Run("a case with no skip table applies", func(t *testing.T) {
 			t.Parallel()
 
-			_, skipped := conformance.Case{ID: "x"}.SkipReason()
-			assert.False(t, skipped, "a case naming no skip applies to this language")
+			if _, skipped := (conformance.Case{ID: "x"}).SkipReason(); skipped {
+				t.Fatal("a case naming no skip applies to this language")
+			}
 		})
 
 		t.Run("a skip for another language does not apply here", func(t *testing.T) {
 			t.Parallel()
 
 			c := conformance.Case{ID: "x", Skip: map[string]string{"php": "no generics"}}
-			_, skipped := c.SkipReason()
-			assert.False(t, skipped, "a skip naming another language does not apply here")
+			if _, skipped := c.SkipReason(); skipped {
+				t.Fatal("a skip naming another language does not apply here")
+			}
 		})
 	})
 }
