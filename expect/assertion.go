@@ -40,8 +40,9 @@ func That[T any](tb assert.TB, got T) *Assertion[T] {
 	return &Assertion[T]{tb: tb, got: got}
 }
 
-// Equal compares the chained value against want and stops the test
-// when they differ. See [go.dokimi.dev/assert.Equal] for the comparison rules and the
+// Equal compares the chained value against want and records a failure
+// when they differ. The chain carries on either way. See
+// [go.dokimi.dev/assert.Equal] for the comparison rules and the
 // failure shape.
 func (a *Assertion[T]) Equal(want T, msg string, opts ...Option) *Assertion[T] {
 	a.tb.Helper()
@@ -49,8 +50,9 @@ func (a *Assertion[T]) Equal(want T, msg string, opts ...Option) *Assertion[T] {
 	return a
 }
 
-// NotEqual compares the chained value against want and stops the test
-// when they are equal. See [go.dokimi.dev/assert.NotEqual] for the comparison rules and the
+// NotEqual compares the chained value against want and records a
+// failure when they are equal. The chain carries on either way. See
+// [go.dokimi.dev/assert.NotEqual] for the comparison rules and the
 // failure shape.
 func (a *Assertion[T]) NotEqual(want T, msg string, opts ...Option) *Assertion[T] {
 	a.tb.Helper()
