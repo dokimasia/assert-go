@@ -30,7 +30,7 @@ func Panics(seat Seat, mode Mode, fn func(), msg string) (recovered any) {
 	}()
 
 	if !panicked {
-		Report(seat, mode, "%s: expected a panic, the function returned", msg)
+		Fail(seat, mode, "throws", msg, nil)
 	}
 	return recovered
 }
@@ -49,7 +49,7 @@ func NotPanics(seat Seat, mode Mode, fn func(), msg string) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			Report(seat, mode, "%s: unexpected panic: %v", msg, r)
+			Fail(seat, mode, "not-throws", msg, map[string]any{"got": r})
 		}
 	}()
 	fn()

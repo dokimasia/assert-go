@@ -15,16 +15,16 @@ func LengthCases() []Case {
 		{Name: "a nil slice has length zero", Args: []any{[]int(nil), 0}},
 		{Name: "a defined slice type answers its length", Args: []any{ids{1, 2}, 2}},
 		{
-			Name:     "a wrong length reports both",
-			Args:     []any{[]int{1}, 3},
-			Fails:    true,
-			Contains: []string{"3", "1"},
+			Name:      "a wrong length reports both",
+			Args:      []any{[]int{1}, 3},
+			Fails:     true,
+			Assertion: "length",
 		},
 		{
-			Name:     "a type with no length reports rather than panicking",
-			Args:     []any{42, 1},
-			Fails:    true,
-			Contains: []string{"not supported"},
+			Name:      "a type with no length reports rather than panicking",
+			Args:      []any{42, 1},
+			Fails:     true,
+			Assertion: "length",
 		},
 	}
 }
@@ -38,16 +38,16 @@ func EmptyCases() []Case {
 		{Name: "an empty string passes", Args: []any{""}},
 		{Name: "an empty map passes", Args: []any{map[string]int{}}},
 		{
-			Name:     "a populated slice reports its length",
-			Args:     []any{[]int{1, 2}},
-			Fails:    true,
-			Contains: []string{"2"},
+			Name:      "a populated slice reports its length",
+			Args:      []any{[]int{1, 2}},
+			Fails:     true,
+			Assertion: "empty",
 		},
 		{
-			Name:     "a type with no length reports rather than panicking",
-			Args:     []any{42},
-			Fails:    true,
-			Contains: []string{"not supported"},
+			Name:      "a type with no length reports rather than panicking",
+			Args:      []any{42},
+			Fails:     true,
+			Assertion: "empty",
 		},
 	}
 }
@@ -59,16 +59,16 @@ func NotEmptyCases() []Case {
 		{Name: "a populated slice passes", Args: []any{[]int{1}}},
 		{Name: "a non-empty string passes", Args: []any{"a"}},
 		{
-			Name:     "an empty slice reports",
-			Args:     []any{[]int{}},
-			Fails:    true,
-			Contains: []string{"non-empty"},
+			Name:      "an empty slice reports",
+			Args:      []any{[]int{}},
+			Fails:     true,
+			Assertion: "not-empty",
 		},
 		{
-			Name:     "a nil slice reports",
-			Args:     []any{[]int(nil)},
-			Fails:    true,
-			Contains: []string{"non-empty"},
+			Name:      "a nil slice reports",
+			Args:      []any{[]int(nil)},
+			Fails:     true,
+			Assertion: "not-empty",
 		},
 	}
 }

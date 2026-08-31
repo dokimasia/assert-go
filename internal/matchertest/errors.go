@@ -32,10 +32,10 @@ func NoErrorCases() []Case {
 	return []Case{
 		{Name: "a nil error passes", Args: []any{error(nil)}},
 		{
-			Name:     "an error reports its text",
-			Args:     []any{ErrSample},
-			Fails:    true,
-			Contains: []string{"sample"},
+			Name:      "an error reports its text",
+			Args:      []any{ErrSample},
+			Fails:     true,
+			Assertion: "err-absent",
 		},
 	}
 }
@@ -47,10 +47,10 @@ func HasErrorCases() []Case {
 		{Name: "an error passes", Args: []any{ErrSample}},
 		{Name: "a wrapped error passes", Args: []any{wrapped()}},
 		{
-			Name:     "a nil error reports",
-			Args:     []any{error(nil)},
-			Fails:    true,
-			Contains: []string{"error"},
+			Name:      "a nil error reports",
+			Args:      []any{error(nil)},
+			Fails:     true,
+			Assertion: "err-present",
 		},
 	}
 }
@@ -62,16 +62,16 @@ func ErrorIsCases() []Case {
 		{Name: "the same error matches", Args: []any{ErrSample, ErrSample}},
 		{Name: "a wrapped error matches through the chain", Args: []any{wrapped(), ErrSample}},
 		{
-			Name:     "a different error reports both",
-			Args:     []any{ErrOther, ErrSample},
-			Fails:    true,
-			Contains: []string{"other", "sample"},
+			Name:      "a different error reports both",
+			Args:      []any{ErrOther, ErrSample},
+			Fails:     true,
+			Assertion: "err-is",
 		},
 		{
-			Name:     "a nil error reports",
-			Args:     []any{error(nil), ErrSample},
-			Fails:    true,
-			Contains: []string{"sample"},
+			Name:      "a nil error reports",
+			Args:      []any{error(nil), ErrSample},
+			Fails:     true,
+			Assertion: "err-is",
 		},
 	}
 }
@@ -83,16 +83,16 @@ func ErrorIsNotCases() []Case {
 		{Name: "two distinct errors pass", Args: []any{ErrOther, ErrSample}},
 		{Name: "a nil error is distinct from a sentinel", Args: []any{error(nil), ErrSample}},
 		{
-			Name:     "the same error reports",
-			Args:     []any{ErrSample, ErrSample},
-			Fails:    true,
-			Contains: []string{"sample"},
+			Name:      "the same error reports",
+			Args:      []any{ErrSample, ErrSample},
+			Fails:     true,
+			Assertion: "err-is-not",
 		},
 		{
-			Name:     "a wrapped error reports",
-			Args:     []any{wrapped(), ErrSample},
-			Fails:    true,
-			Contains: []string{"sample"},
+			Name:      "a wrapped error reports",
+			Args:      []any{wrapped(), ErrSample},
+			Fails:     true,
+			Assertion: "err-is-not",
 		},
 	}
 }
@@ -145,7 +145,7 @@ func RunErrorAs(t *testing.T, invoke ErrorAsInvoke) {
 		seat := &Seat{}
 		got := invoke(seat, WrappedTyped(), contractMsg)
 
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 		if got == nil || got.Field != TypedField {
 			t.Fatalf("returned %+v, want the error from the chain", got)
 		}
@@ -157,7 +157,7 @@ func RunErrorAs(t *testing.T, invoke ErrorAsInvoke) {
 		seat := &Seat{}
 		got := invoke(seat, &TypedError{Field: TypedField}, contractMsg)
 
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 		if got == nil {
 			t.Fatal("returned nil for an error already of the target type")
 		}
@@ -168,7 +168,7 @@ func RunErrorAs(t *testing.T, invoke ErrorAsInvoke) {
 
 		seat := &Seat{}
 		_ = invoke(seat, ErrSample, contractMsg)
-		checkOutcome(t, seat, true, []string{"sample"})
+		checkOutcome(t, seat, Case{Fails: true, Assertion: "err-as"})
 	})
 
 	t.Run("reports for a nil error", func(t *testing.T) {
@@ -176,7 +176,7 @@ func RunErrorAs(t *testing.T, invoke ErrorAsInvoke) {
 
 		seat := &Seat{}
 		_ = invoke(seat, nil, contractMsg)
-		checkOutcome(t, seat, true, nil)
+		checkOutcome(t, seat, Case{Fails: true, Assertion: "err-as"})
 	})
 
 	t.Run("returns the zero value when nothing matches", func(t *testing.T) {

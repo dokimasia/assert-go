@@ -26,7 +26,7 @@ func RunPanics(t *testing.T, invoke PanicsInvoke) {
 
 		seat := &Seat{}
 		invoke(seat, func() { panic(PanicReason) }, contractMsg)
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 	})
 
 	t.Run("it yields the panic value", func(t *testing.T) {
@@ -50,7 +50,7 @@ func RunPanics(t *testing.T, invoke PanicsInvoke) {
 
 		seat := &Seat{}
 		invoke(seat, func() { panic(nothing) }, contractMsg)
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 	})
 
 	t.Run("a returning function reports", func(t *testing.T) {
@@ -58,7 +58,7 @@ func RunPanics(t *testing.T, invoke PanicsInvoke) {
 
 		seat := &Seat{}
 		invoke(seat, func() {}, contractMsg)
-		checkOutcome(t, seat, true, []string{"panic"})
+		checkOutcome(t, seat, Case{Fails: true, Assertion: "throws"})
 	})
 }
 
@@ -72,7 +72,7 @@ func RunNotPanics(t *testing.T, invoke NotPanicsInvoke) {
 
 		seat := &Seat{}
 		invoke(seat, func() {}, contractMsg)
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 	})
 
 	t.Run("a function that fails without crashing passes", func(t *testing.T) {
@@ -80,7 +80,7 @@ func RunNotPanics(t *testing.T, invoke NotPanicsInvoke) {
 
 		seat := &Seat{}
 		invoke(seat, func() { _ = ErrSample }, contractMsg)
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 	})
 
 	t.Run("a panicking function reports what it panicked with", func(t *testing.T) {
@@ -88,7 +88,10 @@ func RunNotPanics(t *testing.T, invoke NotPanicsInvoke) {
 
 		seat := &Seat{}
 		invoke(seat, func() { panic(PanicReason) }, contractMsg)
-		checkOutcome(t, seat, true, []string{PanicReason})
+		checkOutcome(t, seat, Case{
+			Fails: true, Assertion: "not-throws",
+			Detail: map[string]any{"got": PanicReason},
+		})
 	})
 
 	t.Run("the panic does not escape", func(t *testing.T) {

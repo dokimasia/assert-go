@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
@@ -28,9 +29,15 @@ func TestBehaviour(t *testing.T) {
 		err := fn(ctx)
 		switch {
 		case err == nil:
-			s.Fatalf("%s: a cancelled context produced no error", msg)
+			s.Report(matcher.Failure{
+				Assertion: "honours-cancellation", Contract: msg,
+				Detail: map[string]any{"got": nil},
+			}, true)
 		case !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded):
-			s.Fatalf("%s: a cancelled context produced %v, want a cancellation error", msg, err)
+			s.Report(matcher.Failure{
+				Assertion: "honours-cancellation", Contract: msg,
+				Detail: map[string]any{"got": err},
+			}, true)
 		}
 	}
 
@@ -60,7 +67,7 @@ func TestBehaviour(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), within)
 			defer cancel()
 			if err := fn(ctx); errors.Is(err, context.DeadlineExceeded) {
-				s.Fatalf("%s: did not finish within %v", msg, within)
+				s.Report(matcher.Failure{Assertion: "completes-within", Contract: msg}, true)
 			}
 		})
 	})
@@ -72,7 +79,10 @@ func TestBehaviour(t *testing.T) {
 		) {
 			defer func() {
 				if r := recover(); r != nil {
-					s.Fatalf("%s: a nil context caused a panic: %v", msg, r)
+					s.Report(matcher.Failure{
+						Assertion: "nil-context-safe", Contract: msg,
+						Detail: map[string]any{"got": r},
+					}, true)
 				}
 			}()
 			//nolint:staticcheck // passing nil is the subject of the suite

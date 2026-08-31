@@ -14,7 +14,7 @@ import "reflect"
 func Nil(seat Seat, mode Mode, got any, msg string) {
 	seat.Helper()
 	if !isNil(got) {
-		Report(seat, mode, "%s: expected nil, got %+v", msg, got)
+		Fail(seat, mode, "nil", msg, map[string]any{"got": got})
 	}
 }
 
@@ -23,7 +23,7 @@ func Nil(seat Seat, mode Mode, got any, msg string) {
 func NotNil(seat Seat, mode Mode, got any, msg string) {
 	seat.Helper()
 	if isNil(got) {
-		Report(seat, mode, "%s: expected non-nil, got nil", msg)
+		Fail(seat, mode, "not-nil", msg, nil)
 	}
 }
 

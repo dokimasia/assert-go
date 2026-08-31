@@ -48,3 +48,32 @@ func Report(seat Seat, mode Mode, format string, args ...any) {
 	}
 	seat.Fatalf(format, args...)
 }
+
+// Fail sends one record to seat.
+//
+// A seat satisfying [Reporter] receives the record; any other seat
+// receives the sentence [Render] makes of it. The call site is read
+// here, so a matcher does not have to count frames.
+//
+// Fail does not decide whether anything failed. A matcher calls it
+// only once its own comparison has failed. Under [Fatal] it may not
+// return.
+func Fail(seat Seat, mode Mode, assertion, contract string, detail map[string]any) {
+	seat.Helper()
+	f := Failure{
+		Assertion: assertion,
+		Contract:  contract,
+		Detail:    detail,
+		Where:     site(callerDepth),
+	}
+	if r, ok := seat.(Reporter); ok {
+		r.Report(f, mode == Fatal)
+		return
+	}
+	Report(seat, mode, "%s", Render(f))
+}
+
+// callerDepth is how many frames sit between a caller's line and the
+// runtime.Caller inside site: the matcher that called Fail, Fail
+// itself, and the assertion the caller wrote.
+const callerDepth = 3

@@ -21,11 +21,11 @@ func Contains(seat Seat, mode Mode, haystack, needle any, msg string, opts ...Op
 
 	found, supported := holds(haystack, needle, opts...)
 	if !supported {
-		Report(seat, mode, "%s: containment not supported for %T", msg, haystack)
+		Fail(seat, mode, "contains", msg, map[string]any{"haystack": haystack, "needle": needle})
 		return
 	}
 	if !found {
-		Report(seat, mode, "%s: %+v does not contain %+v", msg, haystack, needle)
+		Fail(seat, mode, "contains", msg, map[string]any{"haystack": haystack, "needle": needle})
 	}
 }
 
@@ -36,11 +36,11 @@ func NotContains(seat Seat, mode Mode, haystack, needle any, msg string, opts ..
 
 	found, supported := holds(haystack, needle, opts...)
 	if !supported {
-		Report(seat, mode, "%s: containment not supported for %T", msg, haystack)
+		Fail(seat, mode, "not-contains", msg, map[string]any{"haystack": haystack, "needle": needle})
 		return
 	}
 	if found {
-		Report(seat, mode, "%s: %+v contains %+v, want it absent", msg, haystack, needle)
+		Fail(seat, mode, "not-contains", msg, map[string]any{"haystack": haystack, "needle": needle})
 	}
 }
 
@@ -59,7 +59,8 @@ func ContainsInOrder(seat Seat, mode Mode, haystack any, needles []string, msg s
 
 	text, ok := textOf(haystack)
 	if !ok {
-		Report(seat, mode, "%s: ordered containment requires text, got %T", msg, haystack)
+		Fail(seat, mode, "contains-in-order", msg,
+			map[string]any{"haystack": haystack, "needle": "", "index": 0})
 		return
 	}
 
@@ -67,8 +68,8 @@ func ContainsInOrder(seat Seat, mode Mode, haystack any, needles []string, msg s
 	for i, needle := range needles {
 		at := strings.Index(text[cursor:], needle)
 		if at < 0 {
-			Report(seat, mode, "%s: needle %d (%q) not found after position %d in %q",
-				msg, i, needle, cursor, text)
+			Fail(seat, mode, "contains-in-order", msg,
+				map[string]any{"haystack": text, "needle": needle, "index": i})
 			return
 		}
 		cursor += at + len(needle)

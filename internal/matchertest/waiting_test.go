@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
@@ -25,8 +26,7 @@ func TestWaiting(t *testing.T) {
 					return
 				}
 				if time.Now().After(deadline) {
-					s.Fatalf("%s: still failing after %v and %d attempts: %s",
-						msg, timeout, attempt+1, matchertest.InnerReason)
+					s.Report(matcher.Failure{Assertion: "eventually", Contract: msg}, true)
 					return
 				}
 				time.Sleep(interval)
@@ -46,7 +46,7 @@ func TestWaiting(t *testing.T) {
 					return
 				}
 				if time.Now().After(deadline) {
-					s.Fatalf("%s: still false after %v and %d attempts", msg, timeout, attempt+1)
+					s.Report(matcher.Failure{Assertion: "eventually-true", Contract: msg}, true)
 					return
 				}
 				time.Sleep(time.Millisecond)

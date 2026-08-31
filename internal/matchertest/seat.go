@@ -6,6 +6,8 @@ package matchertest
 import (
 	"fmt"
 	"sync"
+
+	"go.dokimi.dev/assert/internal/matcher"
 )
 
 // Seat records what a matcher reported. It satisfies the seat
@@ -18,7 +20,34 @@ type Seat struct {
 	mu      sync.Mutex
 	fatals  []string
 	errs    []string
+	records []matcher.Failure
 	helpers int
+}
+
+// Report records one failure as the record it is, and renders it
+// through the matching string path so the message checks still see
+// what a real seat would.
+//
+// Satisfying this interface is what lets a case state the fields an
+// assertion reports rather than words its sentence happens to hold.
+func (s *Seat) Report(f matcher.Failure, aborting bool) {
+	s.mu.Lock()
+	s.records = append(s.records, f)
+	s.mu.Unlock()
+
+	if aborting {
+		s.Fatalf("%s", matcher.Render(f))
+		return
+	}
+	s.Errorf("%s", matcher.Render(f))
+}
+
+// Records returns a copy of every record reported, in call order.
+func (s *Seat) Records() []matcher.Failure {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return append([]matcher.Failure(nil), s.records...)
 }
 
 // Helper counts one helper-frame mark.

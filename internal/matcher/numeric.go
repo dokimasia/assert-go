@@ -24,7 +24,8 @@ func CloseTo(seat Seat, mode Mode, got any, want, tolerance float64, msg string)
 
 	f, ok := floatOf(got)
 	if !ok {
-		Report(seat, mode, "%s: tolerance requires a number, got %T", msg, got)
+		Fail(seat, mode, "close-to", msg,
+			map[string]any{"got": got, "want": want, "tolerance": tolerance})
 		return
 	}
 
@@ -32,12 +33,13 @@ func CloseTo(seat Seat, mode Mode, got any, want, tolerance float64, msg string)
 	// would pass a NaN rather than reject it. Name the case instead.
 	diff := math.Abs(f - want)
 	if math.IsNaN(diff) || math.IsNaN(tolerance) {
-		Report(seat, mode, "%s: %v is not within %v of %v: NaN is outside every tolerance",
-			msg, f, tolerance, want)
+		Fail(seat, mode, "close-to", msg,
+			map[string]any{"got": got, "want": want, "tolerance": tolerance})
 		return
 	}
 	if diff > tolerance {
-		Report(seat, mode, "%s: %v is not within %v of %v", msg, f, tolerance, want)
+		Fail(seat, mode, "close-to", msg,
+			map[string]any{"got": got, "want": want, "tolerance": tolerance})
 	}
 }
 
@@ -51,24 +53,28 @@ func InRange(seat Seat, mode Mode, got any, low, high float64, msg string) {
 	seat.Helper()
 
 	if low > high {
-		Report(seat, mode, "%s: empty range [%v, %v]", msg, low, high)
+		Fail(seat, mode, "in-range", msg,
+			map[string]any{"got": got, "low": low, "high": high})
 		return
 	}
 
 	f, ok := floatOf(got)
 	if !ok {
-		Report(seat, mode, "%s: range requires a number, got %T", msg, got)
+		Fail(seat, mode, "in-range", msg,
+			map[string]any{"got": got, "low": low, "high": high})
 		return
 	}
 
 	// NaN compares false against both bounds, so testing the bounds alone
 	// would admit it. See [CloseTo].
 	if math.IsNaN(f) {
-		Report(seat, mode, "%s: NaN is not in [%v, %v]", msg, low, high)
+		Fail(seat, mode, "in-range", msg,
+			map[string]any{"got": got, "low": low, "high": high})
 		return
 	}
 	if f < low || f > high {
-		Report(seat, mode, "%s: %v is not in [%v, %v]", msg, f, low, high)
+		Fail(seat, mode, "in-range", msg,
+			map[string]any{"got": got, "low": low, "high": high})
 	}
 }
 

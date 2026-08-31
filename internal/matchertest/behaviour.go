@@ -44,24 +44,24 @@ type PureInvoke func(seat *Seat, observe func() []int, fn func(), msg string)
 // ctxCases are the subjects a cancellation or deadline assertion must
 // judge, and how.
 var ctxCases = []struct {
-	name     string
-	fn       func(ctx context.Context) error
-	fails    bool
-	contains []string
+	name      string
+	fn        func(ctx context.Context) error
+	fails     bool
+	assertion string
+	detail    map[string]any
 }{
 	{name: "a subject that checks its context passes", fn: RespectsCtx},
 	{name: "a wrapped context error passes", fn: WrapsCtx},
 	{
-		name:     "a subject that ignores its context reports",
-		fn:       IgnoresCtx,
-		fails:    true,
-		contains: []string{"no error"},
+		name:   "a subject that ignores its context reports",
+		fn:     IgnoresCtx,
+		fails:  true,
+		detail: map[string]any{"got": nil},
 	},
 	{
-		name:     "an unrelated error reports",
-		fn:       FailsOtherwise,
-		fails:    true,
-		contains: []string{"sample"},
+		name:  "an unrelated error reports",
+		fn:    FailsOtherwise,
+		fails: true,
 	},
 }
 
@@ -90,7 +90,7 @@ func runCtxCases(t *testing.T, invoke CtxInvoke) {
 
 			seat := &Seat{}
 			invoke(seat, tc.fn, contractMsg)
-			checkOutcome(t, seat, tc.fails, tc.contains)
+			checkOutcome(t, seat, Case{Fails: tc.fails, Assertion: tc.assertion, Detail: tc.detail})
 		})
 	}
 }
@@ -105,7 +105,7 @@ func RunCompletesWithin(t *testing.T, invoke WithinInvoke) {
 
 		seat := &Seat{}
 		invoke(seat, time.Second, IgnoresCtx, contractMsg)
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 	})
 
 	t.Run("a subject that fails quickly still passes", func(t *testing.T) {
@@ -113,7 +113,7 @@ func RunCompletesWithin(t *testing.T, invoke WithinInvoke) {
 
 		seat := &Seat{}
 		invoke(seat, time.Second, FailsOtherwise, contractMsg)
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 	})
 
 	t.Run("a subject that runs out of time reports", func(t *testing.T) {
@@ -124,7 +124,7 @@ func RunCompletesWithin(t *testing.T, invoke WithinInvoke) {
 			<-ctx.Done()
 			return ctx.Err()
 		}, contractMsg)
-		checkOutcome(t, seat, true, []string{"within"})
+		checkOutcome(t, seat, Case{Fails: true, Assertion: "completes-within"})
 	})
 }
 
@@ -140,7 +140,7 @@ func RunPure(t *testing.T, invoke PureInvoke) {
 		seat := &Seat{}
 		invoke(seat, func() []int { return append([]int(nil), state...) },
 			func() {}, contractMsg)
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 	})
 
 	t.Run("a changed projection reports", func(t *testing.T) {
@@ -150,7 +150,7 @@ func RunPure(t *testing.T, invoke PureInvoke) {
 		seat := &Seat{}
 		invoke(seat, func() []int { return append([]int(nil), state...) },
 			func() { state = append(state, 3) }, contractMsg)
-		checkOutcome(t, seat, true, []string{"changed"})
+		checkOutcome(t, seat, Case{Fails: true, Assertion: "pure"})
 	})
 
 	t.Run("a change outside the projection passes", func(t *testing.T) {
@@ -160,7 +160,7 @@ func RunPure(t *testing.T, invoke PureInvoke) {
 		seat := &Seat{}
 		invoke(seat, func() []int { return append([]int(nil), state...) },
 			func() { hidden++ }, contractMsg)
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 
 		if hidden != 1 {
 			t.Fatalf("the call did not run: hidden = %d, want 1", hidden)
@@ -180,7 +180,7 @@ func RunNilContextSafe(t *testing.T, invoke CtxInvoke) {
 		invoke(seat, func(context.Context) error {
 			return errors.New("matchertest: refused")
 		}, contractMsg)
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 	})
 
 	t.Run("a subject that succeeds passes", func(t *testing.T) {
@@ -188,7 +188,7 @@ func RunNilContextSafe(t *testing.T, invoke CtxInvoke) {
 
 		seat := &Seat{}
 		invoke(seat, IgnoresCtx, contractMsg)
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 	})
 
 	t.Run("a subject that crashes reports", func(t *testing.T) {
@@ -196,6 +196,6 @@ func RunNilContextSafe(t *testing.T, invoke CtxInvoke) {
 
 		seat := &Seat{}
 		invoke(seat, RespectsCtx, contractMsg)
-		checkOutcome(t, seat, true, []string{"panic"})
+		checkOutcome(t, seat, Case{Fails: true, Assertion: "nil-context-safe"})
 	})
 }

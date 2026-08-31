@@ -69,7 +69,8 @@ func (p *probe) outcome() (msg string, failed bool) {
 func Eventually(seat Seat, mode Mode, timeout, interval time.Duration, fn func(Seat), msg string) {
 	seat.Helper()
 
-	deadline := time.Now().Add(timeout)
+	clock := ClockOf(seat)
+	deadline := clock.Now().Add(timeout)
 	for attempt := 0; ; attempt++ {
 		p := &probe{}
 		fn(p)
@@ -78,12 +79,13 @@ func Eventually(seat Seat, mode Mode, timeout, interval time.Duration, fn func(S
 		if !failed {
 			return
 		}
-		if time.Now().After(deadline) {
-			Report(seat, mode, "%s: still failing after %v and %d attempts: %s",
-				msg, timeout, attempt+1, last)
+		if clock.Now().After(deadline) {
+			Fail(seat, mode, "eventually", msg, map[string]any{
+				"attempts": attempt + 1, "last": last,
+			})
 			return
 		}
-		time.Sleep(interval)
+		wait(clock, interval)
 	}
 }
 
@@ -103,7 +105,8 @@ func EventuallyTrue(seat Seat, mode Mode, timeout time.Duration, pred func() boo
 
 	const firstBackoff = time.Millisecond
 
-	deadline := time.Now().Add(timeout)
+	clock := ClockOf(seat)
+	deadline := clock.Now().Add(timeout)
 	backoff := firstBackoff
 	maxBackoff := timeout / 4
 
@@ -111,13 +114,13 @@ func EventuallyTrue(seat Seat, mode Mode, timeout time.Duration, pred func() boo
 		if pred() {
 			return
 		}
-		if time.Now().After(deadline) {
-			Report(seat, mode, "%s: still false after %v and %d attempts",
-				msg, timeout, attempt+1)
+		if clock.Now().After(deadline) {
+			Fail(seat, mode, "eventually-true", msg,
+				map[string]any{"attempts": attempt + 1})
 			return
 		}
 
-		time.Sleep(backoff)
+		wait(clock, backoff)
 		if backoff *= 2; backoff > maxBackoff && maxBackoff > 0 {
 			backoff = maxBackoff
 		}

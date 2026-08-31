@@ -248,10 +248,10 @@ holds itself to it on every run:
   undeclared absence fails the build; so does a declared absence for
   something that is implemented.
 - **Parity.** Both surfaces carry the same members.
-- **Meaning.** 70 corpus cases state what an assertion must report,
+- **Meaning.** 87 corpus cases state what an assertion must report,
   shared with every other implementation.
 
-The corpus reaches 17 of the 41. A case states its arguments as data,
+The corpus reaches 25 of the 41. A case states its arguments as data,
 so it cannot cover an assertion that takes a callable, a cancellation
 handle, a golden file or a benchmark. Those are checked for presence
 and tested here.

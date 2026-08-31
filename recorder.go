@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+
+	"go.dokimi.dev/assert/internal/matcher"
 )
 
 // Recorder is a [TB] that records a failure instead of stopping the
@@ -35,9 +37,16 @@ type Recorder struct {
 	msg string
 	// errors holds every non-fatal message in call order.
 	errors []string
+	// records holds every failure that arrived as a record, in call
+	// order, whether fatal or not. An assertion reports one; a
+	// message passed straight to Fatalf or Errorf leaves none.
+	records []Failure
 	// helpers counts Helper calls, so a test can check an assertion
 	// marks its own frame.
 	helpers int
+	// clock is what assertions read time from, or nil for the
+	// platform clock.
+	clock matcher.Clock
 }
 
 // NewRecorder returns a Recorder that records failures and returns
@@ -59,6 +68,58 @@ func (r *Recorder) WithGoexit() *Recorder {
 	defer r.mu.Unlock()
 
 	r.goexit = true
+	return r
+}
+
+// Report records one failure and, when it is fatal, stops the driven
+// body the way [Recorder.Fatalf] does.
+//
+// This is what makes a Recorder a [Reporter]: an assertion hands it
+// the record, so a test can read the assertion's own fields rather
+// than search its sentence for words. The rendered sentence is kept
+// too, so [Recorder.Message] answers what it always did.
+func (r *Recorder) Report(f Failure, aborting bool) {
+	r.mu.Lock()
+	r.records = append(r.records, f)
+	r.mu.Unlock()
+
+	if aborting {
+		r.Fatalf("%s", matcher.Render(f))
+		return
+	}
+	r.Errorf("%s", matcher.Render(f))
+}
+
+// Failures answers every record that arrived, in call order. The
+// slice is a fresh copy, so a caller may hold or sort it while the
+// Recorder keeps recording.
+func (r *Recorder) Failures() []Failure {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return append([]Failure(nil), r.records...)
+}
+
+// Clock answers the clock this Recorder hands assertions, which is the
+// platform clock unless [Recorder.WithClock] set another.
+func (r *Recorder) Clock() matcher.Clock {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.clock == nil {
+		return matcher.System{}
+	}
+	return r.clock
+}
+
+// WithClock makes assertions reported through this Recorder read c
+// rather than the platform clock, and returns the receiver so the call
+// chains onto [NewRecorder].
+func (r *Recorder) WithClock(c matcher.Clock) *Recorder {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.clock = c
 	return r
 }
 

@@ -49,7 +49,7 @@ func RunEventually(t *testing.T, invoke EventuallyInvoke) {
 
 		seat := &Seat{}
 		invoke(seat, ShortTimeout, ShortInterval, func() bool { return false }, contractMsg)
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 	})
 
 	t.Run("a body that passes on a later attempt reports nothing", func(t *testing.T) {
@@ -62,7 +62,7 @@ func RunEventually(t *testing.T, invoke EventuallyInvoke) {
 			return attempts < SettlesAfter
 		}, contractMsg)
 
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 		if attempts < SettlesAfter {
 			t.Fatalf("ran %d attempts, want at least %d; it did not retry", attempts, SettlesAfter)
 		}
@@ -73,7 +73,7 @@ func RunEventually(t *testing.T, invoke EventuallyInvoke) {
 
 		seat := &Seat{}
 		invoke(seat, ShortTimeout, ShortInterval, func() bool { return true }, contractMsg)
-		checkOutcome(t, seat, true, []string{InnerReason})
+		checkOutcome(t, seat, Case{Fails: true, Assertion: "eventually"})
 	})
 
 	t.Run("the body runs at least once however short the timeout", func(t *testing.T) {
@@ -86,7 +86,7 @@ func RunEventually(t *testing.T, invoke EventuallyInvoke) {
 			return false
 		}, contractMsg)
 
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 		if attempts == 0 {
 			t.Fatal("the body never ran")
 		}
@@ -103,7 +103,7 @@ func RunEventuallyTrue(t *testing.T, invoke PredicateInvoke) {
 
 		seat := &Seat{}
 		invoke(seat, ShortTimeout, func() bool { return true }, contractMsg)
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 	})
 
 	t.Run("a predicate that becomes true reports nothing", func(t *testing.T) {
@@ -116,7 +116,7 @@ func RunEventuallyTrue(t *testing.T, invoke PredicateInvoke) {
 			return calls >= SettlesAfter
 		}, contractMsg)
 
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 	})
 
 	t.Run("a predicate never true reports the timeout", func(t *testing.T) {
@@ -124,6 +124,6 @@ func RunEventuallyTrue(t *testing.T, invoke PredicateInvoke) {
 
 		seat := &Seat{}
 		invoke(seat, ShortTimeout, func() bool { return false }, contractMsg)
-		checkOutcome(t, seat, true, []string{"still false"})
+		checkOutcome(t, seat, Case{Fails: true, Assertion: "eventually-true"})
 	})
 }

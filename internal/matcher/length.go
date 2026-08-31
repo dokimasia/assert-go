@@ -15,11 +15,11 @@ func Length(seat Seat, mode Mode, got any, want int, msg string) {
 
 	n, ok := lengthOf(got)
 	if !ok {
-		Report(seat, mode, "%s: length not supported for %T", msg, got)
+		Fail(seat, mode, "length", msg, map[string]any{"want": want, "got": got})
 		return
 	}
 	if n != want {
-		Report(seat, mode, "%s: expected length %d, got %d", msg, want, n)
+		Fail(seat, mode, "length", msg, map[string]any{"want": want, "got": n})
 	}
 }
 
@@ -30,11 +30,11 @@ func Empty(seat Seat, mode Mode, got any, msg string) {
 
 	n, ok := lengthOf(got)
 	if !ok {
-		Report(seat, mode, "%s: emptiness not supported for %T", msg, got)
+		Fail(seat, mode, "empty", msg, map[string]any{"length": got})
 		return
 	}
 	if n != 0 {
-		Report(seat, mode, "%s: expected empty, got length %d", msg, n)
+		Fail(seat, mode, "empty", msg, map[string]any{"length": n})
 	}
 }
 
@@ -45,11 +45,11 @@ func NotEmpty(seat Seat, mode Mode, got any, msg string) {
 
 	n, ok := lengthOf(got)
 	if !ok {
-		Report(seat, mode, "%s: emptiness not supported for %T", msg, got)
+		Fail(seat, mode, "not-empty", msg, nil)
 		return
 	}
 	if n == 0 {
-		Report(seat, mode, "%s: expected non-empty, got length 0", msg)
+		Fail(seat, mode, "not-empty", msg, nil)
 	}
 }
 

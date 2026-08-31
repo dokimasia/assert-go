@@ -106,3 +106,59 @@ func ExampleNewRecorder() {
 	fmt.Println(r.Failed())
 	// Output: false
 }
+
+func TestRecorderClock(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Clock", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("answers the runtime clock by default", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			if got := r.Clock().Now(); got.Before(epoch) {
+				t.Fatalf("Now() = %v, want a runtime reading", got)
+			}
+		})
+
+		t.Run("answers what WithClock set", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder().WithClock(assert.NewControlled(epoch))
+			if got := r.Clock().Now(); !got.Equal(epoch) {
+				t.Fatalf("Now() = %v, want the controlled clock's %v", got, epoch)
+			}
+		})
+	})
+
+	t.Run("Failures", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("answers every record in call order", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			assert.Equal(r, 1, 2, "the values match")
+
+			records := r.Failures()
+			if len(records) != 1 {
+				t.Fatalf("Failures() holds %d records, want 1", len(records))
+			}
+			if got, want := records[0].Assertion, "equal"; got != want {
+				t.Fatalf("Assertion = %q, want %q", got, want)
+			}
+		})
+
+		t.Run("holds nothing for a message reported without a record", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			r.Fatalf("a bare message")
+
+			if got := len(r.Failures()); got != 0 {
+				t.Fatalf("Failures() holds %d records, want none", got)
+			}
+		})
+	})
+}

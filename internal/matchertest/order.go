@@ -20,32 +20,32 @@ func RunPairwise(t *testing.T, invoke PairwiseInvoke) {
 	ascending := func(earlier, later int) bool { return earlier < later }
 
 	cases := []struct {
-		name     string
-		items    []int
-		fails    bool
-		contains []string
+		name   string
+		items  []int
+		fails  bool
+		detail map[string]any
 	}{
 		{name: "an ordered slice passes", items: []int{1, 2, 3}},
 		{name: "an empty slice passes", items: []int{}},
 		{name: "a nil slice passes", items: nil},
 		{name: "one item passes", items: []int{7}},
 		{
-			name:     "a break reports its index and both values",
-			items:    []int{1, 5, 3},
-			fails:    true,
-			contains: []string{"5", "3"},
+			name:   "a break reports its index and both values",
+			items:  []int{1, 5, 3},
+			fails:  true,
+			detail: map[string]any{"index": 1, "first": 5, "second": 3},
 		},
 		{
-			name:     "equal neighbours break a strict order",
-			items:    []int{1, 1},
-			fails:    true,
-			contains: []string{"1"},
+			name:   "equal neighbours break a strict order",
+			items:  []int{1, 1},
+			fails:  true,
+			detail: map[string]any{"index": 0, "first": 1, "second": 1},
 		},
 		{
-			name:     "a break at the first pair reports",
-			items:    []int{9, 1, 2},
-			fails:    true,
-			contains: []string{"9", "1"},
+			name:   "a break at the first pair reports",
+			items:  []int{9, 1, 2},
+			fails:  true,
+			detail: map[string]any{"index": 0, "first": 9, "second": 1},
 		},
 	}
 
@@ -55,7 +55,7 @@ func RunPairwise(t *testing.T, invoke PairwiseInvoke) {
 
 			seat := &Seat{}
 			invoke(seat, tc.items, ascending, contractMsg)
-			checkOutcome(t, seat, tc.fails, tc.contains)
+			checkOutcome(t, seat, Case{Fails: tc.fails, Assertion: "pairwise", Detail: tc.detail})
 		})
 	}
 }

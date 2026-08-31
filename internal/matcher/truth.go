@@ -11,7 +11,7 @@ package matcher
 func True(seat Seat, mode Mode, cond bool, msg string) {
 	seat.Helper()
 	if !cond {
-		Report(seat, mode, "%s: expected true, got false", msg)
+		Fail(seat, mode, "true", msg, nil)
 	}
 }
 
@@ -20,6 +20,6 @@ func True(seat Seat, mode Mode, cond bool, msg string) {
 func False(seat Seat, mode Mode, cond bool, msg string) {
 	seat.Helper()
 	if cond {
-		Report(seat, mode, "%s: expected false, got true", msg)
+		Fail(seat, mode, "false", msg, nil)
 	}
 }

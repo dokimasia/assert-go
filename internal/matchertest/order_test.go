@@ -6,6 +6,7 @@ package matchertest_test
 import (
 	"testing"
 
+	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
@@ -23,8 +24,10 @@ func TestOrder(t *testing.T) {
 		) {
 			for i := 1; i < len(items); i++ {
 				if !pred(items[i-1], items[i]) {
-					s.Fatalf("%s: pair %d and %d are out of order: %+v then %+v",
-						msg, i-1, i, items[i-1], items[i])
+					s.Report(matcher.Failure{
+						Assertion: "pairwise", Contract: msg,
+						Detail: map[string]any{"index": i - 1, "first": items[i-1], "second": items[i]},
+					}, true)
 					return
 				}
 			}

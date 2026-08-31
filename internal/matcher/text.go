@@ -17,11 +17,11 @@ func HasPrefix(seat Seat, mode Mode, got any, prefix, msg string) {
 
 	text, ok := textOf(got)
 	if !ok {
-		Report(seat, mode, "%s: prefix requires text, got %T", msg, got)
+		Fail(seat, mode, "has-prefix", msg, map[string]any{"got": got, "prefix": prefix})
 		return
 	}
 	if !strings.HasPrefix(text, prefix) {
-		Report(seat, mode, "%s: %q does not start with %q", msg, text, prefix)
+		Fail(seat, mode, "has-prefix", msg, map[string]any{"got": text, "prefix": prefix})
 	}
 }
 
@@ -32,11 +32,11 @@ func HasSuffix(seat Seat, mode Mode, got any, suffix, msg string) {
 
 	text, ok := textOf(got)
 	if !ok {
-		Report(seat, mode, "%s: suffix requires text, got %T", msg, got)
+		Fail(seat, mode, "has-suffix", msg, map[string]any{"got": got, "suffix": suffix})
 		return
 	}
 	if !strings.HasSuffix(text, suffix) {
-		Report(seat, mode, "%s: %q does not end with %q", msg, text, suffix)
+		Fail(seat, mode, "has-suffix", msg, map[string]any{"got": text, "suffix": suffix})
 	}
 }
 
@@ -52,17 +52,17 @@ func Matches(seat Seat, mode Mode, got any, pattern, msg string) {
 
 	text, ok := textOf(got)
 	if !ok {
-		Report(seat, mode, "%s: pattern matching requires text, got %T", msg, got)
+		Fail(seat, mode, "matches", msg, map[string]any{"got": got, "pattern": pattern})
 		return
 	}
 
 	re, err := regexp.Compile(pattern)
 	if err != nil {
-		Report(seat, mode, "%s: pattern %q does not compile: %v", msg, pattern, err)
+		Fail(seat, mode, "matches", msg, map[string]any{"got": text, "pattern": pattern})
 		return
 	}
 	if !re.MatchString(text) {
-		Report(seat, mode, "%s: %q does not match %q", msg, text, pattern)
+		Fail(seat, mode, "matches", msg, map[string]any{"got": text, "pattern": pattern})
 	}
 }
 

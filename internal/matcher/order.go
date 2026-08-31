@@ -23,8 +23,9 @@ func Pairwise[T any](seat Seat, mode Mode, items []T, pred func(earlier, later T
 
 	for i := 1; i < len(items); i++ {
 		if !pred(items[i-1], items[i]) {
-			Report(seat, mode, "%s: pair %d and %d are out of order: %+v then %+v",
-				msg, i-1, i, items[i-1], items[i])
+			Fail(seat, mode, "pairwise", msg, map[string]any{
+				"index": i - 1, "first": items[i-1], "second": items[i],
+			})
 			return
 		}
 	}

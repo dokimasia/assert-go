@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 // Case is one assertion's inputs and the outcome every surface must
@@ -25,9 +28,13 @@ type Case struct {
 	Args []any
 	// Fails says whether the assertion must report.
 	Fails bool
-	// Contains are substrings the failure must carry. Read only when
-	// Fails is true.
-	Contains []string
+	// Assertion is the canonical id the failure must carry. Read only
+	// when Fails is true, and an empty value checks nothing.
+	Assertion string
+	// Detail is what the failure's record must hold. Every field
+	// stated must match; a field left out is not checked. Read only
+	// when Fails is true.
+	Detail map[string]any
 }
 
 // Invoke1 calls an assertion taking one value.
@@ -81,7 +88,7 @@ func run(t *testing.T, cases []Case, call func(seat *Seat, args []any, msg strin
 
 			seat := &Seat{}
 			call(seat, tc.Args, contractMsg)
-			checkOutcome(t, seat, tc.Fails, tc.Contains)
+			checkOutcome(t, seat, tc)
 		})
 	}
 }
@@ -94,8 +101,8 @@ func run(t *testing.T, cases []Case, call func(seat *Seat, args []any, msg strin
 // returns an error rather than failing a test so the rule itself can
 // be tested: a checker that only ever calls t.Fatal cannot be driven
 // against a case it should reject.
-func Verdict(seat *Seat, fails bool, contains []string) error {
-	if !fails {
+func Verdict(seat *Seat, want Case) error {
+	if !want.Fails {
 		if seat.Failed() {
 			return fmt.Errorf("matchertest: reported %q, want nothing", seat.First())
 		}
@@ -110,9 +117,28 @@ func Verdict(seat *Seat, fails bool, contains []string) error {
 	if !strings.HasPrefix(got, contractMsg) {
 		return fmt.Errorf("matchertest: failure %q does not lead with the caller's message", got)
 	}
-	for _, want := range contains {
-		if !strings.Contains(got, want) {
-			return fmt.Errorf("matchertest: failure %q does not carry %q", got, want)
+
+	records := seat.Records()
+	if len(records) == 0 {
+		return errors.New("matchertest: reported no record; the assertion did not report through Fail")
+	}
+	first := records[0]
+
+	if first.Contract != contractMsg {
+		return fmt.Errorf("matchertest: record carries contract %q, want %q",
+			first.Contract, contractMsg)
+	}
+	if want.Assertion != "" && first.Assertion != want.Assertion {
+		return fmt.Errorf("matchertest: record names assertion %q, want %q",
+			first.Assertion, want.Assertion)
+	}
+	for name, value := range want.Detail {
+		held, ok := first.Detail[name]
+		if !ok {
+			return fmt.Errorf("matchertest: record holds no detail %q, want %+v", name, value)
+		}
+		if !cmp.Equal(held, value, cmpopts.EquateErrors()) {
+			return fmt.Errorf("matchertest: detail %q is %+v, want %+v", name, held, value)
 		}
 	}
 	return nil
@@ -120,10 +146,10 @@ func Verdict(seat *Seat, fails bool, contains []string) error {
 
 // checkOutcome fails t when the seat's outcome is not what the case
 // required.
-func checkOutcome(t *testing.T, seat *Seat, fails bool, contains []string) {
+func checkOutcome(t *testing.T, seat *Seat, tc Case) {
 	t.Helper()
 
-	if err := Verdict(seat, fails, contains); err != nil {
+	if err := Verdict(seat, tc); err != nil {
 		t.Fatal(err)
 	}
 }

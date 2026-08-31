@@ -66,8 +66,7 @@ func NoGoroutineLeaks(seat Seat, mode Mode, msg string) func() {
 		}
 
 		if len(leaked) > 0 {
-			Report(seat, mode, "%s: %d goroutine(s) still running after %v: %v",
-				msg, len(leaked), leakGrace, leaked)
+			Fail(seat, mode, "no-task-leaks", msg, map[string]any{"leaked": leaked})
 		}
 	}
 }

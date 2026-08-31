@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
@@ -27,7 +28,10 @@ func TestGoroutine(t *testing.T) {
 					}
 				}
 				if len(leaked) > 0 {
-					s.Fatalf("%s: %d goroutine(s) still running: %v", msg, len(leaked), leaked)
+					s.Report(matcher.Failure{
+						Assertion: "no-task-leaks", Contract: msg,
+						Detail: map[string]any{"leaked": leaked},
+					}, true)
 				}
 			}
 		})

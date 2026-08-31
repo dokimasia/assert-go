@@ -12,7 +12,7 @@ import "errors"
 func NoError(seat Seat, mode Mode, err error, msg string) {
 	seat.Helper()
 	if err != nil {
-		Report(seat, mode, "%s: unexpected error: %v", msg, err)
+		Fail(seat, mode, "err-absent", msg, map[string]any{"got": err})
 	}
 }
 
@@ -23,7 +23,7 @@ func NoError(seat Seat, mode Mode, err error, msg string) {
 func HasError(seat Seat, mode Mode, err error, msg string) {
 	seat.Helper()
 	if err == nil {
-		Report(seat, mode, "%s: expected an error, got nil", msg)
+		Fail(seat, mode, "err-present", msg, nil)
 	}
 }
 
@@ -33,7 +33,7 @@ func HasError(seat Seat, mode Mode, err error, msg string) {
 func ErrorIs(seat Seat, mode Mode, err, target error, msg string) {
 	seat.Helper()
 	if !errors.Is(err, target) {
-		Report(seat, mode, "%s: got error %v, want one matching %v", msg, err, target)
+		Fail(seat, mode, "err-is", msg, map[string]any{"want": target, "got": err})
 	}
 }
 
@@ -43,7 +43,7 @@ func ErrorIs(seat Seat, mode Mode, err, target error, msg string) {
 func ErrorIsNot(seat Seat, mode Mode, err, target error, msg string) {
 	seat.Helper()
 	if errors.Is(err, target) {
-		Report(seat, mode, "%s: error %v matches %v, want them distinct", msg, err, target)
+		Fail(seat, mode, "err-is-not", msg, map[string]any{"got": err})
 	}
 }
 
@@ -62,7 +62,7 @@ func ErrorAs[T any](seat Seat, mode Mode, err error, msg string) T {
 
 	var target T
 	if !errors.As(err, &target) {
-		Report(seat, mode, "%s: got error %v, want one of type %T", msg, err, target)
+		Fail(seat, mode, "err-as", msg, map[string]any{"want": target, "got": err})
 	}
 	return target
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
@@ -48,8 +49,8 @@ func checkTable(t *testing.T, name string, cases []matchertest.Case, arity int) 
 		}
 
 		passing++
-		if len(tc.Contains) > 0 {
-			t.Errorf("%s case %q passes but states required substrings", name, tc.Name)
+		if len(tc.Detail) > 0 || tc.Assertion != "" {
+			t.Errorf("%s case %q passes but states what a failure would hold", name, tc.Name)
 		}
 	}
 
@@ -70,7 +71,7 @@ func TestCase(t *testing.T) {
 		t.Run("a passing case with no failure is accepted", func(t *testing.T) {
 			t.Parallel()
 
-			if err := matchertest.Verdict(&matchertest.Seat{}, false, nil); err != nil {
+			if err := matchertest.Verdict(&matchertest.Seat{}, matchertest.Case{}); err != nil {
 				t.Fatalf("Verdict = %v, want nil", err)
 			}
 		})
@@ -79,9 +80,9 @@ func TestCase(t *testing.T) {
 			t.Parallel()
 
 			s := &matchertest.Seat{}
-			s.Fatalf("%s: unexpected", contractMsg)
+			s.Report(matcher.Failure{Assertion: "equal", Contract: contractMsg}, true)
 
-			if err := matchertest.Verdict(s, false, nil); err == nil {
+			if err := matchertest.Verdict(s, matchertest.Case{}); err == nil {
 				t.Fatal("Verdict accepted a failure where the case expected none")
 			}
 		})
@@ -89,7 +90,7 @@ func TestCase(t *testing.T) {
 		t.Run("a failing case with no failure is rejected", func(t *testing.T) {
 			t.Parallel()
 
-			if err := matchertest.Verdict(&matchertest.Seat{}, true, nil); err == nil {
+			if err := matchertest.Verdict(&matchertest.Seat{}, matchertest.Case{Fails: true}); err == nil {
 				t.Fatal("Verdict accepted silence where the case expected a failure")
 			}
 		})
@@ -100,7 +101,7 @@ func TestCase(t *testing.T) {
 			s := &matchertest.Seat{}
 			s.Fatalf("a message that does not lead correctly")
 
-			err := matchertest.Verdict(s, true, nil)
+			err := matchertest.Verdict(s, matchertest.Case{Fails: true})
 			if err == nil {
 				t.Fatal("Verdict accepted a failure that dropped the caller's message")
 			}
@@ -109,24 +110,68 @@ func TestCase(t *testing.T) {
 			}
 		})
 
-		t.Run("a failure missing a required substring is rejected", func(t *testing.T) {
+		t.Run("a record missing a stated detail field is rejected", func(t *testing.T) {
 			t.Parallel()
 
 			s := &matchertest.Seat{}
-			s.Fatalf("%s: reported without the detail", contractMsg)
+			s.Report(matcher.Failure{
+				Assertion: "equal", Contract: contractMsg,
+				Detail: map[string]any{"got": 2},
+			}, true)
 
-			if err := matchertest.Verdict(s, true, []string{"want"}); err == nil {
-				t.Fatal("Verdict accepted a failure missing a required substring")
+			want := matchertest.Case{
+				Fails: true, Assertion: "equal",
+				Detail: map[string]any{"want": 1, "got": 2},
+			}
+			if err := matchertest.Verdict(s, want); err == nil {
+				t.Fatal("Verdict accepted a record holding none of the stated want")
 			}
 		})
 
-		t.Run("a failure carrying every substring is accepted", func(t *testing.T) {
+		t.Run("a record holding a different value is rejected", func(t *testing.T) {
 			t.Parallel()
 
 			s := &matchertest.Seat{}
-			s.Fatalf("%s: want 1, got 2", contractMsg)
+			s.Report(matcher.Failure{
+				Assertion: "equal", Contract: contractMsg,
+				Detail: map[string]any{"want": 9, "got": 2},
+			}, true)
 
-			if err := matchertest.Verdict(s, true, []string{"want", "got"}); err != nil {
+			want := matchertest.Case{
+				Fails: true, Assertion: "equal",
+				Detail: map[string]any{"want": 1, "got": 2},
+			}
+			if err := matchertest.Verdict(s, want); err == nil {
+				t.Fatal("Verdict accepted a record whose want differs from the case")
+			}
+		})
+
+		t.Run("a record naming a different assertion is rejected", func(t *testing.T) {
+			t.Parallel()
+
+			s := &matchertest.Seat{}
+			s.Report(matcher.Failure{Assertion: "not-equal", Contract: contractMsg}, true)
+
+			want := matchertest.Case{Fails: true, Assertion: "equal"}
+			if err := matchertest.Verdict(s, want); err == nil {
+				t.Fatal("Verdict accepted a record naming an assertion the case did not")
+			}
+		})
+
+		t.Run("a record matching the case is accepted", func(t *testing.T) {
+			t.Parallel()
+
+			s := &matchertest.Seat{}
+			s.Report(matcher.Failure{
+				Assertion: "equal", Contract: contractMsg,
+				Detail: map[string]any{"want": 1, "got": 2},
+			}, true)
+
+			want := matchertest.Case{
+				Fails: true, Assertion: "equal",
+				Detail: map[string]any{"want": 1, "got": 2},
+			}
+			if err := matchertest.Verdict(s, want); err != nil {
 				t.Fatalf("Verdict = %v, want nil", err)
 			}
 		})
@@ -135,9 +180,9 @@ func TestCase(t *testing.T) {
 			t.Parallel()
 
 			s := &matchertest.Seat{}
-			s.Errorf("%s: reported softly", contractMsg)
+			s.Report(matcher.Failure{Assertion: "equal", Contract: contractMsg}, false)
 
-			if err := matchertest.Verdict(s, true, nil); err != nil {
+			if err := matchertest.Verdict(s, matchertest.Case{Fails: true}); err != nil {
 				t.Fatalf("Verdict = %v; a recording surface reports through Errorf", err)
 			}
 		})

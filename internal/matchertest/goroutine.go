@@ -22,7 +22,7 @@ func RunNoGoroutineLeaks(t *testing.T, invoke LeakInvoke) {
 	t.Run("reports nothing when nothing was started", func(t *testing.T) {
 		seat := &Seat{}
 		invoke(seat, contractMsg)()
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 	})
 
 	t.Run("reports nothing for a goroutine that finished", func(t *testing.T) {
@@ -34,7 +34,7 @@ func RunNoGoroutineLeaks(t *testing.T, invoke LeakInvoke) {
 		<-done
 
 		check()
-		checkOutcome(t, seat, false, nil)
+		checkOutcome(t, seat, Case{})
 	})
 
 	t.Run("reports a goroutine still running", func(t *testing.T) {
@@ -47,6 +47,6 @@ func RunNoGoroutineLeaks(t *testing.T, invoke LeakInvoke) {
 		check()
 		close(release)
 
-		checkOutcome(t, seat, true, []string{"still running"})
+		checkOutcome(t, seat, Case{Fails: true, Assertion: "no-task-leaks"})
 	})
 }

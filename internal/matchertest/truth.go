@@ -9,10 +9,10 @@ func TrueCases() []Case {
 	return []Case{
 		{Name: "a true condition passes", Args: []any{true}},
 		{
-			Name:     "a false condition reports",
-			Args:     []any{false},
-			Fails:    true,
-			Contains: []string{"true"},
+			Name:      "a false condition reports",
+			Args:      []any{false},
+			Fails:     true,
+			Assertion: "true",
 		},
 	}
 }
@@ -23,10 +23,10 @@ func FalseCases() []Case {
 	return []Case{
 		{Name: "a false condition passes", Args: []any{false}},
 		{
-			Name:     "a true condition reports",
-			Args:     []any{true},
-			Fails:    true,
-			Contains: []string{"false"},
+			Name:      "a true condition reports",
+			Args:      []any{true},
+			Fails:     true,
+			Assertion: "false",
 		},
 	}
 }

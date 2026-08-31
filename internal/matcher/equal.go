@@ -20,7 +20,7 @@ import "github.com/google/go-cmp/cmp"
 func Equal[T any](seat Seat, mode Mode, got, want T, msg string, opts ...Option) {
 	seat.Helper()
 	if diff := cmp.Diff(want, got, Options(opts...)...); diff != "" {
-		Report(seat, mode, "%s: (-want +got)\n%s", msg, diff)
+		Fail(seat, mode, "equal", msg, map[string]any{"want": want, "got": got})
 	}
 }
 
@@ -36,6 +36,6 @@ func Equal[T any](seat Seat, mode Mode, got, want T, msg string, opts ...Option)
 func NotEqual[T any](seat Seat, mode Mode, got, want T, msg string, opts ...Option) {
 	seat.Helper()
 	if cmp.Equal(got, want, Options(opts...)...) {
-		Report(seat, mode, "%s: values are equal, want different\n got: %+v", msg, got)
+		Fail(seat, mode, "not-equal", msg, map[string]any{"got": got})
 	}
 }

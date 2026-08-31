@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 // HonoursCancellation calls fn with a context that is already
@@ -28,9 +30,9 @@ func HonoursCancellation(seat Seat, mode Mode, fn func(ctx context.Context) erro
 	err := fn(ctx)
 	switch {
 	case err == nil:
-		Report(seat, mode, "%s: a cancelled context produced no error", msg)
+		Fail(seat, mode, "honours-cancellation", msg, map[string]any{"got": nil})
 	case !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded):
-		Report(seat, mode, "%s: a cancelled context produced %v, want a cancellation error", msg, err)
+		Fail(seat, mode, "honours-cancellation", msg, map[string]any{"got": err})
 	}
 }
 
@@ -45,15 +47,16 @@ func HonoursCancellation(seat Seat, mode Mode, fn func(ctx context.Context) erro
 func HonoursDeadline(seat Seat, mode Mode, fn func(ctx context.Context) error, msg string) {
 	seat.Helper()
 
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	ctx, cancel := context.WithDeadline(
+		context.Background(), ClockOf(seat).Now().Add(-time.Second))
 	defer cancel()
 
 	err := fn(ctx)
 	switch {
 	case err == nil:
-		Report(seat, mode, "%s: an expired deadline produced no error", msg)
+		Fail(seat, mode, "honours-deadline", msg, map[string]any{"got": nil})
 	case !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled):
-		Report(seat, mode, "%s: an expired deadline produced %v, want a deadline error", msg, err)
+		Fail(seat, mode, "honours-deadline", msg, map[string]any{"got": err})
 	}
 }
 
@@ -72,10 +75,13 @@ func CompletesWithin(seat Seat, mode Mode, within time.Duration, fn func(ctx con
 	ctx, cancel := context.WithTimeout(context.Background(), within)
 	defer cancel()
 
-	started := time.Now()
+	clock := ClockOf(seat)
+	started := clock.Now()
 	if err := fn(ctx); errors.Is(err, context.DeadlineExceeded) {
-		Report(seat, mode, "%s: did not finish within %v (gave up after %v)",
-			msg, within, time.Since(started).Round(time.Millisecond))
+		Fail(seat, mode, "completes-within", msg, map[string]any{
+			"want": within,
+			"got":  clock.Now().Sub(started).Round(time.Millisecond),
+		})
 	}
 }
 
@@ -103,7 +109,9 @@ func Pure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg string, 
 	fn()
 	after := observe()
 
-	Equal(seat, mode, after, before, msg+": observable state changed", opts...)
+	if diff := cmp.Diff(before, after, Options(opts...)...); diff != "" {
+		Fail(seat, mode, "pure", msg, map[string]any{"want": before, "got": after})
+	}
 }
 
 // NilContextSafe calls fn with a nil context and reports when fn
@@ -117,7 +125,7 @@ func NilContextSafe(seat Seat, mode Mode, fn func(ctx context.Context) error, ms
 
 	defer func() {
 		if r := recover(); r != nil {
-			Report(seat, mode, "%s: a nil context caused a panic: %v", msg, r)
+			Fail(seat, mode, "nil-context-safe", msg, map[string]any{"got": r})
 		}
 	}()
 

@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
-	"strings"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"go.dokimi.dev/assert"
 )
@@ -29,13 +31,23 @@ const (
 type Case struct {
 	// ID names the case, qualified with its assertion.
 	ID string `json:"id"`
+	// Assertion is the canonical id the case covers, taken from the
+	// file it was read from rather than stated per case.
+	Assertion string `json:"-"`
 	// Args are the assertion's arguments after the seat, as typed
 	// literals, excluding the trailing message.
 	Args []json.RawMessage `json:"args"`
 	// Expect is pass or fail.
 	Expect string `json:"expect"`
-	// MessageContains are substrings a failure must carry.
-	MessageContains []string `json:"message_contains"`
+	// Detail is what the failure's record must hold, keyed by the
+	// names the assertion declares. Every field stated must match; a
+	// field the case leaves out is not checked.
+	Detail map[string]json.RawMessage `json:"detail"`
+	// Subject names the behaviour this case hands the assertion in
+	// place of arguments, and is empty for a case that states values.
+	Subject struct {
+		Kind string `json:"kind"`
+	} `json:"subject"`
 	// Skip names languages this case does not apply to, and why.
 	Skip map[string]string `json:"skip"`
 }
@@ -78,17 +90,42 @@ func (c Case) Check(r *assert.Recorder) error {
 		if !r.Failed() {
 			return fmt.Errorf("conformance: %s expects fail, got pass", c.ID)
 		}
-		for _, want := range c.MessageContains {
-			if !strings.Contains(r.Message(), want) {
-				return fmt.Errorf("conformance: %s failure %q does not carry %q",
-					c.ID, r.Message(), want)
-			}
+
+		records := r.Failures()
+		if len(records) == 0 {
+			return fmt.Errorf("conformance: %s reported no record; "+
+				"the assertion did not report one", c.ID)
 		}
-		return nil
+		return c.checkDetail(records[0])
 
 	default:
 		return fmt.Errorf("conformance: %s states an unknown expectation %q", c.ID, c.Expect)
 	}
+}
+
+// checkDetail reports how a record's detail differs from what the case
+// states, and nil when every stated field matches.
+//
+// A case states values as typed literals, so an int and a float that
+// render alike stay apart. Comparison is on the decoded value, because
+// what the assertion reports is a Go value rather than a literal.
+func (c Case) checkDetail(f assert.Failure) error {
+	for name, raw := range c.Detail {
+		want, err := Decode(raw)
+		if err != nil {
+			return fmt.Errorf("conformance: %s detail %q: %w", c.ID, name, err)
+		}
+		held, ok := f.Detail[name]
+		if !ok {
+			return fmt.Errorf("conformance: %s record holds no detail %q, want %+v",
+				c.ID, name, want)
+		}
+		if !cmp.Equal(held, want, cmpopts.EquateNaNs()) {
+			return fmt.Errorf("conformance: %s detail %q is %+v, want %+v",
+				c.ID, name, held, want)
+		}
+	}
+	return nil
 }
 
 // Cases returns every corpus case, keyed by the assertion it covers.
