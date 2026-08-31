@@ -97,10 +97,9 @@ release: ## Bump versions and tag (MESSAGE="..." FLAGS=--major)
 
 .DEFAULT_GOAL := help
 
-spec-sync: ## Refresh the vendored definition from ../assert-spec
-	@test -d ../assert-spec || { echo "spec-sync: ../assert-spec not found"; exit 1; }
-	cp ../assert-spec/spec/assertions.json conformance/spec/assertions.json
-	cp ../assert-spec/spec/naming.json     conformance/spec/naming.json
-	cp ../assert-spec/overlays/go.json     conformance/spec/overlay.json
-	cp ../assert-spec/VERSION              conformance/spec/VERSION
-	rm -rf conformance/spec/corpus && cp -r ../assert-spec/corpus conformance/spec/corpus
+spec-sync: ## Refresh the vendored definition from assert-spec
+	@./tools/spec-sync.sh conformance/spec go
+
+.PHONY: spec-check
+spec-check: ## Check the vendored definition is intact and say if it is behind
+	@./tools/spec-check.sh conformance/spec
