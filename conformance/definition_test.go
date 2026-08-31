@@ -67,6 +67,32 @@ func TestDefinition(t *testing.T) {
 		})
 	})
 
+	t.Run("relaxations", func(t *testing.T) {
+		t.Parallel()
+
+		relaxations, err := conformance.RelaxationNames()
+		assert.NoError(t, err, "the relaxations can be read")
+		assert.NotEmpty(t, relaxations, "the definition states relaxations")
+
+		members, err := conformance.Members(conformance.Aborting)
+		assert.NoError(t, err, "the surface holding the relaxations can be read")
+
+		for id, name := range relaxations {
+			declined := overlay.DeclinesRelaxation(id)
+
+			switch {
+			case name == "" && !declined:
+				t.Errorf("%s: the table gives no Go name and the overlay does not decline it",
+					id)
+			case name != "" && declined:
+				t.Errorf("%s: the table names %s and the overlay declines it, which is a contradiction",
+					id, name)
+			case name != "" && !holds(members, name):
+				t.Errorf("%s: %s is named and not implemented", id, name)
+			}
+		}
+	})
+
 	t.Run("completeness", func(t *testing.T) {
 		t.Parallel()
 

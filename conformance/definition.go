@@ -72,6 +72,32 @@ func Names() (map[ID]string, error) {
 	return out, nil
 }
 
+// RelaxationNames maps each relaxation the definition states to the
+// name this language exports it under. A relaxation the naming table
+// gives this language no name for maps to the empty string, which is
+// what an overlay declining it looks like from here.
+func RelaxationNames() (map[ID]string, error) {
+	var spec struct {
+		Relaxations map[ID]struct{} `json:"relaxations"`
+	}
+	if err := read(assertionsFile, &spec); err != nil {
+		return nil, err
+	}
+
+	var doc struct {
+		Relaxations map[ID]map[string]string `json:"relaxations"`
+	}
+	if err := read(namingFile, &doc); err != nil {
+		return nil, err
+	}
+
+	out := make(map[ID]string, len(spec.Relaxations))
+	for id := range spec.Relaxations {
+		out[id] = doc.Relaxations[id][goLanguage]
+	}
+	return out, nil
+}
+
 // Version reports the definition version this library implements.
 func Version() (string, error) {
 	raw, err := definition.ReadFile(versionFile)
@@ -91,9 +117,27 @@ type Divergence struct {
 
 // OverlayDoc is this language's declared divergences.
 type OverlayDoc struct {
-	Extends  string       `json:"extends"`
-	Language string       `json:"language"`
-	Diverge  []Divergence `json:"diverge"`
+	Extends     string       `json:"extends"`
+	Language    string       `json:"language"`
+	Diverge     []Divergence `json:"diverge"`
+	Relaxations []Declined   `json:"relaxations"`
+}
+
+// Declined is a relaxation this language does not offer, with the
+// reason. There is no what, because nothing is partly there.
+type Declined struct {
+	ID  ID     `json:"id"`
+	Why string `json:"why"`
+}
+
+// DeclinesRelaxation reports whether the overlay declines id.
+func (o OverlayDoc) DeclinesRelaxation(id ID) bool {
+	for _, d := range o.Relaxations {
+		if d.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // Diverges reports whether the overlay declares a divergence for id.
