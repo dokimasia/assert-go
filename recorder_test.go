@@ -25,8 +25,8 @@ func TestRecorder(t *testing.T) {
 			if !r.Failed() {
 				t.Fatal("Failed() = false, want true")
 			}
-			if got, want := r.Msg(), "boom 7"; got != want {
-				t.Fatalf("Msg() = %q, want %q", got, want)
+			if got, want := r.Message(), "boom 7"; got != want {
+				t.Fatalf("Message() = %q, want %q", got, want)
 			}
 		})
 
@@ -37,8 +37,8 @@ func TestRecorder(t *testing.T) {
 			r.Fatalf("first")
 			r.Fatalf("second")
 
-			if got, want := r.Msg(), "first"; got != want {
-				t.Fatalf("Msg() = %q, want %q", got, want)
+			if got, want := r.Message(), "first"; got != want {
+				t.Fatalf("Message() = %q, want %q", got, want)
 			}
 		})
 	})
@@ -53,7 +53,7 @@ func TestRecorder(t *testing.T) {
 			r.Errorf("one")
 			r.Errorf("two")
 
-			if got, want := len(r.Errors()), 2; got != want {
+			if got, want := len(r.Messages()), 2; got != want {
 				t.Fatalf("len(Errors()) = %d, want %d", got, want)
 			}
 		})

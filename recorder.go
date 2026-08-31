@@ -113,20 +113,20 @@ func (r *Recorder) Failed() bool {
 	return r.failed
 }
 
-// Msg returns the first message passed to [Recorder.Fatalf], or the
-// first passed to [Recorder.Errorf] when nothing fatal arrived. It is
-// empty when nothing failed.
-func (r *Recorder) Msg() string {
+// Message returns the first message passed to [Recorder.Fatalf], or
+// the first passed to [Recorder.Errorf] when nothing fatal arrived. It
+// is empty when nothing failed.
+func (r *Recorder) Message() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	return r.msg
 }
 
-// Errors returns every message passed to [Recorder.Errorf], in call
+// Messages returns every message passed to [Recorder.Errorf], in call
 // order. The slice is a fresh copy, so a caller may hold or sort it
 // while the Recorder keeps recording.
-func (r *Recorder) Errors() []string {
+func (r *Recorder) Messages() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

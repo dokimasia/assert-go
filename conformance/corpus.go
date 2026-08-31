@@ -70,7 +70,7 @@ func (c Case) Check(r *assert.Recorder) error {
 	switch c.Expect {
 	case expectPass:
 		if r.Failed() {
-			return fmt.Errorf("conformance: %s expects pass, got failure: %s", c.ID, r.Msg())
+			return fmt.Errorf("conformance: %s expects pass, got failure: %s", c.ID, r.Message())
 		}
 		return nil
 
@@ -79,9 +79,9 @@ func (c Case) Check(r *assert.Recorder) error {
 			return fmt.Errorf("conformance: %s expects fail, got pass", c.ID)
 		}
 		for _, want := range c.MessageContains {
-			if !strings.Contains(r.Msg(), want) {
+			if !strings.Contains(r.Message(), want) {
 				return fmt.Errorf("conformance: %s failure %q does not carry %q",
-					c.ID, r.Msg(), want)
+					c.ID, r.Message(), want)
 			}
 		}
 		return nil

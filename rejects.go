@@ -52,5 +52,5 @@ func Rejects(tb TB, msg string, fn func(tb TB)) string {
 	if !r.Failed() {
 		tb.Fatalf("%s: the check passed against an implementation it must reject", msg)
 	}
-	return r.Msg()
+	return r.Message()
 }

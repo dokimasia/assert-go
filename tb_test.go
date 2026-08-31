@@ -46,8 +46,8 @@ func TestTB(t *testing.T) {
 			var seat assert.TB = r
 			seat.Fatalf("through the interface")
 
-			if got, want := r.Msg(), "through the interface"; got != want {
-				t.Fatalf("Msg() = %q, want %q", got, want)
+			if got, want := r.Message(), "through the interface"; got != want {
+				t.Fatalf("Message() = %q, want %q", got, want)
 			}
 		})
 	})
@@ -62,7 +62,7 @@ func TestTB(t *testing.T) {
 			var seat assert.TB = r
 			seat.Errorf("through the interface")
 
-			if got, want := len(r.Errors()), 1; got != want {
+			if got, want := len(r.Messages()), 1; got != want {
 				t.Fatalf("len(Errors()) = %d, want %d", got, want)
 			}
 		})

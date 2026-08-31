@@ -72,6 +72,37 @@ func Names() (map[ID]string, error) {
 	return out, nil
 }
 
+// DeclinesSurface reports whether the overlay declines the surface id.
+func (o OverlayDoc) DeclinesSurface(id ID) bool {
+	for _, d := range o.Surface {
+		if d.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// SurfaceNames maps every id the surface table states to the name this
+// language gives it, across the types, members and helpers sections. An
+// id the table gives this language no name for maps to the empty
+// string, which is what an overlay declining it looks like from here.
+func SurfaceNames() (map[ID]string, error) {
+	var doc struct {
+		Surface map[string]map[ID]map[string]string `json:"surface"`
+	}
+	if err := read(namingFile, &doc); err != nil {
+		return nil, err
+	}
+
+	out := make(map[ID]string)
+	for _, section := range doc.Surface {
+		for id, byLanguage := range section {
+			out[id] = byLanguage[goLanguage]
+		}
+	}
+	return out, nil
+}
+
 // RelaxationNames maps each relaxation the definition states to the
 // name this language exports it under. A relaxation the naming table
 // gives this language no name for maps to the empty string, which is
@@ -121,6 +152,7 @@ type OverlayDoc struct {
 	Language    string       `json:"language"`
 	Diverge     []Divergence `json:"diverge"`
 	Relaxations []Declined   `json:"relaxations"`
+	Surface     []Declined   `json:"surface"`
 }
 
 // Declined is a relaxation this language does not offer, with the
