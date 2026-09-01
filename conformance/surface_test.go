@@ -128,6 +128,7 @@ var pinned = map[conformance.ID]any{
 	"clock.now":                assert.Clock.Now,
 	"clock.sleep":              assert.Clock.Sleep,
 	"controlled-clock.advance": (*assert.Controlled).Advance,
+	"contract.excluding":       (*bench.Contract).Excluding,
 	"recorder-seat.failures":   (*assert.Recorder).Failures,
 
 	"seat.helper": assert.TB.Helper,

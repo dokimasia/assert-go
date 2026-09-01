@@ -63,6 +63,13 @@ type Contract struct {
 	// measuring says whether the counters above have been read.
 	measuring bool
 
+	// excluded holds what [Contract.Excluding] has taken out of the
+	// current iteration, and excludedHeap what it has taken out of the
+	// run. The first is cleared each iteration; the second accumulates,
+	// because the heap is read once at each end.
+	excluded                        time.Duration
+	excludedHeap, excludedHeapBytes uint64
+
 	// The stated ceilings, each unset until a caller states it.
 	maxLatency, maxMean time.Duration
 	maxAllocs, maxBytes int64
@@ -138,7 +145,8 @@ func (c *Contract) MaxBytes(n uint64) *Contract {
 // first iteration so the setup before the loop is not counted.
 func (c *Contract) Loop() bool {
 	if c.measuring {
-		c.each = append(c.each, time.Since(c.started))
+		c.each = append(c.each, time.Since(c.started)-c.excluded)
+		c.excluded = 0
 	} else {
 		c.heapAtStart, c.bytesAtStart = heap()
 		c.measuring = true
@@ -199,7 +207,39 @@ func (c *Contract) perIteration() (allocs, bytes float64) {
 	heapNow, bytesNow := heap()
 	n := float64(len(c.each))
 
-	return float64(heapNow-c.heapAtStart) / n, float64(bytesNow-c.bytesAtStart) / n
+	// What Excluding took out is subtracted before the division, so a
+	// ceiling states what the measured work cost rather than what the
+	// loop body cost.
+	return float64(heapNow-c.heapAtStart-c.excludedHeap) / n,
+		float64(bytesNow-c.bytesAtStart-c.excludedHeapBytes) / n
+}
+
+// Excluding runs work outside the measurement.
+//
+// A benchmark whose operation consumes its input builds a fresh one each
+// iteration, and without this the ceilings state what the build and the
+// operation cost together. What the fixture is reaches the measured work
+// through a variable the caller already holds:
+//
+//	for c.Loop() {
+//	    var store *Store
+//	    c.Excluding(func() { store = freshStore() })
+//	    store.Settle()
+//	}
+//
+// Both the time and the allocations work spends are taken out of the
+// iteration. Calling it outside a loop body is allowed and does nothing
+// a caller would notice, since there is no iteration to take them from.
+func (c *Contract) Excluding(work func()) {
+	startedAt := time.Now()
+	allocsBefore, bytesBefore := heap()
+
+	work()
+
+	allocsAfter, bytesAfter := heap()
+	c.excluded += time.Since(startedAt)
+	c.excludedHeap += allocsAfter - allocsBefore
+	c.excludedHeapBytes += bytesAfter - bytesBefore
 }
 
 // heap reads the runtime's cumulative allocation counters.

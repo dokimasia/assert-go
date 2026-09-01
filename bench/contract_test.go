@@ -155,3 +155,84 @@ func TestContract(t *testing.T) {
 		})
 	})
 }
+
+// sink holds what a fixture built, so escape analysis cannot decide the
+// allocation never happened.
+var sink [][]int
+
+// heavyFixture allocates well past a ceiling of two, so a run that
+// counts it cannot meet one.
+func heavyFixture() {
+	held := make([][]int, 0, 16)
+	for range 16 {
+		held = append(held, make([]int, 32))
+	}
+	sink = held
+}
+
+// runExcluding drives a contract whose body can reach it, which is what
+// Excluding needs and what run does not offer.
+func runExcluding(
+	iterations int,
+	state func(*bench.Contract) *bench.Contract,
+	body func(*bench.Contract),
+) *benchSeat {
+	seat := newBenchSeat(iterations)
+
+	c := state(bench.Start(seat))
+	for c.Loop() {
+		body(c)
+	}
+	c.End()
+
+	return seat
+}
+
+// TestExcluding does not run in parallel. The allocation counter is
+// process-wide, so a test reading it beside another that allocates
+// reads the other's work as its own.
+func TestExcluding(t *testing.T) {
+	tightAllocs := func(c *bench.Contract) *bench.Contract { return c.MaxAllocs(2) }
+
+	t.Run("takes the setup's allocations out of the ceiling", func(t *testing.T) {
+		seat := runExcluding(iterations, tightAllocs, func(c *bench.Contract) {
+			c.Excluding(heavyFixture)
+		})
+
+		assert.False(t, seat.Failed(),
+			"an excluded fixture does not count against the ceiling")
+	})
+
+	t.Run("the same fixture unexcluded crosses the ceiling", func(t *testing.T) {
+		// Without this the case above passes against an Excluding that
+		// does nothing at all.
+		seat := runExcluding(iterations, tightAllocs, func(*bench.Contract) {
+			heavyFixture()
+		})
+
+		assert.True(t, seat.Failed(),
+			"a fixture nobody excluded has to count against the ceiling")
+	})
+
+	t.Run("takes the setup's time out of the ceiling", func(t *testing.T) {
+		tight := func(c *bench.Contract) *bench.Contract {
+			return c.MaxLatency(5 * time.Millisecond)
+		}
+		seat := runExcluding(4, tight, func(c *bench.Contract) {
+			c.Excluding(func() { time.Sleep(20 * time.Millisecond) })
+		})
+
+		assert.False(t, seat.Failed(), "an excluded sleep is not timed")
+	})
+
+	t.Run("the same sleep unexcluded crosses the ceiling", func(t *testing.T) {
+		tight := func(c *bench.Contract) *bench.Contract {
+			return c.MaxLatency(5 * time.Millisecond)
+		}
+		seat := runExcluding(4, tight, func(*bench.Contract) {
+			time.Sleep(20 * time.Millisecond)
+		})
+
+		assert.True(t, seat.Failed(), "a sleep nobody excluded has to be timed")
+	})
+}
