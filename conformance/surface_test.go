@@ -118,6 +118,7 @@ var pinned = map[conformance.ID]any{
 	"where":            assert.Where{},
 	"reporter":         (*assert.Reporter)(nil),
 	"clocked":          (*assert.Clocked)(nil),
+	"assertion":        (*assert.Assertion[int])(nil),
 
 	"failure.assertion": assert.Failure{}.Assertion,
 	"failure.contract":  assert.Failure{}.Contract,
@@ -129,6 +130,7 @@ var pinned = map[conformance.ID]any{
 	"clock.sleep":              assert.Clock.Sleep,
 	"controlled-clock.advance": (*assert.Controlled).Advance,
 	"contract.excluding":       (*bench.Contract).Excluding,
+	"that":                     assert.That[int],
 	"recorder-seat.failures":   (*assert.Recorder).Failures,
 
 	"seat.helper": assert.TB.Helper,

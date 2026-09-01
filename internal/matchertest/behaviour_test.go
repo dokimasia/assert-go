@@ -66,7 +66,9 @@ func TestBehaviour(t *testing.T) {
 		) {
 			ctx, cancel := context.WithTimeout(context.Background(), within)
 			defer cancel()
-			if err := fn(ctx); errors.Is(err, context.DeadlineExceeded) {
+			started := time.Now()
+			_ = fn(ctx)
+			if time.Since(started) > within {
 				s.Report(matcher.Failure{Assertion: "completes-within", Contract: msg}, true)
 			}
 		})

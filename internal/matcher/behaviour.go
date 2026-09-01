@@ -44,11 +44,16 @@ func HonoursCancellation(seat Seat, mode Mode, fn func(ctx context.Context) erro
 // the error may be wrapped. This differs from [HonoursCancellation] in
 // which failure it asks for: a subject may distinguish a caller who
 // gave up from one who ran out of time.
+//
+// The deadline is read from the runtime clock rather than the seat's.
+// A context decides expiry against the runtime clock and takes no
+// other, so a seat clock reading ahead of it would hand the subject a
+// deadline that has not passed and fail a subject that was right.
 func HonoursDeadline(seat Seat, mode Mode, fn func(ctx context.Context) error, msg string) {
 	seat.Helper()
 
 	ctx, cancel := context.WithDeadline(
-		context.Background(), ClockOf(seat).Now().Add(-time.Second))
+		context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
 
 	err := fn(ctx)
@@ -60,15 +65,22 @@ func HonoursDeadline(seat Seat, mode Mode, fn func(ctx context.Context) error, m
 	}
 }
 
-// CompletesWithin calls fn with a context carrying the given deadline
-// and reports when fn does not finish in time.
+// CompletesWithin times fn and reports when it took longer than within.
 //
-// A [context.DeadlineExceeded] back from fn is the failure: fn was
-// given the deadline and did not meet it. Any other error passes,
+// The verdict is the measured time. An error back from fn passes,
 // because failing quickly is still finishing, and which failure is
-// acceptable is a question for another assertion.
+// acceptable is a question for another assertion. Whether a subject
+// respects a deadline it was handed is [HonoursDeadline]; this asks
+// only how long it took.
 //
-// This spends real time, up to the deadline.
+// fn receives a context carrying within as its deadline, so a subject
+// that watches one can return rather than run long. That deadline is
+// read from the runtime clock, because [context] offers no way to
+// supply another. The verdict is not: it is measured on the seat's
+// clock, so a test driving a controlled clock decides what the subject
+// took. Under the default clock the two agree.
+//
+// This spends real time, up to however long fn takes.
 func CompletesWithin(seat Seat, mode Mode, within time.Duration, fn func(ctx context.Context) error, msg string) {
 	seat.Helper()
 
@@ -77,10 +89,13 @@ func CompletesWithin(seat Seat, mode Mode, within time.Duration, fn func(ctx con
 
 	clock := ClockOf(seat)
 	started := clock.Now()
-	if err := fn(ctx); errors.Is(err, context.DeadlineExceeded) {
+	_ = fn(ctx)
+	elapsed := clock.Now().Sub(started)
+
+	if elapsed > within {
 		Fail(seat, mode, "completes-within", msg, map[string]any{
 			"want": within,
-			"got":  clock.Now().Sub(started).Round(time.Millisecond),
+			"got":  elapsed.Round(time.Millisecond),
 		})
 	}
 }

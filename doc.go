@@ -40,7 +40,7 @@
 // test, which is what lets an assertion be tested by reading what it
 // reported rather than suffering it. Drive an assertion with a
 // Recorder in place of a [testing.T], then read [Recorder.Failed] and
-// [Recorder.Msg].
+// [Recorder.Message].
 //
 // # Dependency position
 //

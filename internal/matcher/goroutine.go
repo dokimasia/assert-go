@@ -4,9 +4,10 @@
 package matcher
 
 import (
+	"bytes"
 	"runtime"
+	"slices"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -50,15 +51,18 @@ const (
 func NoGoroutineLeaks(seat Seat, mode Mode, msg string) func() {
 	seat.Helper()
 
-	before := goroutineIDs()
+	before, _ := goroutineIDs(make([]byte, firstStackBuf))
 
 	return func() {
 		seat.Helper()
 
 		deadline := time.Now().Add(leakGrace)
 		var leaked []uint64
+		buf := make([]byte, firstStackBuf)
 		for {
-			leaked = newIDs(before, goroutineIDs())
+			var running map[uint64]bool
+			running, buf = goroutineIDs(buf)
+			leaked = newIDs(before, running)
 			if len(leaked) == 0 || time.Now().After(deadline) {
 				break
 			}
@@ -71,41 +75,45 @@ func NoGoroutineLeaks(seat Seat, mode Mode, msg string) func() {
 	}
 }
 
-// goroutineIDs returns the id of every goroutine running now.
-func goroutineIDs() map[uint64]bool {
-	buf := make([]byte, firstStackBuf)
+// goroutineIDs returns the id of every goroutine running now, reading
+// into buf and growing it when the dump does not fit.
+//
+// It answers the buffer it ended with so a caller polling in a loop
+// allocates once rather than once per reading. Each reading stops the
+// world, and the dump is a megabyte before it grows.
+func goroutineIDs(buf []byte) (map[uint64]bool, []byte) {
+	var n int
 	for {
-		n := runtime.Stack(buf, true)
+		n = runtime.Stack(buf, true)
 		if n < len(buf) || len(buf) >= maxStackBuf {
-			buf = buf[:n]
 			break
 		}
 		buf = make([]byte, min(len(buf)*2, maxStackBuf))
 	}
 
 	out := map[uint64]bool{}
-	for line := range strings.SplitSeq(string(buf), "\n") {
+	for line := range bytes.Lines(buf[:n]) {
 		if id, ok := goroutineID(line); ok {
 			out[id] = true
 		}
 	}
-	return out
+	return out, buf
 }
 
 // goroutineID reads the id from a "goroutine 12 [running]:" header,
 // reporting false for any other line.
-func goroutineID(line string) (uint64, bool) {
-	const header = "goroutine "
+func goroutineID(line []byte) (uint64, bool) {
+	header := []byte("goroutine ")
 
-	if !strings.HasPrefix(line, header) {
+	if !bytes.HasPrefix(line, header) {
 		return 0, false
 	}
-	digits, _, ok := strings.Cut(line[len(header):], " ")
+	digits, _, ok := bytes.Cut(line[len(header):], []byte(" "))
 	if !ok {
 		return 0, false
 	}
 
-	id, err := strconv.ParseUint(digits, 10, 64)
+	id, err := strconv.ParseUint(string(digits), 10, 64)
 	if err != nil {
 		return 0, false
 	}
@@ -122,10 +130,6 @@ func newIDs(before, after map[uint64]bool) []uint64 {
 		}
 	}
 
-	for i := 1; i < len(out); i++ {
-		for j := i; j > 0 && out[j] < out[j-1]; j-- {
-			out[j], out[j-1] = out[j-1], out[j]
-		}
-	}
+	slices.Sort(out)
 	return out
 }

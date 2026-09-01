@@ -126,6 +126,21 @@ func RunCompletesWithin(t *testing.T, invoke WithinInvoke) {
 		}, contractMsg)
 		checkOutcome(t, seat, Case{Fails: true, Assertion: "completes-within"})
 	})
+
+	// The verdict is the time taken, not what the subject said about
+	// it. A subject that never looks at the handle it was given and
+	// answers success late has still missed the ceiling, and reading
+	// the answer instead of the clock passes it.
+	t.Run("a subject that overruns without watching reports", func(t *testing.T) {
+		t.Parallel()
+
+		seat := &Seat{}
+		invoke(seat, ShortTimeout, func(context.Context) error {
+			time.Sleep(4 * ShortTimeout)
+			return nil
+		}, contractMsg)
+		checkOutcome(t, seat, Case{Fails: true, Assertion: "completes-within"})
+	})
 }
 
 // RunPure drives invoke against every case a purity assertion must

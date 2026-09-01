@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"runtime"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/google/go-cmp/cmp"
@@ -49,6 +48,16 @@ type Reporter interface {
 // The standard fixes the record, not the sentence. This is Go's
 // phrasing of it, and it follows the want-then-got convention the
 // standard library uses.
+// named is the set order holds, built once so rendering a failure does
+// not rebuild it.
+var named = func() map[string]bool {
+	out := make(map[string]bool, len(order))
+	for _, name := range order {
+		out[name] = true
+	}
+	return out
+}()
+
 var order = []string{
 	"want", "got", "length", "haystack", "needle", "index",
 	"prefix", "suffix", "pattern", "tolerance", "low", "high",
@@ -68,32 +77,34 @@ func Render(f Failure) string {
 		return f.Contract + ": (-want +got)\n" + diff
 	}
 
-	named := make(map[string]bool, len(order))
-	for _, name := range order {
-		named[name] = true
-	}
 	rest := make([]string, 0, len(f.Detail))
 	for name := range f.Detail {
 		if !named[name] {
 			rest = append(rest, name)
 		}
 	}
-	sort.Strings(rest)
+	slices.Sort(rest)
 
 	var b strings.Builder
 	b.WriteString(f.Contract)
 	b.WriteString(": ")
 	first := true
-	for _, name := range append(slices.Clone(order), rest...) {
+	write := func(name string) {
 		value, ok := f.Detail[name]
 		if !ok {
-			continue
+			return
 		}
 		if !first {
 			b.WriteString(", ")
 		}
 		first = false
 		fmt.Fprintf(&b, "%s %+v", name, value)
+	}
+	for _, name := range order {
+		write(name)
+	}
+	for _, name := range rest {
+		write(name)
 	}
 	return b.String()
 }
