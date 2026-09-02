@@ -127,7 +127,7 @@ func site(skip int) Where {
 // A structural diff is what a Go reader wants from a mismatch, and
 // printing two large structs side by side is not. The record carries
 // want and got as the definition states; this is how Go says them.
-func equalDiff(f Failure) string {
+func equalDiff(f Failure) (diff string) {
 	if f.Assertion != "equal" {
 		return ""
 	}
@@ -136,5 +136,25 @@ func equalDiff(f Failure) string {
 	if !hasWant || !hasGot {
 		return ""
 	}
-	return cmp.Diff(want, got)
+
+	// A diff explains a failure rather than deciding one, so failing to
+	// draw it answers nothing and lets the caller read want and got
+	// instead. cmp panics on a value it cannot walk, and that panic
+	// would arrive at the moment a test first fails.
+	defer func() {
+		if recover() != nil {
+			diff = ""
+		}
+	}()
+
+	// The options the comparison itself used. Without the exporter cmp
+	// refuses any value holding an unexported field, which is most of
+	// them, and this library states that unexported fields take part.
+	//
+	// The caller's relaxations are absent: a record carries what the
+	// standard states and an option is not part of it. Each one only
+	// widens what counts as equal, so a diff drawn without them can
+	// name a difference the comparison forgave and cannot miss one it
+	// did not.
+	return cmp.Diff(want, got, Options()...)
 }

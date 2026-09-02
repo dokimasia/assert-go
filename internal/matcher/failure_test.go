@@ -68,3 +68,62 @@ func TestFailure(t *testing.T) {
 		})
 	})
 }
+
+// boxed keeps its contents unexported, which is what most real types
+// do and what cmp refuses to walk without an exporter.
+type boxed struct{ items []int }
+
+// explodes has an Equal method that panics, so cmp cannot draw a diff
+// however it is configured.
+type explodes struct{}
+
+// Equal panics, standing in for any value a diff cannot be drawn over.
+func (explodes) Equal(explodes) bool { panic("this type cannot be compared") }
+
+// TestRenderDrawsADiffItCannotBeKilledBy pins that rendering a failure
+// never takes the test binary with it.
+//
+// A diff explains a failure rather than deciding one. Both cases here
+// reached cmp with no options at all, which panics on the first
+// unexported field, so the crash arrived exactly when a test first
+// failed.
+func TestRenderDrawsADiffItCannotBeKilledBy(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a value with unexported fields renders a diff", func(t *testing.T) {
+		t.Parallel()
+
+		out := matcher.Render(matcher.Failure{
+			Assertion: "equal",
+			Contract:  "the boxes match",
+			Detail: map[string]any{
+				"want": boxed{items: []int{2}},
+				"got":  boxed{items: []int{1}},
+			},
+		})
+
+		if !strings.Contains(out, "-want +got") {
+			t.Errorf("Render() = %q, want a diff", out)
+		}
+		if !strings.Contains(out, "items") {
+			t.Errorf("Render() = %q, want the unexported field named", out)
+		}
+	})
+
+	t.Run("a value no diff can be drawn over falls back to the values", func(t *testing.T) {
+		t.Parallel()
+
+		out := matcher.Render(matcher.Failure{
+			Assertion: "equal",
+			Contract:  "the values match",
+			Detail:    map[string]any{"want": explodes{}, "got": explodes{}},
+		})
+
+		if strings.Contains(out, "-want +got") {
+			t.Errorf("Render() = %q, want the values rather than a diff", out)
+		}
+		if !strings.Contains(out, "want") || !strings.Contains(out, "got") {
+			t.Errorf("Render() = %q, want both values named", out)
+		}
+	})
+}
