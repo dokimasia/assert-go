@@ -4,7 +4,7 @@ title: The Go assertion library
 author: Roy Klopper <roy.klopper@stealthscale.io>
 status: Accepted
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-09-26
 discussion: none
 supersedes: none
 superseded-by: none
@@ -26,9 +26,9 @@ with either.
 
 The standard says every assertion exists in two namespaces under one
 name, and that the two namespaces agree about what each assertion means.
-Nothing enforces that inside a single library. Two packages holding 38
-functions each, written by hand, disagree the first time somebody fixes a
-bug in one and not the other.
+Nothing enforces that inside a single library. Two packages that each
+contain the comparison logic of every assertion disagree the first time
+somebody fixes a bug in one and not the other.
 
 Go also cannot list a package's functions at runtime. The completeness
 gate the standard requires has to get the public surface some other way,
@@ -52,8 +52,9 @@ go.dokimi.dev/assert/conformance        corpus runner, gate, overlay check
 ```
 
 `golden` and `bench` are separate because they need the filesystem and
-`testing.B` respectively, and because both abort only, so neither has a
-recording twin.
+`testing.B` respectively. Neither has a recording twin: a golden
+comparison stops the test, and a benchmark contract reports every
+exceeded ceiling through the recording surface when it ends.
 
 `conformance` holds tests rather than a command, so `go test ./...` runs
 the gate and the corpus with no extra CI step.
@@ -135,19 +136,33 @@ no documentation tool will open. A fluent surface whose methods are
 invisible is worse than the duplication it saves, and the cost grows
 with every assertion added.
 
-The methods are generated instead, so the duplication is mechanical
-rather than maintained by hand.
+Each package writes its own methods instead. A method is a few lines
+that name the mode and call the core, so the duplicated code contains no
+comparison logic.
 
-### The recording package is generated
+### The recording package mirrors the aborting one
 
-`expect`'s functions come from `go:generate`. The generator parses
-`internal/matcher`, treats every exported function whose first two
-parameters are `Seat` and `Mode` as an assertion, and writes one wrapper
-each.
+`expect` has one function for each function in `assert`, written beside
+it by hand. Each calls the same matcher function, in the recording mode
+where its counterpart uses the aborting mode. The chain methods follow
+the same rule.
 
-Adding an assertion therefore adds its `expect` wrapper with no second
-edit. The generator emits the chain methods on the same pass, from the
-same discovery.
+Three checks keep the packages in step:
+
+- The conformance gate fails the build when either surface has a member
+  the other lacks. It names the members that exist only on the aborting
+  surface, such as `Rejects`, each with its reason.
+- The shared suites in `internal/matchertest` drive every case through
+  the core, `assert` and `expect` alike. A wrapper that calls the wrong
+  comparison fails a shared case.
+- A conformance test calls each `expect` function and chain method
+  with an input it rejects. The test fails when a member reports
+  through `Fatalf`, reports nothing, or reports as another member. It
+  lists the functions from the source and the chain's methods by
+  reflection, so a new member that the test does not call fails it.
+
+Adding an assertion therefore takes a wrapper in each package, and the
+gate fails until both exist.
 
 ### Comparison rules
 
@@ -179,8 +194,8 @@ Callers who want it pass `assert.EquateEmpty()` on the call.
 ### Types are checked at compile time
 
 `Equal[T any](tb TB, got, want T, ...)` makes a type mismatch a compile
-error. The standard requires `1` not to equal `"1"`; in Go that program
-does not build.
+error. The standard requires `1` not to equal `"1"`. In Go, a program
+that compares the two does not build.
 
 The corpus states its values as `any`, so its type-mismatch cases run
 through `Equal[any]` and exercise the runtime path. The cases that can
@@ -205,12 +220,12 @@ assertion in the definition against the names it found. Reading the files
 means nobody can satisfy the gate with a list that has gone stale.
 
 `golang.org/x/tools/go/packages` would type-check as well as parse, and
-would honour build tags. It also lands in the module graph of everything
-that imports this library, which is too much to ask of a consumer for a
-check only this repository runs. `go/parser` costs nothing and answers
-the question. The price is that a surface split across build-tagged
-files would be read as one; neither is, and one that started to would
-need this reconsidered.
+would honour build tags. It would also enter the module graph of every
+module that imports this library, for a check that only this repository
+runs. `go/parser` is part of the standard library. It does not evaluate
+build tags, so it would read a surface split across build-tagged files
+as one surface. Neither surface is split that way, and splitting one
+would reopen this choice.
 
 Note that `parser.ParseDir` is deprecated for exactly the build-tag
 reason. `ParseFile` is not, so the directory walk is done here.
@@ -239,23 +254,31 @@ The definition and corpus are copied into `spec/` and embedded with
 
 ### Divergences
 
-This library's overlay is empty. Goroutines make `no-task-leaks` real,
-`testing.B` makes the allocation ceilings real, and `context.Context`
-makes the behavioural assertions real.
+This library's overlay declares no divergence. Goroutines make
+`no-task-leaks` real, `testing.B` and `testing.AllocsPerRun` make the
+allocation ceilings real, and `context.Context` makes the behavioural
+assertions real.
 
-An empty overlay is a claim the gate enforces: an assertion this library
-stops implementing fails the build until an overlay entry says why.
+An overlay without divergences is a claim the gate enforces: an
+assertion this library stops implementing fails the build until an
+overlay entry says why.
+
+The overlay does state limits. In a build with the race detector, msan
+or asan, and in one whose `-gcflags` turn off optimisation or inlining,
+no allocation ceiling is checked, because those builds allocate
+differently from the one that ships.
 
 ## Alternatives considered
 
-### A. Hand-write both namespaces
+### A. Two independent namespaces
 
-Write `assert` and `expect` as two independent packages.
+Write `assert` and `expect` as two independent packages, each with its
+own comparison logic.
 
-**Why not:** about 76 functions and 76 methods across two packages,
-each pair required to stay identical, with nothing checking that they
-do. The first bug fixed in one and not the other is a silent
-disagreement between two namespaces the standard says agree.
+**Why not:** every comparison exists twice, and each pair must stay
+identical with nothing checking that it does. The first bug fixed in one
+and not the other is a silent disagreement between two namespaces the
+standard says agree.
 
 ### B. One package, with the mode as an argument
 
@@ -285,11 +308,28 @@ language-neutral one second, and every other language would then read a
 repository laid out for Go's tooling. Vendoring costs a sync target and a
 committed copy.
 
+### E. Generate the wrappers
+
+Generate `expect`'s functions and both chains from `internal/matcher`
+with `go:generate`, one wrapper for each exported function whose first
+two parameters are `Seat` and `Mode`.
+
+**Why not:** each wrapper is a few lines with no logic, and the gate
+already fails on a missing one. A generator adds a committed generated
+file that reviewers read in diffs, and a build step someone can forget.
+A generator would make each wrapper's mode correct by construction. A
+conformance test checks the mode of every `expect` wrapper instead, and
+the drawbacks record that the mode of an `assert` wrapper is unchecked.
+
 ## Drawbacks
 
-**A generated file in the repository.** `expect/expect.gen.go` is
-committed, so a reviewer reads generated code in diffs. Regenerating is a
-build step someone can forget, though the gate catches the result.
+**Every wrapper is written twice.** Each assertion has a wrapper in
+`assert` and one in `expect`, and each chain method has one in each
+chain. The gate checks that both exist, and the shared suites check what
+each reports. A conformance test checks that every `expect` wrapper
+reports through `Errorf`. Nothing checks that an `assert` wrapper
+reports through `Fatalf`, so one that passed the recording mode would
+pass every test.
 
 **The gate does not evaluate build tags.** It reads the surfaces with
 `go/parser` rather than loading them, so a surface split across tagged
