@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.dokimi.dev/assert/expect"
+	"go.dokimi.dev/assert/internal/matcher"
 )
 
 // The units a contract publishes its measurements under. They appear
@@ -120,14 +121,21 @@ func (c *Contract) MaxMean(d time.Duration) *Contract {
 //
 // Not every language implementing this standard can count
 // allocations; those declare a divergence rather than approximate one.
+//
+// In a build with the race detector, msan or asan, and in one whose
+// -gcflags turn off optimisation or inlining, [Contract.End] publishes
+// the count and does not check the ceiling, because those builds
+// allocate differently from the one that ships.
+// [go.dokimi.dev/assert.MaxAllocs] states the same ceiling in a test,
+// which the ordinary test run checks.
 func (c *Contract) MaxAllocs(n uint64) *Contract {
 	c.maxAllocs = int64(n)
 	return c
 }
 
 // MaxBytes states the most heap bytes per iteration the benchmark may
-// allocate, and returns the receiver. Measured as
-// [Contract.MaxAllocs] is.
+// allocate, and returns the receiver. Measured, and left unchecked in
+// the same builds, as [Contract.MaxAllocs] is.
 func (c *Contract) MaxBytes(n uint64) *Contract {
 	c.maxBytes = int64(n)
 	return c
@@ -192,11 +200,12 @@ func (c *Contract) End() {
 		expect.InRange(c.b, mean.Nanoseconds(), 0, float64(c.maxMean.Nanoseconds()),
 			"the mean latency per iteration stays within its ceiling")
 	}
-	if c.maxAllocs != unset {
+	counted := matcher.AllocationsCounted()
+	if c.maxAllocs != unset && counted {
 		expect.InRange(c.b, allocs, 0, float64(c.maxAllocs),
 			"the allocations per iteration stay within their ceiling")
 	}
-	if c.maxBytes != unset {
+	if c.maxBytes != unset && counted {
 		expect.InRange(c.b, bytes, 0, float64(c.maxBytes),
 			"the bytes allocated per iteration stay within their ceiling")
 	}

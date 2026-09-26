@@ -9,6 +9,7 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
+	"go.dokimi.dev/assert/internal/matcher"
 )
 
 // This package is a consumer of the library, so its tests are written
@@ -109,15 +110,26 @@ func TestContract(t *testing.T) {
 				"the failure names the ceiling that was exceeded")
 		})
 
-		t.Run("an exceeded allocation ceiling reports", func(t *testing.T) {
+		t.Run("an exceeded allocation ceiling reports where the build counts allocations", func(t *testing.T) {
 			t.Parallel()
 
 			seat := run(iterations, func(c *bench.Contract) *bench.Contract {
 				return c.MaxAllocs(0)
 			}, func() { _ = make([]byte, 4096) })
 
-			assert.True(t, seat.Failed(),
-				"a body that allocates exceeds a ceiling of none")
+			assert.Equal(t, seat.Failed(), matcher.AllocationsCounted(),
+				"a body that allocates exceeds a ceiling of none, in a build that checks it")
+		})
+
+		t.Run("an exceeded byte ceiling reports where the build counts allocations", func(t *testing.T) {
+			t.Parallel()
+
+			seat := run(iterations, func(c *bench.Contract) *bench.Contract {
+				return c.MaxBytes(0)
+			}, func() { _ = make([]byte, 4096) })
+
+			assert.Equal(t, seat.Failed(), matcher.AllocationsCounted(),
+				"a body that allocates bytes exceeds a ceiling of none, in a build that checks it")
 		})
 
 		t.Run("every exceeded ceiling is reported, not only the first", func(t *testing.T) {
@@ -205,12 +217,13 @@ func TestExcluding(t *testing.T) {
 
 	t.Run("the same fixture unexcluded crosses the ceiling", func(t *testing.T) {
 		// Without this the case above passes against an Excluding that
-		// does nothing at all.
+		// does nothing at all. A build that checks no allocation ceiling
+		// cannot state it, and reports nothing.
 		seat := runExcluding(iterations, tightAllocs, func(*bench.Contract) {
 			heavyFixture()
 		})
 
-		assert.True(t, seat.Failed(),
+		assert.Equal(t, seat.Failed(), matcher.AllocationsCounted(),
 			"a fixture nobody excluded has to count against the ceiling")
 	})
 

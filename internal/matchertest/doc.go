@@ -33,6 +33,8 @@
 //
 // # Dependency position
 //
-// Imports fmt, strings, sync and testing. Depends on no other package
-// in this module, so every surface can import it.
+// Imports github.com/google/go-cmp/cmp and its cmpopts subpackage,
+// internal/matcher for the failure record and the allocation flag, and
+// the standard library. It imports no surface, so every surface can
+// import it.
 package matchertest

@@ -107,7 +107,7 @@ never ran.
 
 | Import | What it holds |
 |---|---|
-| `go.dokimi.dev/assert` | 34 assertions and a 15-method chain, stopping at the first failure |
+| `go.dokimi.dev/assert` | 35 assertions and a 15-method chain, stopping at the first failure |
 | `go.dokimi.dev/assert/expect` | the same, recording and continuing |
 | `go.dokimi.dev/assert/golden` | comparison against a recorded file, with scrubbers for content that changes each run |
 | `go.dokimi.dev/assert/bench` | ceilings on latency, allocations and bytes per benchmark iteration |
@@ -148,6 +148,24 @@ func BenchmarkGet(b *testing.B) {
 
 Ceilings are checked together, so one run names each one exceeded. The
 p99 rather than the mean, because the tail is what a caller waits for.
+
+A contract is checked only when benchmarks run. `MaxAllocs` states an
+allocation ceiling in a test, so the ordinary test run checks it:
+
+```go
+func TestGetAllocs(t *testing.T) {
+    assert.MaxAllocs(t, func() { _, _ = store.Get(ctx, id) }, 0,
+        "Get allocates nothing once the store is warm")
+}
+```
+
+It calls the function once to warm it and counts the next 100 calls,
+through `testing.AllocsPerRun`, so the test that calls it does not call
+`t.Parallel`. In a build with the race detector, msan or asan, and in
+one whose `-gcflags` turn off optimisation or inlining, neither form
+checks an allocation ceiling, because those builds allocate differently
+from the one that ships. `MaxAllocs` still calls the function, and a
+contract still publishes its counts.
 
 ## Assertion reference
 
@@ -214,6 +232,12 @@ p99 rather than the mean, because the tail is what a caller waits for.
 | `EventuallyTrue` | A predicate becomes true within a timeout, retried with backoff. |
 | `NoGoroutineLeaks` | No concurrent task started in the scope outlives it. |
 
+### Allocations
+
+| Name | What it states |
+|---|---|
+| `MaxAllocs` | A callable makes at most a stated number of heap allocations per call. One call warms it first, and the count is the average over the calls after it, rounded down. |
+
 ### Golden files
 
 | Name | What it states |
@@ -251,7 +275,7 @@ holds itself to it on every run:
 - **Meaning.** 87 corpus cases state what an assertion must report,
   shared with every other implementation.
 
-The corpus reaches 25 of the 41. A case states its arguments as data,
+The corpus reaches 25 of the 42. A case states its arguments as data,
 so it cannot cover an assertion that takes a callable, a cancellation
 handle, a golden file or a benchmark. Those are checked for presence
 and tested here.

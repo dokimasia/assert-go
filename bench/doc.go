@@ -35,8 +35,22 @@
 // available in every language implementing this standard. See
 // [Contract.MaxLatency] and [Contract.MaxAllocs].
 //
+// A contract is checked only when benchmarks run. An allocation ceiling
+// that the ordinary test run checks is [go.dokimi.dev/assert.MaxAllocs].
+//
+// # Builds that allocate differently
+//
+// A build with the race detector, msan or asan allocates on the code's
+// behalf, and under the race detector sync.Pool drops a quarter of the
+// items it is given. A build whose -gcflags turn off optimisation or
+// inlining, as a debugger's build does, moves values to the heap that an
+// ordinary build keeps on the stack. In either build [Contract.End]
+// publishes the allocation and byte counts and checks neither ceiling.
+//
 // # Dependency position
 //
-// Imports go.dokimi.dev/assert for the seat, and the standard
-// library's fmt, runtime, slices, strings and time.
+// Imports go.dokimi.dev/assert for the seat,
+// go.dokimi.dev/assert/expect for the ceilings, internal/matcher for the
+// build's allocation flag, and the standard library's runtime, slices
+// and time.
 package bench

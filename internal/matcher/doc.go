@@ -14,8 +14,16 @@
 //   - Unexported fields take part.
 //   - Two references to one function are equal; two functions are not.
 //
+// # Allocation counts
+//
+// [AllocationsCounted] reports false in a build with the race detector,
+// msan or asan, and in a build whose -gcflags turn off optimisation or
+// inlining. Neither build allocates as an ordinary one does, and
+// [MaxAllocs] checks no ceiling in either.
+//
 // # Dependency position
 //
-// Imports github.com/google/go-cmp/cmp, its cmpopts subpackage, and
-// reflect. Depends on no other package in this module.
+// Imports github.com/google/go-cmp/cmp, its cmpopts subpackage, and the
+// standard library, testing included. Depends on no other package in
+// this module.
 package matcher

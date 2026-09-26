@@ -17,12 +17,13 @@
 //	    HasPrefix("usr_", "the id carries its prefix").
 //	    Length(3, "every field was populated")
 //
-// # What is generated
+// # Parity with the aborting surface
 //
-// The functions and chain methods come from the matcher core, so a
-// member here cannot drift from its counterpart in the aborting
-// surface. Edit the core and run go generate; do not edit
-// expect.gen.go.
+// Every function and chain method here calls the same matcher-core
+// function as its counterpart in [go.dokimi.dev/assert], in the
+// recording mode where that one uses the aborting mode, so the two
+// compare values identically. A conformance test fails the build when
+// either surface carries a member the other does not.
 //
 // # Dependency position
 //
