@@ -4,17 +4,25 @@
 package conformance_test
 
 import (
+	"context"
+	"io"
+	"io/fs"
 	"maps"
 	"os"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
 	"go.dokimi.dev/assert/conformance"
+	"go.dokimi.dev/assert/expect"
 	"go.dokimi.dev/assert/golden"
+	"go.dokimi.dev/assert/internal/matcher"
+	"go.dokimi.dev/assert/internal/matchertest"
 )
 
 // This package is a consumer of the library, so its tests are written
@@ -208,5 +216,190 @@ func TestSurfaceTable(t *testing.T) {
 		case name == "" && isPinned:
 			t.Errorf("%s: declined in the overlay yet pinned here, which is a contradiction", id)
 		}
+	}
+}
+
+// rejected is the message every driven call passes.
+const rejected = "the input is one the member rejects"
+
+// silent names the members of the recording surface that report
+// nothing, so no input drives one to fail, with the reason.
+var silent = map[string]string{
+	"Assertion":   "is the chain type, and the method drivers call its methods",
+	"That":        "starts a chain",
+	"Option":      "is the type of a comparison option",
+	"EquateEmpty": "returns a comparison option",
+	"EquateNaNs":  "returns a comparison option",
+}
+
+// escaped holds the slice the MaxAllocs driver allocates, so escape
+// analysis keeps the allocation on the heap.
+var escaped []byte
+
+// recordingFunctions calls each reporting function of the recording
+// surface, keyed by its name, with an input the function rejects.
+var recordingFunctions = map[string]func(tb assert.TB){
+	"CloseTo": func(tb assert.TB) { expect.CloseTo(tb, 1.0, 2, 0.1, rejected) },
+	"CompletesWithin": func(tb assert.TB) {
+		expect.CompletesWithin(tb, time.Millisecond, func(context.Context) error {
+			time.Sleep(2 * time.Millisecond)
+			return nil
+		}, rejected)
+	},
+	"Contains":        func(tb assert.TB) { expect.Contains(tb, "abc", "x", rejected) },
+	"ContainsInOrder": func(tb assert.TB) { expect.ContainsInOrder(tb, "abc", []string{"c", "a"}, rejected) },
+	"Empty":           func(tb assert.TB) { expect.Empty(tb, "a", rejected) },
+	"Equal":           func(tb assert.TB) { expect.Equal(tb, 1, 2, rejected) },
+	"ErrorAs":         func(tb assert.TB) { _ = expect.ErrorAs[*fs.PathError](tb, io.EOF, rejected) },
+	"ErrorIs":         func(tb assert.TB) { expect.ErrorIs(tb, io.EOF, fs.ErrNotExist, rejected) },
+	"ErrorIsNot":      func(tb assert.TB) { expect.ErrorIsNot(tb, io.EOF, io.EOF, rejected) },
+	"Eventually": func(tb assert.TB) {
+		expect.Eventually(tb, time.Millisecond, time.Millisecond, func(trial assert.TB) {
+			expect.True(trial, false, rejected)
+		}, rejected)
+	},
+	"EventuallyTrue": func(tb assert.TB) {
+		expect.EventuallyTrue(tb, time.Millisecond, func() bool { return false }, rejected)
+	},
+	"False":     func(tb assert.TB) { expect.False(tb, true, rejected) },
+	"HasError":  func(tb assert.TB) { expect.HasError(tb, nil, rejected) },
+	"HasPrefix": func(tb assert.TB) { expect.HasPrefix(tb, "abc", "x", rejected) },
+	"HasSuffix": func(tb assert.TB) { expect.HasSuffix(tb, "abc", "x", rejected) },
+	"HonoursCancellation": func(tb assert.TB) {
+		expect.HonoursCancellation(tb, func(context.Context) error { return nil }, rejected)
+	},
+	"HonoursDeadline": func(tb assert.TB) {
+		expect.HonoursDeadline(tb, func(context.Context) error { return nil }, rejected)
+	},
+	"InRange": func(tb assert.TB) { expect.InRange(tb, 5.0, 0, 1, rejected) },
+	"Length":  func(tb assert.TB) { expect.Length(tb, "ab", 3, rejected) },
+	"Matches": func(tb assert.TB) { expect.Matches(tb, "abc", "^x", rejected) },
+	"MaxAllocs": func(tb assert.TB) {
+		expect.MaxAllocs(tb, func() { escaped = make([]byte, 64) }, 0, rejected)
+	},
+	"Nil": func(tb assert.TB) { expect.Nil(tb, 1, rejected) },
+	"NilContextSafe": func(tb assert.TB) {
+		expect.NilContextSafe(tb, func(ctx context.Context) error { return ctx.Err() }, rejected)
+	},
+	"NoError": func(tb assert.TB) { expect.NoError(tb, io.EOF, rejected) },
+	"NoGoroutineLeaks": func(tb assert.TB) {
+		check := expect.NoGoroutineLeaks(tb, rejected)
+		release := make(chan struct{})
+		go func() { <-release }()
+		check()
+		close(release)
+	},
+	"NotContains": func(tb assert.TB) { expect.NotContains(tb, "abc", "b", rejected) },
+	"NotEmpty":    func(tb assert.TB) { expect.NotEmpty(tb, "", rejected) },
+	"NotEqual":    func(tb assert.TB) { expect.NotEqual(tb, 1, 1, rejected) },
+	"NotNil":      func(tb assert.TB) { expect.NotNil(tb, nil, rejected) },
+	"NotPanics":   func(tb assert.TB) { expect.NotPanics(tb, func() { panic(rejected) }, rejected) },
+	"Pairwise": func(tb assert.TB) {
+		expect.Pairwise(tb, []int{2, 1}, func(earlier, later int) bool { return earlier < later }, rejected)
+	},
+	"Panics": func(tb assert.TB) { expect.Panics(tb, func() {}, rejected) },
+	"Pure": func(tb assert.TB) {
+		calls := 0
+		expect.Pure(tb, func() int { return calls }, func() { calls++ }, rejected)
+	},
+	"True": func(tb assert.TB) { expect.True(tb, false, rejected) },
+}
+
+// recordingMethods calls each method of the recording chain, keyed by
+// its name, on a value the method rejects.
+var recordingMethods = map[string]func(tb assert.TB){
+	"CloseTo":         func(tb assert.TB) { expect.That(tb, 1.0).CloseTo(2, 0.1, rejected) },
+	"Contains":        func(tb assert.TB) { expect.That(tb, "abc").Contains("x", rejected) },
+	"ContainsInOrder": func(tb assert.TB) { expect.That(tb, "abc").ContainsInOrder([]string{"c", "a"}, rejected) },
+	"Empty":           func(tb assert.TB) { expect.That(tb, "a").Empty(rejected) },
+	"Equal":           func(tb assert.TB) { expect.That(tb, 1).Equal(2, rejected) },
+	"HasPrefix":       func(tb assert.TB) { expect.That(tb, "abc").HasPrefix("x", rejected) },
+	"HasSuffix":       func(tb assert.TB) { expect.That(tb, "abc").HasSuffix("x", rejected) },
+	"InRange":         func(tb assert.TB) { expect.That(tb, 5.0).InRange(0, 1, rejected) },
+	"Length":          func(tb assert.TB) { expect.That(tb, "ab").Length(3, rejected) },
+	"Matches":         func(tb assert.TB) { expect.That(tb, "abc").Matches("^x", rejected) },
+	"Nil":             func(tb assert.TB) { expect.That(tb, 1).Nil(rejected) },
+	"NotContains":     func(tb assert.TB) { expect.That(tb, "abc").NotContains("b", rejected) },
+	"NotEmpty":        func(tb assert.TB) { expect.That(tb, "").NotEmpty(rejected) },
+	"NotEqual":        func(tb assert.TB) { expect.That(tb, 1).NotEqual(1, rejected) },
+	"NotNil":          func(tb assert.TB) { expect.That[any](tb, nil).NotNil(rejected) },
+}
+
+// TestSurfaceRecording drives every reporting member of the recording
+// surface with an input it rejects. Each member must report through
+// Errorf and never through Fatalf, and its record must name the member
+// the driver is keyed by. The shared suites accept a failure from
+// either path, so this is the only test that tells the two modes apart.
+//
+// The member list comes from the surface's source and the chain's
+// method set, so a member added without a driver fails here.
+//
+// It does not run in parallel. The MaxAllocs driver calls
+// testing.AllocsPerRun, which panics while a parallel test runs, and
+// the NoGoroutineLeaks driver reads every goroutine in the process.
+func TestSurfaceRecording(t *testing.T) {
+	members, err := conformance.Members(conformance.Recording)
+	if err != nil {
+		t.Fatalf("the recording surface can be read: %v", err)
+	}
+
+	names, err := conformance.Names()
+	if err != nil {
+		t.Fatalf("the naming table can be read: %v", err)
+	}
+
+	var methods []string
+	for method := range reflect.TypeFor[*expect.Assertion[any]]().Methods() {
+		methods = append(methods, method.Name)
+	}
+
+	t.Run("Members", func(t *testing.T) {
+		t.Run("every function is driven or reports nothing", func(t *testing.T) {
+			named := slices.Concat(slices.Collect(maps.Keys(recordingFunctions)), slices.Collect(maps.Keys(silent)))
+			slices.Sort(named)
+			if !slices.Equal(named, members) {
+				t.Errorf("the surface declares %v, and the drivers and excuses name %v", members, named)
+			}
+		})
+
+		t.Run("every chain method is driven", func(t *testing.T) {
+			driven := slices.Sorted(maps.Keys(recordingMethods))
+			if !slices.Equal(driven, methods) {
+				t.Errorf("the chain declares %v, and the drivers name %v", methods, driven)
+			}
+		})
+	})
+
+	t.Run("Functions", func(t *testing.T) { drive(t, recordingFunctions, names) })
+	t.Run("Methods", func(t *testing.T) { drive(t, recordingMethods, names) })
+}
+
+// drive calls each driver with a fresh seat. It requires a failure
+// through Errorf, none through Fatalf, and a record whose assertion the
+// naming table gives Go under the driver's key.
+func drive(t *testing.T, drivers map[string]func(tb assert.TB), names map[conformance.ID]string) {
+	t.Helper()
+
+	for _, name := range slices.Sorted(maps.Keys(drivers)) {
+		t.Run(name, func(t *testing.T) {
+			if name == "MaxAllocs" && !matcher.AllocationsCounted() {
+				t.Skip("this build does not count allocations, so no ceiling can fail")
+			}
+
+			seat := &matchertest.Seat{}
+			drivers[name](seat)
+
+			if fatals := seat.Fatals(); len(fatals) > 0 {
+				t.Errorf("reported through Fatalf, which stops the test: %q", fatals)
+			}
+			records := seat.Records()
+			if len(seat.Errs()) == 0 || len(records) == 0 {
+				t.Fatal("reported nothing through Errorf, so the input did not fail it")
+			}
+			if got := names[conformance.ID(records[0].Assertion)]; got != name {
+				t.Errorf("reported %s, which Go names %q, so the driver calls another member",
+					records[0].Assertion, got)
+			}
+		})
 	}
 }
