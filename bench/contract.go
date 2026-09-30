@@ -4,6 +4,7 @@
 package bench
 
 import (
+	"math"
 	"runtime"
 	"slices"
 	"time"
@@ -12,9 +13,8 @@ import (
 	"go.dokimi.dev/assert/internal/matcher"
 )
 
-// The units a contract publishes its measurements under. They appear
-// in benchmark output beside the ceiling, so a reader sees what was
-// measured and not only that it passed.
+// [Contract.End] publishes each measurement through [B.ReportMetric]
+// under one of these units before it checks any ceiling.
 const (
 	unitP99Latency  = "p99-ns/op"
 	unitMeanLatency = "mean-ns/op"
@@ -22,13 +22,13 @@ const (
 	unitBytes       = "bytes/op"
 )
 
-// p99 is the quantile [Contract.MaxLatency] holds. The tail is what a
-// caller waits for; a mean hides it.
+// p99 is the quantile of the iteration durations that
+// [Contract.MaxLatency] bounds.
 const p99 = 0.99
 
-// unset marks a ceiling nobody stated, so an unstated one is never
-// checked. Zero cannot mean that: a ceiling of zero allocations is a
-// thing worth stating.
+// unset marks a ceiling that the caller did not state. [Contract.End]
+// checks no unset ceiling. The marker is negative because zero is a
+// ceiling that a caller can state.
 const unset = -1
 
 // Contract measures a benchmark and fails it for exceeding a ceiling.
@@ -43,40 +43,47 @@ const unset = -1
 //	    _, _ = store.Get(ctx, id)
 //	}
 //
-// A ceiling not stated is not checked. Every ceiling is checked, so
-// one run names each one exceeded rather than stopping at the first.
+// [Contract.End] checks every stated ceiling and reports each one that
+// the benchmark exceeded. It checks no ceiling that was not stated.
 //
-// A Contract is not safe for concurrent use. It belongs to the
-// goroutine running the benchmark.
+// A Contract is not safe for concurrent use. Call its methods from the
+// goroutine that runs the benchmark.
 type Contract struct {
 	// b is the benchmark being measured.
 	b B
 
-	// each holds one duration per iteration, which is what the
-	// quantile is read from.
+	// each contains one duration per iteration. [Contract.End] reads the
+	// quantile and the mean from it.
 	each []time.Duration
-	// started is when the current iteration began, zero before the
-	// first.
+	// started is the time the current iteration began. It is zero before
+	// the first iteration.
 	started time.Time
 
-	// heapAtStart is the allocation count when measuring began.
+	// heapAtStart and bytesAtStart are the allocation counters when the
+	// loop began. heapAtEnd and bytesAtEnd are the counters when it
+	// ended.
 	heapAtStart, bytesAtStart uint64
-	// measuring says whether the counters above have been read.
+	heapAtEnd, bytesAtEnd     uint64
+	// measuring reports whether the loop is running. The first
+	// [Contract.Loop] sets it, and the call that ends the loop clears it.
 	measuring bool
 
-	// excluded holds what [Contract.Excluding] has taken out of the
-	// current iteration, and excludedHeap what it has taken out of the
-	// run. The first is cleared each iteration; the second accumulates,
-	// because the heap is read once at each end.
-	excluded                        time.Duration
+	// excluded is the time that [Contract.Excluding] has taken out of
+	// the current iteration. Each iteration starts it at zero.
+	excluded time.Duration
+	// excludedHeap and excludedHeapBytes are the allocations taken out of
+	// the whole loop: the work passed to [Contract.Excluding] and the
+	// growth of each. They accumulate across iterations, because the
+	// counters are read once at each end of the loop.
 	excludedHeap, excludedHeapBytes uint64
 
-	// The stated ceilings, each unset until a caller states it.
+	// maxLatency, maxMean, maxAllocs and maxBytes are the stated
+	// ceilings. Each is unset until the caller states it.
 	maxLatency, maxMean time.Duration
 	maxAllocs, maxBytes int64
 }
 
-// Start begins a contract on b.
+// Start returns a contract that measures b and states no ceiling.
 func Start(b B) *Contract {
 	b.Helper()
 	return &Contract{
@@ -88,39 +95,49 @@ func Start(b B) *Contract {
 	}
 }
 
-// MaxLatency states the highest p99 latency per iteration the
-// benchmark may take, and returns the receiver so ceilings chain.
+// MaxLatency states the highest p99 latency per iteration that the
+// benchmark may take, and returns the receiver.
 //
-// The p99 rather than the mean, because the tail is what a caller
-// waits for and a mean hides it. With fewer than a hundred iterations
-// the p99 is the slowest one.
+// A p99 ceiling bounds the tail of the latency distribution, which a
+// mean ceiling does not bound. [Contract.MaxMean] states a ceiling on the
+// mean.
 func (c *Contract) MaxLatency(d time.Duration) *Contract {
 	c.maxLatency = d
 	return c
 }
 
-// MaxMean states the highest mean latency per iteration the benchmark
-// may take, and returns the receiver.
+// MaxMean states the highest mean latency per iteration that the
+// benchmark may take, and returns the receiver.
 //
-// Use it beside [Contract.MaxLatency] rather than instead of it: a
-// mean that holds while the tail grows is the regression a mean alone
-// misses.
+// State it together with [Contract.MaxLatency]. A mean ceiling alone
+// passes a benchmark whose tail latency grows while its mean does not
+// change.
 func (c *Contract) MaxMean(d time.Duration) *Contract {
 	c.maxMean = d
 	return c
 }
 
-// MaxAllocs states the most heap allocations per iteration the
+// MaxAllocs states the most heap allocations per iteration that the
 // benchmark may make, and returns the receiver.
 //
-// Measured by reading the runtime's allocation counter before the
-// first iteration and after the last, then dividing. That counts every
-// allocation the goroutine made, including any the benchmark's own
-// bookkeeping caused, so a ceiling of nought is only reachable for a
-// body that allocates nothing at all.
+// [Contract.Loop] reads the runtime's allocation counters before the
+// first iteration and after the last. [Contract.End] divides the
+// difference by the number of iterations and rounds the quotient down
+// before it compares it with the ceiling, as [testing.AllocsPerRun]
+// does. It publishes the quotient before rounding.
 //
-// Not every language implementing this standard can count
-// allocations; those declare a divergence rather than approximate one.
+// The count leaves out the work passed to [Contract.Excluding] and the
+// contract's own bookkeeping. The counters are process-wide, so the count
+// includes the allocations that the runtime makes for itself while the
+// loop runs, such as for a garbage collection cycle. Fewer such
+// allocations than there are iterations do not change the rounded count.
+// A body that does not allocate meets a ceiling of zero in a run of more
+// iterations than the runtime made allocations. In a run of one
+// iteration, as -benchtime=1x gives, one runtime allocation fails a
+// ceiling of zero.
+//
+// A language implementation of this standard that cannot count
+// allocations declares a divergence. It does not approximate the count.
 //
 // In a build with the race detector, msan or asan, and in one whose
 // -gcflags turn off optimisation or inlining, [Contract.End] publishes
@@ -133,46 +150,59 @@ func (c *Contract) MaxAllocs(n uint64) *Contract {
 	return c
 }
 
-// MaxBytes states the most heap bytes per iteration the benchmark may
-// allocate, and returns the receiver. Measured, and left unchecked in
-// the same builds, as [Contract.MaxAllocs] is.
+// MaxBytes states the most heap bytes per iteration that the benchmark
+// may allocate, and returns the receiver.
+//
+// [Contract.End] counts the bytes over the same window, with the same
+// exclusions and the same rounding, as the allocations of
+// [Contract.MaxAllocs]. It checks the ceiling in the same builds.
 func (c *Contract) MaxBytes(n uint64) *Contract {
 	c.maxBytes = int64(n)
 	return c
 }
 
-// Loop reports whether the benchmark should run another iteration, and
-// is a drop-in for [testing.B.Loop]:
+// Loop reports whether the benchmark should run another iteration. It
+// replaces [testing.B.Loop] in the loop of a benchmark:
 //
 //	for c.Loop() {
 //	    _, _ = store.Get(ctx, id)
 //	}
 //
-// It times each iteration on the way past, which is where the latency
-// measurements come from, and reads the allocation counters before the
-// first iteration so the setup before the loop is not counted.
+// Loop times each iteration for the latency ceilings. It reads the
+// allocation counters before the first iteration and after the last, so
+// the allocation ceilings count neither the setup before the loop nor
+// the code after it.
 func (c *Contract) Loop() bool {
 	if c.measuring {
-		c.each = append(c.each, time.Since(c.started)-c.excluded)
+		elapsed := time.Since(c.started) - c.excluded
 		c.excluded = 0
+
+		// A growth of each is the contract's allocation, not the body's.
+		if len(c.each) == cap(c.each) {
+			c.excludeHeap(func() { c.each = slices.Grow(c.each, 1) })
+		}
+		c.each = append(c.each, elapsed)
 	} else {
 		c.heapAtStart, c.bytesAtStart = heap()
 		c.measuring = true
 	}
 
 	if !c.b.Loop() {
+		c.heapAtEnd, c.bytesAtEnd = heap()
+		c.measuring = false
 		return false
 	}
 	c.started = time.Now()
 	return true
 }
 
-// End reports what was measured and fails the benchmark for every
-// ceiling exceeded.
+// End publishes what the contract measured and fails the benchmark for
+// every ceiling it exceeded.
 //
-// Call it deferred, so it runs whatever the benchmark body does.
-// Ceilings are reported through the recording surface, so one run
-// names each one exceeded rather than stopping at the first.
+// Call it deferred, so that it runs whatever the benchmark body does. It
+// reports each exceeded ceiling through [go.dokimi.dev/assert/expect],
+// which records a failure and continues. The output of one run lists
+// every ceiling that the benchmark exceeded.
 func (c *Contract) End() {
 	c.b.Helper()
 
@@ -202,33 +232,37 @@ func (c *Contract) End() {
 	}
 	counted := matcher.AllocationsCounted()
 	if c.maxAllocs != unset && counted {
-		expect.InRange(c.b, allocs, 0, float64(c.maxAllocs),
+		expect.InRange(c.b, math.Floor(allocs), 0, float64(c.maxAllocs),
 			"the allocations per iteration stay within their ceiling")
 	}
 	if c.maxBytes != unset && counted {
-		expect.InRange(c.b, bytes, 0, float64(c.maxBytes),
+		expect.InRange(c.b, math.Floor(bytes), 0, float64(c.maxBytes),
 			"the bytes allocated per iteration stay within their ceiling")
 	}
 }
 
-// perIteration answers the allocations and bytes each iteration cost.
+// perIteration returns the allocations and the bytes per iteration.
+// When the body left the loop before [Contract.Loop] reported false, it
+// reads the end counters itself.
 func (c *Contract) perIteration() (allocs, bytes float64) {
-	heapNow, bytesNow := heap()
+	if c.measuring {
+		c.heapAtEnd, c.bytesAtEnd = heap()
+	}
 	n := float64(len(c.each))
 
-	// What Excluding took out is subtracted before the division, so a
-	// ceiling states what the measured work cost rather than what the
-	// loop body cost.
-	return float64(heapNow-c.heapAtStart-c.excludedHeap) / n,
-		float64(bytesNow-c.bytesAtStart-c.excludedHeapBytes) / n
+	// The excluded allocations are subtracted, so the result covers the
+	// measured work and not the whole loop body.
+	return float64(c.heapAtEnd-c.heapAtStart-c.excludedHeap) / n,
+		float64(c.bytesAtEnd-c.bytesAtStart-c.excludedHeapBytes) / n
 }
 
 // Excluding runs work outside the measurement.
 //
-// A benchmark whose operation consumes its input builds a fresh one each
-// iteration, and without this the ceilings state what the build and the
-// operation cost together. What the fixture is reaches the measured work
-// through a variable the caller already holds:
+// A benchmark whose operation consumes its input builds a fresh input in
+// each iteration. Excluding takes the time and the allocations of that
+// build out of the iteration, so the ceilings apply to the operation
+// alone. The measured work receives the input through a variable that
+// the caller declares:
 //
 //	for c.Loop() {
 //	    var store *Store
@@ -236,37 +270,49 @@ func (c *Contract) perIteration() (allocs, bytes float64) {
 //	    store.Settle()
 //	}
 //
-// Both the time and the allocations work spends are taken out of the
-// iteration. Calling it outside a loop body is allowed and does nothing
-// a caller would notice, since there is no iteration to take them from.
+// Before the first [Contract.Loop] and after the last, Excluding runs
+// work and takes nothing out, because no iteration is being measured.
 func (c *Contract) Excluding(work func()) {
+	if !c.measuring {
+		work()
+		return
+	}
+
 	startedAt := time.Now()
+	c.excludeHeap(work)
+	c.excluded += time.Since(startedAt)
+}
+
+// excludeHeap runs work and takes the heap allocations that work makes
+// out of the count.
+func (c *Contract) excludeHeap(work func()) {
 	allocsBefore, bytesBefore := heap()
 
 	work()
 
 	allocsAfter, bytesAfter := heap()
-	c.excluded += time.Since(startedAt)
 	c.excludedHeap += allocsAfter - allocsBefore
 	c.excludedHeapBytes += bytesAfter - bytesBefore
 }
 
-// heap reads the runtime's cumulative allocation counters.
+// heap returns the process's cumulative count of heap allocations and of
+// heap bytes allocated. It reads both through [runtime.ReadMemStats],
+// which stops the world.
 func heap() (allocs, bytes uint64) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	return m.Mallocs, m.TotalAlloc
 }
 
-// quantile answers the value at q through sorted, which must be
-// ascending and non-empty. With few samples this is the slowest, which
-// is the honest answer rather than an interpolated one.
+// quantile returns the element of sorted at index (len(sorted)-1)*q,
+// rounded down, without interpolation. sorted must be ascending and
+// non-empty.
 func quantile(sorted []time.Duration, q float64) time.Duration {
 	at := int(float64(len(sorted)-1) * q)
 	return sorted[at]
 }
 
-// total sums durations.
+// total returns the sum of ds.
 func total(ds []time.Duration) time.Duration {
 	var sum time.Duration
 	for _, d := range ds {
