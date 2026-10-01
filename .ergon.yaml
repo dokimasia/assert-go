@@ -44,10 +44,13 @@ license:
   # subtree below any match drops). Extend or replace.
   exclude_dirs: [.git, vendor, dist, node_modules]
   # Filename globs (matched via filepath.Match) skipped during the
-  # walk. Covers the generated-file conventions ergon recognises.
+  # walk. Covers the generated-file conventions ergon recognises, and
+  # the files that stringer generates, which start with a "Code
+  # generated" line and are rewritten at every generation.
   exclude_files:
     - "*.gen.go"
     - "*.gen_test.go"
+    - "*.string_gen.go"
 
 # lint — `ergon lint` umbrella
 #
