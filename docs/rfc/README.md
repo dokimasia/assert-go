@@ -7,3 +7,4 @@ they record why not.
 | # | Title | Status |
 |---|---|---|
 | [0001](0001-the-go-implementation.md) | The Go assertion library | Accepted |
+| [0002](0002-the-property-engine.md) | The property engine in Go | Accepted |
