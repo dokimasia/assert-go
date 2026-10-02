@@ -27,8 +27,8 @@ const (
 	// bytesAllocs are the allocations of Bytes.
 	bytesAllocs = 3
 	// stringMatchingAllocs are the allocations of StringMatching for the
-	// pattern [a-c]{2,5}.
-	stringMatchingAllocs = 11
+	// pattern [a-c]{2,5}: the parsed pattern and the decoder built from it.
+	stringMatchingAllocs = 13
 )
 
 // outsidePrefix starts the panic of StringMatching for a pattern outside

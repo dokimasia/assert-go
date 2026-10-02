@@ -5,7 +5,7 @@ package prop
 
 import (
 	"go.dokimi.dev/assert/internal/prop/engine"
-	"go.dokimi.dev/assert/internal/prop/pattern"
+	"go.dokimi.dev/assert/internal/prop/matching"
 )
 
 // stringing is what the options of one [String] state.
@@ -95,7 +95,7 @@ func Bytes(opts ...SizeOption) Generator[[]byte] {
 // the default alphabet, so [A0a] shrinks to "0". It panics for an expr
 // outside the subset, naming the position and the construct at fault.
 func StringMatching(expr string) Generator[string] {
-	g, err := pattern.StringMatching(expr)
+	g, err := matching.StringMatching(expr)
 	if err != nil {
 		panic("prop: " + err.Error())
 	}

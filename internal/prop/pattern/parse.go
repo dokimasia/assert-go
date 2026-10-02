@@ -26,9 +26,13 @@ const (
 	// row. Java reads && as an intersection, and other engines reserve --,
 	// || and ~~ for set operations.
 	doubled = "&-|~"
-	// maxCount is the largest count that a quantifier may state, the limit
-	// RE2 sets.
+	// maxCount is the largest count that a quantifier may state, and the
+	// largest product of the counts of nested quantifiers, the limits RE2
+	// sets.
 	maxCount = 1000
+	// maxDepth is the deepest that groups may nest. Python's engine refuses
+	// a pattern whose groups nest 495 deep.
+	maxDepth = 100
 	// none is what peek returns past the end of the pattern, and the
 	// previous member of a class that has none to pair with: one past
 	// utf8.MaxRune, which no character of a pattern equals.
@@ -44,6 +48,8 @@ type parser struct {
 	runes []rune
 	// at is the index of the current character in runes.
 	at int
+	// depth is the number of groups open at the current character.
+	depth int
 }
 
 // newParser returns a parser at the first character of text. It returns an
@@ -56,7 +62,7 @@ func newParser(text string) (*parser, error) {
 }
 
 // pattern parses the whole pattern, with its optional anchors.
-func (p *parser) pattern() (node, error) {
+func (p *parser) pattern() (Node, error) {
 	if p.peek(0) == '^' {
 		p.at++
 	}
@@ -74,12 +80,12 @@ func (p *parser) pattern() (node, error) {
 }
 
 // alternation parses branches separated by |.
-func (p *parser) alternation() (node, error) {
+func (p *parser) alternation() (Node, error) {
 	first, err := p.sequence()
 	if err != nil {
 		return nil, err
 	}
-	branches := []node{first}
+	branches := Alternation{first}
 	for p.peek(0) == '|' {
 		p.at++
 		branch, err := p.sequence()
@@ -91,15 +97,14 @@ func (p *parser) alternation() (node, error) {
 	if len(branches) == 1 {
 		return first, nil
 	}
-	bounds := choice.MustIntegerBounds(choice.Int{}, choice.UintOf(uint64(len(branches)-1)))
-	return alternation{branches: branches, bounds: bounds}, nil
+	return branches, nil
 }
 
 // sequence parses pieces up to a |, a ), the closing anchor or the end. A $
 // that ends the pattern inside a group stops the sequence, and the group
 // then finds no ) to close it.
-func (p *parser) sequence() (node, error) {
-	var items sequence
+func (p *parser) sequence() (Node, error) {
+	var items Sequence
 	for r := p.peek(0); r != none && r != '|' && r != ')'; r = p.peek(0) {
 		if r == '$' && p.at == len(p.runes)-1 {
 			break
@@ -117,8 +122,10 @@ func (p *parser) sequence() (node, error) {
 }
 
 // quantified parses an atom and the quantifier after it, if any. A second
-// quantifier is then parsed as an atom, and refused as a metacharacter.
-func (p *parser) quantified() (node, error) {
+// quantifier is then parsed as an atom, and refused as a metacharacter. It
+// refuses a quantifier whose count and the counts nested in its atom
+// multiply past maxCount.
+func (p *parser) quantified() (Node, error) {
 	item, err := p.atom()
 	if err != nil {
 		return nil, err
@@ -130,7 +137,46 @@ func (p *parser) quantified() (node, error) {
 	if err != nil {
 		return nil, err
 	}
-	return repeat{item: item, sizes: sizes}, nil
+	repeat := Repeat{Item: item, Sizes: sizes}
+	if w := weight(repeat); w > maxCount {
+		return nil, p.fail("nested counts multiply to %d, above %d", w, maxCount)
+	}
+	return repeat, nil
+}
+
+// weight returns the largest product of the counts of the quantifiers along
+// one path through n. The atom of a quantifier passed the same check, so
+// the product is at most maxCount times maxCount.
+func weight(n Node) int {
+	switch n := n.(type) {
+	case Repeat:
+		return count(n.Sizes) * weight(n.Item)
+	case Sequence:
+		return heaviest(n)
+	case Alternation:
+		return heaviest(n)
+	}
+	return 1
+}
+
+// heaviest returns the largest weight of nodes, and 1 for no node.
+func heaviest(nodes []Node) int {
+	w := 1
+	for _, n := range nodes {
+		w = max(w, weight(n))
+	}
+	return w
+}
+
+// count returns the count of a quantifier that a product of nested counts
+// multiplies by: its upper count, or its lower count when it has none, and
+// 1 for a count of 0.
+func count(s choice.Sizes) int {
+	n, bounded := s.Max()
+	if !bounded {
+		n = s.Min()
+	}
+	return max(n, 1)
 }
 
 // quantifier parses *, +, ?, {m}, {m,} or {m,n} into the numbers of
@@ -212,7 +258,7 @@ func (p *parser) count() (int, error) {
 
 // atom parses a literal, a dot, an escape, a class or a group. The caller
 // has seen through peek that a character is left.
-func (p *parser) atom() (node, error) {
+func (p *parser) atom() (Node, error) {
 	r := p.take()
 	if r == '(' {
 		return p.group()
@@ -229,12 +275,12 @@ func (p *parser) atom() (node, error) {
 	if strings.ContainsRune(metacharacters, r) {
 		return nil, p.fail("%q must be escaped here", r)
 	}
-	return literal(r), nil
+	return Literal(r), nil
 }
 
 // escape parses the character after a backslash: \d, \w, \s or an escaped
 // metacharacter.
-func (p *parser) escape() (node, error) {
+func (p *parser) escape() (Node, error) {
 	r, err := p.next("the pattern ends with a backslash")
 	if err != nil {
 		return nil, err
@@ -245,11 +291,15 @@ func (p *parser) escape() (node, error) {
 	if !strings.ContainsRune(metacharacters, r) {
 		return nil, p.fail(`\%c is not in the portable subset`, r)
 	}
-	return literal(r), nil
+	return Literal(r), nil
 }
 
-// group parses a group after its (.
-func (p *parser) group() (node, error) {
+// group parses a group after its (, at most maxDepth deep.
+func (p *parser) group() (Node, error) {
+	p.depth++
+	if p.depth > maxDepth {
+		return nil, p.fail("groups nest deeper than %d", maxDepth)
+	}
 	if p.peek(0) == '?' {
 		if p.peek(1) != ':' {
 			return nil, p.fail("only the (?: group is in the portable subset")
@@ -267,11 +317,12 @@ func (p *parser) group() (node, error) {
 	if closing != ')' {
 		return nil, p.fail("a group is not closed by )")
 	}
+	p.depth--
 	return inner, nil
 }
 
 // class parses a class after its [.
-func (p *parser) class() (node, error) {
+func (p *parser) class() (Node, error) {
 	negated := p.peek(0) == '^'
 	if negated {
 		p.at++
@@ -288,7 +339,7 @@ func (p *parser) class() (node, error) {
 		}
 		if named, ok := shorthand(p.peek(0)); ok && r == '\\' {
 			p.at++
-			members = append(members, named.intervals...)
+			members = append(members, named.Members...)
 			previous, first = none, false
 			continue
 		}

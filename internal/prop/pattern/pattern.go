@@ -3,37 +3,19 @@
 
 package pattern
 
-import (
-	"errors"
-	"strings"
-
-	"go.dokimi.dev/assert/internal/prop/engine"
-)
-
-// id is the definition's id of string-matching, which labels the span of
-// every string it decodes.
-const id = "string-matching"
+import "errors"
 
 // ErrOutside reports a pattern outside the portable subset.
 var ErrOutside = errors.New("pattern: outside the portable subset")
 
-// StringMatching returns the generator of the strings that text matches in
-// full, for text of the portable subset. Its simplest value takes the first
-// branch of each alternation, the fewest repetitions and the simplest
-// character of each class. It returns an error that wraps [ErrOutside] for
-// text outside the subset, or that is not UTF-8.
-func StringMatching(text string) (engine.Generator[string], error) {
+// Parse returns the pieces of text, for text of the portable subset. The
+// anchors that may open and close a pattern leave no piece, because every
+// reader of a pattern reads it as a whole. It returns an error that wraps
+// [ErrOutside] for text outside the subset, or that is not UTF-8.
+func Parse(text string) (Node, error) {
 	p, err := newParser(text)
 	if err != nil {
-		return engine.Generator[string]{}, err
+		return nil, err
 	}
-	root, err := p.pattern()
-	if err != nil {
-		return engine.Generator[string]{}, err
-	}
-	return engine.NewGenerator(id, func(c *engine.Case) string {
-		var b strings.Builder
-		c.Span(id, func() { root.emit(c, &b) })
-		return b.String()
-	}), nil
+	return p.pattern()
 }

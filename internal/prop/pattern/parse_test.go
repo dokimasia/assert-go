@@ -4,11 +4,17 @@
 package pattern_test
 
 import (
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/prop/pattern"
 )
+
+// outside is the text that every error of Parse starts with.
+const outside = "pattern: outside the portable subset: "
 
 // accepted are patterns that together contain every construct of the
 // portable subset, from the definition's executable reference, with a
@@ -44,19 +50,68 @@ var accepted = []string{
 	`[x-x]`,
 }
 
-// TestParse checks that StringMatching accepts every construct of the
-// portable subset, and refuses each construct outside it with an error that
-// states the position and the fault.
+// atTheLimits are patterns whose nested counts multiply to the limit, or
+// whose groups nest to it, with the open quantifiers that count as 1.
+var atTheLimits = []string{
+	`(?:a{10}){100}`,
+	`(a{1000})*`,
+	`(a{1000}){0,1}`,
+	strings.Repeat("(", 100) + "a" + strings.Repeat(")", 100),
+}
+
+// tooDeep is a pattern whose groups nest one deeper than the limit.
+var tooDeep = strings.Repeat("(", 101) + "a" + strings.Repeat(")", 101)
+
+// maxFuzzedPattern is the longest pattern whose acceptance by RE2
+// FuzzParse checks. The densest pattern of the subset this long, a{0,1000}
+// repeated, compiles to 910,002 instructions, below RE2's limit of
+// 3,355,443. A longer pattern can pass the limit.
+const maxFuzzedPattern = 4096
+
+// FuzzParse checks that Parse returns an error, and does not panic, for
+// any text that it refuses, and that RE2 compiles every pattern of up to
+// maxFuzzedPattern bytes that Parse accepts. The second check makes the
+// subset portable to Go.
+func FuzzParse(f *testing.F) {
+	for _, text := range accepted {
+		f.Add(text)
+	}
+	for _, text := range atTheLimits {
+		f.Add(text)
+	}
+	f.Add(`(a{1000}){2}`)
+	f.Add(tooDeep)
+	f.Fuzz(func(t *testing.T, text string) {
+		if _, err := pattern.Parse(text); err != nil || len(text) > maxFuzzedPattern {
+			return
+		}
+		if _, err := regexp.Compile(text); err != nil {
+			t.Fatalf("Parse accepts %q, which RE2 refuses: %v", text, err)
+		}
+	})
+}
+
+// TestParse checks that Parse accepts every construct of the portable
+// subset, and refuses each construct outside it with an error that states
+// the position and the fault.
 func TestParse(t *testing.T) {
 	t.Parallel()
 
-	t.Run("StringMatching", func(t *testing.T) {
+	t.Run("Parse", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("returns a generator for every construct of the subset", func(t *testing.T) {
+		t.Run("returns the pieces of every construct of the subset", func(t *testing.T) {
 			t.Parallel()
 			for _, text := range accepted {
-				_, err := pattern.StringMatching(text)
+				_, err := pattern.Parse(text)
+				assert.NoError(t, err, text)
+			}
+		})
+
+		t.Run("returns the pieces of a pattern at the limits of the subset", func(t *testing.T) {
+			t.Parallel()
+			for _, text := range atTheLimits {
+				_, err := pattern.Parse(text)
 				assert.NoError(t, err, text)
 			}
 		})
@@ -100,6 +155,31 @@ func TestParse(t *testing.T) {
 				name: "returns ErrOutside for a count above the limit",
 				give: `a{1001}`,
 				want: `"a{1001}" at 6: the count 1001 is above 1000`,
+			},
+			{
+				name: "returns ErrOutside for nested counts that multiply past the limit",
+				give: `(a{1000}){2}`,
+				want: `"(a{1000}){2}" at 12: nested counts multiply to 2000, above 1000`,
+			},
+			{
+				name: "returns ErrOutside for three nested counts that multiply past the limit",
+				give: `((a{100}){10}){2}`,
+				want: `"((a{100}){10}){2}" at 17: nested counts multiply to 2000, above 1000`,
+			},
+			{
+				name: "returns ErrOutside for an open count whose lower count multiplies past the limit",
+				give: `(a{500}){3,}`,
+				want: `"(a{500}){3,}" at 12: nested counts multiply to 1500, above 1000`,
+			},
+			{
+				name: "returns ErrOutside for a count of 0, which counts as 1 in a product past the limit",
+				give: `((a{1000}){0}){2}`,
+				want: `"((a{1000}){0}){2}" at 17: nested counts multiply to 2000, above 1000`,
+			},
+			{
+				name: "returns ErrOutside for groups nested past the limit",
+				give: tooDeep,
+				want: strconv.Quote(tooDeep) + " at 101: groups nest deeper than 100",
 			},
 			{
 				name: "returns ErrOutside for a count with a leading zero",
@@ -276,7 +356,7 @@ func TestParse(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				_, err := pattern.StringMatching(tt.give)
+				_, err := pattern.Parse(tt.give)
 				assert.ErrorIs(t, err, pattern.ErrOutside, "the pattern is outside the subset")
 				assert.Equal(t, err.Error(), outside+tt.want, "the position and the fault")
 			})

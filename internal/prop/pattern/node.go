@@ -3,85 +3,43 @@
 
 package pattern
 
-import (
-	"strings"
+import "go.dokimi.dev/assert/internal/prop/choice"
 
-	"go.dokimi.dev/assert/internal/prop/choice"
-	"go.dokimi.dev/assert/internal/prop/engine"
+// Node is a parsed piece of a pattern: a [Literal], a [Sequence], an
+// [Alternation], a [Repeat] or a [Class].
+type Node interface {
+	// piece marks the five kinds of piece, so no other type is a Node.
+	piece()
+}
+
+// Literal is one character.
+type Literal rune
+
+// Sequence is pieces one after another. An empty sequence is the empty
+// string.
+type Sequence []Node
+
+// Alternation is two or more branches, in their stated order.
+type Alternation []Node
+
+// Repeat is a quantified piece.
+type Repeat struct {
+	// Item is the piece that repeats.
+	Item Node
+	// Sizes are the numbers of repetitions that the quantifier allows.
+	Sizes choice.Sizes
+}
+
+var (
+	_ Node = Literal(0)
+	_ Node = Sequence(nil)
+	_ Node = Alternation(nil)
+	_ Node = Repeat{}
+	_ Node = Class{}
 )
 
-// The labels of the spans that a pattern's pieces open.
-const (
-	// alternationLabel labels the span of an alternation's index and its
-	// branch.
-	alternationLabel = "alternation"
-	// repeatLabel labels the span of a quantified piece's repetitions.
-	repeatLabel = "repeat"
-)
-
-// node is a parsed piece of a pattern, which decodes its characters from a
-// case.
-type node interface {
-	// emit makes the piece's choices on c and writes its characters to b.
-	emit(c *engine.Case, b *strings.Builder)
-}
-
-// literal is one character, which makes no choice.
-type literal rune
-
-var _ node = literal(0)
-
-// emit writes the character.
-func (l literal) emit(_ *engine.Case, b *strings.Builder) {
-	b.WriteRune(rune(l))
-}
-
-// sequence is pieces that decode one after another. An empty sequence
-// decodes the empty string.
-type sequence []node
-
-var _ node = sequence(nil)
-
-// emit decodes each piece in order.
-func (s sequence) emit(c *engine.Case, b *strings.Builder) {
-	for _, n := range s {
-		n.emit(c, b)
-	}
-}
-
-// alternation is two or more branches, of which a case decodes one.
-type alternation struct {
-	// branches are the branches, in their stated order.
-	branches []node
-	// bounds are the bounds of a branch's index, [0, len(branches) - 1].
-	bounds choice.IntegerBounds
-}
-
-var _ node = alternation{}
-
-// emit decodes the branch at an index that decides structure, in a span
-// labelled alternation. The index's edge and its target are 0, the first
-// branch.
-func (a alternation) emit(c *engine.Case, b *strings.Builder) {
-	c.Span(alternationLabel, func() {
-		a.branches[c.Structure(a.bounds, 0).Magnitude()].emit(c, b)
-	})
-}
-
-// repeat is a quantified piece.
-type repeat struct {
-	// item is the piece that repeats.
-	item node
-	// sizes are the numbers of repetitions that the quantifier allows.
-	sizes choice.Sizes
-}
-
-var _ node = repeat{}
-
-// emit decodes the repetitions as a collection, in a span labelled repeat.
-// Its target is the fewest repetitions.
-func (r repeat) emit(c *engine.Case, b *strings.Builder) {
-	c.Span(repeatLabel, func() {
-		engine.Collect(c, r.sizes, func() { r.item.emit(c, b) })
-	})
-}
+func (Literal) piece()     {}
+func (Sequence) piece()    {}
+func (Alternation) piece() {}
+func (Repeat) piece()      {}
+func (Class) piece()       {}

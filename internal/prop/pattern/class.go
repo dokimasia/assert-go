@@ -3,13 +3,7 @@
 
 package pattern
 
-import (
-	"strings"
-
-	"go.dokimi.dev/assert/internal/prop/alphabet"
-	"go.dokimi.dev/assert/internal/prop/choice"
-	"go.dokimi.dev/assert/internal/prop/engine"
-)
+import "go.dokimi.dev/assert/internal/prop/alphabet"
 
 // The members of the sets that the subset names, which the class of the
 // same name contains in every engine.
@@ -29,18 +23,14 @@ const (
 // which closes the last gap of a complement.
 var past = alphabet.Interval{First: alphabet.Size, Last: alphabet.Size}
 
-// class is one character of a set, chosen by an index over the set's
-// members in the order of the default alphabet. Index 0, the target, is
-// the simplest member.
-type class struct {
-	// intervals are the members' indices in the default alphabet, sorted,
-	// neither overlapping nor touching.
-	intervals []alphabet.Interval
-	// bounds are the bounds of a member's index, [0, members - 1].
-	bounds choice.IntegerBounds
+// Class is one character of a set: a class [...], ., \d, \w or \s.
+type Class struct {
+	// Members are the indices of the set's characters in the default
+	// alphabet, sorted, neither overlapping nor touching.
+	Members []alphabet.Interval
+	// Count is the number of members, at least 1.
+	Count uint64
 }
-
-var _ node = class{}
 
 // The classes that the subset names.
 var (
@@ -56,21 +46,21 @@ var (
 
 // newClass returns the class of the indices that intervals contain, which
 // it sorts and merges in place, and false when they contain none.
-func newClass(intervals []alphabet.Interval) (class, bool) {
+func newClass(intervals []alphabet.Interval) (Class, bool) {
 	merged := alphabet.Merge(intervals)
 	members := uint64(0)
 	for _, v := range merged {
 		members += uint64(v.Last-v.First) + 1
 	}
 	if members == 0 {
-		return class{}, false
+		return Class{}, false
 	}
-	return class{intervals: merged, bounds: choice.MustIntegerBounds(choice.Int{}, choice.UintOf(members-1))}, true
+	return Class{Members: merged, Count: members}, true
 }
 
 // shorthand returns the class that \d, \w or \s names for the letter after
 // the backslash, and false for any other letter.
-func shorthand(r rune) (class, bool) {
+func shorthand(r rune) (Class, bool) {
 	if r == 'd' {
 		return digitClass, true
 	}
@@ -80,21 +70,7 @@ func shorthand(r rune) (class, bool) {
 	if r == 's' {
 		return spaceClass, true
 	}
-	return class{}, false
-}
-
-// emit writes the member at an index that the case chooses: a value choice
-// that the random phase draws anew.
-func (cl class) emit(c *engine.Case, b *strings.Builder) {
-	offset := c.Integer(cl.bounds).Magnitude()
-	for _, v := range cl.intervals {
-		width := uint64(v.Last-v.First) + 1
-		if offset < width {
-			b.WriteRune(alphabet.Rune(v.First + uint32(offset)))
-			return
-		}
-		offset -= width
-	}
+	return Class{}, false
 }
 
 // membersOf returns the indices of the characters of chars.

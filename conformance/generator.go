@@ -11,7 +11,7 @@ import (
 
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/engine"
-	"go.dokimi.dev/assert/internal/prop/pattern"
+	"go.dokimi.dev/assert/internal/prop/matching"
 )
 
 // The ids of the generators that the corpus states, and of the position of
@@ -344,7 +344,7 @@ func dictOf(spec generatorSpec, self *engine.Generator[any]) (engine.Generator[a
 // textOf returns string, bytes or string-matching.
 func textOf(spec generatorSpec) (engine.Generator[any], error) {
 	if spec.Gen == stringMatchingGen {
-		g, err := pattern.StringMatching(spec.Pattern)
+		g, err := matching.StringMatching(spec.Pattern)
 		if err != nil {
 			return engine.Generator[any]{}, err
 		}

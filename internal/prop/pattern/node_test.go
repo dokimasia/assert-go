@@ -7,70 +7,68 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
-	"go.dokimi.dev/assert/internal/prop/engine"
+	"go.dokimi.dev/assert/internal/prop/choice"
+	"go.dokimi.dev/assert/internal/prop/pattern"
 )
 
-// TestNode checks what the pieces of a pattern decode from stated choices:
-// a literal, a sequence, an alternation and a repetition, with the spans
-// they open.
+// TestNode checks the pieces that Parse returns: a literal, a sequence, an
+// alternation and a repetition, and the anchors and groups that leave no
+// piece of their own.
 func TestNode(t *testing.T) {
 	t.Parallel()
 
-	t.Run("StringMatching", func(t *testing.T) {
+	unbounded, err := choice.NewUnboundedSizes(0)
+	assert.NoError(t, err, "the sizes of *")
+	optional, err := choice.NewSizes(0, 1)
+	assert.NoError(t, err, "the sizes of ?")
+
+	t.Run("Parse", func(t *testing.T) {
 		t.Parallel()
 
 		tests := []struct {
 			name string
-			text string
-			give []uint64
-			want string
+			give string
+			want pattern.Node
 		}{
+			{name: "returns a literal for one character", give: `a`, want: pattern.Literal('a')},
+			{name: "returns an empty sequence for the empty pattern", give: ``, want: pattern.Sequence(nil)},
 			{
-				name: "decodes the branch that an alternation's index chooses",
-				text: `(foo|bar)`,
-				give: []uint64{1},
-				want: "bar",
+				name: "returns a sequence of the pieces in order",
+				give: `ab`,
+				want: pattern.Sequence{pattern.Literal('a'), pattern.Literal('b')},
 			},
-			{name: "decodes a repetition for each continue flag", text: `a*`, give: []uint64{1, 1, 0}, want: "aa"},
 			{
-				name: "decodes a counted repetition whatever its forced flags record",
-				text: `(ab|c){2}`,
-				give: []uint64{0, 1, 0, 0, 1},
-				want: "cab",
+				name: "returns an alternation of the branches in order",
+				give: `a|bc`,
+				want: pattern.Alternation{
+					pattern.Literal('a'),
+					pattern.Sequence{pattern.Literal('b'), pattern.Literal('c')},
+				},
 			},
-			{name: "decodes nine repetitions for a count of nine", text: `a{9}`, want: "aaaaaaaaa"},
-			{name: "decodes an empty branch as the empty string", text: `(a|)b`, give: []uint64{1}, want: "b"},
+			{
+				name: "returns a repetition of a piece with the sizes of its quantifier",
+				give: `a*`,
+				want: pattern.Repeat{Item: pattern.Literal('a'), Sizes: unbounded},
+			},
+			{
+				name: "returns the piece of a group, which adds none of its own",
+				give: `(?:a)?`,
+				want: pattern.Repeat{Item: pattern.Literal('a'), Sizes: optional},
+			},
+			{
+				name: "returns the pieces between the anchors, which add none",
+				give: `^ab$`,
+				want: pattern.Sequence{pattern.Literal('a'), pattern.Literal('b')},
+			},
+			{name: "returns an escaped metacharacter as a literal", give: `\.`, want: pattern.Literal('.')},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				got, _ := decode(t, tt.text, tt.give...)
-				assert.Equal(t, got, tt.want, "the decoded string")
+				got, err := pattern.Parse(tt.give)
+				assert.NoError(t, err, "the pattern is in the portable subset")
+				assert.Equal(t, got, tt.want, "the pieces")
 			})
 		}
-
-		t.Run("decodes a sequence of literals without a choice", func(t *testing.T) {
-			t.Parallel()
-			got, e := decode(t, `abc`)
-			assert.Equal(t, got, "abc", "the literals")
-			assert.Empty(t, e.Case.Choices(), "no choice")
-		})
-
-		t.Run("records a span for each alternation, repetition and element", func(t *testing.T) {
-			t.Parallel()
-			_, e := decode(t, `(a|b)[cd]*`, 1, 1, 1, 0)
-			assert.Equal(t, e.Case.Spans(), []engine.Span{
-				{Label: "string-matching", Start: 0, End: 4, Depth: 0, Parent: -1},
-				{Label: "alternation", Start: 0, End: 1, Depth: 1, Parent: 0},
-				{Label: "repeat", Start: 1, End: 4, Depth: 1, Parent: 0},
-				{Label: "element", Start: 1, End: 3, Depth: 2, Parent: 2},
-			}, "the spans the definition's reference records")
-		})
-
-		t.Run("records no alternation span for one branch", func(t *testing.T) {
-			t.Parallel()
-			_, e := decode(t, `(ab)`)
-			assert.Equal(t, labels(e.Case.Spans()), []string{"string-matching"}, "the string's span alone")
-		})
 	})
 }
