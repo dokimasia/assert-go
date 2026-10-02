@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"go.dokimi.dev/assert/internal/prop/choice"
+	"go.dokimi.dev/assert/internal/prop/random"
 	"go.dokimi.dev/assert/internal/prop/token"
 )
 
@@ -76,6 +77,11 @@ type failure struct {
 // takes their runs in the pass's order, as one worker would have run them.
 // It stops at the first accepted one, and charges the budget only for the
 // runs up to it.
+//
+// Each run takes a spare case, whose storage the run starts over. A run
+// whose failure the shrinker discards returns its case to the spares once
+// the shrinker has read it, so the cases of a shrink grow their storage
+// once.
 type shrinker struct {
 	// body is the property's body.
 	body Body
@@ -100,18 +106,29 @@ type shrinker struct {
 	sizes map[string]int
 	// target is the identity being shrunk.
 	target Identity
+	// spare are the cases of runs that the shrinker no longer reads, for
+	// later runs to start over.
+	spare []*Case
+	// batch is the storage of the choice sequences of one batch of runs.
+	batch [][]choice.Choice
+	// executions is the storage of the runs that runAll returns, valid
+	// until its next call.
+	executions []Execution
+	// generating supplies the values of each explanation filling.
+	generating *generating
 }
 
 // newShrinker returns a shrinker that starts from the first failing case.
 func newShrinker(body Body, first Execution, s Settings) *shrinker {
 	sh := &shrinker{
-		body:     body,
-		s:        s,
-		workers:  max(s.Workers, 1),
-		limit:    s.Shrink,
-		failures: make(map[Identity]*failure),
-		sizes:    map[string]int{token.Encode(first.Case.Choices()): len(first.Case.Choices())},
-		target:   first.Identity,
+		body:       body,
+		s:          s,
+		workers:    max(s.Workers, 1),
+		limit:      s.Shrink,
+		failures:   make(map[Identity]*failure),
+		sizes:      map[string]int{token.Encode(first.Case.Choices()): len(first.Case.Choices())},
+		target:     first.Identity,
+		generating: newGenerating(random.Source{}),
 	}
 	if s.ShrinkTime > 0 {
 		sh.deadline = s.ShrinkClock.Now().Add(s.ShrinkTime)
@@ -135,16 +152,19 @@ func (sh *shrinker) spans() []Span {
 	return sh.best().spans
 }
 
-// record keeps a failing run when it is its identity's first or smallest.
-func (sh *shrinker) record(e Execution) {
+// record keeps a failing run when it is its identity's first or smallest,
+// and reports whether it kept the run.
+func (sh *shrinker) record(e Execution) bool {
 	nodes := nodesOf(e.Case)
 	known, ok := sh.failures[e.Identity]
 	if !ok {
 		sh.found = append(sh.found, e.Identity)
 	}
-	if !ok || compareNodes(nodes, known.nodes) == -1 {
-		sh.failures[e.Identity] = &failure{identity: e.Identity, execution: e, nodes: nodes, spans: e.Case.Spans()}
+	if ok && compareNodes(nodes, known.nodes) != -1 {
+		return false
 	}
+	sh.failures[e.Identity] = &failure{identity: e.Identity, execution: e, nodes: nodes, spans: e.Case.Spans()}
+	return true
 }
 
 // room returns the runs left in the budget. Once the time is spent it
@@ -157,33 +177,62 @@ func (sh *shrinker) room() int {
 }
 
 // run runs the body on choices, spending one run of the budget. It reports
-// false, and runs nothing, once the budget or the time is spent.
+// false, and runs nothing, once the budget or the time is spent. The
+// caller releases the run's case once it no longer reads it.
 func (sh *shrinker) run(choices []choice.Choice) (Execution, bool) {
 	if sh.room() == 0 {
 		return Execution{}, false
 	}
 	sh.runs++
-	return sh.replay(choices), true
+	return finish(sh.replaying(choices), sh.body), true
 }
 
 // runAll runs the body on each of one or more choice sequences at once,
-// the first on the calling goroutine, and returns their runs in order. The
-// caller charges the budget for each run it takes.
+// the first on the calling goroutine, and returns their runs in order,
+// valid until its next call. The caller charges the budget for each run it
+// takes, and releases the case of each run whose failure it discards.
 func (sh *shrinker) runAll(choices [][]choice.Choice) []Execution {
-	runs := make([]Execution, len(choices))
-	var wg sync.WaitGroup
-	for i, c := range choices[1:] {
-		wg.Go(func() { runs[i+1] = sh.replay(c) })
+	runs := slices.Grow(sh.executions[:0], len(choices))[:len(choices)]
+	for i, c := range choices {
+		runs[i] = Execution{Case: sh.replaying(c)}
 	}
-	runs[0] = sh.replay(choices[0])
+	var wg sync.WaitGroup
+	for i := range runs[1:] {
+		wg.Go(func() { runs[i+1] = finish(runs[i+1].Case, sh.body) })
+	}
+	runs[0] = finish(runs[0].Case, sh.body)
 	wg.Wait()
+	sh.executions = runs
 	return runs
 }
 
-// replay runs the body on a case that replays choices, outside the case
-// tree.
-func (sh *shrinker) replay(choices []choice.Choice) Execution {
-	return execute(sh.body, replaying{choices: choices}, sh.s.MaxChoices, sh.s.Clock)
+// replaying returns a spare case, or a new one, started over to replay
+// choices outside the case tree.
+func (sh *shrinker) replaying(choices []choice.Choice) *Case {
+	c := sh.spareCase()
+	c.recycleReplaying(choices, sh.s.MaxChoices, sh.s.Clock)
+	return c
+}
+
+// spareCase returns a case that no run of the shrinker reads any more, or
+// a new case when none is spare.
+func (sh *shrinker) spareCase() *Case {
+	last := len(sh.spare) - 1
+	if last < 0 {
+		return new(Case)
+	}
+	c := sh.spare[last]
+	sh.spare[last] = nil
+	sh.spare = sh.spare[:last]
+	return c
+}
+
+// release makes the cases of runs spare, for later runs to start over. The
+// caller reads none of the runs afterwards.
+func (sh *shrinker) release(runs ...Execution) {
+	for _, e := range runs {
+		sh.spare = append(sh.spare, e.Case)
+	}
 }
 
 // consider runs a candidate that is smaller than the best case and new,
@@ -217,26 +266,32 @@ func (sh *shrinker) fresh(nodes []node, batch []candidate) (candidate, bool) {
 // for each run, records each run's size, and keeps each failure. It stops
 // at the first run that became the best case. It reports whether one did,
 // and whether the search is over: a candidate was accepted, or the budget
-// or the time is spent.
+// or the time is spent. The cases of the runs whose failures it discards
+// become spare.
 func (sh *shrinker) settle(batch []candidate) (accepted, over bool) {
 	room := sh.room()
 	if room == 0 {
 		return false, true
 	}
 	batch = batch[:min(len(batch), room)]
-	choices := make([][]choice.Choice, len(batch))
-	for i, c := range batch {
-		choices[i] = c.choices
+	sh.batch = sh.batch[:0]
+	for _, c := range batch {
+		sh.batch = append(sh.batch, c.choices)
 	}
-	for i, e := range sh.runAll(choices) {
+	runs := sh.runAll(sh.batch)
+	for i, e := range runs {
 		sh.runs++
 		sh.sizes[batch[i].token] = e.Case.position()
 		if e.Status != CaseFailed {
+			sh.release(e)
 			continue
 		}
 		before := sh.best()
-		sh.record(e)
+		if !sh.record(e) {
+			sh.release(e)
+		}
 		if sh.best() != before {
+			sh.release(runs[i+1:]...)
 			return true, true
 		}
 	}

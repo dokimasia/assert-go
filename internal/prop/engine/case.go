@@ -167,6 +167,9 @@ type Case struct {
 	// parent is the context that the case's context derives from, which
 	// [WithContext] sets, and nil for context.Background().
 	parent context.Context
+	// replayed is the provider of a case that recycleReplaying starts, held
+	// in the case so that the provider costs no allocation.
+	replayed replaying
 	// ctx is the case's context, and nil until a caller asks for it.
 	ctx context.Context
 	// cancelCtx cancels ctx.
@@ -208,6 +211,14 @@ func (c *Case) recycle(p provider, maxChoices int, w *tree.Walker, clock assert.
 		draws:      c.draws[:0],
 		cleanups:   c.cleanups[:0],
 	}
+}
+
+// recycleReplaying empties c, as recycle does, for a case outside the case
+// tree that replays choices, whose provider is c's own field.
+func (c *Case) recycleReplaying(choices []choice.Choice, maxChoices int, clock assert.Clock) {
+	c.recycle(nil, maxChoices, nil, clock)
+	c.replayed = replaying{choices: choices}
+	c.provider = &c.replayed
 }
 
 // Helper forwards a helper mark to the case's recorder, which counts it.

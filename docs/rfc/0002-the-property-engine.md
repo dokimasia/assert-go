@@ -323,6 +323,13 @@ panic cannot swallow the end of its case. `testing` ends a test the same
 way. `Fatalf` from another goroutine ends that goroutine only, and the
 case fails when its body returns.
 
+The engine reuses a case's storage after its body returns. The runner on
+one worker runs every case of the generation phase on one case's
+storage, and the shrinker starts each candidate on the storage of a case
+whose run it discarded. A goroutine that reports to a case must end
+before the body returns, as one that logs to a `*testing.T` must end
+before the test returns.
+
 `Rand` returns a source whose every value is an integer choice over the
 whole unsigned range.
 
@@ -582,9 +589,9 @@ for that reason.
   engine is 4,300 lines of Python in 17 modules. A Go translation with
   explicit types and error paths is likely to run to 6,000 lines in 8
   internal packages, with the tests on top.
-- **Each public function is a wrapper.** The surface has 44 functions
+- **Each public function is a wrapper.** The surface has 46 functions
   and methods that call the engine's, each a few lines with a docblock
-  of its own: 35 functions, 3 methods of `Generator` and 6 of `Case`.
+  of its own: 35 functions, 3 methods of `Generator` and 8 of `Case`.
 - **A case costs a goroutine and a recorder.** Goexit needs the
   goroutine. A property of 100 cases starts 100 goroutines and builds
   100 recorders, and the benchmarks measure what that costs before any

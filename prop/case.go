@@ -42,6 +42,10 @@ import (
 // body: draws from other goroutines record their choices in the order the
 // scheduler gives, and a replay of those choices decodes other values.
 //
+// A goroutine that reports to the case must end before the body returns.
+// The run reuses the storage of a case whose body has returned for a later
+// case, which keeps any report made after that return.
+//
 // # Allocation contract
 //
 // Helper, Clock, Assume, Classify of a counted label and Rand allocate

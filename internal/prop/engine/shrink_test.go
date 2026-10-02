@@ -23,11 +23,13 @@ import (
 const referenceSeed = 7
 
 // shrinkAllocs are the allocations of a run from a stored failing case of
-// 2000 that shrinks to 1001 and explains it, measured: 26 cases of about 24
+// 2000 that shrinks to 1001 and explains it, measured: 26 cases of about 18
 // allocations each, the record of the stored case's run, and 5 for the
 // delete-and-lower round that ends the shrink, whose one integer is at
-// index 0.
-const shrinkAllocs = 621
+// index 0. The shrink's cases reuse the storage of spare cases, so each
+// allocates its recorder, its goroutine and its candidate's choices, nodes
+// and token, and not the growth of its record.
+const shrinkAllocs = 478
 
 // property is a body that draws its values and returns the assertion of
 // the failure they make, or "" for none.

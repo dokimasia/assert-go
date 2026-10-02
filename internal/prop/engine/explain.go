@@ -85,26 +85,29 @@ func explain(sh *shrinker, f *failure, seed uint64) []Explained {
 func fill(sh *shrinker, f *failure, span Span, g erased, base uint64) Relevance {
 	relevance := Untested
 	for next := uint64(0); ; {
-		batch := make([][]choice.Choice, 0, sh.workers)
-		for ; next < explainFillings && len(batch) < sh.workers; next++ {
+		sh.batch = sh.batch[:0]
+		for ; next < explainFillings && len(sh.batch) < sh.workers; next++ {
 			if choices, ok := filled(sh, f.nodes, span, g, random.New(base+next)); ok {
-				batch = append(batch, choices)
+				sh.batch = append(sh.batch, choices)
 			}
 		}
-		if len(batch) == 0 {
+		if len(sh.batch) == 0 {
 			return relevance
 		}
-		count := min(len(batch), sh.room())
+		count := min(len(sh.batch), sh.room())
 		if count == 0 {
 			return Untested
 		}
-		for _, e := range sh.runAll(batch[:count]) {
+		runs := sh.runAll(sh.batch[:count])
+		for i, e := range runs {
 			sh.runs++
 			if e.Status != CaseFailed || e.Identity != f.identity {
+				sh.release(runs[i:]...)
 				return ValueMatters
 			}
+			sh.release(e)
 		}
-		if count < len(batch) {
+		if count < len(sh.batch) {
 			return Untested
 		}
 		relevance = AnyValueFails
@@ -114,14 +117,19 @@ func fill(sh *shrinker, f *failure, span Span, g erased, base uint64) Relevance 
 // filled returns the choices of nodes with one draw's span replaced by the
 // choices that a fresh decode of g, capped at [MaxChoices], draws from
 // source. It reports false when the decode returns no value: it rejects,
-// passes the cap or panics.
+// passes the cap or panics. The decode runs on a spare case of sh, with
+// sh's generating provider.
 func filled(sh *shrinker, nodes []node, span Span, g erased, source random.Source) ([]choice.Choice, bool) {
-	fresh := execute(func(c *Case) { g.decode(c) }, newGenerating(source), MaxChoices, sh.s.Clock)
+	sh.generating.reset(source)
+	c := sh.spareCase()
+	c.recycle(sh.generating, MaxChoices, nil, sh.s.Clock)
+	fresh := finish(c, func(c *Case) { g.decode(c) })
+	defer sh.release(fresh)
 	if fresh.Status != CasePassed {
 		return nil, false
 	}
 	choices := choicesOf(nodes)
-	return slices.Concat(choices[:span.Start], fresh.Case.Choices(), choices[span.End:]), true
+	return slices.Concat(choices[:span.Start], fresh.Case.record(), choices[span.End:]), true
 }
 
 // nearest returns the value one step towards the target of an integer or a
@@ -140,6 +148,7 @@ func nearest(sh *shrinker, nodes []node, span Span, g erased) (any, Relevance) {
 	if !ok {
 		return nil, Untested
 	}
+	sh.release(e)
 	if e.Status != CasePassed {
 		return nil, ValueMatters
 	}
