@@ -6,6 +6,7 @@ package conformance
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"reflect"
 	"strconv"
 	"time"
@@ -143,7 +144,7 @@ type boundsSpec struct {
 // checkBehaviour runs the body of a behaviour vector under its settings,
 // and compares the run with the detail it states. A failing run is
 // compared through the record that ForAll reports to a recorder, every
-// detail field of it. A passing run reports no record, so its counts are
+// detail field of it. A passing run does not report a record, so its counts are
 // compared through the engine's run of the same settings.
 func checkBehaviour(raw json.RawMessage, dir string) error {
 	var v struct {
@@ -238,7 +239,12 @@ func (s behaviourSettings) resolve(dir string) ([]prop.Option, engine.Settings, 
 // store writes each stored case of s to the store dir as an entry of the
 // behaviour vector's property, and adds its choices to settings.
 func (s behaviourSettings) store(dir string, settings *engine.Settings) error {
-	version, err := Version()
+	return s.storeIn(definition, dir, settings)
+}
+
+// storeIn is store, with the version of the definition in fsys.
+func (s behaviourSettings) storeIn(fsys fs.FS, dir string, settings *engine.Settings) error {
+	version, err := versionIn(fsys)
 	if err != nil {
 		return err
 	}

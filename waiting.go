@@ -10,22 +10,22 @@ import (
 )
 
 // Eventually runs fn every interval until it passes or timeout
-// expires, then stops the test reporting the last failure.
+// expires, then stops the test and reports the last failure.
 //
 //	assert.Eventually(t, 5*time.Second, 100*time.Millisecond,
 //	    func(tb assert.TB) {
 //	        assert.Equal(tb, cache.Get(key), want, "the cache caught up")
 //	    }, "the cache converges")
 //
-// fn receives a seat of its own, so assertions inside it record an
-// attempt rather than ending the test. fn runs at least once however
-// short the timeout.
+// fn receives a seat of its own, so an assertion inside it records an
+// attempt and does not end the test. fn runs at least once however short
+// the timeout. An interval below a millisecond waits a millisecond.
 //
-// This spends real time, deliberately. It is for a condition something
-// outside the test makes true, which a controlled clock cannot reach:
-// a clock only moves when someone advances it, and nobody will while
-// this call is blocking. Where the subject reads a clock the test
-// controls, drive that clock and read the answer instead.
+// Eventually spends real time. It is for a condition that something
+// outside the test makes true. A controlled clock moves only when the
+// test advances it, and the test cannot advance it while this call
+// blocks. Where the subject reads a clock that the test controls, drive
+// that clock and read the result instead.
 func Eventually(tb TB, timeout, interval time.Duration, fn func(tb TB), msg string) {
 	tb.Helper()
 	matcher.Eventually(tb, matcher.Fatal, timeout, interval, func(s matcher.Seat) {
@@ -40,11 +40,14 @@ func Eventually(tb TB, timeout, interval time.Duration, fn func(tb TB), msg stri
 //	    return cache.Contains(key)
 //	}, "the key appears in the cache")
 //
-// Backoff starts at a millisecond and doubles, capped at a quarter of
-// the timeout. It differs from [Eventually] in what it reports: a
-// predicate has no failure to carry, so this says only that the wait
-// ran out. Where the reason matters, write the condition as assertions
-// and use [Eventually]. This spends real time for the same reason.
+// The backoff starts at a millisecond and doubles up to a quarter of the
+// timeout. A timeout below 4 ms keeps it at a millisecond.
+//
+// EventuallyTrue differs from [Eventually] in what it reports. A
+// predicate does not report a failure of its own, so the failure states
+// only that the wait ran out. Where the reason matters, write the condition as
+// assertions and use [Eventually]. EventuallyTrue spends real time for
+// the same reason.
 func EventuallyTrue(tb TB, timeout time.Duration, pred func() bool, msg string) {
 	tb.Helper()
 	matcher.EventuallyTrue(tb, matcher.Fatal, timeout, pred, msg)

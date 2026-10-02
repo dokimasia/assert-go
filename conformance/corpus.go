@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"maps"
+	"slices"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -37,12 +39,18 @@ type Case struct {
 	// Args are the assertion's arguments after the seat, as typed
 	// literals, excluding the trailing message.
 	Args []json.RawMessage `json:"args"`
+	// Options are the ids of the relaxations that the call passes.
+	Options []ID `json:"options"`
 	// Expect is pass or fail.
 	Expect string `json:"expect"`
 	// Detail is the detail that the failure's record states, keyed by the
 	// names that the assertion declares. Every stated field must match,
 	// and a field that the case leaves out is not checked.
 	Detail map[string]json.RawMessage `json:"detail"`
+	// Fields are the detail fields that the assertion declares, taken
+	// from the assertion table and not stated per case. A failure's
+	// record contains exactly these.
+	Fields []string `json:"-"`
 	// Subject names the behaviour that the assertion takes in place of
 	// arguments, and is empty for a case that states values.
 	Subject struct {
@@ -75,6 +83,11 @@ func (c Case) Decoded() ([]any, error) {
 // Check returns how the seat's outcome differs from the one that the case
 // requires, or nil when they match.
 //
+// The runner passes the case's ID as the assertion's message. The first
+// record of a failing case names the case's assertion, states the ID as
+// its contract, contains exactly the case's Fields, and has the case's
+// value for every field that the case states.
+//
 // It returns an error instead of failing a test, so that a test can drive
 // the rule with cases that it must refuse. The shared suites state their
 // verdict as a value for the same reason.
@@ -95,20 +108,33 @@ func (c Case) Check(r *assert.Recorder) error {
 		if len(records) == 0 {
 			return fmt.Errorf("conformance: %s reported a failure without a record", c.ID)
 		}
-		return c.checkDetail(records[0])
+		return c.checkRecord(records[0])
 
 	default:
 		return fmt.Errorf("conformance: %s states an unknown expectation %q", c.ID, c.Expect)
 	}
 }
 
-// checkDetail returns how a record's detail differs from the one that the
-// case states, or nil when every stated field matches.
+// checkRecord returns how a record differs from the one that the case
+// states, or nil when it matches.
 //
 // A case states values as typed literals, so an int and a float of the
 // same rendering differ. The comparison is of the decoded value, because
 // the assertion reports a Go value and not a literal.
-func (c Case) checkDetail(f assert.Failure) error {
+func (c Case) checkRecord(f assert.Failure) error {
+	if f.Assertion != c.Assertion {
+		return fmt.Errorf("conformance: %s reported a record of %q, want %q", c.ID, f.Assertion, c.Assertion)
+	}
+	if f.Contract != c.ID {
+		return fmt.Errorf("conformance: %s reported the contract %q, want the message %q", c.ID, f.Contract, c.ID)
+	}
+	reported := slices.Sorted(maps.Keys(f.Detail))
+	declared := slices.Sorted(slices.Values(c.Fields))
+	if !slices.Equal(reported, declared) {
+		return fmt.Errorf("conformance: %s reported the detail fields %q, want the declared %q",
+			c.ID, reported, declared)
+	}
+
 	for name, raw := range c.Detail {
 		want, err := Decode(raw)
 		if err != nil {
@@ -128,15 +154,23 @@ func (c Case) checkDetail(f assert.Failure) error {
 }
 
 // Cases returns every corpus case, keyed by the assertion it covers.
-func Cases() (map[ID][]Case, error) {
-	names, err := fs.Glob(definition, corpusGlob)
+func Cases() (map[ID][]Case, error) { return casesIn(definition, corpusGlob) }
+
+// casesIn returns the cases of the corpus files of fsys that glob
+// matches, keyed by the assertion that each covers.
+func casesIn(fsys fs.FS, glob string) (map[ID][]Case, error) {
+	assertions, err := assertionsIn(fsys)
+	if err != nil {
+		return nil, err
+	}
+	names, err := fs.Glob(fsys, glob)
 	if err != nil {
 		return nil, fmt.Errorf("conformance: glob the corpus: %w", err)
 	}
 
 	out := make(map[ID][]Case, len(names))
 	for _, name := range names {
-		raw, err := definition.ReadFile(name)
+		raw, err := fs.ReadFile(fsys, name)
 		if err != nil {
 			return nil, fmt.Errorf("conformance: read %s: %w", name, err)
 		}
@@ -148,8 +182,14 @@ func Cases() (map[ID][]Case, error) {
 		if err := json.Unmarshal(raw, &file); err != nil {
 			return nil, fmt.Errorf("conformance: parse %s: %w", name, err)
 		}
+		declared, ok := assertions[file.Assertion]
+		if !ok {
+			return nil, fmt.Errorf("conformance: %s covers %q, which the definition does not state",
+				name, file.Assertion)
+		}
 		for i := range file.Cases {
 			file.Cases[i].Assertion = string(file.Assertion)
+			file.Cases[i].Fields = declared.DetailFields
 		}
 		out[file.Assertion] = append(out[file.Assertion], file.Cases...)
 	}

@@ -3,78 +3,239 @@
 
 package conformance
 
-import "go.dokimi.dev/assert"
+import (
+	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/expect"
+)
 
-// Invoker drives one assertion against a case's decoded arguments.
+// Form is one way a caller states an assertion: a function of the
+// aborting surface or of the recording one, or a method of either
+// surface's chain.
+type Form string
+
+// The forms the standard requires. Every assertion has both function
+// forms, and an assertion whose first argument is the value examined has
+// both chain forms too.
+const (
+	// AbortingCall is a function of the aborting surface, assert.Equal.
+	AbortingCall Form = "assert"
+	// RecordingCall is a function of the recording surface, expect.Equal.
+	RecordingCall Form = "expect"
+	// AbortingChain is a method of the aborting chain, assert.That(...).Equal.
+	AbortingChain Form = "assert.That"
+	// RecordingChain is a method of the recording chain, expect.That(...).Equal.
+	RecordingChain Form = "expect.That"
+)
+
+// Invoker drives one assertion in one form against a case's decoded
+// arguments, its message and its relaxations.
+type Invoker func(tb assert.TB, args []any, msg string, opts []assert.Option)
+
+// Registry maps an assertion to the call that drives it in each form.
 //
 // Go cannot call a function by name at run time, so the corpus
-// dispatches through this table. The completeness gate requires an
-// entry for every assertion the corpus covers, which is what stops the
-// table falling behind the definition.
-type Invoker func(r *assert.Recorder, args []any, msg string)
-
-// Registry maps an assertion to the call that drives it.
-//
-// Every entry drives the aborting surface. The recording surface calls
-// the same comparison with a different mode, and the shared suites
-// already hold the two to the same cases, so driving both here would
-// establish nothing the suites do not.
+// dispatches through this table. The corpus test requires an entry in
+// both function forms for every assertion that a case states values
+// for, and in both chain forms for every one whose name the chain
+// declares, which is what stops the table falling behind the definition
+// or the surfaces.
 //
 // An assertion whose arguments are not expressible as typed literals
 // has no entry: a callable, a context, a predicate or a golden file
-// cannot cross a language boundary as data. Those are covered by the
-// completeness gate for presence, and by this language's own tests for
-// behaviour.
-var Registry = map[ID]Invoker{
-	"equal": func(r *assert.Recorder, args []any, msg string) {
-		assert.Equal(r, args[0], args[1], msg)
+// cannot cross a language boundary as data. A case can name a behaviour
+// for some of them instead, and [SubjectDrivers] drives those.
+var Registry = map[ID]map[Form]Invoker{
+	"equal": {
+		AbortingCall: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			assert.Equal(tb, a[0], a[1], m, o...)
+		},
+		RecordingCall: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			expect.Equal(tb, a[0], a[1], m, o...)
+		},
+		AbortingChain: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			assert.That(tb, a[0]).Equal(a[1], m, o...)
+		},
+		RecordingChain: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			expect.That(tb, a[0]).Equal(a[1], m, o...)
+		},
 	},
-	"not-equal": func(r *assert.Recorder, args []any, msg string) {
-		assert.NotEqual(r, args[0], args[1], msg)
+	"not-equal": {
+		AbortingCall: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			assert.NotEqual(tb, a[0], a[1], m, o...)
+		},
+		RecordingCall: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			expect.NotEqual(tb, a[0], a[1], m, o...)
+		},
+		AbortingChain: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			assert.That(tb, a[0]).NotEqual(a[1], m, o...)
+		},
+		RecordingChain: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			expect.That(tb, a[0]).NotEqual(a[1], m, o...)
+		},
 	},
-	"true": func(r *assert.Recorder, args []any, msg string) {
-		assert.True(r, args[0].(bool), msg)
+	"true": {
+		AbortingCall:  func(tb assert.TB, a []any, m string, _ []assert.Option) { assert.True(tb, a[0].(bool), m) },
+		RecordingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) { expect.True(tb, a[0].(bool), m) },
 	},
-	"false": func(r *assert.Recorder, args []any, msg string) {
-		assert.False(r, args[0].(bool), msg)
+	"false": {
+		AbortingCall:  func(tb assert.TB, a []any, m string, _ []assert.Option) { assert.False(tb, a[0].(bool), m) },
+		RecordingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) { expect.False(tb, a[0].(bool), m) },
 	},
-	"nil": func(r *assert.Recorder, args []any, msg string) {
-		assert.Nil(r, args[0], msg)
+	"nil": {
+		AbortingCall:   func(tb assert.TB, a []any, m string, _ []assert.Option) { assert.Nil(tb, a[0], m) },
+		RecordingCall:  func(tb assert.TB, a []any, m string, _ []assert.Option) { expect.Nil(tb, a[0], m) },
+		AbortingChain:  func(tb assert.TB, a []any, m string, _ []assert.Option) { assert.That(tb, a[0]).Nil(m) },
+		RecordingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) { expect.That(tb, a[0]).Nil(m) },
 	},
-	"not-nil": func(r *assert.Recorder, args []any, msg string) {
-		assert.NotNil(r, args[0], msg)
+	"not-nil": {
+		AbortingCall:   func(tb assert.TB, a []any, m string, _ []assert.Option) { assert.NotNil(tb, a[0], m) },
+		RecordingCall:  func(tb assert.TB, a []any, m string, _ []assert.Option) { expect.NotNil(tb, a[0], m) },
+		AbortingChain:  func(tb assert.TB, a []any, m string, _ []assert.Option) { assert.That(tb, a[0]).NotNil(m) },
+		RecordingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) { expect.That(tb, a[0]).NotNil(m) },
 	},
-	"length": func(r *assert.Recorder, args []any, msg string) {
-		assert.Length(r, args[0], args[1].(int), msg)
+	"length": {
+		AbortingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			assert.Length(tb, a[0], a[1].(int), m)
+		},
+		RecordingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			expect.Length(tb, a[0], a[1].(int), m)
+		},
+		AbortingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			assert.That(tb, a[0]).Length(a[1].(int), m)
+		},
+		RecordingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			expect.That(tb, a[0]).Length(a[1].(int), m)
+		},
 	},
-	"empty": func(r *assert.Recorder, args []any, msg string) {
-		assert.Empty(r, args[0], msg)
+	"empty": {
+		AbortingCall:   func(tb assert.TB, a []any, m string, _ []assert.Option) { assert.Empty(tb, a[0], m) },
+		RecordingCall:  func(tb assert.TB, a []any, m string, _ []assert.Option) { expect.Empty(tb, a[0], m) },
+		AbortingChain:  func(tb assert.TB, a []any, m string, _ []assert.Option) { assert.That(tb, a[0]).Empty(m) },
+		RecordingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) { expect.That(tb, a[0]).Empty(m) },
 	},
-	"not-empty": func(r *assert.Recorder, args []any, msg string) {
-		assert.NotEmpty(r, args[0], msg)
+	"not-empty": {
+		AbortingCall:   func(tb assert.TB, a []any, m string, _ []assert.Option) { assert.NotEmpty(tb, a[0], m) },
+		RecordingCall:  func(tb assert.TB, a []any, m string, _ []assert.Option) { expect.NotEmpty(tb, a[0], m) },
+		AbortingChain:  func(tb assert.TB, a []any, m string, _ []assert.Option) { assert.That(tb, a[0]).NotEmpty(m) },
+		RecordingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) { expect.That(tb, a[0]).NotEmpty(m) },
 	},
-	"contains": func(r *assert.Recorder, args []any, msg string) {
-		assert.Contains(r, args[0], args[1], msg)
+	"contains": {
+		AbortingCall: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			assert.Contains(tb, a[0], a[1], m, o...)
+		},
+		RecordingCall: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			expect.Contains(tb, a[0], a[1], m, o...)
+		},
+		AbortingChain: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			assert.That(tb, a[0]).Contains(a[1], m, o...)
+		},
+		RecordingChain: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			expect.That(tb, a[0]).Contains(a[1], m, o...)
+		},
 	},
-	"not-contains": func(r *assert.Recorder, args []any, msg string) {
-		assert.NotContains(r, args[0], args[1], msg)
+	"not-contains": {
+		AbortingCall: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			assert.NotContains(tb, a[0], a[1], m, o...)
+		},
+		RecordingCall: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			expect.NotContains(tb, a[0], a[1], m, o...)
+		},
+		AbortingChain: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			assert.That(tb, a[0]).NotContains(a[1], m, o...)
+		},
+		RecordingChain: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			expect.That(tb, a[0]).NotContains(a[1], m, o...)
+		},
 	},
-	"contains-in-order": func(r *assert.Recorder, args []any, msg string) {
-		assert.ContainsInOrder(r, args[0], args[1].([]string), msg)
+	"contains-in-order": {
+		AbortingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			assert.ContainsInOrder(tb, a[0], a[1].([]string), m)
+		},
+		RecordingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			expect.ContainsInOrder(tb, a[0], a[1].([]string), m)
+		},
+		AbortingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			assert.That(tb, a[0]).ContainsInOrder(a[1].([]string), m)
+		},
+		RecordingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			expect.That(tb, a[0]).ContainsInOrder(a[1].([]string), m)
+		},
 	},
-	"has-prefix": func(r *assert.Recorder, args []any, msg string) {
-		assert.HasPrefix(r, args[0], args[1].(string), msg)
+	"has-prefix": {
+		AbortingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			assert.HasPrefix(tb, a[0], a[1].(string), m)
+		},
+		RecordingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			expect.HasPrefix(tb, a[0], a[1].(string), m)
+		},
+		AbortingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			assert.That(tb, a[0]).HasPrefix(a[1].(string), m)
+		},
+		RecordingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			expect.That(tb, a[0]).HasPrefix(a[1].(string), m)
+		},
 	},
-	"has-suffix": func(r *assert.Recorder, args []any, msg string) {
-		assert.HasSuffix(r, args[0], args[1].(string), msg)
+	"has-suffix": {
+		AbortingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			assert.HasSuffix(tb, a[0], a[1].(string), m)
+		},
+		RecordingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			expect.HasSuffix(tb, a[0], a[1].(string), m)
+		},
+		AbortingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			assert.That(tb, a[0]).HasSuffix(a[1].(string), m)
+		},
+		RecordingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			expect.That(tb, a[0]).HasSuffix(a[1].(string), m)
+		},
 	},
-	"matches": func(r *assert.Recorder, args []any, msg string) {
-		assert.Matches(r, args[0], args[1].(string), msg)
+	"matches": {
+		AbortingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			assert.Matches(tb, a[0], a[1].(string), m)
+		},
+		RecordingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			expect.Matches(tb, a[0], a[1].(string), m)
+		},
+		AbortingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			assert.That(tb, a[0]).Matches(a[1].(string), m)
+		},
+		RecordingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			expect.That(tb, a[0]).Matches(a[1].(string), m)
+		},
 	},
-	"close-to": func(r *assert.Recorder, args []any, msg string) {
-		assert.CloseTo(r, args[0], args[1].(float64), args[2].(float64), msg)
+	"close-to": {
+		AbortingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			assert.CloseTo(tb, a[0], a[1].(float64), a[2].(float64), m)
+		},
+		RecordingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			expect.CloseTo(tb, a[0], a[1].(float64), a[2].(float64), m)
+		},
+		AbortingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			assert.That(tb, a[0]).CloseTo(a[1].(float64), a[2].(float64), m)
+		},
+		RecordingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			expect.That(tb, a[0]).CloseTo(a[1].(float64), a[2].(float64), m)
+		},
 	},
-	"in-range": func(r *assert.Recorder, args []any, msg string) {
-		assert.InRange(r, args[0], args[1].(float64), args[2].(float64), msg)
+	"in-range": {
+		AbortingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			assert.InRange(tb, a[0], a[1].(float64), a[2].(float64), m)
+		},
+		RecordingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			expect.InRange(tb, a[0], a[1].(float64), a[2].(float64), m)
+		},
+		AbortingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			assert.That(tb, a[0]).InRange(a[1].(float64), a[2].(float64), m)
+		},
+		RecordingChain: func(tb assert.TB, a []any, m string, _ []assert.Option) {
+			expect.That(tb, a[0]).InRange(a[1].(float64), a[2].(float64), m)
+		},
 	},
+}
+
+// Relaxations maps each relaxation that this language offers to its
+// option, so a case's options become the options of its call.
+var Relaxations = map[ID]assert.Option{
+	"equate-empty": assert.EquateEmpty(),
+	"equate-nans":  assert.EquateNaNs(),
 }

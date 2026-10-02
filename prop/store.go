@@ -20,7 +20,7 @@ import (
 const (
 	// definition is the version of the definition that this package
 	// implements, which every entry it writes states.
-	definition = "1.4.0"
+	definition = "2.0.0"
 	// storeRoot is the directory of the stores of a package's tests,
 	// relative to the package's directory, beside testdata/golden.
 	storeRoot = "testdata/prop"

@@ -11,6 +11,7 @@
 //
 //   - A nil collection does not equal an empty one. [EquateEmpty] reverses this.
 //   - NaN does not equal NaN. [EquateNaNs] reverses this.
+//   - Negative zero equals positive zero, as IEEE 754 states.
 //   - Unexported fields take part.
 //   - Two references to one function are equal; two functions are not.
 //
@@ -23,7 +24,8 @@
 //
 // # Dependency position
 //
-// Imports github.com/google/go-cmp/cmp, its cmpopts subpackage, and the
-// standard library, testing included. Depends on no other package in
-// this module.
+// Imports github.com/google/go-cmp/cmp, its cmpopts subpackage, the
+// standard library, testing included, and one package of this module:
+// internal/prop/pattern, whose parser decides which patterns [Matches]
+// accepts.
 package matcher

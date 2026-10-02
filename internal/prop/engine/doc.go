@@ -25,7 +25,8 @@
 // A failure's identity is its assertion and the innermost frame of the
 // caller's code, and for a panic the type of its value with that frame.
 // That frame is the first whose file is a test file or whose function is
-// outside this module.
+// outside this module and the runtime, the frame that every assertion's
+// record names.
 //
 // # Panics
 //
@@ -50,7 +51,7 @@
 //
 // # Generators outside this package
 //
-// A package that builds a generator of the definition, as the pattern
+// A package that builds a generator of the definition, as the matching
 // package builds string-matching, constructs it with [NewGenerator]. Its
 // decode uses these primitives:
 //
@@ -68,6 +69,7 @@
 //
 // # Dependency position
 //
-// Imports the root package of this module, its choice, random, alphabet,
-// token, coverage and tree packages, and the standard library.
+// Imports the root package of this module, its internal matcher, its
+// choice, random, alphabet, token, coverage and tree packages, and the
+// standard library.
 package engine

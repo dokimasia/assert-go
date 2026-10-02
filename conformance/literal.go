@@ -59,15 +59,18 @@ type literal struct {
 // Decode turns one typed literal into a native value.
 //
 // An empty list decodes to a non-nil slice, and an empty map to a
-// non-nil map. That is what lets a case tell a collection that is
-// absent from one that is present and empty, which is the rule the
-// whole encoding exists to pin.
+// non-nil map. A list or a map whose value is null decodes to a nil
+// slice or a nil map of the stated type. That is what lets a case tell a
+// collection that is absent from one that is present and empty, which is
+// the rule the whole encoding exists to pin.
 //
 // An int is an int, and beyond 2^53 - 1 in magnitude a decimal string
-// that decodes to an int64, or to a uint64 above the int64 range. Bytes
-// are lowercase hexadecimal and decode to a []byte. A list of items
-// decodes to a []any, and a map of entries to a map[any]any, whose keys
-// must be comparable.
+// that decodes to an int64, or to a uint64 above the int64 range. A
+// float is a number or one of the names NaN, Inf and -Inf. The elements
+// of a list and the values of a map follow the same two rules, and an
+// int element decodes to an int. Bytes are lowercase hexadecimal and
+// decode to a []byte. A list of items decodes to a []any, and a map of
+// entries to a map[any]any, whose keys must be comparable.
 func Decode(raw json.RawMessage) (any, error) {
 	var lit literal
 	if err := json.Unmarshal(raw, &lit); err != nil {
@@ -185,25 +188,69 @@ func decodeList(lit literal) (any, error) {
 	}
 	switch lit.Of {
 	case typeBool:
-		return typedList[bool](lit.Value)
+		return typedList(lit.Value, as[bool](scalar[bool]))
 	case typeInt:
-		return typedList[int](lit.Value)
+		return typedList(lit.Value, intElement)
 	case typeFloat:
-		return typedList[float64](lit.Value)
+		return typedList(lit.Value, as[float64](decodeFloat))
 	case typeString:
-		return typedList[string](lit.Value)
+		return typedList(lit.Value, as[string](scalar[string]))
 	default:
 		return nil, fmt.Errorf("%w: list of %q", ErrUnknownType, lit.Of)
 	}
 }
 
-// typedList decodes into a non-nil slice of T.
-func typedList[T any](raw json.RawMessage) (any, error) {
-	out := []T{}
-	if err := json.Unmarshal(raw, &out); err != nil {
+// typedList decodes a JSON array into a non-nil slice of T, each element
+// with decode, and JSON null into a nil slice of T.
+func typedList[T any](raw json.RawMessage, decode func(json.RawMessage) (T, error)) (any, error) {
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
 		return nil, fmt.Errorf("conformance: decode list: %w", err)
 	}
+	if items == nil {
+		return []T(nil), nil
+	}
+
+	out := make([]T, len(items))
+	for i, item := range items {
+		value, err := decode(item)
+		if err != nil {
+			return nil, fmt.Errorf("conformance: list element %d: %w", i, err)
+		}
+		out[i] = value
+	}
 	return out, nil
+}
+
+// as adapts the decoder of one scalar type to the element type T that
+// the decoder returns.
+func as[T any](decode func(json.RawMessage) (any, error)) func(json.RawMessage) (T, error) {
+	return func(raw json.RawMessage) (T, error) {
+		value, err := decode(raw)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		return value.(T), nil
+	}
+}
+
+// intElement decodes an element of a list or a map of int. It refuses a
+// decimal string whose integer is beyond the range of int.
+func intElement(raw json.RawMessage) (int, error) {
+	value, err := decodeInt(raw)
+	if err != nil {
+		return 0, err
+	}
+	switch v := value.(type) {
+	case int:
+		return v, nil
+	case int64:
+		if n := int(v); int64(n) == v {
+			return n, nil
+		}
+	}
+	return 0, fmt.Errorf("conformance: %v is beyond the range of int", value)
 }
 
 // decodeMap materializes a map of the pairs of Entries, or a
@@ -218,13 +265,13 @@ func decodeMap(lit literal) (any, error) {
 
 	switch lit.Of {
 	case typeBool:
-		return typedMap[bool](lit.Value)
+		return typedMap(lit.Value, as[bool](scalar[bool]))
 	case typeInt:
-		return typedMap[int](lit.Value)
+		return typedMap(lit.Value, intElement)
 	case typeFloat:
-		return typedMap[float64](lit.Value)
+		return typedMap(lit.Value, as[float64](decodeFloat))
 	case typeString:
-		return typedMap[string](lit.Value)
+		return typedMap(lit.Value, as[string](scalar[string]))
 	default:
 		return nil, fmt.Errorf("%w: map of %q", ErrUnknownType, lit.Of)
 	}
@@ -252,11 +299,24 @@ func decodeEntries(entries [][2]json.RawMessage) (any, error) {
 	return out, nil
 }
 
-// typedMap decodes into a non-nil map of T.
-func typedMap[T any](raw json.RawMessage) (any, error) {
-	out := map[string]T{}
-	if err := json.Unmarshal(raw, &out); err != nil {
+// typedMap decodes a JSON object into a non-nil map of T, each value with
+// decode, and JSON null into a nil map of T.
+func typedMap[T any](raw json.RawMessage, decode func(json.RawMessage) (T, error)) (any, error) {
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &values); err != nil {
 		return nil, fmt.Errorf("conformance: decode map: %w", err)
+	}
+	if values == nil {
+		return map[string]T(nil), nil
+	}
+
+	out := make(map[string]T, len(values))
+	for key, item := range values {
+		value, err := decode(item)
+		if err != nil {
+			return nil, fmt.Errorf("conformance: map value %q: %w", key, err)
+		}
+		out[key] = value
 	}
 	return out, nil
 }

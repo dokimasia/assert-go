@@ -125,6 +125,55 @@ func TestDefinition(t *testing.T) {
 		})
 	})
 
+	t.Run("Arities", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns the definition's arity for every assertion on each surface", func(t *testing.T) {
+			t.Parallel()
+
+			for id, a := range assertions {
+				if overlay.Diverges(id) {
+					continue
+				}
+				where, member := split(names[id])
+				surface, ok := resolve(a.Package, where)
+				assert.True(t, ok,
+					"assertion "+string(id)+" names a package this library has")
+
+				surfaces := []conformance.Surface{surface}
+				if _, only := abortingOnly[member]; surface == conformance.Aborting && !only {
+					surfaces = append(surfaces, conformance.Recording)
+				}
+				want := a.Arity
+				if excuse, excused := arityExcused[id]; excused {
+					want = excuse.arity
+				}
+
+				for _, s := range surfaces {
+					arities, err := conformance.Arities(s)
+					assert.NoError(t, err, "the surface of "+string(id)+" can be read")
+
+					got, declared := arities[member]
+					switch {
+					case !declared:
+						t.Errorf("%s: %s declares no function or method %s", id, s, member)
+					case got != want:
+						t.Errorf("%s: %s in %s takes %d arguments, want %d", id, member, s, got, want)
+					}
+				}
+			}
+		})
+
+		t.Run("excuses only an assertion whose arity differs", func(t *testing.T) {
+			t.Parallel()
+
+			for id, excuse := range arityExcused {
+				assert.NotEqual(t, excuse.arity, assertions[id].Arity,
+					"the arity of "+string(id)+" differs from the definition's, because Go "+excuse.why)
+			}
+		})
+	})
+
 	t.Run("Overlay", func(t *testing.T) {
 		t.Parallel()
 
@@ -219,6 +268,19 @@ func TestOverlayRules(t *testing.T) {
 				"a relaxation that nobody declined is offered")
 		})
 	})
+}
+
+// arityExcused names each assertion whose arity in Go differs from the
+// definition's, with the arity that Go declares and the reason.
+var arityExcused = map[conformance.ID]struct {
+	arity int
+	why   string
+}{
+	"no-task-leaks": {
+		arity: 1,
+		why: "marks the scope with the call and the check that the call returns, " +
+			"and the definition counts the scope as an argument",
+	},
 }
 
 // split separates a qualified name into the package it names and the

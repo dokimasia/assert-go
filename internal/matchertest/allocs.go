@@ -16,12 +16,26 @@ type MaxAllocsInvoke func(seat *Seat, fn func(), ceiling uint64, msg string)
 // callable: once to warm it, and 100 times to count.
 const warmAndCounted = 101
 
-// allocated holds what allocateOnce built, so escape analysis cannot
-// decide the allocation never happened.
+// allocated keeps what allocateOnce built, so escape analysis cannot
+// remove the allocation.
 var allocated []byte
 
 // allocateOnce makes one heap allocation per call.
 func allocateOnce() { allocated = make([]byte, 64) }
+
+// OverCeiling returns the outcome of a ceiling of 0 on a callable that
+// allocates once per call: a failure that states the ceiling and the
+// count in a build that counts allocations, and none in a build that
+// does not.
+func OverCeiling(counted bool) Case {
+	if !counted {
+		return Case{}
+	}
+	return Case{
+		Fails: true, Assertion: "max-allocs",
+		Detail: map[string]any{"want": uint64(0), "got": uint64(1)},
+	}
+}
 
 // RunMaxAllocs drives invoke against every case an allocation ceiling
 // must produce. A case over its ceiling fails only in a build whose
@@ -47,8 +61,8 @@ func RunMaxAllocs(t *testing.T, invoke MaxAllocsInvoke) {
 		invoke(seat, allocateOnce, 1, contractMsg)
 		checkOutcome(t, seat, Case{})
 
-		// Without this the case passes against a fixture that allocates
-		// nothing, which meets every ceiling.
+		// A fixture that allocates nothing meets every ceiling, so the
+		// case requires the allocation.
 		if allocated == nil {
 			t.Fatal("the fixture allocated nothing, so the case checked no ceiling")
 		}
@@ -57,15 +71,7 @@ func RunMaxAllocs(t *testing.T, invoke MaxAllocsInvoke) {
 	t.Run("a callable over its ceiling reports the ceiling and the count", func(t *testing.T) {
 		seat := &Seat{}
 		invoke(seat, allocateOnce, 0, contractMsg)
-
-		if !matcher.AllocationsCounted() {
-			checkOutcome(t, seat, Case{})
-			return
-		}
-		checkOutcome(t, seat, Case{
-			Fails: true, Assertion: "max-allocs",
-			Detail: map[string]any{"want": uint64(0), "got": uint64(1)},
-		})
+		checkOutcome(t, seat, OverCeiling(matcher.AllocationsCounted()))
 	})
 
 	t.Run("the call that warms the callable is not counted", func(t *testing.T) {

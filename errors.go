@@ -42,14 +42,13 @@ func ErrorIsNot(tb TB, err, target error, msg string) {
 }
 
 // ErrorAs finds the first error of type T in err's chain and returns
-// it, stopping the test when the chain holds none.
+// it, and stops the test when the chain has none.
 //
 //	notFound := assert.ErrorAs[*store.NotFoundError](t, err, "Get reports a missing key")
 //	assert.Equal(t, notFound.Key, "absent", "and names the key")
 //
-// On failure the test stops, so the returned value is only ever read
-// after a match. Under the recording surface it is the zero T, which
-// keeps a chained read from dereferencing nil.
+// On failure the test stops, so a caller reads the returned value only
+// after a match.
 func ErrorAs[T any](tb TB, err error, msg string) T {
 	tb.Helper()
 	return matcher.ErrorAs[T](tb, matcher.Fatal, err, msg)

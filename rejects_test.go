@@ -29,7 +29,7 @@ func TestRejects(t *testing.T) {
 			}
 		})
 
-		t.Run("reports when the driven check passes", func(t *testing.T) {
+		t.Run("reports a record of rejects when the driven check passes", func(t *testing.T) {
 			t.Parallel()
 
 			outer := &matchertest.Seat{}
@@ -37,11 +37,16 @@ func TestRejects(t *testing.T) {
 				assert.Equal(tb, 1, 1, "the value is one")
 			})
 
-			if !outer.Failed() {
-				t.Fatal("reported nothing when the driven check passed")
+			if len(outer.Fatals()) != 1 || len(outer.Errs()) != 0 {
+				t.Fatalf("reported %q through Fatalf and %q through Errorf, want one failure that stops the test",
+					outer.Fatals(), outer.Errs())
 			}
-			if !strings.Contains(outer.First(), "must reject") {
-				t.Fatalf("failure %q does not name the rejection that did not happen", outer.First())
+			records := outer.Records()
+			if len(records) != 1 || records[0].Assertion != "rejects" || records[0].Contract != "rejects 1" {
+				t.Fatalf("reported %+v, want one record of rejects whose contract is the message", records)
+			}
+			if len(records[0].Detail) != 0 {
+				t.Fatalf("the record states %v, and rejects declares no detail field", records[0].Detail)
 			}
 		})
 

@@ -10,12 +10,13 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-// Contains reports when haystack does not hold needle.
+// Contains reports when haystack does not contain needle.
 //
-// What holding means depends on the haystack: text holds text as a
-// substring, a slice or array holds an element comparing equal under
-// opts, and a map holds a key. Anything else cannot be asked, and
-// asking is itself the failure.
+// What containing means depends on the haystack. Text contains text as
+// a substring. A slice or array contains an element that equals needle
+// as [Equal] compares under opts, so an int does not match a float. A
+// map contains needle as a key of the map's key type. Anything else
+// cannot be asked, and asking is itself the failure.
 func Contains(seat Seat, mode Mode, haystack, needle any, msg string, opts ...Option) {
 	seat.Helper()
 
@@ -29,8 +30,8 @@ func Contains(seat Seat, mode Mode, haystack, needle any, msg string, opts ...Op
 	}
 }
 
-// NotContains reports when haystack holds needle. See [Contains] for
-// what holding means.
+// NotContains reports when haystack contains needle. See [Contains] for
+// what containing means.
 func NotContains(seat Seat, mode Mode, haystack, needle any, msg string, opts ...Option) {
 	seat.Helper()
 
@@ -44,16 +45,16 @@ func NotContains(seat Seat, mode Mode, haystack, needle any, msg string, opts ..
 	}
 }
 
-// ContainsInOrder reports when haystack does not hold every needle in
-// the given order, each one after the previous one's match ends.
+// ContainsInOrder reports when haystack does not contain every needle
+// in the given order, each one after the previous one's match ends.
 //
 // Use it where [Contains] is too weak. Asserting that fields appear in
 // a stated order catches a formatter that reorders them, which
 // checking for each field separately does not.
 //
-// The failure names the first needle not found and the position the
-// search had reached, so a reader sees which one broke the order
-// rather than only that the order broke. An empty needle list passes.
+// The failure names the first needle not found and its index in
+// needles, so a reader sees which needle broke the order. An empty
+// needle list passes.
 func ContainsInOrder(seat Seat, mode Mode, haystack any, needles []string, msg string) {
 	seat.Helper()
 
@@ -80,7 +81,8 @@ func ContainsInOrder(seat Seat, mode Mode, haystack any, needles []string, msg s
 // question applies to haystack's type at all.
 //
 // Text contains text as a substring. A slice or array contains an
-// element comparing equal under opts. A map contains a key.
+// element that is equal under opts. A map contains a key. A nil haystack
+// has the kind [reflect.Invalid], and the question does not apply to it.
 func holds(haystack, needle any, opts ...Option) (found, supported bool) {
 	if text, ok := textOf(haystack); ok {
 		sub, ok := textOf(needle)
@@ -91,10 +93,6 @@ func holds(haystack, needle any, opts ...Option) (found, supported bool) {
 	}
 
 	rv := reflect.ValueOf(haystack)
-	if !rv.IsValid() {
-		return false, false
-	}
-
 	switch rv.Kind() {
 	case reflect.Slice, reflect.Array:
 		for i := range rv.Len() {

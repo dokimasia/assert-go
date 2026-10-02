@@ -15,7 +15,7 @@ import (
 // Failure is what a failing assertion reports.
 //
 // Assertion is the canonical id the definition names, Contract is the
-// caller's message unchanged, and Detail carries exactly the fields
+// caller's message unchanged, and Detail contains exactly the fields
 // that assertion declares. Where is the call site, and is absent when
 // the frame could not be read.
 type Failure struct {
@@ -34,22 +34,15 @@ type Where struct {
 
 // Reporter is a [Seat] that takes the record rather than the sentence.
 //
-// A seat satisfying it receives the record; a seat that does not
-// receives the rendered sentence through Fatalf or Errorf. aborting is
-// true for the aborting surface and false for the recording one.
+// [Fail] passes the record to a Reporter, and the rendered sentence to
+// any other seat, through Fatalf or Errorf. aborting is true for the
+// aborting surface and false for the recording one.
 type Reporter interface {
 	Report(f Failure, aborting bool)
 }
 
-// order is the sequence Go names detail fields in, which is want
-// before got and the rest in a fixed reading order. A field not listed
-// here sorts after these, alphabetically.
-//
-// The standard fixes the record, not the sentence. This is Go's
-// phrasing of it, and it follows the want-then-got convention the
-// standard library uses.
-// named is the set order holds, built once so rendering a failure does
-// not rebuild it.
+// named is the set of the fields in order, built once so rendering a
+// failure does not rebuild it.
 var named = func() map[string]bool {
 	out := make(map[string]bool, len(order))
 	for _, name := range order {
@@ -58,6 +51,13 @@ var named = func() map[string]bool {
 	return out
 }()
 
+// order is the sequence Go names detail fields in, which is want
+// before got and the rest in a fixed reading order. A field not listed
+// here sorts after these, alphabetically.
+//
+// The standard fixes the record, not the sentence. This is Go's
+// phrasing of it, and it follows the want-then-got convention the
+// standard library uses.
 var order = []string{
 	"want", "got", "length", "haystack", "needle", "index",
 	"prefix", "suffix", "pattern", "tolerance", "low", "high",
@@ -66,8 +66,8 @@ var order = []string{
 
 // Render turns a record into the sentence a person reads.
 //
-// The contract leads, then the detail. Rendering is not standardised:
-// every implementation holds the record in the same shape and phrases
+// The contract leads, then the detail. Rendering is not standardised.
+// Every implementation keeps the record in the same shape and phrases
 // it in its own conventions.
 func Render(f Failure) string {
 	if len(f.Detail) == 0 {
@@ -109,26 +109,74 @@ func Render(f Failure) string {
 	return b.String()
 }
 
-// site reads the call site skip frames above the caller of site.
-//
-// It returns the zero Where when the frame cannot be read, which a
-// reader treats as absent.
-func site(skip int) Where {
-	_, file, line, ok := runtime.Caller(skip + 1)
-	if !ok {
-		return Where{}
-	}
-	return Where{File: file, Line: line}
+// The frames that are not the caller's code.
+const (
+	// modulePath is the import path of this module. A frame of a function
+	// inside it is not the caller's code, unless its file is a test file.
+	modulePath = "go.dokimi.dev/assert"
+	// runtimePrefix starts the name of every function of the runtime.
+	runtimePrefix = "runtime."
+	// testSuffix ends the name of every Go test file.
+	testSuffix = "_test.go"
+	// maxFrames is the most frames that a location is searched in.
+	maxFrames = 64
+	// failSkip is the number of frames that site skips before the caller
+	// of Fail: runtime.Callers, site and Fail.
+	failSkip = 3
+)
+
+// site returns the innermost frame of the caller's code among the callers
+// of Fail. It reads the frames into an array on its own stack.
+func site() Where {
+	var pcs [maxFrames]uintptr
+	n := runtime.Callers(failSkip, pcs[:])
+	return CallerWhere(pcs[:n])
 }
 
-// equalDiff answers the diff for an equality mismatch, and the empty
-// string for anything else.
+// CallerWhere returns the innermost frame of the caller's code among pcs:
+// the first frame whose file is a test file, or whose function is outside
+// this module and the runtime. It returns the zero Where when no frame is,
+// which a reader treats as absent.
+func CallerWhere(pcs []uintptr) Where {
+	frames := runtime.CallersFrames(pcs)
+	for {
+		frame, more := frames.Next()
+		if callers(frame) {
+			return Where{File: frame.File, Line: frame.Line}
+		}
+		if !more {
+			return Where{}
+		}
+	}
+}
+
+// callers reports whether frame is the caller's code.
+func callers(frame runtime.Frame) bool {
+	if strings.HasSuffix(frame.File, testSuffix) {
+		return true
+	}
+	inside := strings.HasPrefix(frame.Function, modulePath+".") || strings.HasPrefix(frame.Function, modulePath+"/")
+	return !inside && !strings.HasPrefix(frame.Function, runtimePrefix)
+}
+
+// diffed are the assertions whose want and got the sentence states as a
+// diff: equal, and the three golden comparisons.
+var diffed = map[string]bool{
+	"equal":                   true,
+	"golden-match":            true,
+	"golden-match-at":         true,
+	"golden-match-json-field": true,
+}
+
+// equalDiff returns the diff of a mismatch whose want and got the sentence
+// states as a diff, and the empty string for anything else.
 //
 // A structural diff is what a Go reader wants from a mismatch, and
-// printing two large structs side by side is not. The record carries
-// want and got as the definition states; this is how Go says them.
+// printing two large structs side by side is not. The record contains
+// want and got as the definition names them, and the diff is Go's
+// sentence for the two.
 func equalDiff(f Failure) (diff string) {
-	if f.Assertion != "equal" {
+	if !diffed[f.Assertion] {
 		return ""
 	}
 	want, hasWant := f.Detail["want"]
@@ -137,10 +185,10 @@ func equalDiff(f Failure) (diff string) {
 		return ""
 	}
 
-	// A diff explains a failure rather than deciding one, so failing to
-	// draw it answers nothing and lets the caller read want and got
-	// instead. cmp panics on a value it cannot walk, and that panic
-	// would arrive at the moment a test first fails.
+	// A diff explains a failure and does not decide one. When cmp cannot
+	// render it, the sentence states want and got instead. cmp panics on a
+	// value it cannot walk, and that panic would arrive at the moment a
+	// test first fails.
 	defer func() {
 		if recover() != nil {
 			diff = ""
@@ -148,13 +196,13 @@ func equalDiff(f Failure) (diff string) {
 	}()
 
 	// The options the comparison itself used. Without the exporter cmp
-	// refuses any value holding an unexported field, which is most of
-	// them, and this library states that unexported fields take part.
+	// refuses any value with an unexported field, which is most of them,
+	// and this library states that unexported fields take part.
 	//
-	// The caller's relaxations are absent: a record carries what the
-	// standard states and an option is not part of it. Each one only
-	// widens what counts as equal, so a diff drawn without them can
-	// name a difference the comparison forgave and cannot miss one it
-	// did not.
+	// The caller's relaxations are absent: a record contains what the
+	// standard states, and an option is not part of it. Each relaxation
+	// only widens what counts as equal, so a diff rendered without them
+	// can name a difference the comparison forgave and cannot miss one
+	// it did not.
 	return cmp.Diff(want, got, Options()...)
 }

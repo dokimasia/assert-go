@@ -11,15 +11,15 @@ import (
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
-// contractMsg is what every runner passes as the caller's message.
-// Declared here rather than exported, so a drift between the two
-// shows up as a failing case in this file.
+// contractMsg is what every runner passes as the caller's message. It is
+// declared here and not exported, so a drift between the two fails a
+// case in this file.
 const contractMsg = "the stated contract"
 
-// checkTable holds a case table to the shape every runner assumes. A
-// table that drifts from it yields a suite that passes having checked
-// less than it claims, which is the failure these tables exist to
-// prevent one level down.
+// checkTable fails t for a case table that breaks the shape every runner
+// assumes: a name for each case, no name twice, the arguments of the
+// arity, and at least one passing and one failing case. A suite over a
+// table of another shape checks less than its cases state.
 func checkTable(t *testing.T, name string, cases []matchertest.Case, arity int) {
 	t.Helper()
 
@@ -50,7 +50,7 @@ func checkTable(t *testing.T, name string, cases []matchertest.Case, arity int) 
 
 		passing++
 		if len(tc.Detail) > 0 || tc.Assertion != "" {
-			t.Errorf("%s case %q passes but states what a failure would hold", name, tc.Name)
+			t.Errorf("%s case %q passes but states the record of a failure", name, tc.Name)
 		}
 	}
 
@@ -124,11 +124,36 @@ func TestCase(t *testing.T) {
 				Detail: map[string]any{"want": 1, "got": 2},
 			}
 			if err := matchertest.Verdict(s, want); err == nil {
-				t.Fatal("Verdict accepted a record holding none of the stated want")
+				t.Fatal("Verdict accepted a record without the stated want")
 			}
 		})
 
-		t.Run("a record holding a different value is rejected", func(t *testing.T) {
+		t.Run("a failure without a record is rejected", func(t *testing.T) {
+			t.Parallel()
+
+			s := &matchertest.Seat{}
+			s.Fatalf("%s: a sentence without a record", contractMsg)
+
+			err := matchertest.Verdict(s, matchertest.Case{Fails: true})
+			if err == nil || !strings.Contains(err.Error(), "no record") {
+				t.Fatalf("Verdict = %v, want it to name the missing record", err)
+			}
+		})
+
+		t.Run("a record of another contract is rejected", func(t *testing.T) {
+			t.Parallel()
+
+			s := &matchertest.Seat{}
+			s.Fatalf("%s: the sentence of the failure", contractMsg)
+			s.Report(matcher.Failure{Assertion: "equal", Contract: "another contract"}, true)
+
+			err := matchertest.Verdict(s, matchertest.Case{Fails: true})
+			if err == nil || !strings.Contains(err.Error(), "another contract") {
+				t.Fatalf("Verdict = %v, want it to name the contract of the record", err)
+			}
+		})
+
+		t.Run("a record with a different value is rejected", func(t *testing.T) {
 			t.Parallel()
 
 			s := &matchertest.Seat{}

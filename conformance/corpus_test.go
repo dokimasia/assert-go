@@ -6,7 +6,9 @@ package conformance_test
 import (
 	"encoding/json"
 	"errors"
-	"strings"
+	"maps"
+	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -15,9 +17,10 @@ import (
 )
 
 // TestCorpus runs every case of the definition's corpus against this
-// library, and compares each assertion's outcome and record with the ones
-// the case states. The completeness gate checks that an assertion exists,
-// and this test checks what it reports.
+// library, in every form that the registry drives, and compares each
+// assertion's outcome and record with the ones the case states. The
+// completeness gate checks that an assertion exists, and this test checks
+// what it reports.
 //
 // Written with testing rather than with this library. Every assertion
 // reports through one function, so a verdict written with the subject goes
@@ -33,12 +36,16 @@ func TestCorpus(t *testing.T) {
 	if len(byAssertion) == 0 {
 		t.Fatal("the corpus states something, but it read no assertions")
 	}
+	overlay, err := conformance.Overlay()
+	if err != nil {
+		t.Fatalf("the overlay can be read: %v", err)
+	}
 
 	for id, cases := range byAssertion {
-		// Every assertion the corpus reaches with values has an invoker.
-		// One it reaches only by naming a behaviour is driven through
+		// Every assertion that a case states values for has invokers. One
+		// that the cases cover only by naming a behaviour is driven through
 		// the subject registry instead, and needs none.
-		invoke, registered := conformance.Registry[id]
+		forms, registered := conformance.Registry[id]
 		if !registered && !statesOnlySubjects(cases) {
 			t.Fatalf("an invoker is registered for %s", id)
 		}
@@ -50,6 +57,7 @@ func TestCorpus(t *testing.T) {
 				if why, skipped := tc.SkipReason(); skipped {
 					t.Skipf("declared skip: %s", why)
 				}
+				opts := options(t, tc, overlay)
 				if tc.Subject.Kind != "" {
 					runSubjectCase(t, tc)
 					return
@@ -64,32 +72,58 @@ func TestCorpus(t *testing.T) {
 					t.Fatalf("the case's arguments decode: %v", err)
 				}
 
-				r := assert.NewRecorder()
-				invoke(r, args, tc.ID)
+				for _, form := range slices.Sorted(maps.Keys(forms)) {
+					r := assert.NewRecorder()
+					forms[form](r, args, tc.ID, opts)
 
-				if err := tc.Check(r); err != nil {
-					t.Fatalf("the outcome is what the case states: %v", err)
+					if err := tc.Check(r); err != nil {
+						t.Errorf("%s: the outcome is what the case states: %v", form, err)
+					}
+					checkWhere(t, r)
 				}
-				checkWhere(t, r)
 			})
 		}
 	}
 }
 
+// options returns the options of the relaxations that a case names. It
+// skips the case when the overlay declines one of them, and fails it when
+// no option is registered for one.
+func options(t *testing.T, tc conformance.Case, overlay conformance.OverlayDoc) []assert.Option {
+	t.Helper()
+
+	var out []assert.Option
+	for _, id := range tc.Options {
+		if overlay.DeclinesRelaxation(id) {
+			t.Skipf("declared skip: the overlay declines the relaxation %s", id)
+		}
+		option, offered := conformance.Relaxations[id]
+		if !offered {
+			t.Fatalf("no option is registered for the relaxation %s", id)
+		}
+		out = append(out, option)
+	}
+	return out
+}
+
 // runSubjectCase runs a case that names a behaviour through both surfaces,
 // and compares each outcome with the one the case states. A kind that this
-// language cannot build skips the case, as the standard states for a
-// behaviour that an implementation cannot make.
+// language cannot build, or an assertion that no driver calls, fails the
+// case, because only a skip in the definition excuses a case.
 func runSubjectCase(t *testing.T, tc conformance.Case) {
 	t.Helper()
 
+	if len(tc.Options) > 0 {
+		t.Fatalf("the case names the options %v, and no subject driver passes options", tc.Options)
+	}
 	for _, surface := range []string{"check", "expect"} {
 		r := assert.NewRecorder().WithClock(assert.NewControlled(time.Time{}))
 		if !conformance.RunSubject(surface, tc.Assertion, tc.Subject.Kind, r, tc.ID) {
-			t.Skipf("no subject named %q on %s", tc.Subject.Kind, surface)
+			t.Fatalf("%s: no subject named %q, or no driver of %s, and the case declares no skip",
+				surface, tc.Subject.Kind, tc.Assertion)
 		}
 		if err := tc.Check(r); err != nil {
-			t.Fatalf("%s: the outcome is what the case states: %v", surface, err)
+			t.Errorf("%s: the outcome is what the case states: %v", surface, err)
 		}
 		checkWhere(t, r)
 	}
@@ -106,22 +140,17 @@ func statesOnlySubjects(cases []conformance.Case) bool {
 	return true
 }
 
-// checkWhere fails t unless every record of r names a call site outside the
-// library's own reporting code: a file, and a line above zero. A case
-// cannot state the line, which is wherever the registry calls the
-// assertion, so the check is that the record points at a file a reader can
-// open and never at the code that built the record.
+// checkWhere fails t unless every record of r names a line of this file. A
+// record names the innermost frame of a test file, and this file is the
+// innermost test file under every call. The frames between the assertion
+// and this file are of the registry and the subject drivers, and neither
+// is a test file.
 func checkWhere(t *testing.T, r *assert.Recorder) {
 	t.Helper()
 
 	for _, held := range r.Failures() {
-		switch {
-		case held.Where.File == "":
-			t.Fatalf("%s reported no call site", held.Assertion)
-		case held.Where.Line == 0:
-			t.Fatalf("%s reported line zero, want the caller's line", held.Assertion)
-		case strings.Contains(held.Where.File, "/internal/matcher/"):
-			t.Fatalf("%s points at %s:%d, which is the library reporting its own frame",
+		if filepath.Base(held.Where.File) != "corpus_test.go" || held.Where.Line == 0 {
+			t.Errorf("%s points at %s:%d, want a line of corpus_test.go",
 				held.Assertion, held.Where.File, held.Where.Line)
 		}
 	}
@@ -147,6 +176,27 @@ func TestCorpusRules(t *testing.T) {
 				for _, c := range cases {
 					if c.Assertion != string(id) {
 						t.Fatalf("case %s states the assertion %q, want %q", c.ID, c.Assertion, id)
+					}
+				}
+			}
+		})
+
+		t.Run("sets each case's fields to the detail fields of its assertion", func(t *testing.T) {
+			t.Parallel()
+
+			byAssertion, err := conformance.Cases()
+			if err != nil {
+				t.Fatalf("the corpus can be read: %v", err)
+			}
+			assertions, err := conformance.Assertions()
+			if err != nil {
+				t.Fatalf("the assertion table can be read: %v", err)
+			}
+			for id, cases := range byAssertion {
+				declared := assertions[id].DetailFields
+				for _, c := range cases {
+					if !slices.Equal(c.Fields, declared) {
+						t.Fatalf("case %s states the fields %q, want %q", c.ID, c.Fields, declared)
 					}
 				}
 			}
@@ -192,9 +242,66 @@ func TestCorpusRules(t *testing.T) {
 			r := assert.NewRecorder()
 			r.Report(assert.Failure{Assertion: "equal", Contract: "x", Detail: map[string]any{"want": 1}}, true)
 
-			c := conformance.Case{ID: "x", Expect: "fail", Detail: detail(`{"want": {"type":"widget"}}`)}
+			c := conformance.Case{
+				ID: "x", Assertion: "equal", Expect: "fail", Fields: []string{"want"},
+				Detail: detail(`{"want": {"type":"widget"}}`),
+			}
 			if err := c.Check(r); !errors.Is(err, conformance.ErrUnknownType) {
 				t.Fatalf("Check returns %v, want ErrUnknownType", err)
+			}
+		})
+
+		t.Run("returns an error for a record of another assertion", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			r.Report(assert.Failure{Assertion: "not-equal", Contract: "x"}, true)
+
+			c := conformance.Case{ID: "x", Assertion: "equal", Expect: "fail"}
+			if c.Check(r) == nil {
+				t.Fatal("a record naming another assertion is refused")
+			}
+		})
+
+		t.Run("returns an error for a record whose contract is not the message", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			r.Report(assert.Failure{Assertion: "equal", Contract: "x, reworded"}, true)
+
+			c := conformance.Case{ID: "x", Assertion: "equal", Expect: "fail"}
+			if c.Check(r) == nil {
+				t.Fatal("a record whose contract differs from the message is refused")
+			}
+		})
+
+		t.Run("returns an error for a record of a field that the assertion does not declare", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			r.Report(assert.Failure{
+				Assertion: "equal", Contract: "x",
+				Detail: map[string]any{"want": 1, "got": 2, "diff": "-1 +2"},
+			}, true)
+
+			c := conformance.Case{ID: "x", Assertion: "equal", Expect: "fail", Fields: []string{"want", "got"}}
+			if c.Check(r) == nil {
+				t.Fatal("a record of an undeclared field is refused")
+			}
+		})
+
+		t.Run("returns an error for a record without a declared field", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			r.Report(assert.Failure{
+				Assertion: "equal", Contract: "x",
+				Detail: map[string]any{"want": 1},
+			}, true)
+
+			c := conformance.Case{ID: "x", Assertion: "equal", Expect: "fail", Fields: []string{"want", "got"}}
+			if c.Check(r) == nil {
+				t.Fatal("a record without a declared field is refused")
 			}
 		})
 
@@ -219,7 +326,10 @@ func TestCorpusRules(t *testing.T) {
 				Detail: map[string]any{"got": 2},
 			}, true)
 
-			c := conformance.Case{ID: "x", Expect: "fail", Detail: detail(`{"want": {"type":"int","value":1}}`)}
+			c := conformance.Case{
+				ID: "x", Assertion: "equal", Expect: "fail", Fields: []string{"got"},
+				Detail: detail(`{"want": {"type":"int","value":1}}`),
+			}
 			if c.Check(r) == nil {
 				t.Fatal("a record without the stated want is refused")
 			}
@@ -234,7 +344,10 @@ func TestCorpusRules(t *testing.T) {
 				Detail: map[string]any{"want": 9},
 			}, true)
 
-			c := conformance.Case{ID: "x", Expect: "fail", Detail: detail(`{"want": {"type":"int","value":1}}`)}
+			c := conformance.Case{
+				ID: "x", Assertion: "equal", Expect: "fail", Fields: []string{"want"},
+				Detail: detail(`{"want": {"type":"int","value":1}}`),
+			}
 			if c.Check(r) == nil {
 				t.Fatal("a record whose want differs from the case is refused")
 			}
@@ -250,7 +363,7 @@ func TestCorpusRules(t *testing.T) {
 			}, true)
 
 			c := conformance.Case{
-				ID: "x", Expect: "fail",
+				ID: "x", Assertion: "equal", Expect: "fail", Fields: []string{"want", "got"},
 				Detail: detail(`{"want": {"type":"int","value":1}, "got": {"type":"int","value":2}}`),
 			}
 			if err := c.Check(r); err != nil {

@@ -40,13 +40,17 @@ func HonoursDeadline(tb TB, fn func(ctx context.Context) error, msg string) {
 	matcher.HonoursDeadline(tb, matcher.Fatal, fn, msg)
 }
 
-// CompletesWithin calls fn with a context carrying the given deadline
-// and stops the test when fn does not finish in time.
+// CompletesWithin calls fn with a context whose deadline is within from
+// now, and stops the test when fn takes longer than within.
 //
-// A [context.DeadlineExceeded] back from fn is the failure: fn had the
-// deadline and did not meet it. Any other error passes, because
-// failing quickly is still finishing, and which failures are
-// acceptable is a question for another assertion.
+// The verdict is the time fn took, on the seat's clock. What fn returns
+// does not count, because failing quickly is still finishing, and which
+// failures are acceptable is a question for another assertion.
+//
+// fn runs on a goroutine of its own. A subject still running when the
+// deadline passes fails then, and runs on, because no goroutine can be
+// stopped from outside. A panic in fn panics again on the calling
+// goroutine.
 //
 // This spends real time, up to within.
 func CompletesWithin(tb TB, within time.Duration, fn func(ctx context.Context) error, msg string) {

@@ -3,9 +3,9 @@
 
 package matchertest
 
-// Defined types over the kinds each family reads. A surface that
+// Defined types over the kinds that each family reads. A surface that
 // switches on concrete types alone passes the plain cases and fails
-// these, which is why every table carries one.
+// these, so every table contains one.
 type (
 	name    string
 	digits  []byte
@@ -18,7 +18,7 @@ type (
 func HasPrefixCases() []Case {
 	return []Case{
 		{Name: "a matching prefix passes", Args: []any{"store: missing", "store: "}},
-		{Name: "bytes answer as text", Args: []any{[]byte("store: x"), "store: "}},
+		{Name: "bytes read as text", Args: []any{[]byte("store: x"), "store: "}},
 		{Name: "an empty prefix passes", Args: []any{"anything", ""}},
 		{Name: "a defined string type reads as text", Args: []any{name("store: x"), "store: "}},
 		{Name: "the whole string is a prefix of itself", Args: []any{"abc", "abc"}},
@@ -29,7 +29,7 @@ func HasPrefixCases() []Case {
 			Assertion: "has-prefix",
 		},
 		{
-			Name:      "a non-text value reports rather than panicking",
+			Name:      "a value that is not text reports",
 			Args:      []any{42, "4"},
 			Fails:     true,
 			Assertion: "has-prefix",
@@ -51,7 +51,7 @@ func HasSuffixCases() []Case {
 			Assertion: "has-suffix",
 		},
 		{
-			Name:      "a non-text value reports rather than panicking",
+			Name:      "a value that is not text reports",
 			Args:      []any{42, "2"},
 			Fails:     true,
 			Assertion: "has-suffix",
@@ -62,13 +62,54 @@ func HasSuffixCases() []Case {
 // MatchesCases are the cases every surface's pattern assertion must
 // produce. Drive them with [RunPair].
 //
-// A pattern that does not compile is a failure rather than a panic: a
-// test with a broken pattern has established nothing, and should say
-// so where every other failure is reported.
+// A pattern that does not compile, or that is outside the portable
+// subset, fails the assertion and does not panic, because a test with
+// such a pattern has established nothing.
 func MatchesCases() []Case {
 	return []Case{
 		{Name: "an anchored pattern matches the whole value", Args: []any{"deadbeef", `^[0-9a-f]+$`}},
 		{Name: "an unanchored pattern matches anywhere", Args: []any{"id=deadbeef;", `[0-9a-f]{8}`}},
+		{Name: "a dot matches a character that ends no line", Args: []any{"é", `^.$`}},
+		{Name: "a dot in a class matches a dot", Args: []any{".", `^[.]$`}},
+		{Name: "a dot after another member of a class matches a dot", Args: []any{".", `^[a.]$`}},
+		{Name: "an escaped dot matches a dot", Args: []any{".", `^\.$`}},
+		{
+			Name:      "a dot matches no carriage return",
+			Args:      []any{"\r", `^.$`},
+			Fails:     true,
+			Assertion: "matches",
+		},
+		{
+			Name:      "a dot matches no line separator",
+			Args:      []any{"\U00002028", `^.$`},
+			Fails:     true,
+			Assertion: "matches",
+		},
+		{
+			Name:      "a dot in a class matches no other character",
+			Args:      []any{"a", `^[.]$`},
+			Fails:     true,
+			Assertion: "matches",
+		},
+		{
+			Name:      "an escaped dot matches no other character",
+			Args:      []any{"a", `^\.$`},
+			Fails:     true,
+			Assertion: "matches",
+		},
+		{
+			Name:      "a flag group is outside the subset and reports",
+			Args:      []any{"A", `(?i)a`},
+			Fails:     true,
+			Assertion: "matches",
+			Detail:    map[string]any{"got": "A", "pattern": `(?i)a`},
+		},
+		{
+			Name:      "a word boundary is outside the subset and reports",
+			Args:      []any{"a b", `\bb`},
+			Fails:     true,
+			Assertion: "matches",
+		},
 		{
 			Name:      "a non-matching pattern reports both",
 			Args:      []any{"zzz", `^[0-9a-f]+$`},
@@ -82,13 +123,13 @@ func MatchesCases() []Case {
 			Assertion: "matches",
 		},
 		{
-			Name:      "a pattern that does not compile reports rather than panicking",
+			Name:      "a pattern that does not compile reports",
 			Args:      []any{"anything", `([unclosed`},
 			Fails:     true,
 			Assertion: "matches",
 		},
 		{
-			Name:      "a non-text value reports rather than panicking",
+			Name:      "a value that is not text reports",
 			Args:      []any{42, `\d`},
 			Fails:     true,
 			Assertion: "matches",

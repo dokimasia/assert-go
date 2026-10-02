@@ -16,12 +16,14 @@
 // failure and returns.
 //
 //   - [Members] returns the exported names of a [Surface] from its source
-//     files.
+//     files, and [Arities] the arity of each function and method.
 //   - [Assertions], [Names], [SurfaceNames] and [RelaxationNames] read the
 //     definition's tables, and [Overlay] reads this language's declines. The
-//     completeness tests compare the members with them.
-//   - [Cases] returns the corpus cases of the assertions. [Registry] and
-//     [RunSubject] drive an assertion with a case's arguments or behaviour.
+//     completeness tests compare the members and their arities with them.
+//   - [Cases] returns the corpus cases of the assertions. [Registry] drives
+//     an assertion with a case's arguments in each [Form], with the options
+//     that [Relaxations] maps the case's relaxations to. [RunSubject] drives
+//     an assertion with a case's behaviour on both surfaces.
 //   - [Case.Check] compares the assertion's record with the one that the
 //     case states.
 //
@@ -46,7 +48,7 @@
 //
 // Imports the standard library, github.com/google/go-cmp, this module's
 // assert, expect and prop packages, and the internal packages of the
-// property engine: choice, coverage, engine, pattern, store and token. Only
+// property engine: choice, coverage, engine, matching, store and token. Only
 // tests import it. Besides its own tests, the store tests of prop import it
 // to compare the version of a stored case with [Version].
 package conformance

@@ -15,7 +15,7 @@ import (
 // ascending, an after for reverse-chronological, or any relation
 // neighbours must satisfy.
 //
-//	assert.Pairwise(t, stamps, func(earlier, later time.Time) bool {
+//	expect.Pairwise(t, stamps, func(earlier, later time.Time) bool {
 //	    return earlier.Before(later)
 //	}, "the events are in chronological order")
 //

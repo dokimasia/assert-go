@@ -3,19 +3,24 @@
 
 package matcher
 
-import "reflect"
+import (
+	"reflect"
+	"unicode/utf8"
+)
 
-// Length reports when got does not hold want items.
+// Length reports when got does not have want items.
 //
-// It answers for an array, slice, map, channel or string. Anything
-// else has no length, and passing one is itself the failure rather
-// than a panic.
+// It counts the elements of an array, slice or channel, the entries of a
+// map, and the Unicode scalar values of a string, so "é" has one. A
+// []byte is a slice, so its length is its bytes. A byte of a string that
+// is not UTF-8 counts as one. Anything else has no length, and passing
+// one is itself the failure, with got nil, rather than a panic.
 func Length(seat Seat, mode Mode, got any, want int, msg string) {
 	seat.Helper()
 
 	n, ok := lengthOf(got)
 	if !ok {
-		Fail(seat, mode, "length", msg, map[string]any{"want": want, "got": got})
+		Fail(seat, mode, "length", msg, map[string]any{"want": want, "got": nil})
 		return
 	}
 	if n != want {
@@ -23,14 +28,15 @@ func Length(seat Seat, mode Mode, got any, want int, msg string) {
 	}
 }
 
-// Empty reports when got holds anything. See [Length] for the types
-// that answer.
+// Empty reports when got has any item. See [Length] for the types that
+// have a length. A value without one, nil included, is no container, and
+// fails with length nil.
 func Empty(seat Seat, mode Mode, got any, msg string) {
 	seat.Helper()
 
 	n, ok := lengthOf(got)
 	if !ok {
-		Fail(seat, mode, "empty", msg, map[string]any{"length": got})
+		Fail(seat, mode, "empty", msg, map[string]any{"length": nil})
 		return
 	}
 	if n != 0 {
@@ -38,8 +44,9 @@ func Empty(seat Seat, mode Mode, got any, msg string) {
 	}
 }
 
-// NotEmpty reports when got holds nothing. See [Length] for the types
-// that answer.
+// NotEmpty reports when got has no item. See [Length] for the types that
+// have a length. A value without one, nil included, is no container, and
+// fails.
 func NotEmpty(seat Seat, mode Mode, got any, msg string) {
 	seat.Helper()
 
@@ -53,8 +60,9 @@ func NotEmpty(seat Seat, mode Mode, got any, msg string) {
 	}
 }
 
-// lengthOf reads the length of anything that has one: an array, slice,
-// map, channel or string.
+// lengthOf reads the length of anything that has one: the elements of an
+// array, slice or channel, the entries of a map, and the Unicode scalar
+// values of a string.
 func lengthOf(v any) (int, bool) {
 	rv := reflect.ValueOf(v)
 	if !rv.IsValid() {
@@ -62,7 +70,9 @@ func lengthOf(v any) (int, bool) {
 	}
 
 	switch rv.Kind() {
-	case reflect.Array, reflect.Slice, reflect.Map, reflect.Chan, reflect.String:
+	case reflect.String:
+		return utf8.RuneCountInString(rv.String()), true
+	case reflect.Array, reflect.Slice, reflect.Map, reflect.Chan:
 		return rv.Len(), true
 	default:
 		return 0, false

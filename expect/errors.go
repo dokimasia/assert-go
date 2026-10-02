@@ -30,7 +30,7 @@ func HasError(tb assert.TB, err error, msg string) {
 // [errors.Is], which walks the chain of wrapped causes. A sentinel
 // matches however deeply it was wrapped on the way up.
 //
-//	assert.ErrorIs(t, err, store.ErrNotFound, "Get reports a missing key")
+//	expect.ErrorIs(t, err, store.ErrNotFound, "Get reports a missing key")
 func ErrorIs(tb assert.TB, err, target error, msg string) {
 	tb.Helper()
 	matcher.ErrorIs(tb, matcher.Soft, err, target, msg)
@@ -45,14 +45,15 @@ func ErrorIsNot(tb assert.TB, err, target error, msg string) {
 }
 
 // ErrorAs finds the first error of type T in err's chain and returns
-// it, stopping the test when the chain holds none.
+// it, and records a failure when the chain has none.
 //
-//	notFound := assert.ErrorAs[*store.NotFoundError](t, err, "Get reports a missing key")
-//	assert.Equal(t, notFound.Key, "absent", "and names the key")
+//	if notFound := expect.ErrorAs[*store.NotFoundError](t, err, "Get reports a missing key"); notFound != nil {
+//	    expect.Equal(t, notFound.Key, "absent", "and names the key")
+//	}
 //
-// On failure the test stops, so the returned value is only ever read
-// after a match. Under the recording surface it is the zero T, which
-// keeps a chained read from dereferencing nil.
+// On failure the test continues and ErrorAs returns the zero T. For a
+// pointer type T that is nil, so check the result before reading
+// through it.
 func ErrorAs[T any](tb assert.TB, err error, msg string) T {
 	tb.Helper()
 	return matcher.ErrorAs[T](tb, matcher.Soft, err, msg)

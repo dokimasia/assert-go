@@ -6,6 +6,7 @@ package matcher
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -17,10 +18,11 @@ import (
 //
 // [context.Canceled] and [context.DeadlineExceeded] both count, and
 // the error may be wrapped. A subject that ignores its context returns
-// success or some unrelated error, and both fail here.
+// success or an unrelated error, and both fail.
 //
-// The cancellation is in place before fn starts, so this asks whether
-// fn checks at all rather than how quickly it notices.
+// The cancellation is in place before fn starts, so the assertion
+// checks whether fn reads its context at all, not how quickly it
+// notices.
 func HonoursCancellation(seat Seat, mode Mode, fn func(ctx context.Context) error, msg string) {
 	seat.Helper()
 
@@ -28,10 +30,11 @@ func HonoursCancellation(seat Seat, mode Mode, fn func(ctx context.Context) erro
 	cancel()
 
 	err := fn(ctx)
-	switch {
-	case err == nil:
+	if err == nil {
 		Fail(seat, mode, "honours-cancellation", msg, map[string]any{"got": nil})
-	case !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded):
+		return
+	}
+	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 		Fail(seat, mode, "honours-cancellation", msg, map[string]any{"got": err})
 	}
 }
@@ -41,14 +44,15 @@ func HonoursCancellation(seat Seat, mode Mode, fn func(ctx context.Context) erro
 // error.
 //
 // [context.DeadlineExceeded] and [context.Canceled] both count, and
-// the error may be wrapped. This differs from [HonoursCancellation] in
-// which failure it asks for: a subject may distinguish a caller who
-// gave up from one who ran out of time.
+// the error may be wrapped. The assertion differs from
+// [HonoursCancellation] in the failure that it hands fn, because a
+// subject may treat a caller who gave up apart from one who ran out of
+// time.
 //
-// The deadline is read from the runtime clock rather than the seat's.
-// A context decides expiry against the runtime clock and takes no
-// other, so a seat clock reading ahead of it would hand the subject a
-// deadline that has not passed and fail a subject that was right.
+// The deadline is read from the runtime clock, not from the seat's. A
+// context decides expiry against the runtime clock alone, so a seat
+// clock ahead of it would hand fn a deadline that has not passed, and
+// a subject that honours it would fail.
 func HonoursDeadline(seat Seat, mode Mode, fn func(ctx context.Context) error, msg string) {
 	seat.Helper()
 
@@ -57,10 +61,11 @@ func HonoursDeadline(seat Seat, mode Mode, fn func(ctx context.Context) error, m
 	defer cancel()
 
 	err := fn(ctx)
-	switch {
-	case err == nil:
+	if err == nil {
 		Fail(seat, mode, "honours-deadline", msg, map[string]any{"got": nil})
-	case !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled):
+		return
+	}
+	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 		Fail(seat, mode, "honours-deadline", msg, map[string]any{"got": err})
 	}
 }
@@ -68,45 +73,122 @@ func HonoursDeadline(seat Seat, mode Mode, fn func(ctx context.Context) error, m
 // CompletesWithin times fn and reports when it took longer than within.
 //
 // The verdict is the measured time. An error back from fn passes,
-// because failing quickly is still finishing, and which failure is
-// acceptable is a question for another assertion. Whether a subject
-// respects a deadline it was handed is [HonoursDeadline]; this asks
-// only how long it took.
+// because failing quickly is still finishing. Other assertions state
+// which failures are acceptable, and [HonoursDeadline] checks whether a
+// subject honours a deadline that it was handed.
 //
-// fn receives a context carrying within as its deadline, so a subject
-// that watches one can return rather than run long. That deadline is
-// read from the runtime clock, because [context] offers no way to
-// supply another. The verdict is not: it is measured on the seat's
-// clock, so a test driving a controlled clock decides what the subject
-// took. Under the default clock the two agree.
+// fn runs on a goroutine of its own. It receives a context whose
+// deadline is within from now, so a subject that watches the context can
+// return before it runs long. The deadline is read from the runtime
+// clock, because [context] does not accept another clock. The verdict on
+// a subject that returns is measured on the seat's clock, and a test that
+// drives a controlled clock sets the time that the subject took. Under
+// the default clock the two clocks agree.
 //
-// This spends real time, up to however long fn takes.
+// A subject that has not returned when the deadline passes fails then,
+// with got the time waited on the runtime clock, and the assertion
+// returns without it. A goroutine cannot be stopped from outside, so fn
+// runs on, and a leak check after this call reports it.
+//
+// Exactly one of fn and the deadline ends the wait. A panic in fn that
+// ends it panics again on the calling goroutine. A panic in fn after the
+// deadline panics on fn's own goroutine.
+//
+// The assertion spends real time, up to within.
 func CompletesWithin(seat Seat, mode Mode, within time.Duration, fn func(ctx context.Context) error, msg string) {
 	seat.Helper()
 
+	// The readings precede the context, so a subject that returns after
+	// the deadline has taken more than within on the runtime clock.
+	clock := ClockOf(seat)
+	started, waited := clock.Now(), time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), within)
 	defer cancel()
 
-	clock := ClockOf(seat)
-	started := clock.Now()
-	_ = fn(ctx)
-	elapsed := clock.Now().Sub(started)
+	s := newSubject()
+	stop := context.AfterFunc(ctx, s.expire)
+	defer stop()
+	go func() {
+		defer func() { s.end(recover()) }()
+		_ = fn(ctx)
+	}()
 
-	if elapsed > within {
+	switch raised := (<-s.outcome).(type) {
+	case expired:
 		Fail(seat, mode, "completes-within", msg, map[string]any{
 			"want": within,
-			"got":  elapsed.Round(time.Millisecond),
+			"got":  time.Since(waited).Round(time.Millisecond),
 		})
+	case nil:
+		if elapsed := clock.Now().Sub(started); elapsed > within {
+			Fail(seat, mode, "completes-within", msg, map[string]any{
+				"want": within,
+				"got":  elapsed.Round(time.Millisecond),
+			})
+		}
+	default:
+		panic(raised)
+	}
+}
+
+// The states of a subject that [CompletesWithin] runs. The subject and
+// its deadline each try to move it out of running, and exactly one of
+// them succeeds.
+const (
+	// running is a subject that has neither ended nor run out of time.
+	running int32 = iota
+	// finished is a subject that ended before its deadline. The caller
+	// judges its outcome.
+	finished
+	// abandoned is a subject whose deadline passed first. The caller has
+	// reported it, and a panic of the subject panics on the subject's
+	// goroutine.
+	abandoned
+)
+
+// subject is the state of a subject that [CompletesWithin] runs.
+type subject struct {
+	state atomic.Int32
+	// outcome receives one value: the value that the subject panicked
+	// with, nil for a subject that returned, or expired.
+	outcome chan any
+}
+
+// expired is the outcome of a subject whose deadline passed first.
+type expired struct{}
+
+// newSubject returns a subject that is running.
+func newSubject() *subject {
+	return &subject{outcome: make(chan any, 1)}
+}
+
+// end hands raised, the value that the subject panicked with or nil, to
+// the caller when the subject ends first. A subject that ends after its
+// deadline panics again with raised on its own goroutine.
+func (s *subject) end(raised any) {
+	if s.state.CompareAndSwap(running, finished) {
+		s.outcome <- raised
+		return
+	}
+	if raised != nil {
+		panic(raised)
+	}
+}
+
+// expire ends the wait for a subject whose deadline passes first.
+func (s *subject) expire() {
+	if s.state.CompareAndSwap(running, abandoned) {
+		s.outcome <- expired{}
 	}
 }
 
 // Pure reads observable state with observe, calls fn, reads it again,
 // and reports when the two readings differ.
 //
-// Use it to state that a read-only operation changes nothing a caller
-// can see. observe returns a projection, and that projection defines
-// what "nothing" means here: whatever it leaves out, fn is free to
-// change.
+// Use it to state that a read-only operation leaves the state that a
+// caller can see unchanged. observe returns a projection of the state,
+// and fn passes when the projection is the same before and after it. fn
+// may change whatever the projection leaves out.
 //
 //	matcher.Pure(seat, matcher.Fatal,
 //	    func() []Item { return store.List(ctx) },
@@ -114,9 +196,9 @@ func CompletesWithin(seat Seat, mode Mode, within time.Duration, fn func(ctx con
 //	    "Get does not disturb the store")
 //
 // Return a copy from observe. A projection that shares memory with the
-// subject reads the same value twice and passes whatever fn did.
-// Leave out anything that moves on its own, such as a clock reading or
-// a generated identifier.
+// subject reads the same value twice and passes whatever fn did. Leave
+// out anything that moves on its own, such as a clock reading or a
+// generated identifier.
 func Pure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg string, opts ...Option) {
 	seat.Helper()
 
@@ -132,9 +214,9 @@ func Pure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg string, 
 // NilContextSafe calls fn with a nil context and reports when fn
 // panics.
 //
-// An error back is fine and expected. The question is only whether a
-// subject handed no context crashes, which is what a caller does by
-// accident and a middlebox does by omission.
+// An error back from fn passes. The assertion checks only that a
+// subject handed no context does not crash, because a caller passes a
+// nil context by accident.
 func NilContextSafe(seat Seat, mode Mode, fn func(ctx context.Context) error, msg string) {
 	seat.Helper()
 

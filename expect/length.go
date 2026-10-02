@@ -8,24 +8,28 @@ import (
 	"go.dokimi.dev/assert/internal/matcher"
 )
 
-// Length records a failure when got does not hold want items.
+// Length records a failure when got does not have want items.
 //
-// It answers for an array, slice, map, channel or string. Passing
-// anything else fails, naming the type, rather than panicking.
+// It counts the elements of an array, slice or channel, the entries of a
+// map, the bytes of a []byte and the Unicode scalar values of a string,
+// so "é" has one. Anything else has no length, nil included, and fails
+// with got nil. It does not panic.
 func Length(tb assert.TB, got any, want int, msg string) {
 	tb.Helper()
 	matcher.Length(tb, matcher.Soft, got, want, msg)
 }
 
-// Empty records a failure when got holds anything. See [Length] for the
-// types that answer.
+// Empty records a failure when got has any item. A value without a
+// length, nil included, fails. See [Length] for the values that have
+// one.
 func Empty(tb assert.TB, got any, msg string) {
 	tb.Helper()
 	matcher.Empty(tb, matcher.Soft, got, msg)
 }
 
-// NotEmpty records a failure when got holds nothing. See [Length] for the
-// types that answer.
+// NotEmpty records a failure when got has no item. A value without a
+// length, nil included, fails. See [Length] for the values that have
+// one.
 func NotEmpty(tb assert.TB, got any, msg string) {
 	tb.Helper()
 	matcher.NotEmpty(tb, matcher.Soft, got, msg)

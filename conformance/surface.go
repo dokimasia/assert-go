@@ -14,8 +14,8 @@ import (
 	"strings"
 )
 
-// Surface names one of the two the standard requires, by the directory
-// holding it relative to this package.
+// Surface is a surface of the library, named by its directory relative
+// to this package.
 type Surface string
 
 const (
@@ -31,16 +31,17 @@ const (
 	Prop Surface = "../prop"
 )
 
-// subpackages maps the name the definition gives a subpackage to the
-// surface holding it, so a qualified name resolves to somewhere to
-// look.
+// subpackages maps the name that the definition gives a subpackage to
+// the surface that contains it, so that a qualified name resolves to a
+// directory.
 var subpackages = map[string]Surface{
 	"golden": Golden,
 	"bench":  Bench,
 	"prop":   Prop,
 }
 
-// Subpackage answers where an assertion's package name says to look.
+// Subpackage returns the surface of the subpackage that an assertion's
+// package names, and whether the name is a subpackage of the library.
 func Subpackage(name string) (Surface, bool) {
 	s, ok := subpackages[name]
 	return s, ok
@@ -52,24 +53,139 @@ const (
 	testSuffix = "_test.go"
 )
 
+// seatType is the name of the seat's type, which an arity does not count.
+const seatType = "TB"
+
 // Members returns every exported package-level name a surface
 // declares, sorted and deduplicated.
 //
-// Methods are left out: a method belongs to its type, and the types
-// are compared by name.
+// Methods are left out. A method belongs to its type, and the types are
+// compared by name.
 //
-// # Why the source rather than the compiled package
+// # The source, not the compiled package
 //
-// A hand-maintained list would go stale without failing, which is the
-// failure this guards against, so the answer comes from the files. It
-// reads them with [go/parser], which needs nothing outside the
-// standard library: a test-only check has no business adding a
-// dependency to everything that imports the library.
+// The names come from the files, so the list cannot go stale without
+// the check failing. Members reads the files with [go/parser]. The
+// parser is part of the standard library, so a check that only tests
+// run adds no dependency to the modules that import the library.
 //
-// The cost is that build tags are not evaluated, so a surface split
-// across tagged files would be read as one. Neither surface uses
-// them, and one that started to would need this reconsidered.
+// Build tags are not evaluated. A surface split across tagged files
+// reads as one surface, and no surface uses build tags.
 func Members(s Surface) ([]string, error) {
+	decls, err := declarations(s)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []string
+	for _, decl := range decls {
+		out = append(out, exported(decl)...)
+	}
+
+	slices.Sort(out)
+	return slices.Compact(out), nil
+}
+
+// Arities returns the arity of every exported function and method that a
+// surface declares, keyed by its name, and a method's by Type.Method.
+//
+// The arity is the one the definition states. It counts the parameters
+// after the seat, without a variadic one, and the type parameters that no
+// parameter's type names, because a caller states each of those. The
+// seat is a first parameter of the type TB, of this package or another.
+// It reads the source as [Members] does.
+func Arities(s Surface) (map[string]int, error) {
+	decls, err := declarations(s)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[string]int)
+	for _, decl := range decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || !fn.Name.IsExported() {
+			continue
+		}
+		name := fn.Name.Name
+		if fn.Recv != nil {
+			owner := receiver(fn.Recv.List[0].Type)
+			if !ast.IsExported(owner) {
+				continue
+			}
+			name = owner + "." + name
+		}
+		out[name] = arity(fn.Type)
+	}
+	return out, nil
+}
+
+// arity counts what a caller states to call a function of type fn: the
+// parameters after the seat, without a variadic one, and each type
+// parameter that no parameter's type names.
+func arity(fn *ast.FuncType) int {
+	n := 0
+	named := make(map[string]bool)
+	for i, field := range fn.Params.List {
+		ast.Inspect(field.Type, func(node ast.Node) bool {
+			if id, ok := node.(*ast.Ident); ok {
+				named[id.Name] = true
+			}
+			return true
+		})
+
+		if _, variadic := field.Type.(*ast.Ellipsis); variadic || (i == 0 && isSeat(field.Type)) {
+			continue
+		}
+		n += max(len(field.Names), 1)
+	}
+
+	if fn.TypeParams != nil {
+		for _, field := range fn.TypeParams.List {
+			for _, param := range field.Names {
+				if !named[param.Name] {
+					n++
+				}
+			}
+		}
+	}
+	return n
+}
+
+// isSeat reports whether a parameter's type is TB, of this package or
+// another.
+func isSeat(typ ast.Expr) bool {
+	switch t := typ.(type) {
+	case *ast.Ident:
+		return t.Name == seatType
+	case *ast.SelectorExpr:
+		return t.Sel.Name == seatType
+	}
+	return false
+}
+
+// receiver returns the name of a method's receiver type, without a
+// pointer, parentheses and type arguments. It returns the empty string
+// for a receiver that names no type, which the parser accepts and the
+// compiler refuses.
+func receiver(typ ast.Expr) string {
+	switch t := typ.(type) {
+	case *ast.StarExpr:
+		return receiver(t.X)
+	case *ast.ParenExpr:
+		return receiver(t.X)
+	case *ast.IndexExpr:
+		return receiver(t.X)
+	case *ast.IndexListExpr:
+		return receiver(t.X)
+	case *ast.Ident:
+		return t.Name
+	}
+	return ""
+}
+
+// declarations returns the top-level declarations of a surface's source
+// files, its test files left out.
+func declarations(s Surface) ([]ast.Decl, error) {
 	dir := string(s)
 
 	entries, err := os.ReadDir(dir)
@@ -78,7 +194,7 @@ func Members(s Surface) ([]string, error) {
 	}
 
 	fset := token.NewFileSet()
-	var out []string
+	var out []ast.Decl
 	for _, entry := range entries {
 		name := entry.Name()
 		if entry.IsDir() || !strings.HasSuffix(name, goSuffix) || strings.HasSuffix(name, testSuffix) {
@@ -89,13 +205,9 @@ func Members(s Surface) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("conformance: parse %s: %w", name, err)
 		}
-		for _, decl := range file.Decls {
-			out = append(out, exported(decl)...)
-		}
+		out = append(out, file.Decls...)
 	}
-
-	slices.Sort(out)
-	return slices.Compact(out), nil
+	return out, nil
 }
 
 // exported names what one declaration exports.

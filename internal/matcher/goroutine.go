@@ -5,90 +5,120 @@ package matcher
 
 import (
 	"bytes"
+	"errors"
 	"runtime"
 	"slices"
 	"strconv"
 	"time"
 )
 
-// Buffer sizes for the stack dump a leak check reads. It grows rather
-// than guessing, because a truncated dump loses the goroutines at the
-// end and would report them as finished.
+// The bounds of the stack dump that a leak check reads.
 const (
-	firstStackBuf = 1 << 20
-	maxStackBuf   = 8 << 20
+	// firstStackDump is the size of the first buffer that a leak check
+	// reads the dump into: 1 MiB.
+	firstStackDump = 1 << 20
+	// maxStackDump is the size of the largest: 64 MiB, the bound that
+	// runtime/pprof sets on its own dump of every goroutine.
+	maxStackDump = 64 << 20
+	// maxDumps bounds the dumps of one call to [DumpAll]. A buffer that
+	// starts empty and doubles at each dump is 2^62 bytes at the 64th.
+	maxDumps = 64
 )
 
-// How long a leak check waits for goroutines to finish before
-// reporting them. Real time, and necessarily: no clock a test controls
-// governs when a goroutine returns.
+// The wait of a leak check for goroutines that are about to return: up
+// to 100 readings, 5 ms apart, which span half a second.
 const (
-	leakGrace    = 500 * time.Millisecond
-	leakInterval = 5 * time.Millisecond
+	leakReadings               = 100
+	leakInterval time.Duration = 5_000_000
 )
+
+// ErrDumpTooLarge is the error of a dump that fills the largest buffer
+// that [DumpAll] may use.
+var ErrDumpTooLarge = errors.New("matcher: the dump fills the largest buffer")
 
 // NoGoroutineLeaks records which goroutines are running and returns a
-// check that reports any still running when it is called.
+// check that reports the goroutines started after this call that are
+// still running when the check is called.
 //
 //	done := matcher.NoGoroutineLeaks(seat, matcher.Fatal, "the worker stops")
 //	defer done()
 //
-// Identity, not count: only goroutines started after this call are
-// reported, so goroutines already running are never blamed.
+// The check compares goroutine ids, not counts, so a goroutine that was
+// already running is never reported.
 //
-// The check waits up to half a second, polling, before reporting. A
-// goroutine on its way out is not a leak, and without the grace period
-// every test that starts one would be flaky.
+// The check reads the running goroutines up to 100 times, 5 ms apart, and
+// reports the new goroutines that are still running at the last reading.
+// A goroutine that returns during that half second is not a leak. The
+// wait is real time, because no clock that a test controls affects when a
+// goroutine returns.
 //
-// # What it cannot tell apart
+// Each reading dumps the stacks of every goroutine into a buffer of at
+// most 64 MiB. A dump that does not fit leaves the set of new goroutines
+// unknown, so the check reports the overflow and states no verdict.
 //
-// A goroutine started by a neighbouring test between the two readings
-// looks exactly like a leak, because both are simply new. Do not call
-// [testing.T.Parallel] in a test using this, and be aware that a
-// package whose other tests are parallel can still produce a false
-// report. The reading is over the whole process; nothing scopes it to
-// one test.
+// # Parallel tests
+//
+// A goroutine that a parallel test starts between the two readings is
+// new, so the check reports it as a leak. Do not call [testing.T.Parallel]
+// in a test that uses this check. A package whose other tests are
+// parallel can still produce a false report, because each reading covers
+// the whole process.
 func NoGoroutineLeaks(seat Seat, mode Mode, msg string) func() {
 	seat.Helper()
+	return noLeaks(seat, mode, msg, allStacks, maxStackDump)
+}
 
-	before, _ := goroutineIDs(make([]byte, firstStackBuf))
+// noLeaks is [NoGoroutineLeaks] over the stacks that dump writes, read
+// into buffers of at most limit bytes.
+func noLeaks(seat Seat, mode Mode, msg string, dump func([]byte) int, limit int) func() {
+	seat.Helper()
 
+	before, buf, err := goroutineIDs(make([]byte, firstStackDump), dump, limit)
 	return func() {
 		seat.Helper()
 
-		deadline := time.Now().Add(leakGrace)
+		if err != nil {
+			unreadable(seat, mode, msg, err, limit)
+			return
+		}
 		var leaked []uint64
-		buf := make([]byte, firstStackBuf)
-		for {
+		for range leakReadings {
 			var running map[uint64]bool
-			running, buf = goroutineIDs(buf)
-			leaked = newIDs(before, running)
-			if len(leaked) == 0 || time.Now().After(deadline) {
-				break
+			if running, buf, err = goroutineIDs(buf, dump, limit); err != nil {
+				unreadable(seat, mode, msg, err, limit)
+				return
+			}
+			if leaked = newIDs(before, running); len(leaked) == 0 {
+				return
 			}
 			time.Sleep(leakInterval)
 		}
-
-		if len(leaked) > 0 {
-			Fail(seat, mode, "no-task-leaks", msg, map[string]any{"leaked": leaked})
-		}
+		Fail(seat, mode, "no-task-leaks", msg, map[string]any{"leaked": leaked})
 	}
 }
 
-// goroutineIDs returns the id of every goroutine running now, reading
-// into buf and growing it when the dump does not fit.
+// unreadable reports a leak check whose stacks do not fit in limit bytes.
+// The report states no verdict, so it has no record.
+func unreadable(seat Seat, mode Mode, msg string, err error, limit int) {
+	seat.Helper()
+	Report(seat, mode, "%s: %v of %d bytes, which leaves the set of new goroutines unknown",
+		msg, err, limit)
+}
+
+// allStacks writes the stack of every goroutine into b, and returns the
+// number of bytes it wrote.
+func allStacks(b []byte) int { return runtime.Stack(b, true) }
+
+// goroutineIDs returns the id of every goroutine in the stacks that dump
+// writes, and the buffer that it read them into. It reads into buf, and
+// grows it up to limit bytes when the stacks do not fit.
 //
-// It answers the buffer it ended with so a caller polling in a loop
-// allocates once rather than once per reading. Each reading stops the
-// world, and the dump is a megabyte before it grows.
-func goroutineIDs(buf []byte) (map[uint64]bool, []byte) {
-	var n int
-	for {
-		n = runtime.Stack(buf, true)
-		if n < len(buf) || len(buf) >= maxStackBuf {
-			break
-		}
-		buf = make([]byte, min(len(buf)*2, maxStackBuf))
+// A caller that reads in a loop passes the returned buffer back, so the
+// loop allocates once rather than once per reading.
+func goroutineIDs(buf []byte, dump func([]byte) int, limit int) (map[uint64]bool, []byte, error) {
+	buf, n, err := DumpAll(buf, limit, dump)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	out := map[uint64]bool{}
@@ -97,7 +127,27 @@ func goroutineIDs(buf []byte) (map[uint64]bool, []byte) {
 			out[id] = true
 		}
 	}
-	return out, buf
+	return out, buf, nil
+}
+
+// DumpAll returns a buffer that contains the whole of a dump, and the
+// dump's length. dump writes into the buffer it is given and returns the
+// number of bytes it wrote, as runtime.Stack does.
+//
+// A dump that fills its buffer may have been cut short, so DumpAll dumps
+// again into a buffer twice as large, up to a buffer of limit bytes. It
+// returns [ErrDumpTooLarge] when a dump fills the buffer of limit bytes.
+func DumpAll(buf []byte, limit int, dump func([]byte) int) ([]byte, int, error) {
+	for range maxDumps {
+		if n := dump(buf); n < len(buf) {
+			return buf, n, nil
+		}
+		if len(buf) == limit {
+			break
+		}
+		buf = make([]byte, min(max(2*len(buf), 1), limit))
+	}
+	return nil, 0, ErrDumpTooLarge
 }
 
 // goroutineID reads the id from a "goroutine 12 [running]:" header,

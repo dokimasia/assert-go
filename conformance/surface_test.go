@@ -115,6 +115,35 @@ func TestSurface(t *testing.T) {
 			assert.Contains(t, err.Error(), "conformance: parse broken.go", "the error names the file")
 		})
 
+		t.Run("returns an error for an arity of a surface whose directory does not exist", func(t *testing.T) {
+			t.Parallel()
+
+			_, err := conformance.Arities(conformance.Surface(filepath.Join(t.TempDir(), "missing")))
+			assert.HasError(t, err, "no directory, so no arities")
+			assert.Contains(t, err.Error(), "conformance: read", "the error names the read")
+		})
+
+		t.Run("returns the arity of each exported function and method by the definition's rule", func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			assert.NoError(t, os.WriteFile(filepath.Join(dir, "probe.go"), []byte(arityProbe), 0o600),
+				"the file is written")
+
+			arities, err := conformance.Arities(conformance.Surface(dir))
+			assert.NoError(t, err, "the probe can be read")
+			assert.Equal(t, arities, map[string]int{
+				"Seated":      3,
+				"Qualified":   1,
+				"Stated":      3,
+				"Inferred":    2,
+				"Unseated":    2,
+				"Later":       2,
+				"Pair.Method": 1,
+				"Probe.Paren": 1,
+			}, "the seat, a variadic and an inferred type parameter do not count, and a stated one does")
+		})
+
 		t.Run("returns each excused member for the aborting surface alone", func(t *testing.T) {
 			t.Parallel()
 
@@ -127,6 +156,44 @@ func TestSurface(t *testing.T) {
 		})
 	})
 }
+
+// arityProbe is a surface whose functions and methods state each case of
+// the arity rule. It is parsed and never compiled, so it also states a
+// receiver that names no type, which the compiler refuses.
+const arityProbe = `package probe
+
+type TB interface{ Helper() }
+
+type Option func()
+
+type Pair[K comparable, V any] struct{}
+
+type Probe struct{}
+
+type hidden struct{}
+
+func (p (Probe)) Paren(tb TB, a int) {}
+
+func (p []Probe) Unnamed(tb TB) {}
+
+func Seated(tb TB, got, want any, msg string, opts ...Option) {}
+
+func Qualified(tb assert.TB, msg string) {}
+
+func Stated[T any](tb TB, err error, msg string) T { var zero T; return zero }
+
+func Inferred[T any](tb TB, got T, msg string) {}
+
+func Unseated(a, b int) {}
+
+func Later(n int, tb TB) {}
+
+func (p *Pair[K, V]) Method(k K) {}
+
+func (hidden) Method(x int) {}
+
+func unexported(tb TB) {}
+`
 
 // pinned maps each surface id that the table gives Go to a value whose
 // type the compiler checks. Go looks nothing up by name at run time, so
@@ -226,10 +293,10 @@ var pinned = map[conformance.ID]any{
 }
 
 // TestSurfaceTable compares the pin map with the naming table: the map
-// pins every id that the table names for Go, and the overlay declines
-// every id that the table does not name, with a reason. Written with
-// testing rather than with the library, because a verdict is not written
-// with the subject.
+// pins every id that the table names for Go and no id that the table does
+// not state, and the overlay declines every id that the table does not
+// name, with a reason. It is written with testing and not with the
+// library, because a verdict is not written with the subject.
 func TestSurfaceTable(t *testing.T) {
 	t.Parallel()
 
@@ -249,6 +316,12 @@ func TestSurfaceTable(t *testing.T) {
 	source, err := os.ReadFile("surface_test.go")
 	if err != nil {
 		t.Fatalf("this file can be read: %v", err)
+	}
+
+	for id := range pinned {
+		if _, stated := names[id]; !stated {
+			t.Errorf("%s: pinned here, and the table states no such id", id)
+		}
 	}
 
 	for id, name := range names {
@@ -435,14 +508,166 @@ func TestSurfaceRecording(t *testing.T) {
 		})
 	})
 
-	t.Run("Functions", func(t *testing.T) { drive(t, recordingFunctions, names) })
-	t.Run("Methods", func(t *testing.T) { drive(t, recordingMethods, names) })
+	t.Run("Functions", func(t *testing.T) { drive(t, recordingFunctions, names, false) })
+	t.Run("Methods", func(t *testing.T) { drive(t, recordingMethods, names, false) })
 }
 
-// drive calls each driver with a fresh seat. It requires a failure
-// through Errorf, none through Fatalf, and a record whose assertion the
-// naming table gives Go under the driver's key.
-func drive(t *testing.T, drivers map[string]func(tb assert.TB), names map[conformance.ID]string) {
+// abortingFunctions calls each reporting function of the aborting surface,
+// keyed by its name, with an input the function rejects.
+var abortingFunctions = map[string]func(tb assert.TB){
+	"CloseTo": func(tb assert.TB) { assert.CloseTo(tb, 1.0, 2, 0.1, rejected) },
+	"CompletesWithin": func(tb assert.TB) {
+		assert.CompletesWithin(tb, time.Millisecond, func(context.Context) error {
+			time.Sleep(2 * time.Millisecond)
+			return nil
+		}, rejected)
+	},
+	"Contains":        func(tb assert.TB) { assert.Contains(tb, "abc", "x", rejected) },
+	"ContainsInOrder": func(tb assert.TB) { assert.ContainsInOrder(tb, "abc", []string{"c", "a"}, rejected) },
+	"Empty":           func(tb assert.TB) { assert.Empty(tb, "a", rejected) },
+	"Equal":           func(tb assert.TB) { assert.Equal(tb, 1, 2, rejected) },
+	"ErrorAs":         func(tb assert.TB) { _ = assert.ErrorAs[*fs.PathError](tb, io.EOF, rejected) },
+	"ErrorIs":         func(tb assert.TB) { assert.ErrorIs(tb, io.EOF, fs.ErrNotExist, rejected) },
+	"ErrorIsNot":      func(tb assert.TB) { assert.ErrorIsNot(tb, io.EOF, io.EOF, rejected) },
+	"Eventually": func(tb assert.TB) {
+		assert.Eventually(tb, time.Millisecond, time.Millisecond, func(trial assert.TB) {
+			assert.True(trial, false, rejected)
+		}, rejected)
+	},
+	"EventuallyTrue": func(tb assert.TB) {
+		assert.EventuallyTrue(tb, time.Millisecond, func() bool { return false }, rejected)
+	},
+	"False":     func(tb assert.TB) { assert.False(tb, true, rejected) },
+	"HasError":  func(tb assert.TB) { assert.HasError(tb, nil, rejected) },
+	"HasPrefix": func(tb assert.TB) { assert.HasPrefix(tb, "abc", "x", rejected) },
+	"HasSuffix": func(tb assert.TB) { assert.HasSuffix(tb, "abc", "x", rejected) },
+	"HonoursCancellation": func(tb assert.TB) {
+		assert.HonoursCancellation(tb, func(context.Context) error { return nil }, rejected)
+	},
+	"HonoursDeadline": func(tb assert.TB) {
+		assert.HonoursDeadline(tb, func(context.Context) error { return nil }, rejected)
+	},
+	"InRange": func(tb assert.TB) { assert.InRange(tb, 5.0, 0, 1, rejected) },
+	"Length":  func(tb assert.TB) { assert.Length(tb, "ab", 3, rejected) },
+	"Matches": func(tb assert.TB) { assert.Matches(tb, "abc", "^x", rejected) },
+	"MaxAllocs": func(tb assert.TB) {
+		assert.MaxAllocs(tb, func() { escaped = make([]byte, 64) }, 0, rejected)
+	},
+	"Nil": func(tb assert.TB) { assert.Nil(tb, 1, rejected) },
+	"NilContextSafe": func(tb assert.TB) {
+		assert.NilContextSafe(tb, func(ctx context.Context) error { return ctx.Err() }, rejected)
+	},
+	"NoError": func(tb assert.TB) { assert.NoError(tb, io.EOF, rejected) },
+	"NoGoroutineLeaks": func(tb assert.TB) {
+		check := assert.NoGoroutineLeaks(tb, rejected)
+		release := make(chan struct{})
+		go func() { <-release }()
+		check()
+		close(release)
+	},
+	"NotContains": func(tb assert.TB) { assert.NotContains(tb, "abc", "b", rejected) },
+	"NotEmpty":    func(tb assert.TB) { assert.NotEmpty(tb, "", rejected) },
+	"NotEqual":    func(tb assert.TB) { assert.NotEqual(tb, 1, 1, rejected) },
+	"NotNil":      func(tb assert.TB) { assert.NotNil(tb, nil, rejected) },
+	"NotPanics":   func(tb assert.TB) { assert.NotPanics(tb, func() { panic(rejected) }, rejected) },
+	"Pairwise": func(tb assert.TB) {
+		assert.Pairwise(tb, []int{2, 1}, func(earlier, later int) bool { return earlier < later }, rejected)
+	},
+	"Panics": func(tb assert.TB) { assert.Panics(tb, func() {}, rejected) },
+	"Pure": func(tb assert.TB) {
+		calls := 0
+		assert.Pure(tb, func() int { return calls }, func() { calls++ }, rejected)
+	},
+	"Rejects": func(tb assert.TB) { assert.Rejects(tb, rejected, func(assert.TB) {}) },
+	"True":    func(tb assert.TB) { assert.True(tb, false, rejected) },
+}
+
+// abortingMethods calls each method of the aborting chain, keyed by its
+// name, on a value the method rejects.
+var abortingMethods = map[string]func(tb assert.TB){
+	"CloseTo":         func(tb assert.TB) { assert.That(tb, 1.0).CloseTo(2, 0.1, rejected) },
+	"Contains":        func(tb assert.TB) { assert.That(tb, "abc").Contains("x", rejected) },
+	"ContainsInOrder": func(tb assert.TB) { assert.That(tb, "abc").ContainsInOrder([]string{"c", "a"}, rejected) },
+	"Empty":           func(tb assert.TB) { assert.That(tb, "a").Empty(rejected) },
+	"Equal":           func(tb assert.TB) { assert.That(tb, 1).Equal(2, rejected) },
+	"HasPrefix":       func(tb assert.TB) { assert.That(tb, "abc").HasPrefix("x", rejected) },
+	"HasSuffix":       func(tb assert.TB) { assert.That(tb, "abc").HasSuffix("x", rejected) },
+	"InRange":         func(tb assert.TB) { assert.That(tb, 5.0).InRange(0, 1, rejected) },
+	"Length":          func(tb assert.TB) { assert.That(tb, "ab").Length(3, rejected) },
+	"Matches":         func(tb assert.TB) { assert.That(tb, "abc").Matches("^x", rejected) },
+	"Nil":             func(tb assert.TB) { assert.That(tb, 1).Nil(rejected) },
+	"NotContains":     func(tb assert.TB) { assert.That(tb, "abc").NotContains("b", rejected) },
+	"NotEmpty":        func(tb assert.TB) { assert.That(tb, "").NotEmpty(rejected) },
+	"NotEqual":        func(tb assert.TB) { assert.That(tb, 1).NotEqual(1, rejected) },
+	"NotNil":          func(tb assert.TB) { assert.That[any](tb, nil).NotNil(rejected) },
+}
+
+// TestSurfaceAborting drives every reporting member of the aborting surface
+// with an input it rejects. Each member must report through Fatalf and
+// never through Errorf, and its record must name the member the driver is
+// keyed by. It is the twin of TestSurfaceRecording, and it does not run in
+// parallel for the same reasons.
+//
+// The member list comes from the surface's source and the chain's method
+// set, so a member added without a driver fails here. A member that
+// reports nothing is excused by silent, by abortingOnly, or by a type of
+// the naming table's surface section.
+func TestSurfaceAborting(t *testing.T) {
+	members, err := conformance.Members(conformance.Aborting)
+	if err != nil {
+		t.Fatalf("the aborting surface can be read: %v", err)
+	}
+
+	names, err := conformance.Names()
+	if err != nil {
+		t.Fatalf("the naming table can be read: %v", err)
+	}
+
+	table, err := conformance.SurfaceNames()
+	if err != nil {
+		t.Fatalf("the surface table can be read: %v", err)
+	}
+	typed := slices.Collect(maps.Values(table))
+
+	var methods []string
+	for method := range reflect.TypeFor[*assert.Assertion[any]]().Methods() {
+		methods = append(methods, method.Name)
+	}
+
+	t.Run("Members", func(t *testing.T) {
+		t.Run("matches each reporting function with a driver", func(t *testing.T) {
+			var reporting []string
+			for _, name := range members {
+				_, quiet := silent[name]
+				_, only := abortingOnly[name]
+				_, driven := abortingFunctions[name]
+				if driven || (!quiet && !only && !slices.Contains(typed, name)) {
+					reporting = append(reporting, name)
+				}
+			}
+			driven := slices.Sorted(maps.Keys(abortingFunctions))
+			if !slices.Equal(driven, reporting) {
+				t.Errorf("the surface declares the reporting functions %v, and the drivers name %v", reporting, driven)
+			}
+		})
+
+		t.Run("matches each method of the chain with a driver", func(t *testing.T) {
+			driven := slices.Sorted(maps.Keys(abortingMethods))
+			if !slices.Equal(driven, methods) {
+				t.Errorf("the chain declares %v, and the drivers name %v", methods, driven)
+			}
+		})
+	})
+
+	t.Run("Functions", func(t *testing.T) { drive(t, abortingFunctions, names, true) })
+	t.Run("Methods", func(t *testing.T) { drive(t, abortingMethods, names, true) })
+}
+
+// drive calls each driver with a fresh seat. It requires a failure through
+// Fatalf and none through Errorf when aborting is set, the reverse when it
+// is not, and a record whose assertion the naming table gives Go under the
+// driver's key.
+func drive(t *testing.T, drivers map[string]func(tb assert.TB), names map[conformance.ID]string, aborting bool) {
 	t.Helper()
 
 	for _, name := range slices.Sorted(maps.Keys(drivers)) {
@@ -454,12 +679,18 @@ func drive(t *testing.T, drivers map[string]func(tb assert.TB), names map[confor
 			seat := &matchertest.Seat{}
 			drivers[name](seat)
 
-			if fatals := seat.Fatals(); len(fatals) > 0 {
-				t.Errorf("reported through Fatalf, which stops the test: %q", fatals)
+			reported, other := seat.Errs(), seat.Fatals()
+			path, otherPath := "Errorf", "Fatalf"
+			if aborting {
+				reported, other = other, reported
+				path, otherPath = otherPath, path
+			}
+			if len(other) > 0 {
+				t.Errorf("reported through %s: %q", otherPath, other)
 			}
 			records := seat.Records()
-			if len(seat.Errs()) == 0 || len(records) == 0 {
-				t.Fatal("reported nothing through Errorf, so the input did not fail it")
+			if len(reported) == 0 || len(records) == 0 {
+				t.Fatalf("reported nothing through %s, so the input did not fail it", path)
 			}
 			if got := names[conformance.ID(records[0].Assertion)]; got != name {
 				t.Errorf("reported %s, which Go names %q, so the driver calls another member",

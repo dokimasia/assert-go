@@ -30,7 +30,7 @@ const (
 // exceeds ceiling. It counts as [testing.AllocsPerRun] counts.
 //
 //	matcher.MaxAllocs(seat, matcher.Fatal, func() { _, _ = store.Get(ctx, id) }, 0,
-//	    "Get allocates nothing once the store is warm")
+//	    "Get averages under one allocation per call once the store is warm")
 //
 // In a build where [AllocationsCounted] reports false, it calls fn as
 // an ordinary build does and reports nothing.

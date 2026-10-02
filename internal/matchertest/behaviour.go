@@ -11,16 +11,16 @@ import (
 	"time"
 )
 
-// The subjects the behavioural suites drive. Naming them once keeps
-// every surface asking the same questions of the same shapes.
+// The subjects that the behavioural suites drive. Every surface's suite
+// drives the same subjects.
 var (
-	// RespectsCtx returns whatever its context says, which is what a
-	// subject that checks cancellation does.
+	// RespectsCtx returns the error of its context, as a subject that
+	// checks cancellation does.
 	RespectsCtx = func(ctx context.Context) error { return ctx.Err() }
-	// IgnoresCtx succeeds however its context stands.
+	// IgnoresCtx returns success whatever the state of its context.
 	IgnoresCtx = func(context.Context) error { return nil }
-	// WrapsCtx returns its context's error wrapped, so a suite proves
-	// the chain is walked rather than the error compared directly.
+	// WrapsCtx returns the error of its context wrapped, so a suite
+	// proves that the assertion walks the chain of the error.
 	WrapsCtx = func(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("matchertest: %w", err)
@@ -116,6 +116,14 @@ func RunCompletesWithin(t *testing.T, invoke WithinInvoke) {
 		checkOutcome(t, seat, Case{})
 	})
 
+	t.Run("a subject that reads its context before the deadline passes", func(t *testing.T) {
+		t.Parallel()
+
+		seat := &Seat{}
+		invoke(seat, time.Second, WrapsCtx, contractMsg)
+		checkOutcome(t, seat, Case{})
+	})
+
 	t.Run("a subject that runs out of time reports", func(t *testing.T) {
 		t.Parallel()
 
@@ -127,10 +135,10 @@ func RunCompletesWithin(t *testing.T, invoke WithinInvoke) {
 		checkOutcome(t, seat, Case{Fails: true, Assertion: "completes-within"})
 	})
 
-	// The verdict is the time taken, not what the subject said about
-	// it. A subject that never looks at the handle it was given and
-	// answers success late has still missed the ceiling, and reading
-	// the answer instead of the clock passes it.
+	// The verdict is the time taken, not the subject's result. A subject
+	// that ignores its context and returns success late has missed the
+	// ceiling, and an assertion that reads the result instead of the
+	// clock passes it.
 	t.Run("a subject that overruns without watching reports", func(t *testing.T) {
 		t.Parallel()
 
@@ -141,6 +149,42 @@ func RunCompletesWithin(t *testing.T, invoke WithinInvoke) {
 		}, contractMsg)
 		checkOutcome(t, seat, Case{Fails: true, Assertion: "completes-within"})
 	})
+
+	// The subject waits on a channel that is closed only after the
+	// assertion returns, so the assertion returns at the deadline or the
+	// test times out.
+	t.Run("a subject that never returns reports at the deadline", func(t *testing.T) {
+		t.Parallel()
+
+		release := make(chan struct{})
+		defer close(release)
+
+		seat := &Seat{}
+		invoke(seat, ShortTimeout, func(context.Context) error {
+			<-release
+			return nil
+		}, contractMsg)
+		checkOutcome(t, seat, Case{Fails: true, Assertion: "completes-within"})
+	})
+
+	t.Run("a panic of the subject panics again on the caller", func(t *testing.T) {
+		t.Parallel()
+
+		raised := Raised(func() {
+			invoke(&Seat{}, PatientTimeout, func(context.Context) error { panic(ErrSample) }, contractMsg)
+		})
+		if err, _ := raised.(error); !errors.Is(err, ErrSample) {
+			t.Fatalf("recovered %v, want the subject's own panic value", raised)
+		}
+	})
+}
+
+// Raised calls fn and returns the value that fn panicked with, or nil
+// when fn returned.
+func Raised(fn func()) (raised any) {
+	defer func() { raised = recover() }()
+	fn()
+	return nil
 }
 
 // RunPure drives invoke against every case a purity assertion must

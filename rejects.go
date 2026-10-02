@@ -3,9 +3,12 @@
 
 package assert
 
+import "go.dokimi.dev/assert/internal/matcher"
+
 // Rejects runs fn against an implementation fn is meant to reject, and
 // stops the test when fn passes. It returns fn's failure message,
-// empty when there was none.
+// empty when there was none. Its failure is a record of rejects whose
+// contract is msg, which states the rejection that did not happen.
 //
 // This is the assertion that an assertion can fail. A check whose
 // every statement is [NoError] passes against a subject whose methods
@@ -29,15 +32,14 @@ package assert
 // # Concurrency
 //
 // fn runs on a goroutine of its own and this call blocks until it
-// finishes. The seat fn receives stops it at its first failure by
-// ending that goroutine, which is what keeps a check from running past
-// an assertion it already failed. The goroutine does not outlive the
-// call, so a leak check around this stays quiet.
+// finishes. The seat fn receives ends that goroutine at fn's first
+// failure, so a check does not run past an assertion it already failed.
+// The goroutine does not outlive the call, so a leak check around this
+// call reports nothing.
 //
-// A panic inside fn is not recovered. It crosses the goroutine
-// boundary and stops the process, which is right: a check that panics
-// is a defect in the check or in the stand-in, and reporting it as a
-// rejection would hide it.
+// A panic inside fn is not recovered. It crosses the goroutine boundary
+// and stops the process. A check that panics is a defect in the check or
+// in the stand-in, and reporting it as a rejection would hide it.
 func Rejects(tb TB, msg string, fn func(tb TB)) string {
 	tb.Helper()
 
@@ -50,7 +52,7 @@ func Rejects(tb TB, msg string, fn func(tb TB)) string {
 	<-done
 
 	if !r.Failed() {
-		tb.Fatalf("%s: the check passed against an implementation it must reject", msg)
+		matcher.Fail(tb, matcher.Fatal, "rejects", msg, nil)
 	}
 	return r.Message()
 }

@@ -7,6 +7,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"strings"
 )
 
@@ -21,6 +22,10 @@ const (
 // goLanguage keys this language's entries in the naming table.
 const goLanguage = "go"
 
+// definition is the vendored definition. Each reader of it takes the file
+// system as a parameter, so a test can hand a reader a definition whose
+// files are missing or malformed.
+//
 //go:embed spec/assertions.json spec/naming.json spec/overlay.json spec/VERSION spec/corpus
 var definition embed.FS
 
@@ -32,22 +37,26 @@ type Assertion struct {
 	// Arity counts required arguments to the function form, excluding
 	// the seat and including the trailing message.
 	Arity int `json:"arity"`
-	// Package names the subpackage holding the assertion, empty for
+	// Package names the subpackage that contains the assertion, empty for
 	// the root namespace.
 	Package string `json:"package"`
 	// Summary states what the assertion means.
 	Summary string `json:"summary"`
-	// MessageFields names what a failure must report.
-	MessageFields []string `json:"message_fields"`
+	// DetailFields names the detail fields that a failure's record
+	// contains.
+	DetailFields []string `json:"detail_fields"`
 }
 
 // Assertions reads the definition's assertion table.
-func Assertions() (map[ID]Assertion, error) {
+func Assertions() (map[ID]Assertion, error) { return assertionsIn(definition) }
+
+// assertionsIn reads the assertion table of the definition in fsys.
+func assertionsIn(fsys fs.FS) (map[ID]Assertion, error) {
 	var doc struct {
 		Version    string           `json:"version"`
 		Assertions map[ID]Assertion `json:"assertions"`
 	}
-	if err := read(assertionsFile, &doc); err != nil {
+	if err := read(fsys, assertionsFile, &doc); err != nil {
 		return nil, err
 	}
 	return doc.Assertions, nil
@@ -55,11 +64,14 @@ func Assertions() (map[ID]Assertion, error) {
 
 // Names maps each assertion to the name this language exports it
 // under, qualified with its subpackage where it has one.
-func Names() (map[ID]string, error) {
+func Names() (map[ID]string, error) { return namesIn(definition) }
+
+// namesIn reads the names of the assertions from the definition in fsys.
+func namesIn(fsys fs.FS) (map[ID]string, error) {
 	var doc struct {
 		Names map[ID]map[string]string `json:"names"`
 	}
-	if err := read(namingFile, &doc); err != nil {
+	if err := read(fsys, namingFile, &doc); err != nil {
 		return nil, err
 	}
 
@@ -84,13 +96,16 @@ func (o OverlayDoc) DeclinesSurface(id ID) bool {
 
 // SurfaceNames maps every id the surface table states to the name this
 // language gives it, across the types, members and helpers sections. An
-// id the table gives this language no name for maps to the empty
-// string, which is what an overlay declining it looks like from here.
-func SurfaceNames() (map[ID]string, error) {
+// id that the table gives this language no name for maps to the empty
+// string, as an id that the overlay declines does.
+func SurfaceNames() (map[ID]string, error) { return surfaceNamesIn(definition) }
+
+// surfaceNamesIn reads the surface table of the definition in fsys.
+func surfaceNamesIn(fsys fs.FS) (map[ID]string, error) {
 	var doc struct {
 		Surface map[string]map[ID]map[string]string `json:"surface"`
 	}
-	if err := read(namingFile, &doc); err != nil {
+	if err := read(fsys, namingFile, &doc); err != nil {
 		return nil, err
 	}
 
@@ -104,21 +119,25 @@ func SurfaceNames() (map[ID]string, error) {
 }
 
 // RelaxationNames maps each relaxation the definition states to the
-// name this language exports it under. A relaxation the naming table
-// gives this language no name for maps to the empty string, which is
-// what an overlay declining it looks like from here.
-func RelaxationNames() (map[ID]string, error) {
+// name this language exports it under. A relaxation that the naming
+// table gives this language no name for maps to the empty string, as a
+// relaxation that the overlay declines does.
+func RelaxationNames() (map[ID]string, error) { return relaxationNamesIn(definition) }
+
+// relaxationNamesIn reads the names of the relaxations from the
+// definition in fsys.
+func relaxationNamesIn(fsys fs.FS) (map[ID]string, error) {
 	var spec struct {
 		Relaxations map[ID]struct{} `json:"relaxations"`
 	}
-	if err := read(assertionsFile, &spec); err != nil {
+	if err := read(fsys, assertionsFile, &spec); err != nil {
 		return nil, err
 	}
 
 	var doc struct {
 		Relaxations map[ID]map[string]string `json:"relaxations"`
 	}
-	if err := read(namingFile, &doc); err != nil {
+	if err := read(fsys, namingFile, &doc); err != nil {
 		return nil, err
 	}
 
@@ -130,8 +149,11 @@ func RelaxationNames() (map[ID]string, error) {
 }
 
 // Version reports the definition version this library implements.
-func Version() (string, error) {
-	raw, err := definition.ReadFile(versionFile)
+func Version() (string, error) { return versionIn(definition) }
+
+// versionIn reads the version of the definition in fsys.
+func versionIn(fsys fs.FS) (string, error) {
+	raw, err := fs.ReadFile(fsys, versionFile)
 	if err != nil {
 		return "", fmt.Errorf("conformance: read %s: %w", versionFile, err)
 	}
@@ -183,27 +205,25 @@ func (o OverlayDoc) Diverges(id ID) bool {
 }
 
 // Overlay reads this language's declared divergences.
-func Overlay() (OverlayDoc, error) {
-	raw, err := definition.ReadFile(overlayFile)
-	if err != nil {
-		return OverlayDoc{}, fmt.Errorf("conformance: read %s: %w", overlayFile, err)
-	}
+func Overlay() (OverlayDoc, error) { return overlayIn(definition) }
 
+// overlayIn reads this language's overlay from the definition in fsys.
+func overlayIn(fsys fs.FS) (OverlayDoc, error) {
 	var doc OverlayDoc
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		return OverlayDoc{}, fmt.Errorf("conformance: parse %s: %w", overlayFile, err)
+	if err := read(fsys, overlayFile, &doc); err != nil {
+		return OverlayDoc{}, err
 	}
 	return doc, nil
 }
 
-// read decodes one embedded file.
+// read decodes the file name of fsys into into.
 //
 // The definition is authored in YAML and rendered to JSON beside it,
 // which is what this reads. A YAML parser would be a dependency in the
 // module graph of everything importing this library, to read a file
 // that changes when the standard does.
-func read(name string, into any) error {
-	raw, err := definition.ReadFile(name)
+func read(fsys fs.FS, name string, into any) error {
+	raw, err := fs.ReadFile(fsys, name)
 	if err != nil {
 		return fmt.Errorf("conformance: read %s: %w", name, err)
 	}

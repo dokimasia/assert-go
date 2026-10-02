@@ -12,6 +12,18 @@ import (
 	"go.dokimi.dev/assert/conformance"
 )
 
+// FuzzDecode checks that Decode returns a value or an error for any
+// bytes, and does not panic.
+func FuzzDecode(f *testing.F) {
+	f.Add([]byte(`{"type":"null"}`))
+	f.Add([]byte(`{"type":"int","value":"9223372036854775808"}`))
+	f.Add([]byte(`{"type":"list","of":"float","value":["NaN",1.5,null]}`))
+	f.Add([]byte(`{"type":"map","entries":[[{"type":"list","items":[]},{"type":"bytes","value":"00"}]]}`))
+	f.Fuzz(func(t *testing.T, raw []byte) {
+		_, _ = conformance.Decode(raw)
+	})
+}
+
 // TestLiteral checks Decode, which turns a typed literal into the native
 // value that it states.
 func TestLiteral(t *testing.T) {
@@ -81,6 +93,21 @@ func TestLiteral(t *testing.T) {
 				want: []string{"a"},
 			},
 			{
+				name: "returns a nil slice of the stated type for a list whose value is null",
+				give: `{"type":"list","of":"int","value":null}`,
+				want: []int(nil),
+			},
+			{
+				name: "returns the infinities for the named floats of a list of float",
+				give: `{"type":"list","of":"float","value":["Inf","-Inf",1.5]}`,
+				want: []float64{math.Inf(1), math.Inf(-1), 1.5},
+			},
+			{
+				name: "returns an int for a decimal string of a list of int",
+				give: `{"type":"list","of":"int","value":[1,"9007199254740992"]}`,
+				want: []int{1, 9007199254740992},
+			},
+			{
 				name: "returns a slice of any for a list of items",
 				give: `{"type":"list","items":[{"type":"int","value":1},{"type":"string","value":"a"}]}`,
 				want: []any{1, "a"},
@@ -111,6 +138,21 @@ func TestLiteral(t *testing.T) {
 				want: map[string]string{"a": "b"},
 			},
 			{
+				name: "returns a nil map of the stated type for a map whose value is null",
+				give: `{"type":"map","key":"string","of":"string","value":null}`,
+				want: map[string]string(nil),
+			},
+			{
+				name: "returns the infinities for the named floats of a map of float",
+				give: `{"type":"map","key":"string","of":"float","value":{"a":"Inf","b":"-Inf"}}`,
+				want: map[string]float64{"a": math.Inf(1), "b": math.Inf(-1)},
+			},
+			{
+				name: "returns an int for a decimal string of a map of int",
+				give: `{"type":"map","key":"string","of":"int","value":{"a":"-9007199254740992"}}`,
+				want: map[string]int{"a": -9007199254740992},
+			},
+			{
 				name: "returns a map of any keys for a map of entries",
 				give: `{"type":"map","entries":[[{"type":"int","value":1},{"type":"string","value":"a"}]]}`,
 				want: map[any]any{1: "a"},
@@ -137,6 +179,13 @@ func TestLiteral(t *testing.T) {
 			assert.True(t, math.IsNaN(got.(float64)), "the literal decodes to NaN")
 		})
 
+		t.Run("returns NaN for the named float NaN of a list of float", func(t *testing.T) {
+			t.Parallel()
+			got, err := conformance.Decode(json.RawMessage(`{"type":"list","of":"float","value":["NaN"]}`))
+			assert.NoError(t, err, "the literal decodes")
+			assert.True(t, math.IsNaN(got.([]float64)[0]), "the element decodes to NaN")
+		})
+
 		unknown := []struct {
 			name string
 			give string
@@ -145,6 +194,10 @@ func TestLiteral(t *testing.T) {
 			{
 				name: "returns ErrUnknownType for a list of an unknown element type",
 				give: `{"type":"list","of":"widget","value":[]}`,
+			},
+			{
+				name: "returns ErrUnknownType for a null list of an unknown element type",
+				give: `{"type":"list","of":"widget","value":null}`,
 			},
 			{
 				name: "returns ErrUnknownType for a list item of an unknown type",
@@ -240,6 +293,26 @@ func TestLiteral(t *testing.T) {
 				name: "returns an error for a list value that is no array",
 				give: `{"type":"list","of":"int","value":3}`,
 				want: "decode list",
+			},
+			{
+				name: "returns an error for a list element of another type",
+				give: `{"type":"list","of":"bool","value":[1]}`,
+				want: "list element 0",
+			},
+			{
+				name: "returns an error for an element of a list of int that is no number",
+				give: `{"type":"list","of":"int","value":[true]}`,
+				want: "decode scalar",
+			},
+			{
+				name: "returns an error for an element of a list of int beyond the range of int",
+				give: `{"type":"list","of":"int","value":["9223372036854775808"]}`,
+				want: "9223372036854775808 is beyond the range of int",
+			},
+			{
+				name: "returns an error for a value of a map of float that is no number",
+				give: `{"type":"map","key":"string","of":"float","value":{"a":true}}`,
+				want: `map value "a"`,
 			},
 			{
 				name: "returns an error for a map value that is no object",

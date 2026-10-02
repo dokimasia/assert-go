@@ -24,7 +24,8 @@ func CloseTo(tb TB, got any, want, tolerance float64, msg string) {
 //	assert.InRange(t, port, 1024, 65535, "the port is unprivileged")
 //
 // got is any numeric type, with the precision limit [CloseTo]
-// describes. A low above high always fails and says so.
+// describes. A range whose low is above its high, or whose bound is
+// NaN, contains no number, so it fails whatever got is.
 func InRange(tb TB, got any, low, high float64, msg string) {
 	tb.Helper()
 	matcher.InRange(tb, matcher.Fatal, got, low, high, msg)

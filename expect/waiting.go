@@ -18,15 +18,15 @@ import (
 //	        expect.Equal(tb, cache.Get(key), want, "the cache caught up")
 //	    }, "the cache converges")
 //
-// fn receives a seat of its own, so assertions inside it record an
-// attempt rather than the test. fn runs at least once however short
-// the timeout.
+// fn receives a seat of its own, so an assertion inside it records an
+// attempt and not a failure of the test. fn runs at least once however
+// short the timeout. An interval below a millisecond waits a millisecond.
 //
-// This spends real time; see [go.dokimi.dev/assert.Eventually] for
+// Eventually spends real time. [go.dokimi.dev/assert.Eventually] states
 // when that is the right tool and when a controlled clock is.
 //
-// It is written by hand rather than generated, because the body's seat
-// is the one type the core cannot hand to a public package.
+// It is written by hand and not generated, because the core cannot hand
+// the body's seat type to a public package.
 func Eventually(tb assert.TB, timeout, interval time.Duration, fn func(tb assert.TB), msg string) {
 	tb.Helper()
 	matcher.Eventually(tb, matcher.Soft, timeout, interval, func(trial matcher.Seat) {
@@ -42,11 +42,14 @@ func Eventually(tb assert.TB, timeout, interval time.Duration, fn func(tb assert
 //	    return cache.Contains(key)
 //	}, "the key appears in the cache")
 //
-// Backoff starts at a millisecond and doubles, capped at a quarter of
-// the timeout. It differs from [Eventually] in what it reports: a
-// predicate has no failure to carry, so this says only that the wait
-// ran out. Where the reason matters, write the condition as assertions
-// and use [Eventually]. This spends real time for the same reason.
+// The backoff starts at a millisecond and doubles up to a quarter of the
+// timeout. A timeout below 4 ms keeps it at a millisecond.
+//
+// EventuallyTrue differs from [Eventually] in what it reports. A
+// predicate does not report a failure of its own, so the failure states
+// only that the wait ran out. Where the reason matters, write the condition as
+// assertions and use [Eventually]. EventuallyTrue spends real time for
+// the same reason.
 func EventuallyTrue(tb assert.TB, timeout time.Duration, pred func() bool, msg string) {
 	tb.Helper()
 	matcher.EventuallyTrue(tb, matcher.Soft, timeout, pred, msg)

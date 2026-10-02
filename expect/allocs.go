@@ -14,7 +14,10 @@ import (
 // ceiling and the count.
 //
 //	expect.MaxAllocs(t, func() { _, _ = store.Get(ctx, id) }, 0,
-//	    "Get allocates nothing once the store is warm")
+//	    "Get averages under one allocation per call once the store is warm")
+//
+// The rounding passes a ceiling of 0 for a function that allocates on
+// 99 of the 100 calls.
 //
 // It is the test form of the benchmark ceiling
 // [go.dokimi.dev/assert/bench.Contract.MaxAllocs], so the ordinary test

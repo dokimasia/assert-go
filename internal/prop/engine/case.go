@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/tree"
 )
@@ -795,5 +796,5 @@ func keep([]byte) {}
 func plain(format string, args []any) assert.Failure {
 	var pcs [maxFrames]uintptr
 	n := runtime.Callers(1, pcs[:])
-	return assert.Failure{Contract: fmt.Sprintf(format, args...), Where: callerWhere(pcs[:n])}
+	return assert.Failure{Contract: fmt.Sprintf(format, args...), Where: matcher.CallerWhere(pcs[:n])}
 }

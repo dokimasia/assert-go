@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.dokimi.dev/assert/internal/matcher"
+	"go.dokimi.dev/assert/internal/matchertest"
 )
 
 // clockEpoch is the instant a controlled clock starts at, chosen so a
@@ -82,19 +83,48 @@ func TestControlledClock(t *testing.T) {
 			// the clock, and nothing here will.
 			matcher.NewControlled(clockEpoch).Sleep(0)
 		})
+
+		// Sleep measures from the instant it reads, so an advance made
+		// before it read does not count. The test advances until Sleep
+		// returns, a second at a time.
+		t.Run("blocks until another goroutine advances the clock past the duration", func(t *testing.T) {
+			t.Parallel()
+
+			c := matcher.NewControlled(clockEpoch)
+			woke := make(chan struct{})
+			go func() {
+				c.Sleep(time.Second)
+				close(woke)
+			}()
+
+			select {
+			case <-woke:
+				t.Fatal("Sleep returned before the clock moved")
+			case <-time.After(20 * time.Millisecond):
+			}
+
+			for range 500 {
+				c.Advance(time.Second)
+				select {
+				case <-woke:
+					return
+				case <-time.After(10 * time.Millisecond):
+				}
+			}
+			t.Fatal("Sleep did not return after 500 advances of a second")
+		})
 	})
 }
 
-// clockedSeat carries a clock and records that something was reported.
+// clockedSeat is a seat with a clock, which records what was reported.
 type clockedSeat struct {
-	clock  matcher.Clock
-	failed bool
+	matchertest.Seat
+
+	clock matcher.Clock
 }
 
-func (*clockedSeat) Helper()                 {}
-func (s *clockedSeat) Fatalf(string, ...any) { s.failed = true }
-func (s *clockedSeat) Errorf(string, ...any) { s.failed = true }
-func (s *clockedSeat) Clock() matcher.Clock  { return s.clock }
+// Clock returns the seat's clock.
+func (s *clockedSeat) Clock() matcher.Clock { return s.clock }
 
 // TestHonoursDeadlineAgainstASuppliedClock pins that the assertion does
 // not read the deadline off the seat's clock.
@@ -123,7 +153,7 @@ func TestHonoursDeadlineAgainstASuppliedClock(t *testing.T) {
 			matcher.HonoursDeadline(seat, matcher.Fatal, honours,
 				"the subject reports why it stopped")
 
-			if seat.failed {
+			if seat.Failed() {
 				t.Error("reported a subject that honoured its deadline")
 			}
 		})

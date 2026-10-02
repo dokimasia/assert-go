@@ -12,13 +12,11 @@ import (
 // comparing by absolute difference: abs(got-want) <= tolerance passes.
 //
 // got is any numeric type, read as a float64. Values beyond 2^53 lose
-// precision in that conversion, so this is the wrong assertion for
-// large integers; compare those exactly.
+// precision in that conversion, so compare large integers exactly
+// instead.
 //
-// A NaN anywhere fails, on either side or as the tolerance, because no
-// tolerance contains it. Note that this needs stating in the code: a
-// bare comparison would pass a NaN, since every comparison against one
-// is false.
+// A NaN fails, on either side or as the tolerance, because no tolerance
+// contains it.
 func CloseTo(seat Seat, mode Mode, got any, want, tolerance float64, msg string) {
 	seat.Helper()
 
@@ -29,8 +27,8 @@ func CloseTo(seat Seat, mode Mode, got any, want, tolerance float64, msg string)
 		return
 	}
 
-	// Every comparison against NaN is false, so a bare `diff > tolerance`
-	// would pass a NaN rather than reject it. Name the case instead.
+	// Every comparison against a NaN is false, so diff > tolerance alone
+	// passes a NaN. The NaN case is checked first.
 	diff := math.Abs(f - want)
 	if math.IsNaN(diff) || math.IsNaN(tolerance) {
 		Fail(seat, mode, "close-to", msg,
@@ -43,16 +41,18 @@ func CloseTo(seat Seat, mode Mode, got any, want, tolerance float64, msg string)
 	}
 }
 
-// InRange reports when got falls outside the closed interval
-// [low, high]. Both ends are included.
+// InRange reports when got is outside the closed interval [low, high].
+// Both ends are included.
 //
 // got is any numeric type, read as a float64, with the precision limit
-// [CloseTo] describes. Passing low above high always fails, and says
-// so rather than reporting the value.
+// [CloseTo] describes. A range whose low is above its high, or whose
+// bound is NaN, contains no number, so it fails whatever got is. Every
+// comparison against NaN is false, so a NaN bound tested like any other
+// would admit every value.
 func InRange(seat Seat, mode Mode, got any, low, high float64, msg string) {
 	seat.Helper()
 
-	if low > high {
+	if math.IsNaN(low) || math.IsNaN(high) || low > high {
 		Fail(seat, mode, "in-range", msg,
 			map[string]any{"got": got, "low": low, "high": high})
 		return
@@ -79,15 +79,12 @@ func InRange(seat Seat, mode Mode, got any, low, high float64, msg string) {
 }
 
 // floatOf reads any numeric value as a float64, so one comparison
-// serves every width and signedness. A float64 holds every int64
-// exactly up to 2^53; beyond that this loses precision, which the
-// numeric assertions state.
+// serves every width and signedness. A float64 represents every int64 of
+// magnitude up to 2^53 exactly, and loses precision above it, which the
+// numeric assertions state. A nil value has the kind [reflect.Invalid],
+// and is no number.
 func floatOf(v any) (float64, bool) {
 	rv := reflect.ValueOf(v)
-	if !rv.IsValid() {
-		return 0, false
-	}
-
 	switch rv.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return float64(rv.Int()), true

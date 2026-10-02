@@ -3,7 +3,10 @@
 
 package matchertest
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // LeakInvoke calls a surface's leak assertion, returning the check it
 // hands back.
@@ -34,6 +37,23 @@ func RunNoGoroutineLeaks(t *testing.T, invoke LeakInvoke) {
 		<-done
 
 		check()
+		checkOutcome(t, seat, Case{})
+	})
+
+	// The goroutine ends 50 milliseconds into the check, well inside the
+	// half second that a check waits for goroutines on their way out.
+	t.Run("reports nothing for a goroutine that ends while the check waits", func(t *testing.T) {
+		seat := &Seat{}
+		check := invoke(seat, contractMsg)
+
+		ended := make(chan struct{})
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			close(ended)
+		}()
+
+		check()
+		<-ended
 		checkOutcome(t, seat, Case{})
 	})
 

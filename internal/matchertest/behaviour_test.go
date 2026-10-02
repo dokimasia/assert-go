@@ -64,13 +64,26 @@ func TestBehaviour(t *testing.T) {
 		matchertest.RunCompletesWithin(t, func(s *matchertest.Seat, within time.Duration,
 			fn func(ctx context.Context) error, msg string,
 		) {
+			started := time.Now()
 			ctx, cancel := context.WithTimeout(context.Background(), within)
 			defer cancel()
-			started := time.Now()
-			_ = fn(ctx)
-			if time.Since(started) > within {
-				s.Report(matcher.Failure{Assertion: "completes-within", Contract: msg}, true)
+
+			ended := make(chan any, 1)
+			go func() {
+				defer func() { ended <- recover() }()
+				_ = fn(ctx)
+			}()
+			select {
+			case raised := <-ended:
+				if raised != nil {
+					panic(raised)
+				}
+				if time.Since(started) <= within {
+					return
+				}
+			case <-ctx.Done():
 			}
+			s.Report(matcher.Failure{Assertion: "completes-within", Contract: msg}, true)
 		})
 	})
 

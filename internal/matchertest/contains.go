@@ -6,16 +6,16 @@ package matchertest
 // ContainsCases are the cases every surface's contains assertion must
 // produce. Drive them with [RunPair].
 //
-// Containment means something different per type, and the cases say
-// which: text holds a substring, a sequence holds an element, a map
-// holds a key.
+// Containment depends on the type, and the cases state how: text
+// contains a substring, a sequence contains an element, and a map
+// contains a key.
 func ContainsCases() []Case {
 	return []Case{
-		{Name: "text holds a substring", Args: []any{"hello world", "lo wo"}},
-		{Name: "bytes hold a substring", Args: []any{[]byte("hello"), "ell"}},
-		{Name: "a slice holds an element", Args: []any{[]int{1, 2, 3}, 2}},
-		{Name: "an array holds an element", Args: []any{[3]int{1, 2, 3}, 3}},
-		{Name: "a map holds a key", Args: []any{map[string]int{"a": 1}, "a"}},
+		{Name: "text contains a substring", Args: []any{"hello world", "lo wo"}},
+		{Name: "bytes contain a substring", Args: []any{[]byte("hello"), "ell"}},
+		{Name: "a slice contains an element", Args: []any{[]int{1, 2, 3}, 2}},
+		{Name: "an array contains an element", Args: []any{[3]int{1, 2, 3}, 3}},
+		{Name: "a map contains a key", Args: []any{map[string]int{"a": 1}, "a"}},
 		{Name: "a defined string type reads as text", Args: []any{name("hello"), "ell"}},
 		{
 			Name:      "an absent element reports",
@@ -38,16 +38,23 @@ func ContainsCases() []Case {
 			Detail:    map[string]any{"needle": "b"},
 		},
 		{
-			Name:      "a map key of the wrong type is absent rather than an error",
+			Name:      "a map key of another type is absent",
 			Args:      []any{map[string]int{"a": 1}, 42},
 			Fails:     true,
 			Assertion: "contains",
 		},
 		{
-			Name:      "a type with no containment reports rather than panicking",
+			Name:      "a type with no containment reports",
 			Args:      []any{42, 4},
 			Fails:     true,
 			Assertion: "contains",
+		},
+		{
+			Name:      "text reports a needle that is not text",
+			Args:      []any{"hello 42", 42},
+			Fails:     true,
+			Assertion: "contains",
+			Detail:    map[string]any{"haystack": "hello 42", "needle": 42},
 		},
 	}
 }
@@ -67,6 +74,19 @@ func NotContainsCases() []Case {
 		{
 			Name:      "a present substring reports",
 			Args:      []any{"hello", "ell"},
+			Fails:     true,
+			Assertion: "not-contains",
+		},
+		{
+			Name:      "a type with no containment reports",
+			Args:      []any{42, 4},
+			Fails:     true,
+			Assertion: "not-contains",
+			Detail:    map[string]any{"haystack": 42, "needle": 4},
+		},
+		{
+			Name:      "text reports a needle that is not text",
+			Args:      []any{"hello 42", 42},
 			Fails:     true,
 			Assertion: "not-contains",
 		},
@@ -100,7 +120,7 @@ func ContainsInOrderCases() []Case {
 			Assertion: "contains-in-order",
 		},
 		{
-			Name:      "a non-text value reports rather than panicking",
+			Name:      "a value that is not text reports",
 			Args:      []any{42, []string{"4"}},
 			Fails:     true,
 			Assertion: "contains-in-order",

@@ -8,9 +8,17 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
+)
+
+// How long the independent check waits for goroutines on their way out,
+// and how often it reads them meanwhile.
+const (
+	grace = 500 * time.Millisecond
+	poll  = 10 * time.Millisecond
 )
 
 // Not parallel, and neither are its cases: the reading is over the
@@ -22,9 +30,15 @@ func TestGoroutine(t *testing.T) {
 
 			return func() {
 				var leaked []uint64
-				for id := range ids() {
-					if !before[id] {
-						leaked = append(leaked, id)
+				for deadline := time.Now().Add(grace); ; time.Sleep(poll) {
+					leaked = leaked[:0]
+					for id := range ids() {
+						if !before[id] {
+							leaked = append(leaked, id)
+						}
+					}
+					if len(leaked) == 0 || time.Now().After(deadline) {
+						break
 					}
 				}
 				if len(leaked) > 0 {

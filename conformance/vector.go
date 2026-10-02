@@ -78,14 +78,17 @@ type Vector struct {
 // copy of each case's JSON, and each case's id. The JSON decoder's pooled
 // state, which a garbage collection or a move of the goroutine to another
 // processor leaves empty, adds up to two.
-func Vectors() ([]Vector, error) {
-	names, err := fs.Glob(definition, propGlob)
+func Vectors() ([]Vector, error) { return vectorsIn(definition, propGlob) }
+
+// vectorsIn returns the vectors of the files of fsys that glob matches.
+func vectorsIn(fsys fs.FS, glob string) ([]Vector, error) {
+	names, err := fs.Glob(fsys, glob)
 	if err != nil {
 		return nil, fmt.Errorf("conformance: glob the vectors: %w", err)
 	}
 	var out []Vector
 	for _, name := range names {
-		raw, err := definition.ReadFile(name)
+		raw, err := fs.ReadFile(fsys, name)
 		if err != nil {
 			return nil, fmt.Errorf("conformance: read %s: %w", name, err)
 		}
