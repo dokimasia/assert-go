@@ -312,11 +312,16 @@ holds itself to it on every run:
 - **Parity.** Both surfaces carry the same members.
 - **Meaning.** 87 corpus cases state what an assertion must report,
   shared with every other implementation.
+- **Properties.** 203 vectors state how the property engine decodes,
+  generates and shrinks inputs, decides coverage, encodes replay tokens,
+  stores failures and reports a run, shared with every other
+  implementation.
 
-The corpus reaches 25 of the 43. A case states its arguments as data,
-so it cannot cover an assertion that takes a callable, a cancellation
-handle, a golden file or a benchmark. Those are checked for presence
-and tested here.
+A corpus case states its arguments as data, or names a behaviour that
+each implementation builds, such as a callable that panics. The cases
+reach 25 of the 43 assertions. No case can state an error value, a golden
+file, a benchmark or a predicate, so those assertions are checked for
+presence and tested here. The vectors cover `prop-for-all`.
 
 ## Development
 
