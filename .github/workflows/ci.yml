@@ -11,6 +11,11 @@ concurrency:
 permissions:
   contents: read
 
+# ergon is pinned so a release cannot change what this gate checks between
+# two runs of one commit. .ergon.yaml pins the tools that ergon installs.
+env:
+  ERGON_VERSION: v1.11.1
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -21,9 +26,35 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Install ergon
-        run: go install go.thesmos.sh/ergon/cmd/ergon@latest
+        run: go install "go.thesmos.sh/ergon/cmd/ergon@${ERGON_VERSION}"
       - run: ergon bootstrap
       - run: ergon check
+  # The assertions run subjects, attempts and leak checks on goroutines of
+  # their own, and the seats are shared between them, so every test also
+  # runs under the race detector.
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go install "go.thesmos.sh/ergon/cmd/ergon@${ERGON_VERSION}"
+      - run: ergon test race
+  # Every fuzz target runs under the fuzzer for the time that .ergon.yaml
+  # states: the parsers of patterns, tokens, store entries and typed
+  # literals, and prop.Fuzz itself.
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go install "go.thesmos.sh/ergon/cmd/ergon@${ERGON_VERSION}"
+      - run: ergon test fuzz
   vuln:
     runs-on: ubuntu-latest
     steps:
@@ -32,7 +63,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go install go.thesmos.sh/ergon/cmd/ergon@latest
+      - run: go install "go.thesmos.sh/ergon/cmd/ergon@${ERGON_VERSION}"
       - run: ergon bootstrap
       - run: ergon lint vuln
 

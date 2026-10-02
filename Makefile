@@ -81,8 +81,11 @@ bench-profile: ## Collect CPU+mem pprof artefacts (PATTERN=. PACKAGE=./... MODUL
 		$(if $(PACKAGE),--package=$(PACKAGE),) \
 		$(if $(TIME),--time=$(TIME),) $(FLAGS)
 
-check: ## Run the umbrella pre-merge gate (mod, lint, test, coverage, ...; --only / --skip to narrow)
+check: ## Run the gate that CI runs: ergon check, the race detector, the fuzzer and the vendored definition
 	$(ERGON) check
+	$(ERGON) test race
+	$(ERGON) test fuzz
+	@./tools/spec-check.sh conformance/spec
 check-coverage: ## Enforce per-layer coverage thresholds
 	$(ERGON) check coverage
 check-uncovered: ## List every uncovered line across the tree (ignores layer config + excludes)

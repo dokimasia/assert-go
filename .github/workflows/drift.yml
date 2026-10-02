@@ -26,15 +26,23 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # spec-check exits 1 for a copy that is not intact, 1 for a copy
+      # that differs from upstream under --strict, and 3 when upstream
+      # cannot be read. Only a difference is drift. The other two fail
+      # this run, because a refresh issue would name no digest.
       - name: Compare the vendored definition against upstream
         id: check
         run: |
-          if ./tools/spec-check.sh conformance/spec --strict > drift.txt 2>&1; then
-            echo "drifted=no" >> "$GITHUB_OUTPUT"
-          else
-            echo "drifted=yes" >> "$GITHUB_OUTPUT"
-          fi
+          status=0
+          ./tools/spec-check.sh conformance/spec --strict > drift.txt 2>&1 || status=$?
           cat drift.txt
+          if [ "$status" -eq 0 ]; then
+            echo "drifted=no" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -eq 1 ] && grep -q '^ *upstream ' drift.txt; then
+            echo "drifted=yes" >> "$GITHUB_OUTPUT"
+          else
+            exit "$status"
+          fi
 
       - name: Read what upstream now digests to
         if: steps.check.outputs.drifted == 'yes'

@@ -29,12 +29,18 @@ bootstrap:
   # deterministic; leave empty to track `@latest` for every tool
   # (the local dev default). A pinned entry for an unknown
   # package is silently ignored.
-  pinned: {}
-  # Example (uncomment + adjust):
-  #   pinned:
-  #     mvdan.cc/gofumpt: v0.6.0
-  #     github.com/daixiang0/gci: v0.13.5
-  #     github.com/golangci/golangci-lint/v2/cmd/golangci-lint: v2.0.0
+  #
+  # Each pin is the highest release at proxy.golang.org on 2026-10-02.
+  # benchstat has no release, so its pin is the newest pseudo-version.
+  pinned:
+    mvdan.cc/gofumpt: v0.12.0
+    github.com/daixiang0/gci: v0.14.0
+    github.com/golangci/golangci-lint/v2/cmd/golangci-lint: v2.14.0
+    golang.org/x/vuln/cmd/govulncheck: v1.8.0
+    github.com/palantir/go-license: v1.50.0
+    golang.org/x/perf/cmd/benchstat: v0.0.0-20260929162123-406019bb8b68
+    github.com/go-gremlins/gremlins/cmd/gremlins: v0.6.0
+    github.com/rillig/gobco: v1.3.4
 
 # license — `ergon license` (apply) and `ergon lint license` (verify)
 license:
@@ -221,17 +227,11 @@ checks:
   coverage:
     # Per-layer thresholds. Empty disables the check —
     # `ergon check coverage` short-circuits with a notice.
-    packages: []
-    # Example:
-    #   packages:
-    #     - path: internal/...
-    #       line: 80
-    #       branch: 80
-    #       require_branch: false
-    #     - path: cmd/...
-    #       line: 60
-    #       branch: 0
-    #       require_branch: false
+    #
+    # Every package covers every statement.
+    packages:
+      - path: ./...
+        line: 100
     # Cap on the per-target list of below-threshold functions.
     # Anything past the cap is collapsed into "… and N more".
     top_n: 10
@@ -247,12 +247,16 @@ checks:
   #            mutateable code".
   mutation:
     # Per-layer thresholds. An empty list short-circuits the check.
-    packages: []
-    # Example:
-    #   packages:
-    #     - path: internal/...
-    #       score: 80
-    #       coverage: 80
+    #
+    # The tests of the assertion core and of the conformance package kill
+    # every mutant that gremlins makes in them.
+    packages:
+      - path: internal/matcher/...
+        score: 100
+        coverage: 100
+      - path: conformance/...
+        score: 100
+        coverage: 100
     # gremlins invocation policy. Workers bounds CPU usage;
     # timeout_coefficient tolerates slow-but-finite tests
     # (gremlins' default of 3 produces spurious timeouts). File
