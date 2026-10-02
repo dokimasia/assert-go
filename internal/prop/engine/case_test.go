@@ -4,6 +4,7 @@
 package engine_test
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/rand/v2"
@@ -39,6 +40,10 @@ const (
 	// body makes one choice inside a span: those of a value case, and the
 	// growth of the case's spans and of its stack of open spans.
 	spanCaseAllocs = 7
+	// contextCaseAllocs are the allocations of a whole replayed case whose
+	// body calls Context: the case's own three, and the context with its
+	// cancel function.
+	contextCaseAllocs = 5
 )
 
 // wideMax is the upper bound of wideRange, which a random case of the
@@ -300,6 +305,169 @@ func TestCase(t *testing.T) {
 		})
 	})
 
+	t.Run("Cleanup", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("runs the cleanups after the body, the last registered first", func(t *testing.T) {
+			t.Parallel()
+			var order []string
+			engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { order = append(order, "first") })
+				c.Cleanup(func() { order = append(order, "second") })
+				order = append(order, "body")
+			}, nil, nil)
+			assert.Equal(t, order, []string{"body", "second", "first"}, "the body, then the cleanups in reverse")
+		})
+
+		t.Run("runs the cleanups of a case whose body panicked", func(t *testing.T) {
+			t.Parallel()
+			var cleaned bool
+			e := engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { cleaned = true })
+				panic("broken ledger")
+			}, nil, nil)
+			assert.True(t, cleaned, "the cleanup ran")
+			assert.Equal[any](t, e.Panic, "broken ledger", "the body's panic")
+		})
+
+		t.Run("runs the cleanups of a rejected case", func(t *testing.T) {
+			t.Parallel()
+			var cleaned bool
+			e := engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { cleaned = true })
+				c.Assume(false)
+			}, nil, nil)
+			assert.True(t, cleaned, "the cleanup ran")
+			assert.Equal(t, e.Status, engine.CaseRejected, "the case is rejected")
+		})
+
+		t.Run("fails the case at a failure in a cleanup", func(t *testing.T) {
+			t.Parallel()
+			var at assert.Where
+			e := engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { c.Fatalf("leaked at %d", site(&at)) })
+			}, nil, nil)
+			assert.Equal(t, e.Status, engine.CaseFailed, "the case fails")
+			assert.Equal(t, e.Identity, engine.Identity{Where: at}, "the cleanup's location")
+		})
+
+		t.Run("keeps the body's failure as the case's failure", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { c.Fatalf("leaked") })
+				c.Report(reported, false)
+			}, nil, nil)
+			assert.Equal(t, e.Identity, engine.Identity{Assertion: "equal", Where: reported.Where}, "the body's record")
+		})
+
+		t.Run("keeps the body's panic as the case's failure", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { panic("closing") })
+				panic("broken ledger")
+			}, nil, nil)
+			assert.Equal[any](t, e.Panic, "broken ledger", "the body's panic")
+		})
+
+		t.Run("runs the later cleanups after a cleanup that ends the goroutine", func(t *testing.T) {
+			t.Parallel()
+			var first bool
+			engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { first = true })
+				c.Cleanup(func() { c.Fatalf("closing") })
+				c.Fatalf("stop")
+			}, nil, nil)
+			assert.True(t, first, "the first cleanup ran")
+		})
+
+		t.Run("runs the later cleanups after a cleanup that panics", func(t *testing.T) {
+			t.Parallel()
+			var first bool
+			e := engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { first = true })
+				c.Cleanup(func() { panic("closing") })
+			}, nil, nil)
+			assert.True(t, first, "the first cleanup ran")
+			assert.Equal[any](t, e.Panic, "closing", "the cleanup's panic")
+		})
+
+		t.Run("runs a cleanup that a cleanup registers before the earlier ones", func(t *testing.T) {
+			t.Parallel()
+			var order []string
+			engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { order = append(order, "first") })
+				c.Cleanup(func() {
+					order = append(order, "second")
+					c.Cleanup(func() { order = append(order, "registered") })
+				})
+			}, nil, nil)
+			assert.Equal(t, order, []string{"second", "registered", "first"}, "the registered cleanup next")
+		})
+
+		t.Run("records a choice of a cleanup as a choice of the case", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) {
+				c.Integer(digitRange)
+				c.Cleanup(func() { c.Integer(digitRange) })
+			}, integers(7, 3), nil)
+			assert.True(t, sameChoices(e.Case.Choices(), integers(7, 3)), "the body's choice, then the cleanup's")
+		})
+
+		t.Run("ends a cleanup at a choice once the case has stopped", func(t *testing.T) {
+			t.Parallel()
+			var chose, first bool
+			e := engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { first = true })
+				c.Cleanup(func() {
+					c.Integer(digitRange)
+					chose = true
+				})
+				c.Assume(false)
+			}, integers(7), nil)
+			assert.False(t, chose, "the cleanup ends at its choice")
+			assert.True(t, first, "the earlier cleanup runs")
+			assert.Equal(t, e.Status, engine.CaseRejected, "the case is rejected")
+			assert.Empty(t, e.Case.Choices(), "no choice recorded")
+		})
+	})
+
+	t.Run("Context", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns a context that is live while the body runs", func(t *testing.T) {
+			t.Parallel()
+			var err error
+			engine.Replay(func(c *engine.Case) { err = c.Context().Err() }, nil, nil)
+			assert.NoError(t, err, "a live context")
+		})
+
+		t.Run("returns a context that the case cancels before its cleanups run", func(t *testing.T) {
+			t.Parallel()
+			var err error
+			engine.Replay(func(c *engine.Case) {
+				ctx := c.Context()
+				c.Cleanup(func() { err = ctx.Err() })
+			}, nil, nil)
+			assert.ErrorIs(t, err, context.Canceled, "a cancelled context")
+		})
+
+		t.Run("returns a cancelled context to a cleanup that asks first", func(t *testing.T) {
+			t.Parallel()
+			var err error
+			engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { err = c.Context().Err() })
+			}, nil, nil)
+			assert.ErrorIs(t, err, context.Canceled, "a cancelled context")
+		})
+
+		t.Run("returns one context to every call", func(t *testing.T) {
+			t.Parallel()
+			var first, second context.Context
+			engine.Replay(func(c *engine.Case) { first, second = c.Context(), c.Context() }, nil, nil)
+			assert.True(t, first == second, "the same context")
+		})
+	})
+
 	t.Run("Uint64", func(t *testing.T) {
 		t.Parallel()
 
@@ -504,6 +672,10 @@ func TestCaseZeroAlloc(t *testing.T) {
 	assert.MaxAllocs(t, func() { c.Note("seen") }, 0, "Note allocates only to grow the record")
 	assert.MaxAllocs(t, func() { c.Observe(42) }, 0, "Observe allocates only to grow the record")
 	assert.MaxAllocs(t, func() { _ = c.Rand() }, 0, "Rand allocates nothing")
+	assert.MaxAllocs(t, func() { c.Cleanup(nothing) }, 0, "Cleanup allocates only to grow its list")
+	contextual := func(c *engine.Case) { _ = c.Context() }
+	assert.MaxAllocs(t, func() { engine.Replay(contextual, nil, nil) }, contextCaseAllocs,
+		"a case that calls Context")
 	assert.MaxAllocs(t, func() { engine.Replay(value, nil, nil) }, valueCaseAllocs, "a case that draws one value")
 	assert.MaxAllocs(t, func() { _ = c.Choices() }, copyAllocs, "Choices allocates its copy")
 	assert.MaxAllocs(t, func() { _ = c.Spans() }, copyAllocs, "Spans allocates its copy")
@@ -630,6 +802,27 @@ func BenchmarkCase(b *testing.B) {
 		assert.Equal(b, got, cs.Rand(), "the case's source")
 	})
 
+	b.Run("Cleanup", func(b *testing.B) {
+		cs := leaked()
+		c := bench.Start(b).MaxAllocs(0)
+		defer c.End()
+		for c.Loop() {
+			cs.Cleanup(nothing)
+		}
+		assert.Length(b, cs.Choices(), 1, "no choice added")
+	})
+
+	b.Run("Context", func(b *testing.B) {
+		var got engine.Execution
+		contextual := func(c *engine.Case) { _ = c.Context() }
+		c := bench.Start(b).MaxAllocs(contextCaseAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Replay(contextual, nil, nil)
+		}
+		assert.Equal(b, got.Status, engine.CasePassed, "the case passes")
+	})
+
 	b.Run("Uint64", func(b *testing.B) {
 		var got engine.Execution
 		value := func(c *engine.Case) { c.Rand().Uint64() }
@@ -751,6 +944,9 @@ func BenchmarkCase(b *testing.B) {
 		assert.Length(b, got.Case.Spans(), 1, "one span")
 	})
 }
+
+// nothing is a cleanup that does nothing.
+func nothing() {}
 
 // leaked returns the case of a replayed body that drew 7 from the digits,
 // and classified, noted, observed and reported once, for a caller to read

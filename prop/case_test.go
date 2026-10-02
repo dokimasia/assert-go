@@ -4,6 +4,7 @@
 package prop_test
 
 import (
+	"context"
 	"math/rand/v2"
 	"sync"
 	"testing"
@@ -27,19 +28,47 @@ const (
 	errorfAllocs = 5
 	// fatalfRunAllocs are the allocations of a run that replays one case
 	// whose body calls Fatalf: those of a replay, the message and its frames,
-	// and the run's record with the sentence the recorder formats from it.
-	fatalfRunAllocs = 46
+	// the run's record with the sentence the recorder formats from it, and
+	// the two closures that adapt the body and give its case a context.
+	fatalfRunAllocs = 47
 	// drawRunAllocs are the allocations of a run that replays one case whose
 	// body draws one integer: the engine's 9 for the replay, one for the
-	// token's choices, and one for the adapter of the body.
-	drawRunAllocs = 11
+	// token's choices, and two for the closures that adapt the body and give
+	// its case a context.
+	drawRunAllocs = 12
+	// logfAllocs are the allocations of Logf: the message it formats.
+	logfAllocs = 1
+	// contextRunAllocs are the allocations of a run that replays one case
+	// whose body draws one integer and calls Context: those of
+	// drawRunAllocs, and the context with its cancel function.
+	contextRunAllocs = 14
 )
+
+// closing is the label of a draw that a cleanup makes.
+const closing = "closing"
 
 // recorded is the record that a test body reports, as an assertion would.
 var recorded = assert.Failure{
 	Assertion: "equal",
 	Contract:  "the totals match",
 	Where:     assert.Where{File: "ledger_test.go", Line: 12},
+}
+
+// ledgerKey is the key of the value that a seat's context carries to the
+// contexts of its cases.
+type ledgerKey struct{}
+
+// contextSeat is a recorder seat with a context of its own, as a
+// *testing.T has.
+type contextSeat struct {
+	*assert.Recorder
+	// ctx is the context the seat states.
+	ctx context.Context
+}
+
+// Context returns the seat's context.
+func (s contextSeat) Context() context.Context {
+	return s.ctx
 }
 
 // TestCase checks the case as the seat of a body's assertions and the
@@ -213,7 +242,7 @@ func TestCase(t *testing.T) {
 		})
 	})
 
-	t.Run("Note", func(t *testing.T) {
+	t.Run("Logf", func(t *testing.T) {
 		t.Parallel()
 
 		t.Run("reports nothing for a passing case", func(t *testing.T) {
@@ -221,22 +250,22 @@ func TestCase(t *testing.T) {
 			seat := &sentences{}
 			prop.ForAll(seat, contract, func(c *prop.Case) {
 				c.Draw(prop.Integer(0, 9), drawn)
-				c.Note("opened the ledger")
+				c.Logf("opened the ledger")
 			}, prop.Seed(7))
 			assert.Empty(t, seat.all(), "no sentence")
 		})
 
-		t.Run("reports the notes of a failing case in order", func(t *testing.T) {
+		t.Run("reports the formatted messages of a failing case in order", func(t *testing.T) {
 			t.Parallel()
 			seat := &sentences{}
 			prop.ForAll(seat, contract, func(c *prop.Case) {
-				c.Note("opened the ledger")
-				c.Note("appended twice")
+				c.Logf("opened the %s", "ledger")
+				c.Logf("appended %d entries", 2)
 				c.Fatalf("stop")
 			}, prop.Replay(tokenOf(7)))
 			assert.Length(t, seat.all(), 1, "one sentence")
-			assert.ContainsInOrder(t, seat.all()[0], []string{"opened the ledger", "appended twice"},
-				"the notes in the order the body attached them")
+			assert.ContainsInOrder(t, seat.all()[0], []string{"opened the ledger", "appended 2 entries"},
+				"the messages in the order the body attached them")
 		})
 	})
 
@@ -269,6 +298,108 @@ func TestCase(t *testing.T) {
 				fail(c, every)
 			}, prop.Seed(7))
 			assert.Equal(t, got[outcomeField], any(prop.Counterexample), "the same fingerprint on replay")
+		})
+	})
+
+	t.Run("Cleanup", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("runs the cleanups after the body, the last registered first", func(t *testing.T) {
+			t.Parallel()
+			var order []string
+			replays(assert.NewRecorder(), func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 9), drawn)
+				c.Cleanup(func() { order = append(order, "first") })
+				c.Cleanup(func() { order = append(order, "second") })
+				order = append(order, "body")
+			}, 7)
+			assert.Equal(t, order, []string{"body", "second", "first"}, "the body, then the cleanups in reverse")
+		})
+
+		t.Run("runs the cleanups of a case that Fatalf ended", func(t *testing.T) {
+			t.Parallel()
+			var cleaned bool
+			got := replayed(func(c *prop.Case) {
+				c.Cleanup(func() { cleaned = true })
+				c.Fatalf("stop")
+			}, 7)
+			assert.True(t, cleaned, "the cleanup ran")
+			assert.Equal(t, got[outcomeField], any(prop.Counterexample), "the case fails")
+		})
+
+		t.Run("runs the cleanups of every run of a shrink", func(t *testing.T) {
+			t.Parallel()
+			var bodies, cleanups int
+			got := detailOf(func(c *prop.Case) {
+				bodies++
+				c.Cleanup(func() { cleanups++ })
+				if c.Draw(prop.Integer(0, 1000), drawn) > 500 {
+					fail(c, every)
+				}
+			}, prop.Seed(7))
+			assert.Equal(t, got[outcomeField], any(prop.Counterexample), "a shrunk counterexample")
+			assert.Equal(t, cleanups, bodies, "one run of the cleanup for every call of the body")
+		})
+
+		t.Run("fails the case at a failure in a cleanup", func(t *testing.T) {
+			t.Parallel()
+			var at assert.Where
+			got := replayed(func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 9), drawn)
+				c.Cleanup(func() { c.Fatalf("leaked%s", here(&at)) })
+			}, 7)
+			want := assert.Failure{Contract: "leaked", Where: at}
+			assert.Equal(t, got[failureField], any(want), "the cleanup's record")
+		})
+
+		t.Run("records a draw in a cleanup as a draw of the case", func(t *testing.T) {
+			t.Parallel()
+			detail := replayed(func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 9), drawn)
+				c.Cleanup(func() {
+					c.Draw(prop.Integer(0, 9), closing)
+					fail(c, every)
+				})
+			}, 7, 3)
+			want := []prop.Drawn{{Label: drawn, Value: 7}, {Label: closing, Value: 3}}
+			assert.Equal(t, detail[counterexampleField], any(want), "the body's draw, then the cleanup's")
+		})
+	})
+
+	t.Run("Context", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns a context that is live while the body runs", func(t *testing.T) {
+			t.Parallel()
+			var err error
+			replays(assert.NewRecorder(), func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 9), drawn)
+				err = c.Context().Err()
+			}, 7)
+			assert.NoError(t, err, "a live context")
+		})
+
+		t.Run("returns a context that the case cancels before its cleanups run", func(t *testing.T) {
+			t.Parallel()
+			var err error
+			replays(assert.NewRecorder(), func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 9), drawn)
+				ctx := c.Context()
+				c.Cleanup(func() { err = ctx.Err() })
+			}, 7)
+			assert.ErrorIs(t, err, context.Canceled, "a cancelled context")
+		})
+
+		t.Run("returns a context that derives from the context of the seat", func(t *testing.T) {
+			t.Parallel()
+			var got any
+			ctx := context.WithValue(t.Context(), ledgerKey{}, "ledger")
+			seat := contextSeat{Recorder: assert.NewRecorder(), ctx: ctx}
+			prop.ForAll(seat, contract, func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 9), drawn)
+				got = c.Context().Value(ledgerKey{})
+			}, prop.Replay(tokenOf(7)))
+			assert.Equal(t, got, any("ledger"), "the seat's value")
 		})
 	})
 
@@ -316,11 +447,19 @@ func TestCaseZeroAlloc(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = c.Clock() }, 0, "Clock allocates nothing")
 	assert.MaxAllocs(t, func() { c.Assume(true) }, 0, "Assume allocates nothing")
 	assert.MaxAllocs(t, func() { c.Classify(small) }, 0, "Classify allocates nothing for a counted label")
-	assert.MaxAllocs(t, func() { c.Note("seen") }, 0, "Note allocates only to grow the record")
+	assert.MaxAllocs(t, func() { c.Logf("seen") }, logfAllocs, "Logf allocates its message")
 	assert.MaxAllocs(t, func() { c.Observe(42) }, 0, "Observe allocates only to grow the record")
 	assert.MaxAllocs(t, func() { _ = c.Rand() }, 0, "Rand allocates nothing")
+	assert.MaxAllocs(t, func() { c.Cleanup(nothing) }, 0, "Cleanup allocates only to grow the record")
 	assert.MaxAllocs(t, func() { prop.ForAll(rec, contract, draw, prop.Replay(seven)) }, drawRunAllocs,
 		"a run of a case that draws one integer")
+	digit := prop.Integer(0, 9)
+	contextual := func(c *prop.Case) {
+		c.Draw(digit, drawn)
+		_ = c.Context()
+	}
+	assert.MaxAllocs(t, func() { prop.ForAll(rec, contract, contextual, prop.Replay(seven)) }, contextRunAllocs,
+		"a run of a case that calls Context")
 }
 
 // BenchmarkCase measures each method of the case. A method that ends the
@@ -399,12 +538,12 @@ func BenchmarkCase(b *testing.B) {
 		assert.NotNil(b, cs, "the case")
 	})
 
-	b.Run("Note", func(b *testing.B) {
+	b.Run("Logf", func(b *testing.B) {
 		cs := leaked()
-		c := bench.Start(b).MaxAllocs(0)
+		c := bench.Start(b).MaxAllocs(logfAllocs)
 		defer c.End()
 		for c.Loop() {
-			cs.Note("seen")
+			cs.Logf("seen")
 		}
 		assert.NotNil(b, cs, "the case")
 	})
@@ -430,6 +569,30 @@ func BenchmarkCase(b *testing.B) {
 		assert.NotNil(b, cs, "the case")
 	})
 
+	b.Run("Cleanup", func(b *testing.B) {
+		cs := leaked()
+		c := bench.Start(b).MaxAllocs(0)
+		defer c.End()
+		for c.Loop() {
+			cs.Cleanup(nothing)
+		}
+		assert.NotNil(b, cs, "the case")
+	})
+
+	b.Run("Context", func(b *testing.B) {
+		rec, seven, digit := assert.NewRecorder(), tokenOf(7), prop.Integer(0, 9)
+		contextual := func(c *prop.Case) {
+			c.Draw(digit, drawn)
+			_ = c.Context()
+		}
+		c := bench.Start(b).MaxAllocs(contextRunAllocs)
+		defer c.End()
+		for c.Loop() {
+			prop.ForAll(rec, contract, contextual, prop.Replay(seven))
+		}
+		assert.False(b, rec.Failed(), "every run passes")
+	})
+
 	b.Run("Draw", func(b *testing.B) {
 		rec, seven := assert.NewRecorder(), tokenOf(7)
 		draw := draws(prop.Integer(0, 9))
@@ -441,6 +604,9 @@ func BenchmarkCase(b *testing.B) {
 		assert.False(b, rec.Failed(), "every run passes")
 	})
 }
+
+// nothing is a cleanup that does nothing.
+func nothing() {}
 
 // leaked returns the case of a run that replayed one case, which drew 7
 // from the digits and classified itself as small, for a caller to call

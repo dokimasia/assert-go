@@ -91,8 +91,8 @@ func TestRender(t *testing.T) {
 				name: "states the notes of the failing case after its draws",
 				body: func(c *prop.Case) {
 					c.Draw(prop.Integer(0, 100), drawn)
-					c.Note("opened the ledger")
-					c.Note("appended twice")
+					c.Logf("opened the ledger")
+					c.Logf("appended twice")
 					fail(c, every)
 				},
 				want: fmt.Sprintf(header, "counterexample", 0) +

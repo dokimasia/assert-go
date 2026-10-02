@@ -4,6 +4,8 @@
 package prop
 
 import (
+	"context"
+	"fmt"
 	"math/rand/v2"
 
 	"go.dokimi.dev/assert"
@@ -26,6 +28,11 @@ import (
 // module. Two failures with one identity are one failure, and a message is
 // no part of an identity.
 //
+// When the body ends, however it ends, the case cancels its context and
+// runs its cleanups, the last registered first, on the goroutine that ran
+// the body. A cleanup is part of the case: a failure in it fails the case,
+// and a draw in it is a draw of the case.
+//
 // # Concurrency
 //
 // Every method is safe for concurrent use, so an assertion may report to a
@@ -38,11 +45,13 @@ import (
 // # Allocation contract
 //
 // Helper, Clock, Assume, Classify of a counted label and Rand allocate
-// nothing. Note and Observe allocate only to grow the case's record. A
-// recording Report allocates twice, for the record's sentence and the
-// message formatted from it. Errorf allocates five times: the message, the
-// frames searched for its location, and the same two. A draw allocates the
-// record of its value and what its generator decodes.
+// nothing. Observe and Cleanup allocate only to grow the case's record, and
+// Logf allocates the message it formats as well. A recording Report
+// allocates twice, for the record's sentence and the message formatted
+// from it. Errorf allocates five times: the message, the frames searched
+// for its location, and the same two. Context allocates the case's context
+// on its first call. A draw allocates the record of its value and what its
+// generator decodes.
 type Case engine.Case
 
 var (
@@ -99,10 +108,11 @@ func (c *Case) Classify(label string) {
 	(*engine.Case)(c).Classify(label)
 }
 
-// Note attaches message to the case. Only a failing case reports its notes,
-// after its counterexample.
-func (c *Case) Note(message string) {
-	(*engine.Case)(c).Note(message)
+// Logf formats its arguments as fmt.Sprintf does and attaches the message
+// to the case. Only a failing case reports its messages, after its
+// counterexample.
+func (c *Case) Logf(format string, args ...any) {
+	(*engine.Case)(c).Note(fmt.Sprintf(format, args...))
 }
 
 // Rand returns a source of random values whose every value is an integer
@@ -121,6 +131,25 @@ func (c *Case) Observe(fingerprint uint64) {
 	(*engine.Case)(c).Observe(fingerprint)
 }
 
+// Cleanup registers f to run when the case ends: after its body returns,
+// fails, panics, rejects the case or stops at a draw. The case runs its
+// cleanups on the goroutine that ran the body, the last registered first.
+// A failure in a cleanup fails the case as one in the body does, and the
+// later cleanups still run. A cleanup that a cleanup registers runs
+// before the case ends, and a draw in a cleanup is a draw of the case.
+func (c *Case) Cleanup(f func()) {
+	(*engine.Case)(c).Cleanup(f)
+}
+
+// Context returns the case's context, for the code under test that takes
+// one. It derives from the context of the property's seat, such as the one
+// a *testing.T returns, and from context.Background() for a seat without
+// one. The case cancels it when the body ends, before the cleanups run.
+// A second call returns the same context.
+func (c *Case) Context() context.Context {
+	return (*engine.Case)(c).Context()
+}
+
 // Draw returns a value of g and records it under label for the
 // counterexample. Two draws may share a label. A draw ends the calling
 // goroutine when the case repeats a tested case, when the body requested
@@ -131,7 +160,7 @@ func (c *Case) Draw[T any](g Generator[T], label string) T {
 }
 
 // bodyOf returns the engine's body that calls body with the engine's case
-// as a Case.
-func bodyOf(body func(*Case)) engine.Body {
-	return func(c *engine.Case) { body((*Case)(c)) }
+// as a Case, whose context derives from ctx.
+func bodyOf(ctx context.Context, body func(*Case)) engine.Body {
+	return engine.WithContext(ctx, func(c *engine.Case) { body((*Case)(c)) })
 }

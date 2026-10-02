@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -89,6 +90,11 @@ type Drawn struct {
 // failure ends the body's goroutine. A rejection, a repeated case, a
 // divergence and a case past its cap end it the same way.
 //
+// When the body ends, however it ends, the case cancels its context and
+// runs its cleanups on the body's goroutine, the last registered first. A
+// cleanup is part of the case: its failures and its choices are the
+// case's.
+//
 // # Concurrency
 //
 // Every method is safe for concurrent use. A draw, a rejection and a
@@ -152,6 +158,19 @@ type Case struct {
 	// recursion are the counts of base values of the recursive values
 	// being decoded, a stack for each recursive generator.
 	recursion map[any][]int
+	// cleanups are the cleanups that have not run yet, in the order they
+	// were registered.
+	cleanups []func()
+	// ended reports whether the body has ended, after which the case's
+	// context is cancelled.
+	ended bool
+	// parent is the context that the case's context derives from, which
+	// [WithContext] sets, and nil for context.Background().
+	parent context.Context
+	// ctx is the case's context, and nil until a caller asks for it.
+	ctx context.Context
+	// cancelCtx cancels ctx.
+	cancelCtx context.CancelFunc
 }
 
 var (
@@ -170,12 +189,13 @@ func newCase(p provider, maxChoices int, w *tree.Walker, clock assert.Clock) *Ca
 
 // recycle empties c, a case whose body's goroutine has ended, for a new
 // case as newCase describes it. It keeps the storage of the record's
-// choices, requests, spans and draws, and clears their elements. The caller
-// no longer uses c's earlier record.
+// choices, requests, spans and draws, and of the cleanups, and clears their
+// elements. The caller no longer uses c's earlier record.
 func (c *Case) recycle(p provider, maxChoices int, w *tree.Walker, clock assert.Clock) {
 	clear(c.choices)
 	clear(c.spans)
 	clear(c.draws)
+	clear(c.cleanups)
 	*c = Case{
 		recorder:   assert.NewRecorder().WithGoexit().WithClock(clock),
 		provider:   p,
@@ -186,6 +206,7 @@ func (c *Case) recycle(p provider, maxChoices int, w *tree.Walker, clock assert.
 		spans:      c.spans[:0],
 		open:       c.open[:0],
 		draws:      c.draws[:0],
+		cleanups:   c.cleanups[:0],
 	}
 }
 
@@ -262,6 +283,44 @@ func (c *Case) Rand() Source {
 	return Source{c: c}
 }
 
+// Cleanup registers f to run when the body ends. The case runs its
+// cleanups on the body's goroutine, the last registered first, and a
+// cleanup that a cleanup registers runs before the case ends. A cleanup
+// registered after the case ended never runs.
+func (c *Case) Cleanup(f func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cleanups = append(c.cleanups, f)
+}
+
+// Context returns the case's context. It derives from the context that
+// [WithContext] gave the body, and from context.Background() for a body
+// without one, and the case cancels it when the body ends, before the
+// cleanups run. A second call returns the same context, and a context
+// first asked for once the body has ended is cancelled already.
+func (c *Case) Context() context.Context {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ctx == nil {
+		parent := c.parent
+		if parent == nil {
+			parent = context.Background()
+		}
+		c.ctx, c.cancelCtx = context.WithCancel(parent)
+		if c.ended {
+			c.cancelCtx()
+		}
+	}
+	return c.ctx
+}
+
+// derive makes ctx the context that the case's context derives from.
+func (c *Case) derive(ctx context.Context) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.parent = ctx
+}
+
 // Choices returns a copy of the choices the case made, in order.
 func (c *Case) Choices() []choice.Choice {
 	c.mu.Lock()
@@ -334,12 +393,16 @@ func (c *Case) record() []choice.Choice {
 
 // choose returns the value for r and records it, with r. It ends the
 // calling goroutine when the value takes the case past its cap, repeats a
-// tested case or diverges from one.
+// tested case or diverges from one, and once the case has stopped, as a
+// cleanup's draw after such a stop does.
 func (c *Case) choose(r request) choice.Choice {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.dropped {
 		c.halt(cancelled)
+	}
+	if c.stop != running {
+		c.halt(c.stop)
 	}
 	value := c.provider.value(r, len(c.choices))
 	c.cost += 1 + len(value.Sequence)
@@ -596,19 +659,22 @@ func (c *Case) halt(s stop) {
 }
 
 // run calls body on c, on the goroutine that finish starts for it. It keeps
-// a panic that ends the body, and marks the goroutine done when the body
-// returns, panics or ends the goroutine. It reserves the goroutine's stack
-// before it calls the body.
+// a panic that ends the body, then runs the case's cleanups, and marks the
+// goroutine done when the body and the cleanups have returned, panicked or
+// ended the goroutine. It reserves the goroutine's stack before it calls
+// the body.
 func (c *Case) run(body Body) {
 	defer c.done.Done()
+	defer c.cleanUp()
 	defer c.recoverPanic()
 	reserveStack()
 	body(c)
 }
 
 // recoverPanic keeps the identity, the value and the stack of a panic that
-// ends the body. The runner defers it on the body's goroutine. A Goexit is
-// no panic, and recover returns nil for it.
+// ends the body or a cleanup. The first panic of the case is kept. The
+// runner defers it on the body's goroutine. A Goexit is no panic, and
+// recover returns nil for it.
 func (c *Case) recoverPanic() {
 	v := recover()
 	if v == nil {
@@ -620,7 +686,58 @@ func (c *Case) recoverPanic() {
 	stack := debug.Stack()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.panicked, c.panicValue, c.panicStack = &identity, v, stack
+	if c.panicked == nil {
+		c.panicked, c.panicValue, c.panicStack = &identity, v, stack
+	}
+}
+
+// cleanUp cancels the case's context and runs the cleanups, the last
+// registered first. A cleanup that panics or ends the goroutine leaves the
+// others to the deferred cleanUpRest, which runs them. A cleanup that a
+// cleanup registers runs as well.
+func (c *Case) cleanUp() {
+	defer c.cleanUpRest()
+	defer c.recoverPanic()
+	c.endBody()
+	for f := c.nextCleanup(); f != nil; f = c.nextCleanup() {
+		f()
+	}
+}
+
+// cleanUpRest runs the cleanups that a panic or an end of the goroutine in
+// a cleanup left.
+func (c *Case) cleanUpRest() {
+	c.mu.Lock()
+	rest := len(c.cleanups) > 0
+	c.mu.Unlock()
+	if rest {
+		c.cleanUp()
+	}
+}
+
+// endBody marks the body ended and cancels the case's context.
+func (c *Case) endBody() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ended = true
+	if c.cancelCtx != nil {
+		c.cancelCtx()
+	}
+}
+
+// nextCleanup removes the cleanup registered last and returns it, or nil
+// when none is left.
+func (c *Case) nextCleanup() func() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	last := len(c.cleanups) - 1
+	if last < 0 {
+		return nil
+	}
+	f := c.cleanups[last]
+	c.cleanups[last] = nil
+	c.cleanups = c.cleanups[:last]
+	return f
 }
 
 // Source is a source of random values whose every value is an integer

@@ -102,9 +102,15 @@ func (c *Case) Report(f assert.Failure, aborting bool)
 func (c *Case) Clock() assert.Clock
 func (c *Case) Assume(condition bool)
 func (c *Case) Classify(label string)
-func (c *Case) Note(message string)
+func (c *Case) Logf(format string, args ...any)
 func (c *Case) Rand() rand.Source // math/rand/v2
 func (c *Case) Observe(fingerprint uint64)
+
+// Cleanup registers f to run when the case ends, the last registered
+// first. Context returns the case's context, which the case cancels when
+// the body ends, before the cleanups run.
+func (c *Case) Cleanup(f func())
+func (c *Case) Context() context.Context
 
 // Draw returns a value of g and records it under label. Call Draw on the
 // goroutine that runs the body: a draw from another goroutine records
@@ -319,6 +325,23 @@ case fails when its body returns.
 
 `Rand` returns a source whose every value is an integer choice over the
 whole unsigned range.
+
+`Logf` formats its message as `fmt.Sprintf` does and keeps it as the
+case's note. `Cleanup` pushes a function onto the case's list, and the
+goroutine of the body runs the list as deferred calls once the body
+returns, panics or ends through `runtime.Goexit`, the last registered
+first. Each cleanup runs under a deferred call that runs the rest, so a
+cleanup that panics or calls `Fatalf` leaves none of the others unrun.
+The first panic of the case is kept, whether the body or a cleanup
+raised it. A draw after the case stopped ends the cleanup that makes it.
+
+`Context` returns a context that derives from the context of the seat
+passed to `ForAll`, which a `*testing.T` states, and from
+`context.Background()` for a seat without one. `Fuzz` derives it from
+each input's `*testing.T`. The engine takes the context through
+`engine.WithContext`, which wraps the body, so no settings struct holds
+a context. The case creates the context on the first call and cancels
+it when the body ends, before the first cleanup runs.
 
 ### The record a failing run reports
 
@@ -589,7 +612,7 @@ None.
 
 | What | Where |
 |---|---|
-| The definition and its property engine, version 1.3.0 | <https://github.com/dokimasia/assert-spec> |
+| The definition and its property engine, version 1.4.0 | <https://github.com/dokimasia/assert-spec> |
 | `runtime.Goexit` | <https://pkg.go.dev/runtime#Goexit> |
 | `testing.F.Fuzz` | <https://pkg.go.dev/testing#F.Fuzz> |
 | `math/rand/v2.Source` | <https://pkg.go.dev/math/rand/v2#Source> |

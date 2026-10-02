@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 
 	"go.dokimi.dev/assert"
@@ -58,6 +59,16 @@ type Execution struct {
 // Body is a property's body: it draws from the case it receives, and
 // reports a failure to it or returns.
 type Body func(*Case)
+
+// WithContext returns a body that runs body on a case whose context,
+// which [Case.Context] returns, derives from ctx. Pass the context of the
+// test that runs the property, such as the one a *testing.T returns.
+func WithContext(ctx context.Context, body Body) Body {
+	return func(c *Case) {
+		c.derive(ctx)
+		body(c)
+	}
+}
 
 // Generate calls body once on case index of a run with seed, outside the
 // case tree, with the cap of [MaxChoices].

@@ -45,11 +45,12 @@ func Fuzz(f *testing.F, contract string, body func(*Case), opts ...Option) {
 		f.Fatalf("%v", err)
 	}
 	note(f, stored.Skipped)
-	run := bodyOf(body)
+	replayed := bodyOf(f.Context(), body)
 	for _, entry := range stored.Entries {
-		p.report(f, engine.RunReplay(run, p.settings, entry.Choices))
+		p.report(f, engine.RunReplay(replayed, p.settings, entry.Choices))
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
+		run := bodyOf(t.Context(), body)
 		e := engine.Bridge(run, data, p.settings.Clock)
 		if e.Status != engine.CaseFailed {
 			return

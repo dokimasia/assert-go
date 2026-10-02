@@ -4,6 +4,7 @@
 package prop
 
 import (
+	"context"
 	"slices"
 
 	"go.dokimi.dev/assert"
@@ -56,9 +57,10 @@ const duplicate = "prop: two properties of the test have the contract %q, and wo
 // A run allocates for each case the goroutine of its body, its recorder and
 // the values its draws decode. The cases of a run on one worker reuse the
 // storage of one record of choices, spans and draws. A passing run of 100
-// cases that draw one integer each allocates 486 times, one of them for the
-// adapter of the body to the engine's case. A failing run allocates its
-// record and the runs of its shrink as well.
+// cases that draw one integer each allocates 487 times, two of them for the
+// closures that adapt the body to the engine's case and give each case a
+// context. A failing run allocates its record and the runs of its shrink as
+// well.
 func ForAll(tb assert.TB, contract string, body func(*Case), opts ...Option) {
 	tb.Helper()
 	p, err := newProperty(tb, contract, caller(), configure(opts))
@@ -70,7 +72,7 @@ func ForAll(tb assert.TB, contract string, body func(*Case), opts ...Option) {
 		tb.Fatalf(duplicate, contract)
 		return
 	}
-	run := bodyOf(body)
+	run := bodyOf(contextOf(tb), body)
 	if p.replaying {
 		p.report(tb, engine.RunReplay(run, p.settings, p.replay))
 		return
@@ -91,4 +93,14 @@ func ForAll(tb assert.TB, contract string, body func(*Case), opts ...Option) {
 	}
 	note(tb, notes)
 	p.report(tb, r)
+}
+
+// contextOf returns the context of tb when tb states one, as a *testing.T
+// does, and context.Background() for a seat without one, such as an
+// [assert.Recorder].
+func contextOf(tb assert.TB) context.Context {
+	if seat, ok := tb.(interface{ Context() context.Context }); ok {
+		return seat.Context()
+	}
+	return context.Background()
 }

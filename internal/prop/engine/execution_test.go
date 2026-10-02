@@ -4,6 +4,7 @@
 package engine_test
 
 import (
+	"context"
 	"math"
 	"testing"
 	"time"
@@ -24,7 +25,14 @@ const (
 	generateAllocs = 12
 	// bridgeAllocs are the allocations of a case decoded from bytes.
 	bridgeAllocs = 9
+	// withContextAllocs are the allocations of WithContext: the body it
+	// returns.
+	withContextAllocs = 1
 )
+
+// ledgerKey is the key of the value that a context carries to the context
+// of a case.
+type ledgerKey struct{}
 
 // TestExecution checks how one call of a body ends, under each of the
 // three ways a case gets its values, and pins each status's spelling.
@@ -194,6 +202,19 @@ func TestExecution(t *testing.T) {
 			assert.Equal(t, drawValues(e.Case.Draws()), []any{1000}, "two bytes, little-endian")
 		})
 	})
+
+	t.Run("WithContext", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns a body whose case's context derives from ctx", func(t *testing.T) {
+			t.Parallel()
+			var got any
+			ctx := context.WithValue(t.Context(), ledgerKey{}, "ledger")
+			body := engine.WithContext(ctx, func(c *engine.Case) { got = c.Context().Value(ledgerKey{}) })
+			engine.Replay(body, nil, nil)
+			assert.Equal(t, got, any("ledger"), "the value of ctx")
+		})
+	})
 }
 
 // TestExecutionZeroAlloc checks the allocation ceilings of the three ways
@@ -207,6 +228,9 @@ func TestExecutionZeroAlloc(t *testing.T) {
 	assert.MaxAllocs(t, func() { engine.Bridge(body, bytes, nil) }, bridgeAllocs, "a case decoded from bytes")
 	assert.MaxAllocs(t, func() { _ = engine.CaseDiverged.Valid() }, 0, "Valid allocates nothing")
 	assert.MaxAllocs(t, func() { _ = engine.CaseDiverged.String() }, 0, "String allocates nothing")
+	ctx := t.Context()
+	assert.MaxAllocs(t, func() { _ = engine.WithContext(ctx, body) }, withContextAllocs,
+		"WithContext allocates the body it returns")
 }
 
 // BenchmarkExecution measures one execution of a body that draws one
@@ -266,5 +290,16 @@ func BenchmarkExecution(b *testing.B) {
 			got = engine.CaseDiverged.String()
 		}
 		assert.Equal(b, got, "diverged", "the status's spelling")
+	})
+
+	b.Run("WithContext", func(b *testing.B) {
+		var got engine.Body
+		ctx := b.Context()
+		c := bench.Start(b).MaxAllocs(withContextAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.WithContext(ctx, body)
+		}
+		assert.NotNil(b, got, "the body")
 	})
 }
