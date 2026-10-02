@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
@@ -23,18 +24,18 @@ import (
 	"go.dokimi.dev/assert/golden"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
+	"go.dokimi.dev/assert/prop"
 )
 
-// This package is a consumer of the library, so its tests are written
-// with it. The assertion core cannot do the same: a package that tests
-// itself with itself lets one bug hide another.
+// The tests of the surfaces use the library's assertions, as a consumer of
+// the library does. The assertion core is tested with testing alone,
+// because a test written with a defective core can pass by the defect that
+// it should find.
 
-// abortingOnly names members the recording surface is not expected to
-// carry, with the reason. An entry here is a claim someone can argue
-// with, which a silent omission is not.
-//
-// A type the naming table's surface section covers needs no entry: it
-// is declared once for both surfaces and the table already says so.
+// abortingOnly names the members that the aborting surface declares and the
+// recording surface does not, each with the reason. A type of the naming
+// table's surface section needs no entry: the library declares it once for
+// both surfaces, as the table states.
 var abortingOnly = map[string]string{
 	"Rejects":       "drives a check to failure, which needs a seat that stops",
 	"Recorder":      "the seat both surfaces report through, declared once",
@@ -43,6 +44,9 @@ var abortingOnly = map[string]string{
 	"TB":            "the seat interface, declared once and used by both",
 }
 
+// TestSurface compares the members of the two surfaces: every member of the
+// aborting surface has a twin of the same name in the recording surface,
+// unless the naming table or abortingOnly excuses it.
 func TestSurface(t *testing.T) {
 	t.Parallel()
 
@@ -55,14 +59,14 @@ func TestSurface(t *testing.T) {
 	t.Run("Members", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("both surfaces declare something", func(t *testing.T) {
+		t.Run("returns members for both surfaces", func(t *testing.T) {
 			t.Parallel()
 
 			assert.NotEmpty(t, aborting, "the aborting surface declares members")
 			assert.NotEmpty(t, recording, "the recording surface declares members")
 		})
 
-		t.Run("every aborting member has a recording twin", func(t *testing.T) {
+		t.Run("returns a recording twin for every aborting member", func(t *testing.T) {
 			t.Parallel()
 
 			named, err := conformance.SurfaceNames()
@@ -73,26 +77,45 @@ func TestSurface(t *testing.T) {
 				if _, excused := abortingOnly[name]; excused {
 					continue
 				}
-				// A name the table carries is declared once for both
-				// surfaces, which is what the table states.
+				// The library declares a name of the table once for both
+				// surfaces, as the table states.
 				if slices.Contains(covered, name) {
 					continue
 				}
 				assert.Contains(t, recording, name,
-					"the recording surface carries "+name)
+					"the recording surface declares "+name)
 			}
 		})
 
-		t.Run("the recording surface adds nothing of its own", func(t *testing.T) {
+		t.Run("returns no recording member without an aborting twin", func(t *testing.T) {
 			t.Parallel()
 
 			for _, name := range recording {
 				assert.Contains(t, aborting, name,
-					"the aborting surface carries "+name)
+					"the aborting surface declares "+name)
 			}
 		})
 
-		t.Run("every excused member is absent as claimed", func(t *testing.T) {
+		t.Run("returns an error for a surface whose directory does not exist", func(t *testing.T) {
+			t.Parallel()
+
+			_, err := conformance.Members(conformance.Surface(filepath.Join(t.TempDir(), "missing")))
+			assert.HasError(t, err, "no directory, so no members")
+			assert.Contains(t, err.Error(), "conformance: read", "the error names the read")
+		})
+
+		t.Run("returns an error for a surface of a file that does not parse", func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			assert.NoError(t, os.WriteFile(filepath.Join(dir, "broken.go"), []byte("package"), 0o600),
+				"the file is written")
+			_, err := conformance.Members(conformance.Surface(dir))
+			assert.HasError(t, err, "a file that does not parse declares no members")
+			assert.Contains(t, err.Error(), "conformance: parse broken.go", "the error names the file")
+		})
+
+		t.Run("returns each excused member for the aborting surface alone", func(t *testing.T) {
 			t.Parallel()
 
 			for name, why := range abortingOnly {
@@ -105,14 +128,14 @@ func TestSurface(t *testing.T) {
 	})
 }
 
-// pinned names each surface id the table gives Go, as a value whose
-// type the compiler checks. Go can look nothing up by name at run
-// time, so existence is proven here and the test below only checks
-// that this map has not fallen behind the table.
+// pinned maps each surface id that the table gives Go to a value whose
+// type the compiler checks. Go looks nothing up by name at run time, so
+// the compiler proves that each name exists, and TestSurfaceTable checks
+// that the map lists every id of the table.
 //
-// The collector seat is testing.T: Fatalf stops the test and Errorf
-// records and carries on, which is that seat's contract, supplied by
-// the platform. The compile-time conversion is the proof.
+// The collector seat is testing.T: Fatalf stops the test, and Errorf
+// records the failure and returns, which is the seat's contract. The
+// conversion to assert.TB proves it at compile time.
 var pinned = map[conformance.ID]any{
 	"seat":             (*assert.TB)(nil),
 	"recorder-seat":    (*assert.Recorder)(nil),
@@ -158,13 +181,53 @@ var pinned = map[conformance.ID]any{
 	"golden.scrub-run-ids":     golden.ScrubRunIDs,
 	"golden.scrub-json-fields": golden.ScrubJSONFields,
 	"golden.should-update":     golden.ShouldUpdate,
+
+	"generator":        (*prop.Generator[int])(nil),
+	"case":             (*prop.Case)(nil),
+	"case.draw":        (*prop.Case).Draw[int],
+	"case.assume":      (*prop.Case).Assume,
+	"case.classify":    (*prop.Case).Classify,
+	"case.note":        (*prop.Case).Note,
+	"case.rand":        (*prop.Case).Rand,
+	"case.observe":     (*prop.Case).Observe,
+	"generator.map":    prop.Generator[int].Map[string],
+	"generator.filter": prop.Generator[int].Filter,
+	"generator.bind":   prop.Generator[int].Bind[string],
+
+	"prop.integer":         prop.Integer[int],
+	"prop.float":           prop.Float[float64],
+	"prop.boolean":         prop.Boolean,
+	"prop.just":            prop.Just[int],
+	"prop.sampled-from":    prop.SampledFrom[int],
+	"prop.one-of":          prop.OneOf[int],
+	"prop.optional":        prop.Optional[int],
+	"prop.list":            prop.List[int],
+	"prop.dict":            prop.Dict[string, int],
+	"prop.string":          prop.String,
+	"prop.bytes":           prop.Bytes,
+	"prop.duration":        prop.Duration,
+	"prop.permutation":     prop.Permutation[int],
+	"prop.string-matching": prop.StringMatching,
+	"prop.recursive":       prop.Recursive[int],
+	"prop.composite":       prop.Composite[int],
+	"prop.cases":           prop.Cases,
+	"prop.seed":            prop.Seed,
+	"prop.replay":          prop.Replay,
+	"prop.require":         prop.Require,
+	"prop.shrink":          prop.Shrink,
+	"prop.shrink-time":     prop.ShrinkTime,
+	"prop.max-choices":     prop.MaxChoices,
+	"prop.store":           prop.Store,
+	"prop.explain":         prop.Explain,
+	"prop.workers":         prop.Workers,
+	"prop.fuzz":            prop.Fuzz,
 }
 
-// TestSurfaceTable holds the pin map to the naming table: every id the
-// table names for Go is pinned, and every id it does not name is
-// declined by the overlay with a reason. Written with testing rather
-// than with the library, because a verdict is not written with the
-// subject.
+// TestSurfaceTable compares the pin map with the naming table: the map
+// pins every id that the table names for Go, and the overlay declines
+// every id that the table does not name, with a reason. Written with
+// testing rather than with the library, because a verdict is not written
+// with the subject.
 func TestSurfaceTable(t *testing.T) {
 	t.Parallel()
 
@@ -232,8 +295,8 @@ var silent = map[string]string{
 	"EquateNaNs":  "returns a comparison option",
 }
 
-// escaped holds the slice the MaxAllocs driver allocates, so escape
-// analysis keeps the allocation on the heap.
+// escaped is the slice that the MaxAllocs driver allocates, which escape
+// analysis then keeps on the heap.
 var escaped []byte
 
 // recordingFunctions calls each reporting function of the recording
@@ -354,7 +417,7 @@ func TestSurfaceRecording(t *testing.T) {
 	}
 
 	t.Run("Members", func(t *testing.T) {
-		t.Run("every function is driven or reports nothing", func(t *testing.T) {
+		t.Run("returns the functions that the drivers and the excuses name", func(t *testing.T) {
 			named := slices.Concat(slices.Collect(maps.Keys(recordingFunctions)), slices.Collect(maps.Keys(silent)))
 			slices.Sort(named)
 			if !slices.Equal(named, members) {
@@ -362,7 +425,7 @@ func TestSurfaceRecording(t *testing.T) {
 			}
 		})
 
-		t.Run("every chain method is driven", func(t *testing.T) {
+		t.Run("matches each method of the chain with a driver", func(t *testing.T) {
 			driven := slices.Sorted(maps.Keys(recordingMethods))
 			if !slices.Equal(driven, methods) {
 				t.Errorf("the chain declares %v, and the drivers name %v", methods, driven)

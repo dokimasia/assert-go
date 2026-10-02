@@ -1,0 +1,63 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: MIT
+
+package prop
+
+import "go.dokimi.dev/assert/internal/prop/engine"
+
+//go:generate go run golang.org/x/tools/cmd/stringer@v0.50.0 -type=Relevance -linecomment -output=drawn.string_gen.go
+
+// Relevance is what the explain phase found for one draw of a
+// counterexample. Each value converts from the engine's relevance of the
+// same spelling.
+type Relevance uint8
+
+const (
+	// Untested is a draw that the explain phase did not test: explaining is
+	// off, the draw makes no choice, none of its fillings decodes a value, or
+	// the budget ran out first.
+	Untested Relevance = 0 // untested
+	// AnyValueFails is a draw whose every filling that decodes a value fails
+	// the same way, so the drawn value takes no part in the failure.
+	AnyValueFails Relevance = 1 // any-value-fails
+	// ValueMatters is a draw with a filling that passes or fails another
+	// way, so the drawn value takes part in the failure.
+	ValueMatters Relevance = 2 // value-matters
+)
+
+// Valid reports whether r is one of the three relevances.
+func (r Relevance) Valid() bool {
+	return r <= ValueMatters
+}
+
+// Drawn is one value of a counterexample, in the order the body drew it.
+// The zero Drawn is an untested draw of nil under the empty label.
+type Drawn struct {
+	// Label is the label the body drew the value under.
+	Label string
+	// Value is the value the generator decoded, of the generator's type.
+	Value any
+	// Relevance is what the explain phase found for the draw.
+	Relevance Relevance
+	// NearestPassing is the value one step towards the target that passes,
+	// for an integer or a duration whose value matters, or a value that
+	// [Generator.Map] maps from one, of the generator's type. It is nil for
+	// every other draw.
+	NearestPassing any
+}
+
+// counterexampleOf returns the draws of e's case in order, each with the
+// explanation at its index. explained is the run's explanation of e, which
+// states one entry for each draw, or nil for a case that the run did not
+// explain.
+func counterexampleOf(e engine.Execution, explained []engine.Explained) []Drawn {
+	draws := e.Case.Draws()
+	out := make([]Drawn, len(draws))
+	for i, d := range draws {
+		out[i] = Drawn{Label: d.Label, Value: d.Value}
+		if i < len(explained) {
+			out[i].Relevance, out[i].NearestPassing = Relevance(explained[i].Relevance), explained[i].NearestPassing
+		}
+	}
+	return out
+}

@@ -111,6 +111,7 @@ never ran.
 | `go.dokimi.dev/assert/expect` | the same, recording and continuing |
 | `go.dokimi.dev/assert/golden` | comparison against a recorded file, with scrubbers for content that changes each run |
 | `go.dokimi.dev/assert/bench` | ceilings on latency, allocations and bytes per benchmark iteration |
+| `go.dokimi.dev/assert/prop` | property checks over generated inputs, the generators, and the bridge to `go test -fuzz` |
 | `go.dokimi.dev/assert/conformance` | this library checked against the standard |
 
 ## Golden files
@@ -166,6 +167,36 @@ one whose `-gcflags` turn off optimisation or inlining, neither form
 checks an allocation ceiling, because those builds allocate differently
 from the one that ships. `MaxAllocs` still calls the function, and a
 contract still publishes its counts.
+
+## Properties
+
+`prop.ForAll` runs a body against generated inputs. When a case fails,
+it shrinks the case to the smallest one that fails the same way and
+reports it:
+
+```go
+func TestRoundTrip(t *testing.T) {
+    prop.ForAll(t, "decoding undoes encoding", func(c *prop.Case) {
+        v := c.Draw(prop.List(prop.Integer[int64](-1000, 1000), prop.MaxSize(16)), "values")
+        got, err := Decode(Encode(v))
+        assert.NoError(c, err, "decoding succeeds")
+        assert.Equal(c, got, v, "decoding returns the encoded values")
+    })
+}
+```
+
+The standard fixes the random source, the decoding of each generator,
+the phases of a run and the shrink passes. A seed gives the same inputs
+in each implementation of the standard, and a failure shrinks to the same
+counterexample in each. Every assertion works in the body, because the
+case is a seat.
+
+A failure states the counterexample, the seed and a replay token.
+`prop.Replay` and `DOKIMI_ASSERT_PROP_REPLAY` run the token's case again.
+The run also writes the smallest failing case of each failure to
+`testdata/prop/<test name>/` beside `testdata/golden`. The next run tries
+that case first. Review the store as you review golden files. `prop.Fuzz`
+runs the same body under `go test -fuzz`.
 
 ## Assertion reference
 
@@ -255,6 +286,13 @@ contract still publishes its counts.
 | `bench.Contract.MaxAllocs` | The allocations per iteration stay within a ceiling. |
 | `bench.Contract.MaxBytes` | The bytes allocated per iteration stay within a ceiling. |
 
+### Properties
+
+| Name | What it states |
+|---|---|
+| `prop.ForAll` | A body passes for every input a run generates. A failure states the smallest counterexample that the shrink passes find. |
+| `prop.Fuzz` | A body passes for every input a fuzzer finds, decoded into a case by the bridge rules. |
+
 ### Proof
 
 | Name | What it states |
@@ -275,7 +313,7 @@ holds itself to it on every run:
 - **Meaning.** 87 corpus cases state what an assertion must report,
   shared with every other implementation.
 
-The corpus reaches 25 of the 42. A case states its arguments as data,
+The corpus reaches 25 of the 43. A case states its arguments as data,
 so it cannot cover an assertion that takes a callable, a cancellation
 handle, a golden file or a benchmark. Those are checked for presence
 and tested here.

@@ -1,0 +1,137 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: MIT
+
+package prop
+
+import (
+	"math/rand/v2"
+
+	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/prop/engine"
+)
+
+// Case is one call of a property's body. The body's assertions report to
+// the case, and its draws decode the body's inputs from the case's choices.
+//
+// A Case is an [assert.TB], an [assert.Reporter] and an [assert.Clocked],
+// so every assertion of this module works on it. It keeps each record in
+// call order, and its first record is the case's failure. A fatal record
+// ends the calling goroutine through runtime.Goexit, as testing ends a
+// test. Deferred calls run, and a recover returns nil during a Goexit, so a
+// body that recovers every panic cannot run on past the end of its case.
+//
+// A failure's identity is its assertion and its location, and for a panic
+// the type of its value and the innermost frame of the caller's code: the
+// first frame whose file is a test file or whose function is outside this
+// module. Two failures with one identity are one failure, and a message is
+// no part of an identity.
+//
+// # Concurrency
+//
+// Every method is safe for concurrent use, so an assertion may report to a
+// case from any goroutine. A fatal record, a rejection and a draw that ends
+// the case end the goroutine that makes them, and the case fails or is
+// rejected when its body returns. Call Draw on the goroutine that runs the
+// body: draws from other goroutines record their choices in the order the
+// scheduler gives, and a replay of those choices decodes other values.
+//
+// # Allocation contract
+//
+// Helper, Clock, Assume, Classify of a counted label and Rand allocate
+// nothing. Note and Observe allocate only to grow the case's record. A
+// recording Report allocates twice, for the record's sentence and the
+// message formatted from it. Errorf allocates five times: the message, the
+// frames searched for its location, and the same two. A draw allocates the
+// record of its value and what its generator decodes.
+type Case engine.Case
+
+var (
+	_ assert.TB       = (*Case)(nil)
+	_ assert.Reporter = (*Case)(nil)
+	_ assert.Clocked  = (*Case)(nil)
+)
+
+// Helper marks the calling function as a helper. A record states the frame
+// that its assertion or message states, so the mark moves no record.
+func (c *Case) Helper() {
+	(*engine.Case)(c).Helper()
+}
+
+// Fatalf keeps a record without an assertion, whose contract is the message
+// and whose location is the innermost frame of the caller's code, and ends
+// the calling goroutine.
+func (c *Case) Fatalf(format string, args ...any) {
+	(*engine.Case)(c).Fatalf(format, args...)
+}
+
+// Errorf keeps a record without an assertion, whose contract is the message
+// and whose location is the innermost frame of the caller's code. The body
+// runs on, and the case fails when it returns.
+func (c *Case) Errorf(format string, args ...any) {
+	(*engine.Case)(c).Errorf(format, args...)
+}
+
+// Report keeps an assertion's record f. An aborting record ends the calling
+// goroutine. A recording record lets the body run on, and the case fails
+// when it returns.
+func (c *Case) Report(f assert.Failure, aborting bool) {
+	(*engine.Case)(c).Report(f, aborting)
+}
+
+// Clock returns the clock of the property's seat, so every case of a
+// property runs under the test's clock, and [assert.System] for a seat
+// without one.
+func (c *Case) Clock() assert.Clock {
+	return (*engine.Case)(c).Clock()
+}
+
+// Assume rejects the case when condition is false, which ends the calling
+// goroutine. A rejected case is not counted, not shrunk, and does not fail
+// the property. A run that rejects more than ten cases for every valid one
+// fails as [Rejected].
+func (c *Case) Assume(condition bool) {
+	(*engine.Case)(c).Assume(condition)
+}
+
+// Classify counts the case under label, for the coverage requirements that
+// [Require] states. A label counted twice in one case counts once.
+func (c *Case) Classify(label string) {
+	(*engine.Case)(c).Classify(label)
+}
+
+// Note attaches message to the case. Only a failing case reports its notes,
+// after its counterexample.
+func (c *Case) Note(message string) {
+	(*engine.Case)(c).Note(message)
+}
+
+// Rand returns a source of random values whose every value is an integer
+// choice of the case over the whole unsigned 64-bit range, so code written
+// against math/rand/v2 replays and shrinks without change. A value of the
+// source requests an input, as a draw does.
+func (c *Case) Rand() rand.Source {
+	return (*engine.Case)(c).Rand()
+}
+
+// Observe records a fingerprint of the subject's state at this point. A
+// replay of the case compares its fingerprints with the recorded ones, and
+// a run whose replay records another fingerprint, or another number of
+// them, ends as [Flaky].
+func (c *Case) Observe(fingerprint uint64) {
+	(*engine.Case)(c).Observe(fingerprint)
+}
+
+// Draw returns a value of g and records it under label for the
+// counterexample. Two draws may share a label. A draw ends the calling
+// goroutine when the case repeats a tested case, when the body requested
+// other choices after the same values in an earlier case, and when the
+// case passes its cap on choices.
+func (c *Case) Draw[T any](g Generator[T], label string) T {
+	return engine.Draw((*engine.Case)(c), engine.Generator[T](g), label)
+}
+
+// bodyOf returns the engine's body that calls body with the engine's case
+// as a Case.
+func bodyOf(body func(*Case)) engine.Body {
+	return func(c *engine.Case) { body((*Case)(c)) }
+}

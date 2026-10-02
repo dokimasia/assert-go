@@ -27,6 +27,8 @@ const (
 	Golden Surface = "../golden"
 	// Bench fails a benchmark that exceeds a ceiling.
 	Bench Surface = "../bench"
+	// Prop checks a property over generated inputs.
+	Prop Surface = "../prop"
 )
 
 // subpackages maps the name the definition gives a subpackage to the
@@ -35,6 +37,7 @@ const (
 var subpackages = map[string]Surface{
 	"golden": Golden,
 	"bench":  Bench,
+	"prop":   Prop,
 }
 
 // Subpackage answers where an assertion's package name says to look.
