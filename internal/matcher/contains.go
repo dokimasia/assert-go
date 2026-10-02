@@ -77,6 +77,51 @@ func ContainsInOrder(seat Seat, mode Mode, haystack any, needles []string, msg s
 	}
 }
 
+// Permutation reports when got and want do not contain the same elements,
+// each as often, in any order.
+//
+// Elements compare as [Equal] compares them under opts. Each element of
+// want is matched with an unmatched equal element of got, which is at most
+// len(got)·len(want) comparisons. Two empty slices compare as Equal
+// compares them, so a nil slice does not match an empty one unless opts
+// equate them.
+func Permutation[T any](seat Seat, mode Mode, got, want []T, msg string, opts ...Option) {
+	seat.Helper()
+
+	if !permuted(got, want, opts) {
+		Fail(seat, mode, "permutation", msg, map[string]any{"want": want, "got": got})
+	}
+}
+
+// permuted reports whether got and want contain the same elements, each as
+// often. Equal is an equivalence on the values that equal themselves, so
+// matching each element of want with the first unmatched equal element of
+// got never takes a match that another element needs.
+func permuted[T any](got, want []T, opts []Option) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	if len(got) == 0 {
+		return equal(got, want, opts)
+	}
+
+	matched := make([]bool, len(got))
+	for _, w := range want {
+		at := -1
+		for i := range got {
+			if !matched[i] && equal(got[i], w, opts) {
+				at = i
+				break
+			}
+		}
+		if at < 0 {
+			return false
+		}
+		matched[at] = true
+	}
+	return true
+}
+
 // holds reports whether haystack contains needle, and whether the
 // question applies to haystack's type at all.
 //

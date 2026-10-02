@@ -349,7 +349,7 @@ func TestSurfaceTable(t *testing.T) {
 		case name != "" && !isPinned:
 			t.Errorf("%s: %s is named and nothing here pins it; add it to the map", id, name)
 		case name != "" && !spelled:
-			t.Errorf("%s: the table says %s and nothing here spells it; the pin and the table disagree",
+			t.Errorf("%s: the table names %s and nothing here spells it, so the pin and the table disagree",
 				id, name)
 		case name == "" && isPinned:
 			t.Errorf("%s: declined in the overlay yet pinned here, which is a contradiction", id)
@@ -377,7 +377,16 @@ var escaped []byte
 // recordingFunctions calls each reporting function of the recording
 // surface, keyed by its name, with an input the function rejects.
 var recordingFunctions = map[string]func(tb assert.TB){
+	"Accumulates": func(tb assert.TB) {
+		expect.Accumulates(tb, func(int) error { return nil }, 0, func() int { return 0 }, rejected)
+	},
+	"Associative": func(tb assert.TB) {
+		expect.Associative(tb, func(a, b int) int { return a - b }, 2, 3, 5, rejected)
+	},
 	"CloseTo": func(tb assert.TB) { expect.CloseTo(tb, 1.0, 2, 0.1, rejected) },
+	"Commutative": func(tb assert.TB) {
+		expect.Commutative(tb, func(a, b int) int { return a - b }, 2, 3, rejected)
+	},
 	"CompletesWithin": func(tb assert.TB) {
 		expect.CompletesWithin(tb, time.Millisecond, func(context.Context) error {
 			time.Sleep(2 * time.Millisecond)
@@ -386,11 +395,14 @@ var recordingFunctions = map[string]func(tb assert.TB){
 	},
 	"Contains":        func(tb assert.TB) { expect.Contains(tb, "abc", "x", rejected) },
 	"ContainsInOrder": func(tb assert.TB) { expect.ContainsInOrder(tb, "abc", []string{"c", "a"}, rejected) },
-	"Empty":           func(tb assert.TB) { expect.Empty(tb, "a", rejected) },
-	"Equal":           func(tb assert.TB) { expect.Equal(tb, 1, 2, rejected) },
-	"ErrorAs":         func(tb assert.TB) { _ = expect.ErrorAs[*fs.PathError](tb, io.EOF, rejected) },
-	"ErrorIs":         func(tb assert.TB) { expect.ErrorIs(tb, io.EOF, fs.ErrNotExist, rejected) },
-	"ErrorIsNot":      func(tb assert.TB) { expect.ErrorIsNot(tb, io.EOF, io.EOF, rejected) },
+	"Deterministic": func(tb assert.TB) {
+		expect.Deterministic(tb, func(int) (int, error) { return 0, io.EOF }, 0, rejected)
+	},
+	"Empty":      func(tb assert.TB) { expect.Empty(tb, "a", rejected) },
+	"Equal":      func(tb assert.TB) { expect.Equal(tb, 1, 2, rejected) },
+	"ErrorAs":    func(tb assert.TB) { _ = expect.ErrorAs[*fs.PathError](tb, io.EOF, rejected) },
+	"ErrorIs":    func(tb assert.TB) { expect.ErrorIs(tb, io.EOF, fs.ErrNotExist, rejected) },
+	"ErrorIsNot": func(tb assert.TB) { expect.ErrorIsNot(tb, io.EOF, io.EOF, rejected) },
 	"Eventually": func(tb assert.TB) {
 		expect.Eventually(tb, time.Millisecond, time.Millisecond, func(trial assert.TB) {
 			expect.True(trial, false, rejected)
@@ -398,6 +410,9 @@ var recordingFunctions = map[string]func(tb assert.TB){
 	},
 	"EventuallyTrue": func(tb assert.TB) {
 		expect.EventuallyTrue(tb, time.Millisecond, func() bool { return false }, rejected)
+	},
+	"FailsAfterClose": func(tb assert.TB) {
+		expect.FailsAfterClose(tb, func() error { return nil }, func() error { return nil }, io.EOF, rejected)
 	},
 	"False":     func(tb assert.TB) { expect.False(tb, true, rejected) },
 	"HasError":  func(tb assert.TB) { expect.HasError(tb, nil, rejected) },
@@ -409,15 +424,24 @@ var recordingFunctions = map[string]func(tb assert.TB){
 	"HonoursDeadline": func(tb assert.TB) {
 		expect.HonoursDeadline(tb, func(context.Context) error { return nil }, rejected)
 	},
+	"Idempotent": func(tb assert.TB) {
+		expect.Idempotent(tb, func(int) error { return io.EOF }, 0, func() int { return 0 }, rejected)
+	},
 	"InRange": func(tb assert.TB) { expect.InRange(tb, 5.0, 0, 1, rejected) },
 	"Length":  func(tb assert.TB) { expect.Length(tb, "ab", 3, rejected) },
 	"Matches": func(tb assert.TB) { expect.Matches(tb, "abc", "^x", rejected) },
 	"MaxAllocs": func(tb assert.TB) {
 		expect.MaxAllocs(tb, func() { escaped = make([]byte, 64) }, 0, rejected)
 	},
+	"Monotonic": func(tb assert.TB) {
+		expect.Monotonic(tb, func() int { return 0 }, func() error { return io.EOF }, 1, rejected)
+	},
 	"Nil": func(tb assert.TB) { expect.Nil(tb, 1, rejected) },
 	"NilContextSafe": func(tb assert.TB) {
 		expect.NilContextSafe(tb, func(ctx context.Context) error { return ctx.Err() }, rejected)
+	},
+	"NoDuplicates": func(tb assert.TB) {
+		expect.NoDuplicates(tb, func() ([]int, error) { return []int{1, 1}, nil }, rejected)
 	},
 	"NoError": func(tb assert.TB) { expect.NoError(tb, io.EOF, rejected) },
 	"NoGoroutineLeaks": func(tb assert.TB) {
@@ -432,15 +456,26 @@ var recordingFunctions = map[string]func(tb assert.TB){
 	"NotEqual":    func(tb assert.TB) { expect.NotEqual(tb, 1, 1, rejected) },
 	"NotNil":      func(tb assert.TB) { expect.NotNil(tb, nil, rejected) },
 	"NotPanics":   func(tb assert.TB) { expect.NotPanics(tb, func() { panic(rejected) }, rejected) },
+	"NotPure":     func(tb assert.TB) { expect.NotPure(tb, func() int { return 0 }, func() {}, rejected) },
 	"Pairwise": func(tb assert.TB) {
 		expect.Pairwise(tb, []int{2, 1}, func(earlier, later int) bool { return earlier < later }, rejected)
 	},
-	"Panics": func(tb assert.TB) { expect.Panics(tb, func() {}, rejected) },
+	"Panics":      func(tb assert.TB) { expect.Panics(tb, func() {}, rejected) },
+	"Permutation": func(tb assert.TB) { expect.Permutation(tb, []int{1}, []int{2}, rejected) },
+	"Poisoned":    func(tb assert.TB) { expect.Poisoned(tb, func() {}, func() error { return nil }, rejected) },
 	"Pure": func(tb assert.TB) {
 		calls := 0
 		expect.Pure(tb, func() int { return calls }, func() { calls++ }, rejected)
 	},
-	"True": func(tb assert.TB) { expect.True(tb, false, rejected) },
+	"RoundTrip": func(tb assert.TB) {
+		expect.RoundTrip(tb, func(int) (int, error) { return 0, io.EOF },
+			func(v int) (int, error) { return v, nil }, 1, rejected)
+	},
+	"StableOrder": func(tb assert.TB) {
+		expect.StableOrder(tb, func() ([]int, error) { return nil, io.EOF }, rejected)
+	},
+	"Total": func(tb assert.TB) { expect.Total(tb, func(int) error { return io.EOF }, []int{1}, rejected) },
+	"True":  func(tb assert.TB) { expect.True(tb, false, rejected) },
 }
 
 // recordingMethods calls each method of the recording chain, keyed by
@@ -515,7 +550,16 @@ func TestSurfaceRecording(t *testing.T) {
 // abortingFunctions calls each reporting function of the aborting surface,
 // keyed by its name, with an input the function rejects.
 var abortingFunctions = map[string]func(tb assert.TB){
+	"Accumulates": func(tb assert.TB) {
+		assert.Accumulates(tb, func(int) error { return nil }, 0, func() int { return 0 }, rejected)
+	},
+	"Associative": func(tb assert.TB) {
+		assert.Associative(tb, func(a, b int) int { return a - b }, 2, 3, 5, rejected)
+	},
 	"CloseTo": func(tb assert.TB) { assert.CloseTo(tb, 1.0, 2, 0.1, rejected) },
+	"Commutative": func(tb assert.TB) {
+		assert.Commutative(tb, func(a, b int) int { return a - b }, 2, 3, rejected)
+	},
 	"CompletesWithin": func(tb assert.TB) {
 		assert.CompletesWithin(tb, time.Millisecond, func(context.Context) error {
 			time.Sleep(2 * time.Millisecond)
@@ -524,11 +568,14 @@ var abortingFunctions = map[string]func(tb assert.TB){
 	},
 	"Contains":        func(tb assert.TB) { assert.Contains(tb, "abc", "x", rejected) },
 	"ContainsInOrder": func(tb assert.TB) { assert.ContainsInOrder(tb, "abc", []string{"c", "a"}, rejected) },
-	"Empty":           func(tb assert.TB) { assert.Empty(tb, "a", rejected) },
-	"Equal":           func(tb assert.TB) { assert.Equal(tb, 1, 2, rejected) },
-	"ErrorAs":         func(tb assert.TB) { _ = assert.ErrorAs[*fs.PathError](tb, io.EOF, rejected) },
-	"ErrorIs":         func(tb assert.TB) { assert.ErrorIs(tb, io.EOF, fs.ErrNotExist, rejected) },
-	"ErrorIsNot":      func(tb assert.TB) { assert.ErrorIsNot(tb, io.EOF, io.EOF, rejected) },
+	"Deterministic": func(tb assert.TB) {
+		assert.Deterministic(tb, func(int) (int, error) { return 0, io.EOF }, 0, rejected)
+	},
+	"Empty":      func(tb assert.TB) { assert.Empty(tb, "a", rejected) },
+	"Equal":      func(tb assert.TB) { assert.Equal(tb, 1, 2, rejected) },
+	"ErrorAs":    func(tb assert.TB) { _ = assert.ErrorAs[*fs.PathError](tb, io.EOF, rejected) },
+	"ErrorIs":    func(tb assert.TB) { assert.ErrorIs(tb, io.EOF, fs.ErrNotExist, rejected) },
+	"ErrorIsNot": func(tb assert.TB) { assert.ErrorIsNot(tb, io.EOF, io.EOF, rejected) },
 	"Eventually": func(tb assert.TB) {
 		assert.Eventually(tb, time.Millisecond, time.Millisecond, func(trial assert.TB) {
 			assert.True(trial, false, rejected)
@@ -536,6 +583,9 @@ var abortingFunctions = map[string]func(tb assert.TB){
 	},
 	"EventuallyTrue": func(tb assert.TB) {
 		assert.EventuallyTrue(tb, time.Millisecond, func() bool { return false }, rejected)
+	},
+	"FailsAfterClose": func(tb assert.TB) {
+		assert.FailsAfterClose(tb, func() error { return nil }, func() error { return nil }, io.EOF, rejected)
 	},
 	"False":     func(tb assert.TB) { assert.False(tb, true, rejected) },
 	"HasError":  func(tb assert.TB) { assert.HasError(tb, nil, rejected) },
@@ -547,15 +597,24 @@ var abortingFunctions = map[string]func(tb assert.TB){
 	"HonoursDeadline": func(tb assert.TB) {
 		assert.HonoursDeadline(tb, func(context.Context) error { return nil }, rejected)
 	},
+	"Idempotent": func(tb assert.TB) {
+		assert.Idempotent(tb, func(int) error { return io.EOF }, 0, func() int { return 0 }, rejected)
+	},
 	"InRange": func(tb assert.TB) { assert.InRange(tb, 5.0, 0, 1, rejected) },
 	"Length":  func(tb assert.TB) { assert.Length(tb, "ab", 3, rejected) },
 	"Matches": func(tb assert.TB) { assert.Matches(tb, "abc", "^x", rejected) },
 	"MaxAllocs": func(tb assert.TB) {
 		assert.MaxAllocs(tb, func() { escaped = make([]byte, 64) }, 0, rejected)
 	},
+	"Monotonic": func(tb assert.TB) {
+		assert.Monotonic(tb, func() int { return 0 }, func() error { return io.EOF }, 1, rejected)
+	},
 	"Nil": func(tb assert.TB) { assert.Nil(tb, 1, rejected) },
 	"NilContextSafe": func(tb assert.TB) {
 		assert.NilContextSafe(tb, func(ctx context.Context) error { return ctx.Err() }, rejected)
+	},
+	"NoDuplicates": func(tb assert.TB) {
+		assert.NoDuplicates(tb, func() ([]int, error) { return []int{1, 1}, nil }, rejected)
 	},
 	"NoError": func(tb assert.TB) { assert.NoError(tb, io.EOF, rejected) },
 	"NoGoroutineLeaks": func(tb assert.TB) {
@@ -570,16 +629,27 @@ var abortingFunctions = map[string]func(tb assert.TB){
 	"NotEqual":    func(tb assert.TB) { assert.NotEqual(tb, 1, 1, rejected) },
 	"NotNil":      func(tb assert.TB) { assert.NotNil(tb, nil, rejected) },
 	"NotPanics":   func(tb assert.TB) { assert.NotPanics(tb, func() { panic(rejected) }, rejected) },
+	"NotPure":     func(tb assert.TB) { assert.NotPure(tb, func() int { return 0 }, func() {}, rejected) },
 	"Pairwise": func(tb assert.TB) {
 		assert.Pairwise(tb, []int{2, 1}, func(earlier, later int) bool { return earlier < later }, rejected)
 	},
-	"Panics": func(tb assert.TB) { assert.Panics(tb, func() {}, rejected) },
+	"Panics":      func(tb assert.TB) { assert.Panics(tb, func() {}, rejected) },
+	"Permutation": func(tb assert.TB) { assert.Permutation(tb, []int{1}, []int{2}, rejected) },
+	"Poisoned":    func(tb assert.TB) { assert.Poisoned(tb, func() {}, func() error { return nil }, rejected) },
 	"Pure": func(tb assert.TB) {
 		calls := 0
 		assert.Pure(tb, func() int { return calls }, func() { calls++ }, rejected)
 	},
 	"Rejects": func(tb assert.TB) { assert.Rejects(tb, rejected, func(assert.TB) {}) },
-	"True":    func(tb assert.TB) { assert.True(tb, false, rejected) },
+	"RoundTrip": func(tb assert.TB) {
+		assert.RoundTrip(tb, func(int) (int, error) { return 0, io.EOF },
+			func(v int) (int, error) { return v, nil }, 1, rejected)
+	},
+	"StableOrder": func(tb assert.TB) {
+		assert.StableOrder(tb, func() ([]int, error) { return nil, io.EOF }, rejected)
+	},
+	"Total": func(tb assert.TB) { assert.Total(tb, func(int) error { return io.EOF }, []int{1}, rejected) },
+	"True":  func(tb assert.TB) { assert.True(tb, false, rejected) },
 }
 
 // abortingMethods calls each method of the aborting chain, keyed by its

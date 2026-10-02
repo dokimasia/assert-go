@@ -52,8 +52,9 @@ One run reports all three. Both packages carry the same assertions
 under the same names and share one comparison; a conformance test
 fails the build if they ever diverge.
 
-Every assertion exists as a function and, where its first argument is
-the value being examined, as a chain method:
+Every assertion exists as a function. The fifteen that examine a value
+of any type, such as `Equal` and `Contains`, also exist as chain
+methods:
 
 ```go
 assert.Equal(t, got, want, "the values match")
@@ -107,7 +108,7 @@ never ran.
 
 | Import | What it holds |
 |---|---|
-| `go.dokimi.dev/assert` | 35 assertions and a 15-method chain, stopping at the first failure |
+| `go.dokimi.dev/assert` | 49 assertions and a 15-method chain, stopping at the first failure |
 | `go.dokimi.dev/assert/expect` | the same, recording and continuing |
 | `go.dokimi.dev/assert/golden` | comparison against a recorded file, with scrubbers for content that changes each run |
 | `go.dokimi.dev/assert/bench` | ceilings on latency, allocations and bytes per benchmark iteration |
@@ -223,6 +224,7 @@ runs the same body under `go test -fuzz`.
 | `Contains` | Text has the substring, a sequence has an element equal to the needle, or a map has the key. An element compares as `Equal` compares, so an int does not match a float. |
 | `NotContains` | Negation of contains. |
 | `ContainsInOrder` | Text holds every needle, each after the previous one's match ends. |
+| `Permutation` | A slice contains the same elements as another, each as often, in any order. Elements compare as `Equal` compares them. |
 | `HasPrefix` | Text starts with the given prefix. |
 | `HasSuffix` | Text ends with the given suffix. |
 | `Matches` | Text matches a pattern of the portable subset, which every implementation reads the same way: `$` matches at the end of the text only, `\d`, `\w` and `\s` are ASCII classes, and `.` matches no line terminator. A pattern outside the subset is a failure, not an error. |
@@ -256,6 +258,28 @@ runs the same body under `go test -fuzz`.
 | `CompletesWithin` | A subject finishes before the stated duration. A subject still running when the duration passes fails then. |
 | `Pure` | Observed state is unchanged across a call. |
 | `NilContextSafe` | A subject given an absent cancellation handle does not crash. |
+
+### Relations
+
+A relation calls its subject and relates the runs to each other, so a
+test needs no expected output. An error or a panic of a callable fails
+the relation, except where the relation requires a failure.
+
+| Name | What it states |
+|---|---|
+| `Idempotent` | Calling a subject twice with one input leaves the observed state that calling it once left. |
+| `Accumulates` | Each call of a subject with one input changes an observed integer by the same amount, and the first call changes it. |
+| `Deterministic` | 32 calls of a subject with one input return equal results. |
+| `Commutative` | Combining a and b gives what combining b and a gives. |
+| `Associative` | Combining the combination of a and b with c gives what combining a with the combination of b and c gives. |
+| `RoundTrip` | The inverse conversion of the forward conversion of an input returns the input. |
+| `StableOrder` | 32 iterations of a subject yield equal sequences. |
+| `NoDuplicates` | One iteration of a subject yields each element at most once. |
+| `Monotonic` | An observed value never falls and is never NaN while a subject advances a stated number of steps. |
+| `Total` | A call succeeds for every input of a domain, in order. |
+| `NotPure` | Observed state changes across a call. |
+| `FailsAfterClose` | After a subject closes, a call fails with a sentinel, through the chain of wrapped causes. |
+| `Poisoned` | After a failure is induced, 32 readings each report a failure. |
 
 ### Waiting
 
@@ -314,7 +338,7 @@ holds itself to it on every run:
   number of arguments that the definition states. `NoGoroutineLeaks` is
   the one exception: it returns its check instead of taking the scope.
 - **Parity.** Both surfaces carry the same members.
-- **Meaning.** 134 corpus cases state what an assertion must report,
+- **Meaning.** 170 corpus cases state what an assertion must report,
   shared with every other implementation. Each case runs through every
   function and chain form of both surfaces. The record of a failing
   case must state the case's assertion and the message unchanged, and
@@ -326,7 +350,7 @@ holds itself to it on every run:
 
 A corpus case states its arguments as data, or names a behaviour that
 each implementation builds, such as a callable that panics. The cases
-cover 25 of the 43 assertions. No case can state an error value, a golden
+cover 39 of the 57 assertions. No case can state an error value, a golden
 file, a benchmark or a predicate, so those assertions are checked for
 presence and tested here. The vectors cover `prop-for-all`.
 

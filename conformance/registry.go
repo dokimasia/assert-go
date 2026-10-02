@@ -161,6 +161,14 @@ var Registry = map[ID]map[Form]Invoker{
 			expect.That(tb, a[0]).ContainsInOrder(a[1].([]string), m)
 		},
 	},
+	"permutation": {
+		AbortingCall: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			permutation(tb, a, m, o, assert.Permutation[int], assert.Permutation[float64], assert.Permutation[any])
+		},
+		RecordingCall: func(tb assert.TB, a []any, m string, o []assert.Option) {
+			permutation(tb, a, m, o, expect.Permutation[int], expect.Permutation[float64], expect.Permutation[any])
+		},
+	},
 	"has-prefix": {
 		AbortingCall: func(tb assert.TB, a []any, m string, _ []assert.Option) {
 			assert.HasPrefix(tb, a[0], a[1].(string), m)
@@ -231,6 +239,24 @@ var Registry = map[ID]map[Form]Invoker{
 			expect.That(tb, a[0]).InRange(a[1].(float64), a[2].(float64), m)
 		},
 	},
+}
+
+// permutation calls the instance of a surface's Permutation that the
+// element type of a case's decoded slices names: a slice of int, of
+// float64, or of the literals of a list of items, which is a []any.
+func permutation(tb assert.TB, a []any, m string, o []assert.Option,
+	ints func(assert.TB, []int, []int, string, ...assert.Option),
+	floats func(assert.TB, []float64, []float64, string, ...assert.Option),
+	items func(assert.TB, []any, []any, string, ...assert.Option),
+) {
+	switch got := a[0].(type) {
+	case []int:
+		ints(tb, got, a[1].([]int), m, o...)
+	case []float64:
+		floats(tb, got, a[1].([]float64), m, o...)
+	default:
+		items(tb, a[0].([]any), a[1].([]any), m, o...)
+	}
 }
 
 // Relaxations maps each relaxation that this language offers to its

@@ -40,6 +40,9 @@ var brokenFailures = []string{
 	"matchertest: reported nothing, want a failure",
 	"ran 0 attempts, want at least 3; it did not retry",
 	"the body never ran",
+	`the record contains the fields ["got" "index" "want"], want ["got" "want"]`,
+	"the assertion returned after a callable ended its goroutine",
+	"for a callable that ended its goroutine",
 }
 
 // TestBrokenTwinsChild runs only in the child process. Each twin breaks
@@ -101,6 +104,34 @@ func TestBrokenTwinsChild(t *testing.T) {
 
 	t.Run("RunEventually of a twin that never runs the body", func(t *testing.T) {
 		matchertest.RunEventually(t, func(*matchertest.Seat, time.Duration, time.Duration, func() bool, string) {})
+	})
+
+	t.Run("RunPermutation of a twin that reports an undeclared field", func(t *testing.T) {
+		matchertest.RunPermutation(t, func(s *matchertest.Seat, got, want []any, msg string, opts ...matcher.Option) {
+			if !permutes(got, want, opts) {
+				report(s, "permutation", msg, map[string]any{"want": want, "got": got, "index": 0})
+			}
+		})
+	})
+
+	t.Run("RunPoisoned of a twin that induces on a goroutine of its own", func(t *testing.T) {
+		matchertest.RunPoisoned(t, func(_ *matchertest.Seat, induce func(), _ func() error, _ string) {
+			ended := make(chan struct{})
+			go func() {
+				defer close(ended)
+				defer func() { _ = recover() }()
+				induce()
+			}()
+			<-ended
+		})
+	})
+
+	t.Run("RunPoisoned of a twin that reports as its goroutine ends", func(t *testing.T) {
+		matchertest.RunPoisoned(t, func(s *matchertest.Seat, induce func(), _ func() error, msg string) {
+			defer func() { _ = recover() }()
+			defer report(s, "poisoned", msg, map[string]any{"index": nil, "got": nil})
+			induce()
+		})
 	})
 }
 

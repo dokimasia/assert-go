@@ -3,6 +3,13 @@
 
 package matchertest
 
+import (
+	"math"
+	"testing"
+
+	"go.dokimi.dev/assert/internal/matcher"
+)
+
 // ContainsCases are the cases every surface's contains assertion must
 // produce. Drive them with [RunPair].
 //
@@ -126,4 +133,62 @@ func ContainsInOrderCases() []Case {
 			Assertion: "contains-in-order",
 		},
 	}
+}
+
+// PermutationInvoke calls a surface's permutation assertion over slices of
+// any element, so a case can set an int against a float.
+type PermutationInvoke func(seat *Seat, got, want []any, msg string, opts ...matcher.Option)
+
+// RunPermutation drives invoke against every case a permutation assertion
+// must produce.
+func RunPermutation(t *testing.T, invoke PermutationInvoke) {
+	t.Helper()
+
+	nan := math.NaN()
+	cases := []struct {
+		name      string
+		got, want []any
+		opts      []matcher.Option
+		fails     bool
+	}{
+		{name: "the same elements in another order pass", got: []any{3, 1, 2}, want: []any{1, 2, 3}},
+		{name: "repeated elements in another order pass", got: []any{1, 2, 1}, want: []any{1, 1, 2}},
+		{name: "two empty slices pass", got: []any{}, want: []any{}},
+		{name: "two nil slices pass"},
+		{
+			name: "an element repeated a different number of times reports both slices",
+			got:  []any{1, 1, 2}, want: []any{1, 2, 2}, fails: true,
+		},
+		{name: "an extra element reports both slices", got: []any{1, 2, 3}, want: []any{1, 2}, fails: true},
+		{name: "a missing element reports both slices", got: []any{1, 2}, want: []any{1, 2, 3}, fails: true},
+		{
+			name: "an element in place of another reports both slices",
+			got:  []any{1, 2, 3}, want: []any{1, 2, 4}, fails: true,
+		},
+		{name: "an int does not match a float", got: []any{1}, want: []any{1.0}, fails: true},
+		{name: "a NaN does not match a NaN", got: []any{nan}, want: []any{nan}, fails: true},
+		{
+			name: "a NaN matches a NaN under EquateNaNs",
+			got:  []any{nan}, want: []any{nan}, opts: []matcher.Option{matcher.EquateNaNs()},
+		},
+		{name: "a nil slice does not match an empty one", want: []any{}, fails: true},
+		{
+			name: "a nil slice matches an empty one under EquateEmpty",
+			want: []any{}, opts: []matcher.Option{matcher.EquateEmpty()},
+		},
+	}
+
+	relations := make([]relationCase, 0, len(cases))
+	for _, tc := range cases {
+		want := Case{}
+		if tc.fails {
+			want = failure("permutation", map[string]any{"want": tc.want, "got": tc.got})
+		}
+		relations = append(relations, relationCase{
+			name:  tc.name,
+			drive: func(seat *Seat) { invoke(seat, tc.got, tc.want, contractMsg, tc.opts...) },
+			want:  want,
+		})
+	}
+	runRelation(t, relations)
 }

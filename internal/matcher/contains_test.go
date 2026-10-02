@@ -36,4 +36,11 @@ func TestContains(t *testing.T) {
 				matcher.ContainsInOrder(s, matcher.Fatal, got, needles.([]string), msg)
 			})
 	})
+
+	t.Run("Permutation", func(t *testing.T) {
+		t.Parallel()
+		matchertest.RunPermutation(t, func(s *matchertest.Seat, got, want []any, msg string, opts ...matcher.Option) {
+			matcher.Permutation(s, matcher.Fatal, got, want, msg, opts...)
+		})
+	})
 }

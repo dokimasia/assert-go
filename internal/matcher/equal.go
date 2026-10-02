@@ -24,11 +24,17 @@ func Equal[T any](seat Seat, mode Mode, got, want T, msg string, opts ...Option)
 	}
 }
 
+// equal reports whether x and y are equal as [Equal] compares them under
+// opts.
+func equal(x, y any, opts []Option) bool {
+	return cmp.Equal(x, y, Options(opts...)...)
+}
+
 // NotEqual compares got against want and reports when they are equal.
 // It reports nothing and returns when they differ.
 //
 // The failure is msg, then got. There is no diff to show: the two
-// values matched, so printing one of them says everything the reader
+// values matched, so printing one of them gives everything the reader
 // needs. opts relax the comparison for this call alone.
 //
 //	matcher.NotEqual(seat, matcher.Fatal, token, previous,

@@ -46,3 +46,18 @@ func ContainsInOrder(tb TB, got any, needles []string, msg string) {
 	tb.Helper()
 	matcher.ContainsInOrder(tb, matcher.Fatal, got, needles, msg)
 }
+
+// Permutation stops the test when got and want do not contain the same
+// elements, each as often, in any order.
+//
+//	assert.Permutation(t, store.Keys(ctx), []string{"a", "b", "c"},
+//	    "Keys returns every stored key once")
+//
+// Elements compare as [Equal] compares them, so an int does not match a
+// float, and a NaN matches nothing unless [EquateNaNs] applies. A nil
+// slice does not match an empty one unless [EquateEmpty] applies. The
+// check makes at most len(got)·len(want) comparisons.
+func Permutation[T any](tb TB, got, want []T, msg string, opts ...Option) {
+	tb.Helper()
+	matcher.Permutation(tb, matcher.Fatal, got, want, msg, opts...)
+}

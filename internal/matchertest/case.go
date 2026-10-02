@@ -6,6 +6,7 @@ package matchertest
 import (
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 	"testing"
 
@@ -13,26 +14,35 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
+// detailOptions compare a record's detail with a case's. An error matches
+// a stated error under [errors.Is], a NaN matches a stated NaN, and a
+// *big.Int matches a stated one of the same value.
+var detailOptions = []cmp.Option{
+	cmpopts.EquateErrors(),
+	cmpopts.EquateNaNs(),
+	cmp.Comparer(func(x, y *big.Int) bool { return x.String() == y.String() }),
+}
+
 // Case is one assertion's inputs and the outcome every surface must
 // produce from them.
 //
-// Args holds what the assertion is given after the seat, in call
-// order. A runner reads as many as its arity needs, so one Case type
-// serves assertions of different shapes.
+// Args are what the assertion is given after the seat, in call order. A
+// runner reads as many as its arity needs, so one Case type serves
+// assertions of different shapes.
 type Case struct {
-	// Name says what the case establishes, and becomes the subtest
+	// Name states what the case establishes, and becomes the subtest
 	// name.
 	Name string
 	// Args are the assertion's arguments after the seat, excluding the
 	// trailing message.
 	Args []any
-	// Fails says whether the assertion must report.
+	// Fails is whether the assertion must report.
 	Fails bool
-	// Assertion is the canonical id the failure must carry. Read only
-	// when Fails is true, and an empty value checks nothing.
+	// Assertion is the canonical id that the failure's record must name.
+	// Read only when Fails is true, and an empty value checks nothing.
 	Assertion string
-	// Detail is what the failure's record must hold. Every field
-	// stated must match; a field left out is not checked. Read only
+	// Detail is what the failure's record must contain. Every field
+	// stated must match, and a field left out is not checked. Read only
 	// when Fails is true.
 	Detail map[string]any
 }
@@ -125,7 +135,7 @@ func Verdict(seat *Seat, want Case) error {
 	first := records[0]
 
 	if first.Contract != contractMsg {
-		return fmt.Errorf("matchertest: record carries contract %q, want %q",
+		return fmt.Errorf("matchertest: record states contract %q, want %q",
 			first.Contract, contractMsg)
 	}
 	if want.Assertion != "" && first.Assertion != want.Assertion {
@@ -135,9 +145,9 @@ func Verdict(seat *Seat, want Case) error {
 	for name, value := range want.Detail {
 		held, ok := first.Detail[name]
 		if !ok {
-			return fmt.Errorf("matchertest: record holds no detail %q, want %+v", name, value)
+			return fmt.Errorf("matchertest: record states no detail %q, want %+v", name, value)
 		}
-		if !cmp.Equal(held, value, cmpopts.EquateErrors()) {
+		if !cmp.Equal(held, value, detailOptions...) {
 			return fmt.Errorf("matchertest: detail %q is %+v, want %+v", name, held, value)
 		}
 	}

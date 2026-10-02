@@ -20,7 +20,7 @@ import (
 const (
 	// definition is the version of the definition that this package
 	// implements, which every entry it writes states.
-	definition = "2.0.0"
+	definition = "2.1.0"
 	// storeRoot is the directory of the stores of a package's tests,
 	// relative to the package's directory, beside testdata/golden.
 	storeRoot = "testdata/prop"
@@ -72,8 +72,8 @@ func directoryOf(tb assert.TB, c config) string {
 }
 
 // claim claims the entries of contract in the store dir for the test of tb
-// until the test ends, and reports false when another property of a test
-// that runs holds them. A run without a store, and a seat without Cleanup,
+// until the test ends, and reports false when a property of another running
+// test has claimed them. A run without a store, and a seat without Cleanup,
 // claim nothing and report true.
 func claim(tb assert.TB, dir, contract string) bool {
 	c, ok := tb.(cleaner)

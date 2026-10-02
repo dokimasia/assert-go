@@ -36,4 +36,11 @@ func TestContains(t *testing.T) {
 				assert.ContainsInOrder(s, got, needles.([]string), msg)
 			})
 	})
+
+	t.Run("Permutation", func(t *testing.T) {
+		t.Parallel()
+		matchertest.RunPermutation(t, func(s *matchertest.Seat, got, want []any, msg string, opts ...assert.Option) {
+			assert.Permutation(s, got, want, msg, opts...)
+		})
+	})
 }
