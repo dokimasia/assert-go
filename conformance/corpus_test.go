@@ -5,6 +5,7 @@ package conformance_test
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -13,25 +14,15 @@ import (
 	"go.dokimi.dev/assert/conformance"
 )
 
-// TestCorpus drives every case the definition states against this
-// library. It is what checks meaning rather than membership: the
-// completeness gate says an assertion exists, and this says it answers
-// what the standard says it should.
+// TestCorpus runs every case of the definition's corpus against this
+// library, and compares each assertion's outcome and record with the ones
+// the case states. The completeness gate checks that an assertion exists,
+// and this test checks what it reports.
 //
 // Written with testing rather than with this library. Every assertion
-// reports through one function, so a verdict written with the subject
-// goes quiet exactly when the subject does: silencing that function
-// leaves every case passing, having checked nothing.
-// detail reads a case's detail block from the JSON a corpus file
-// would carry, so a test states it the way the corpus does.
-func detail(raw string) map[string]json.RawMessage {
-	var out map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		panic(err)
-	}
-	return out
-}
-
+// reports through one function, so a verdict written with the subject goes
+// quiet when the subject does: a silenced reporting function leaves every
+// case passing, having checked nothing.
 func TestCorpus(t *testing.T) {
 	t.Parallel()
 
@@ -85,11 +76,10 @@ func TestCorpus(t *testing.T) {
 	}
 }
 
-// runSubjectCase drives a case that names a behaviour, through both
-// surfaces, and holds the outcome to what the case states.
-//
-// A kind this language cannot build is a skip, which is what the
-// standard states for one an implementation cannot make.
+// runSubjectCase runs a case that names a behaviour through both surfaces,
+// and compares each outcome with the one the case states. A kind that this
+// language cannot build skips the case, as the standard states for a
+// behaviour that an implementation cannot make.
 func runSubjectCase(t *testing.T, tc conformance.Case) {
 	t.Helper()
 
@@ -105,8 +95,8 @@ func runSubjectCase(t *testing.T, tc conformance.Case) {
 	}
 }
 
-// statesOnlySubjects reports whether every case for an assertion names
-// a behaviour rather than stating values.
+// statesOnlySubjects reports whether every case of an assertion names a
+// behaviour instead of stating values.
 func statesOnlySubjects(cases []conformance.Case) bool {
 	for _, one := range cases {
 		if one.Subject.Kind == "" {
@@ -116,14 +106,11 @@ func statesOnlySubjects(cases []conformance.Case) bool {
 	return true
 }
 
-// checkWhere holds every reported record to naming a real call site
-// outside the library's own reporting code.
-//
-// A case cannot state a line: the line is wherever the caller put the
-// call, which here is the registry. What every case can state is that
-// the record points somewhere a reader can open, and never at the
-// machinery that built it. Both call-site bugs this standard has found
-// were of that shape.
+// checkWhere fails t unless every record of r names a call site outside the
+// library's own reporting code: a file, and a line above zero. A case
+// cannot state the line, which is wherever the registry calls the
+// assertion, so the check is that the record points at a file a reader can
+// open and never at the code that built the record.
 func checkWhere(t *testing.T, r *assert.Recorder) {
 	t.Helper()
 
@@ -140,16 +127,36 @@ func checkWhere(t *testing.T, r *assert.Recorder) {
 	}
 }
 
-// TestCorpusRules drives the corpus reader's own rules, which the
-// cases cannot: a corpus that passes every case still has to refuse a
-// case it does not understand.
+// TestCorpusRules drives the rules of the corpus reader that the cases
+// cannot: a reader that passes every case still refuses a case it does not
+// understand.
 func TestCorpusRules(t *testing.T) {
 	t.Parallel()
+
+	t.Run("Cases", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("sets each case's assertion to the assertion of its file", func(t *testing.T) {
+			t.Parallel()
+
+			byAssertion, err := conformance.Cases()
+			if err != nil {
+				t.Fatalf("the corpus can be read: %v", err)
+			}
+			for id, cases := range byAssertion {
+				for _, c := range cases {
+					if c.Assertion != string(id) {
+						t.Fatalf("case %s states the assertion %q, want %q", c.ID, c.Assertion, id)
+					}
+				}
+			}
+		})
+	})
 
 	t.Run("Check", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("an unknown expectation is refused", func(t *testing.T) {
+		t.Run("returns an error for an unknown expectation", func(t *testing.T) {
 			t.Parallel()
 
 			c := conformance.Case{ID: "made-up", Expect: "maybe"}
@@ -158,7 +165,40 @@ func TestCorpusRules(t *testing.T) {
 			}
 		})
 
-		t.Run("a failure with no record is refused", func(t *testing.T) {
+		t.Run("returns an error for a failure of a case that expects a pass", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			r.Errorf("a message reported without a record")
+
+			c := conformance.Case{ID: "x", Expect: "pass"}
+			if c.Check(r) == nil {
+				t.Fatal("a failure of a case that expects a pass is refused")
+			}
+		})
+
+		t.Run("returns an error for a pass of a case that expects a failure", func(t *testing.T) {
+			t.Parallel()
+
+			c := conformance.Case{ID: "x", Expect: "fail"}
+			if c.Check(assert.NewRecorder()) == nil {
+				t.Fatal("a pass of a case that expects a failure is refused")
+			}
+		})
+
+		t.Run("returns an error for a detail field of a literal of an unknown type", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			r.Report(assert.Failure{Assertion: "equal", Contract: "x", Detail: map[string]any{"want": 1}}, true)
+
+			c := conformance.Case{ID: "x", Expect: "fail", Detail: detail(`{"want": {"type":"widget"}}`)}
+			if err := c.Check(r); !errors.Is(err, conformance.ErrUnknownType) {
+				t.Fatalf("Check returns %v, want ErrUnknownType", err)
+			}
+		})
+
+		t.Run("returns an error for a failure without a record", func(t *testing.T) {
 			t.Parallel()
 
 			r := assert.NewRecorder()
@@ -170,7 +210,7 @@ func TestCorpusRules(t *testing.T) {
 			}
 		})
 
-		t.Run("a record missing a stated detail field is refused", func(t *testing.T) {
+		t.Run("returns an error for a record without a stated detail field", func(t *testing.T) {
 			t.Parallel()
 
 			r := assert.NewRecorder()
@@ -181,11 +221,11 @@ func TestCorpusRules(t *testing.T) {
 
 			c := conformance.Case{ID: "x", Expect: "fail", Detail: detail(`{"want": {"type":"int","value":1}}`)}
 			if c.Check(r) == nil {
-				t.Fatal("a record holding none of the stated want is refused")
+				t.Fatal("a record without the stated want is refused")
 			}
 		})
 
-		t.Run("a record holding a different value is refused", func(t *testing.T) {
+		t.Run("returns an error for a detail field of another value", func(t *testing.T) {
 			t.Parallel()
 
 			r := assert.NewRecorder()
@@ -200,7 +240,7 @@ func TestCorpusRules(t *testing.T) {
 			}
 		})
 
-		t.Run("a record matching the case is accepted", func(t *testing.T) {
+		t.Run("returns nil for a record that matches the case", func(t *testing.T) {
 			t.Parallel()
 
 			r := assert.NewRecorder()
@@ -222,7 +262,7 @@ func TestCorpusRules(t *testing.T) {
 	t.Run("Decoded", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("a literal it cannot read is refused", func(t *testing.T) {
+		t.Run("returns an error for an argument of an unknown type", func(t *testing.T) {
 			t.Parallel()
 
 			c := conformance.Case{ID: "x", Args: []json.RawMessage{[]byte(`{"type":"widget"}`)}}
@@ -235,7 +275,7 @@ func TestCorpusRules(t *testing.T) {
 	t.Run("SkipReason", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("a case with no skip table applies", func(t *testing.T) {
+		t.Run("reports false for a case without a skip table", func(t *testing.T) {
 			t.Parallel()
 
 			if _, skipped := (conformance.Case{ID: "x"}).SkipReason(); skipped {
@@ -243,7 +283,7 @@ func TestCorpusRules(t *testing.T) {
 			}
 		})
 
-		t.Run("a skip for another language does not apply here", func(t *testing.T) {
+		t.Run("reports false for a skip of another language", func(t *testing.T) {
 			t.Parallel()
 
 			c := conformance.Case{ID: "x", Skip: map[string]string{"php": "no generics"}}
@@ -252,4 +292,14 @@ func TestCorpusRules(t *testing.T) {
 			}
 		})
 	})
+}
+
+// detail returns the detail block of a case from the JSON text that a
+// corpus file states it in.
+func detail(raw string) map[string]json.RawMessage {
+	var out map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		panic(err)
+	}
+	return out
 }

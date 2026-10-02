@@ -39,12 +39,12 @@ type Case struct {
 	Args []json.RawMessage `json:"args"`
 	// Expect is pass or fail.
 	Expect string `json:"expect"`
-	// Detail is what the failure's record must hold, keyed by the
-	// names the assertion declares. Every field stated must match; a
-	// field the case leaves out is not checked.
+	// Detail is the detail that the failure's record states, keyed by the
+	// names that the assertion declares. Every stated field must match,
+	// and a field that the case leaves out is not checked.
 	Detail map[string]json.RawMessage `json:"detail"`
-	// Subject names the behaviour this case hands the assertion in
-	// place of arguments, and is empty for a case that states values.
+	// Subject names the behaviour that the assertion takes in place of
+	// arguments, and is empty for a case that states values.
 	Subject struct {
 		Kind string `json:"kind"`
 	} `json:"subject"`
@@ -52,8 +52,8 @@ type Case struct {
 	Skip map[string]string `json:"skip"`
 }
 
-// SkipReason returns why this case does not apply to Go, and whether
-// it says so.
+// SkipReason returns why this case does not apply to Go, and whether the
+// case states a reason.
 func (c Case) SkipReason() (string, bool) {
 	why, stated := c.Skip[goLanguageKey]
 	return why, stated
@@ -72,12 +72,12 @@ func (c Case) Decoded() ([]any, error) {
 	return out, nil
 }
 
-// Check reports how the seat's outcome differs from what the case
-// required, and nil when it matches.
+// Check returns how the seat's outcome differs from the one that the case
+// requires, or nil when they match.
 //
-// It returns an error rather than failing a test so the rule can be
-// driven against cases it must reject, the same reason the shared
-// suites state their verdict as a value.
+// It returns an error instead of failing a test, so that a test can drive
+// the rule with cases that it must refuse. The shared suites state their
+// verdict as a value for the same reason.
 func (c Case) Check(r *assert.Recorder) error {
 	switch c.Expect {
 	case expectPass:
@@ -93,8 +93,7 @@ func (c Case) Check(r *assert.Recorder) error {
 
 		records := r.Failures()
 		if len(records) == 0 {
-			return fmt.Errorf("conformance: %s reported no record; "+
-				"the assertion did not report one", c.ID)
+			return fmt.Errorf("conformance: %s reported a failure without a record", c.ID)
 		}
 		return c.checkDetail(records[0])
 
@@ -103,12 +102,12 @@ func (c Case) Check(r *assert.Recorder) error {
 	}
 }
 
-// checkDetail reports how a record's detail differs from what the case
-// states, and nil when every stated field matches.
+// checkDetail returns how a record's detail differs from the one that the
+// case states, or nil when every stated field matches.
 //
-// A case states values as typed literals, so an int and a float that
-// render alike stay apart. Comparison is on the decoded value, because
-// what the assertion reports is a Go value rather than a literal.
+// A case states values as typed literals, so an int and a float of the
+// same rendering differ. The comparison is of the decoded value, because
+// the assertion reports a Go value and not a literal.
 func (c Case) checkDetail(f assert.Failure) error {
 	for name, raw := range c.Detail {
 		want, err := Decode(raw)
@@ -117,7 +116,7 @@ func (c Case) checkDetail(f assert.Failure) error {
 		}
 		held, ok := f.Detail[name]
 		if !ok {
-			return fmt.Errorf("conformance: %s record holds no detail %q, want %+v",
+			return fmt.Errorf("conformance: %s record states no detail %q, want %+v",
 				c.ID, name, want)
 		}
 		if !cmp.Equal(held, want, cmpopts.EquateNaNs()) {
@@ -148,6 +147,9 @@ func Cases() (map[ID][]Case, error) {
 		}
 		if err := json.Unmarshal(raw, &file); err != nil {
 			return nil, fmt.Errorf("conformance: parse %s: %w", name, err)
+		}
+		for i := range file.Cases {
+			file.Cases[i].Assertion = string(file.Assertion)
 		}
 		out[file.Assertion] = append(out[file.Assertion], file.Cases...)
 	}
