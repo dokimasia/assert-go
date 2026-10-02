@@ -156,14 +156,16 @@ allocation ceiling in a test, so the ordinary test run checks it:
 ```go
 func TestGetAllocs(t *testing.T) {
     assert.MaxAllocs(t, func() { _, _ = store.Get(ctx, id) }, 0,
-        "Get allocates nothing once the store is warm")
+        "Get averages under one allocation per call once the store is warm")
 }
 ```
 
 It calls the function once to warm it and counts the next 100 calls,
 through `testing.AllocsPerRun`, so the test that calls it does not call
-`t.Parallel`. In a build with the race detector, msan or asan, and in
-one whose `-gcflags` turn off optimisation or inlining, neither form
+`t.Parallel`. The average is rounded down. A ceiling of 0 then passes a
+function that allocates on 99 of the 100 calls. In a build with the race
+detector, msan or asan, and in one whose `-gcflags` turn off
+optimisation or inlining, neither form
 checks an allocation ceiling, because those builds allocate differently
 from the one that ships. `MaxAllocs` still calls the function, and a
 contract still publishes its counts.
@@ -204,33 +206,33 @@ runs the same body under `go test -fuzz`.
 
 | Name | What it states |
 |---|---|
-| `Equal` | Structural equality. A null collection does not equal an empty one, no type coercion, NaN is unequal to itself, floats compare exactly, cycles stop, functions compare by identity. |
+| `Equal` | Structural equality. A null collection does not equal an empty one, no type coercion, NaN is unequal to itself, floats compare exactly and negative zero equals zero, cycles stop, functions compare by identity. |
 | `NotEqual` | Negation of equal. |
 | `True` | The condition holds. The failure carries the caller's message alone. |
 | `False` | The condition does not hold. |
 | `Nil` | The value is absent. A typed nil counts as nil. |
 | `NotNil` | The value is present. A typed nil counts as nil. |
-| `Length` | The container holds the stated number of items. Answers for any sized container or text. |
-| `Empty` | The container holds nothing. |
-| `NotEmpty` | The container holds something. |
+| `Length` | The container has the stated number of items: the elements of a slice, array or channel, the entries of a map, the bytes of a `[]byte`, or the Unicode scalar values of a string. A value without a length, nil included, fails. |
+| `Empty` | The container has no item. A value without a length, nil included, fails. |
+| `NotEmpty` | The container has an item. A value without a length, nil included, fails. |
 
 ### Text and containment
 
 | Name | What it states |
 |---|---|
-| `Contains` | Text holds a substring, a sequence holds an element, or a map holds a key. |
+| `Contains` | Text has the substring, a sequence has an element equal to the needle, or a map has the key. An element compares as `Equal` compares, so an int does not match a float. |
 | `NotContains` | Negation of contains. |
 | `ContainsInOrder` | Text holds every needle, each after the previous one's match ends. |
 | `HasPrefix` | Text starts with the given prefix. |
 | `HasSuffix` | Text ends with the given suffix. |
-| `Matches` | Text matches a regular expression. A pattern that does not compile is a failure, not an error. |
+| `Matches` | Text matches a pattern of the portable subset, which every implementation reads the same way: `$` matches at the end of the text only, `\d`, `\w` and `\s` are ASCII classes, and `.` matches no line terminator. A pattern outside the subset is a failure, not an error. |
 
 ### Numbers and order
 
 | Name | What it states |
 |---|---|
-| `CloseTo` | A number is within a tolerance of another, by absolute difference. NaN is outside every tolerance. |
-| `InRange` | A number falls in a closed interval. NaN is in no range. |
+| `CloseTo` | A number is within a tolerance of another, by absolute difference. NaN is outside every tolerance, and equal infinities are not close. |
+| `InRange` | A number falls in a closed interval. NaN is in no range, and a range with a NaN bound contains no number. |
 | `Pairwise` | Every adjacent pair of a sequence satisfies a predicate. Nought or one item passes. |
 
 ### Errors and panics
@@ -251,7 +253,7 @@ runs the same body under `go test -fuzz`.
 |---|---|
 | `HonoursCancellation` | A subject given a cancelled handle reports a cancellation failure. |
 | `HonoursDeadline` | A subject given an expired deadline reports a deadline failure. |
-| `CompletesWithin` | A subject finishes before the stated duration. |
+| `CompletesWithin` | A subject finishes before the stated duration. A subject still running when the duration passes fails then. |
 | `Pure` | Observed state is unchanged across a call. |
 | `NilContextSafe` | A subject given an absent cancellation handle does not crash. |
 
@@ -306,12 +308,17 @@ implemented in six languages. This library vendors the definition and
 holds itself to it on every run:
 
 - **Completeness.** Every assertion is present under the name the
-  definition gives it, or declared absent with a stated reason. An
-  undeclared absence fails the build; so does a declared absence for
-  something that is implemented.
+  definition gives it, or declared absent with a stated reason. The
+  build fails on an undeclared absence, and on a declared absence of
+  something that is implemented. Each function and method takes the
+  number of arguments that the definition states. `NoGoroutineLeaks` is
+  the one exception: it returns its check instead of taking the scope.
 - **Parity.** Both surfaces carry the same members.
-- **Meaning.** 87 corpus cases state what an assertion must report,
-  shared with every other implementation.
+- **Meaning.** 134 corpus cases state what an assertion must report,
+  shared with every other implementation. Each case runs through every
+  function and chain form of both surfaces. The record of a failing
+  case must state the case's assertion and the message unchanged, and
+  contain exactly the fields that the assertion declares.
 - **Properties.** 204 vectors state how the property engine decodes,
   generates and shrinks inputs, decides coverage, encodes replay tokens,
   stores failures and reports a run, shared with every other
@@ -319,7 +326,7 @@ holds itself to it on every run:
 
 A corpus case states its arguments as data, or names a behaviour that
 each implementation builds, such as a callable that panics. The cases
-reach 25 of the 43 assertions. No case can state an error value, a golden
+cover 25 of the 43 assertions. No case can state an error value, a golden
 file, a benchmark or a predicate, so those assertions are checked for
 presence and tested here. The vectors cover `prop-for-all`.
 

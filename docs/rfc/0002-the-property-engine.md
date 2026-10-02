@@ -51,21 +51,25 @@ go.dokimi.dev/assert/prop                     ForAll, Fuzz, Case, Generator[T], 
 go.dokimi.dev/assert/internal/prop/choice     choice kinds, bounds, targets, sort keys, replay coercion
 go.dokimi.dev/assert/internal/prop/random     the random source and every draw
 go.dokimi.dev/assert/internal/prop/alphabet   the default alphabet
+go.dokimi.dev/assert/internal/prop/pattern    the portable pattern subset: the parser and its nodes
 go.dokimi.dev/assert/internal/prop/token      the replay token
 go.dokimi.dev/assert/internal/prop/store      the store's entries, file names, verdicts and directory
 go.dokimi.dev/assert/internal/prop/coverage   the coverage test
 go.dokimi.dev/assert/internal/prop/tree       the case tree
 go.dokimi.dev/assert/internal/prop/engine     the case, providers, generators, runner, shrinker, explain
-go.dokimi.dev/assert/internal/prop/pattern    the portable pattern subset and string-matching
+go.dokimi.dev/assert/internal/prop/matching   string-matching, which decodes a pattern's nodes from a case
 go.dokimi.dev/assert/conformance              the vectors, beside the corpus runner
 ```
 
 Each package imports only the packages above it in this list, and the
-compiler's cycle check enforces that order. `pattern` imports `engine`,
-because a pattern's nodes decode from a case, so `string-matching` is
-built in `pattern` and not in `engine`. The engine exports the primitives
-that such a generator decodes with: `NewGenerator`, `Case.Integer`,
-`Case.Structure`, `Case.Span` and `Collect`.
+compiler's cycle check enforces that order. `pattern` parses a pattern of
+the subset and does not import the engine. The assertion core uses the
+same parser to decide which patterns `Matches` accepts. `matching` imports
+`pattern` and `engine`, because a pattern's nodes decode from a case, so
+`string-matching` is built in `matching` and not in `engine`. The engine
+exports the primitives that such a generator decodes with:
+`NewGenerator`, `Case.Integer`, `Case.Structure`, `Case.Span` and
+`Collect`.
 
 The engine is internal for the reason the matcher is. Its logic exists
 once, and `prop` is a surface of thin wrappers whose types and methods
@@ -499,8 +503,11 @@ strings.
   `bench.Start(b).MaxAllocs(n)`. The random source, the draws, the sort
   keys and the token encoder state 0. Every other ceiling is the
   measured count.
-- Every package has 100% statement coverage and 100% mutation
-  coverage under gremlins.
+- Every package has 100% statement coverage and 100% mutation coverage
+  under gremlins. The coverage stage of `ergon check` enforces the first
+  for every package. Its mutation stage enforces the second for the
+  assertion core and the conformance package, and gremlins measures the
+  engine's packages on demand.
 
 ### The overlay's limit on dict
 

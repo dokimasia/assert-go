@@ -219,6 +219,16 @@ It collects every exported package-level declaration and checks each
 assertion in the definition against the names it found. Reading the files
 means nobody can satisfy the gate with a list that has gone stale.
 
+The gate also reads the parameters of each exported function and method.
+It checks the arity that the definition states on both surfaces. The
+arity counts the parameters after the seat, without a variadic one. It
+also counts each type parameter that no parameter's type names, because
+a caller states that one: `ErrorAs[*fs.PathError](t, err, msg)` has an
+arity of three. The gate looks a method up by its qualified name, such
+as `Contract.MaxAllocs`, and fails on a renamed method.
+`NoGoroutineLeaks` is excused with its reason. It returns the check that
+ends the scope, and the definition counts the scope as an argument.
+
 `golang.org/x/tools/go/packages` would type-check as well as parse, and
 would honour build tags. It would also enter the module graph of every
 module that imports this library, for a check that only this repository
@@ -231,20 +241,31 @@ Note that `parser.ParseDir` is deprecated for exactly the build-tag
 reason. `ParseFile` is not, so the directory walk is done here.
 
 The corpus needs a second table, because dispatching a case by its
-assertion ID also cannot use reflection:
+assertion ID also cannot use reflection. The table has one invoker for
+each form a caller writes: the function of each surface, and the chain
+method of each surface where the chain declares one.
 
 ```go
-type Invoker func(r *Recorder, args []any, msg string)
+type Invoker func(tb assert.TB, args []any, msg string, opts []assert.Option)
 
-var Registry = map[string]Invoker{
-	"equal": func(r *Recorder, args []any, msg string) {
-		assert.Equal(r, args[0], args[1], msg)
+var Registry = map[ID]map[Form]Invoker{
+	"equal": {
+		AbortingCall:   func(tb assert.TB, a []any, m string, o []assert.Option) { assert.Equal(tb, a[0], a[1], m, o...) },
+		RecordingCall:  func(tb assert.TB, a []any, m string, o []assert.Option) { expect.Equal(tb, a[0], a[1], m, o...) },
+		AbortingChain:  func(tb assert.TB, a []any, m string, o []assert.Option) { assert.That(tb, a[0]).Equal(a[1], m, o...) },
+		RecordingChain: func(tb assert.TB, a []any, m string, o []assert.Option) { expect.That(tb, a[0]).Equal(a[1], m, o...) },
 	},
 }
 ```
 
-The gate checks this table covers every assertion, so it cannot fall
-behind the public surface it dispatches to.
+The corpus test runs every case through every form in the table. It
+requires both function forms for an assertion that a case states values
+for. It also requires each chain form whose chain declares the method. A
+form that the surfaces declare and the table omits fails the test. A
+case's options are relaxation ids, and a second table maps each id to
+its `Option`. The record of a failing case states the case's assertion
+and the message unchanged. It contains exactly the fields that the
+assertion declares.
 
 ### The definition is vendored
 
@@ -318,18 +339,18 @@ two parameters are `Seat` and `Mode`.
 already fails on a missing one. A generator adds a committed generated
 file that reviewers read in diffs, and a build step someone can forget.
 A generator would make each wrapper's mode correct by construction. A
-conformance test checks the mode of every `expect` wrapper instead, and
-the drawbacks record that the mode of an `assert` wrapper is unchecked.
+conformance test checks the mode of every wrapper of both surfaces
+instead.
 
 ## Drawbacks
 
 **Every wrapper is written twice.** Each assertion has a wrapper in
 `assert` and one in `expect`, and each chain method has one in each
 chain. The gate checks that both exist, and the shared suites check what
-each reports. A conformance test checks that every `expect` wrapper
-reports through `Errorf`. Nothing checks that an `assert` wrapper
-reports through `Fatalf`, so one that passed the recording mode would
-pass every test.
+each reports. Two conformance tests drive every reporting member of each
+surface with an input it rejects. They require `Fatalf` from `assert`
+and `Errorf` from `expect`. The drivers are a third copy of the member
+list. A member added without a driver fails those tests.
 
 **The gate does not evaluate build tags.** It reads the surfaces with
 `go/parser` rather than loading them, so a surface split across tagged
@@ -337,9 +358,10 @@ files would be read as one. This buys a module graph holding one
 dependency, `github.com/google/go-cmp`.
 
 **Two tables to keep aligned.** The public surface and the corpus
-registry both list every assertion. The gate checks the second against
-the definition, so they cannot drift silently, but adding an assertion
-means editing both.
+registry both list every assertion, and the registry lists each form of
+it. The corpus test checks the registry against the definition and the
+surfaces, so they cannot drift silently, but adding an assertion means
+editing both.
 
 **The seam has three methods rather than two.** Anything implementing
 `TB` by hand gains a method it may not need.
