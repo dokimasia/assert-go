@@ -106,11 +106,25 @@ func TestToken(t *testing.T) {
 			assert.True(t, sameChoices(got, choices), "the choices that were encoded")
 		})
 
-		t.Run("returns no choices for the prefix alone", func(t *testing.T) {
+		t.Run("returns an empty list for the prefix alone", func(t *testing.T) {
 			t.Parallel()
 			got, err := token.Decode(token.Prefix)
 			assert.NoError(t, err, "the token of no choices")
+			assert.NotNil(t, got, "a list")
 			assert.Empty(t, got, "no choices")
+		})
+
+		t.Run("returns the choices of a token longer than its buffers on the stack", func(t *testing.T) {
+			t.Parallel()
+			choices := make([]choice.Choice, 40)
+			for i := range choices {
+				choices[i] = integer(math.MaxInt64 - int64(i))
+			}
+			tok := token.Encode(choices)
+			got, err := token.Decode(tok)
+			assert.NoError(t, err, "the token is canonical")
+			assert.True(t, len(tok) > 171, "a text past the buffer of 171 characters")
+			assert.True(t, sameChoices(got, choices), "the 40 choices that were encoded")
 		})
 
 		t.Run("returns the largest uint64 from ten LEB128 bytes", func(t *testing.T) {
@@ -283,18 +297,33 @@ func TestToken(t *testing.T) {
 	})
 }
 
+// The allocations of the encoder and the decoder of the pinned choices,
+// measured.
+const (
+	// encodeAllocs are the allocations of Encode: the token.
+	encodeAllocs = 1
+	// decodeAllocs are the allocations of Decode: the choices and the
+	// elements of the one sequence.
+	decodeAllocs = 2
+)
+
 // TestTokenZeroAlloc checks that Append allocates nothing into a slice
-// with the capacity for the token and its payload.
+// with the capacity for the token and its payload, and the ceilings of
+// Encode and Decode.
 func TestTokenZeroAlloc(t *testing.T) {
 	dst := make([]byte, 0, 128)
+	tok := token.Encode(pinnedChoices)
 	assert.MaxAllocs(t, func() { _ = token.Append(dst[:0], pinnedChoices) }, 0,
 		"Append allocates nothing into a slice with the capacity")
+	assert.MaxAllocs(t, func() { _ = token.Encode(pinnedChoices) }, encodeAllocs, "Encode allocates the token")
+	assert.MaxAllocs(t, func() { _, _ = token.Decode(tok) }, decodeAllocs,
+		"Decode allocates the choices and the sequence's elements")
 }
 
 // BenchmarkToken measures the encoder and the decoder of the pinned
 // choices. Append into a slice with the capacity allocates nothing, and
-// Encode allocates the token alone. Decode allocates the payload, the
-// choices as they grow, and the one sequence.
+// Encode allocates the token alone. Decode allocates the choices and the
+// elements of the one sequence.
 func BenchmarkToken(b *testing.B) {
 	want := tokenOf(b, pinnedBytes)
 
@@ -311,7 +340,7 @@ func BenchmarkToken(b *testing.B) {
 
 	b.Run("Encode", func(b *testing.B) {
 		var got string
-		c := bench.Start(b).MaxAllocs(1)
+		c := bench.Start(b).MaxAllocs(encodeAllocs)
 		defer c.End()
 		for c.Loop() {
 			got = token.Encode(pinnedChoices)
@@ -321,7 +350,7 @@ func BenchmarkToken(b *testing.B) {
 
 	b.Run("Decode", func(b *testing.B) {
 		var got []choice.Choice
-		c := bench.Start(b).MaxAllocs(6)
+		c := bench.Start(b).MaxAllocs(decodeAllocs)
 		defer c.End()
 		for c.Loop() {
 			got, _ = token.Decode(want)

@@ -20,7 +20,7 @@ import (
 const invalidVerdict store.Verdict = 4
 
 // readAllocs are the allocations of Read on the pinned entry, measured.
-const readAllocs = 139
+const readAllocs = 135
 
 // base are the fields of an entry of the property contract whose choices
 // are the one integer 7, from the store vectors of the corpus.

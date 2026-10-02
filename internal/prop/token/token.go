@@ -37,8 +37,16 @@ const (
 	// maxNegative is 2^63, the largest magnitude of a negative integer.
 	maxNegative = 9223372036854775808
 	// stackBytes is the size of the buffer on the stack that Encode writes
-	// a token in. A longer token grows into the heap.
+	// a token in, and that Decode decodes a payload into. A longer token
+	// grows into the heap.
 	stackBytes = 128
+	// stackText is the size of the buffer on the stack that Decode copies a
+	// token's text into: the unpadded base64url text of stackBytes.
+	stackText = 171
+	// stackChoices is the number of choices that Decode reads on the stack
+	// before it copies them out. A token of more choices grows into the
+	// heap.
+	stackChoices = 16
 )
 
 // lineBreaks are the characters that the base64 decoder skips, and that no
@@ -91,6 +99,11 @@ func Encode(choices []choice.Choice) string {
 // [choice.Choice] stores each element in 32 bits. Every sequence has fewer
 // than 2^32 element values, so a replay fits that element to 0, as it fits
 // the element that the token states.
+//
+// Decode allocates the choices it returns, an empty list for the prefix
+// alone, and the elements of each sequence. It decodes the text, the
+// payload and the first 16 choices in buffers on the stack, and allocates
+// for a token past them.
 func Decode(tok string) ([]choice.Choice, error) {
 	text, ok := strings.CutPrefix(tok, Prefix)
 	if !ok {
@@ -99,11 +112,14 @@ func Decode(tok string) ([]choice.Choice, error) {
 	if strings.ContainsAny(text, lineBreaks) {
 		return nil, fmt.Errorf("%w: %q is not unpadded base64url: it contains a line break", ErrInvalid, tok)
 	}
-	data, err := encoding.DecodeString(text)
+	var src [stackText]byte
+	var dst [stackBytes]byte
+	data, err := encoding.AppendDecode(dst[:0], append(src[:0], text...))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %q is not unpadded base64url: %w", ErrInvalid, tok, err)
 	}
-	var choices []choice.Choice
+	var stack [stackChoices]choice.Choice
+	choices := stack[:0]
 	for len(data) > 0 {
 		var c choice.Choice
 		c, data, err = readChoice(data)
@@ -112,7 +128,7 @@ func Decode(tok string) ([]choice.Choice, error) {
 		}
 		choices = append(choices, c)
 	}
-	return choices, nil
+	return append(make([]choice.Choice, 0, len(choices)), choices...), nil
 }
 
 // appendPayload appends the binary payload of choices to dst.

@@ -21,9 +21,9 @@ import (
 // The allocations of the directory functions, measured.
 const (
 	// loadAllocs are the allocations of Load on a directory of one entry.
-	loadAllocs = 153
+	loadAllocs = 149
 	// saveAllocs are the allocations of Save of an entry whose file exists.
-	saveAllocs = 156
+	saveAllocs = 152
 )
 
 // The modes that the tests set and check.

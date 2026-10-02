@@ -34,8 +34,9 @@
 // [Append] grows the slice it is given, and allocates only when it lacks
 // the capacity for the token and its binary payload. [Encode] allocates
 // the token, and for a token past 128 bytes the buffer it writes in.
-// [Decode] allocates the payload it reads, the choices and their
-// sequences.
+// [Decode] allocates the choices and the elements of their sequences. It
+// reads a token's text, its payload and its first 16 choices in buffers on
+// the stack, and allocates for a token past them.
 //
 // # Dependency position
 //
