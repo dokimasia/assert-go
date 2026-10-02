@@ -33,7 +33,7 @@ const (
 	filterAllocs = 3
 	// drawAllocs are the allocations of a whole case that replays one draw,
 	// its goroutine and its recorder included.
-	drawAllocs = 11
+	drawAllocs = 9
 )
 
 // TestGenerator checks the combinators, the draw that records a value, and

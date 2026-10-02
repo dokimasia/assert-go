@@ -20,14 +20,14 @@ import (
 const (
 	// runAllocs are the allocations of a passing run of 100 cases of an
 	// integer in [0, 1000]: its 136 cases, its case tree and its executor.
-	runAllocs = 2689
+	runAllocs = 485
 	// replayAllocs are the allocations of a replay of one case that draws
 	// one integer.
-	replayAllocs = 13
+	replayAllocs = 9
 	// concludeAllocs are the allocations of concluding the bridged case of
 	// 10,000 for a body that fails from 1,001: the replay that confirms it,
 	// the runs of its shrink and of its explanation, and the result.
-	concludeAllocs = 734
+	concludeAllocs = 639
 )
 
 // largestBytes are the fuzzer's bytes that the bridge decodes as 10,000
@@ -195,6 +195,13 @@ func TestRunner(t *testing.T) {
 				name:   "returns Vacuous for a body that requests no input",
 				body:   func(*engine.Case) {},
 				want:   engine.Result{Outcome: engine.Vacuous, Cases: 1, Seed: referenceSeed},
+				calls:  1,
+				digest: "7a3e8573a5b0f78d78479509cde64ed061c20379be5b7dd3d6cbe996eef329ad",
+			},
+			{
+				name:   "returns Passed for a body that draws a value without a choice",
+				body:   func(c *engine.Case) { engine.Draw(c, engine.Just(1), drawn) },
+				want:   engine.Result{Outcome: engine.Passed, Cases: 1, Seed: referenceSeed},
 				calls:  1,
 				digest: "7a3e8573a5b0f78d78479509cde64ed061c20379be5b7dd3d6cbe996eef329ad",
 			},

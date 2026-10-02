@@ -45,8 +45,19 @@ type request struct {
 	count int
 }
 
+// recorded is what a case keeps of a request once the choice is made: its
+// bounds, and whether the choice decides structure. The shrinker, the
+// replay that confirms a failure and the explain phase read nothing else of
+// a request.
+type recorded struct {
+	// bounds are the bounds of the choice.
+	bounds choice.Bounds
+	// structure reports whether the choice decides structure.
+	structure bool
+}
+
 // draw returns the value that the random phase draws for r from s.
-func (r request) draw(s *random.Source) choice.Choice {
+func (r *request) draw(s *random.Source) choice.Choice {
 	if r.drawing == byBounds {
 		return r.fromBounds(s)
 	}
@@ -58,7 +69,7 @@ func (r request) draw(s *random.Source) choice.Choice {
 
 // fromBounds returns the value that the random package draws from s in r's
 // bounds.
-func (r request) fromBounds(s *random.Source) choice.Choice {
+func (r *request) fromBounds(s *random.Source) choice.Choice {
 	if r.bounds.Kind() == choice.Integer {
 		return choice.Choice{Kind: choice.Integer, Integer: random.Integer(s, r.bounds.Integer())}
 	}

@@ -62,43 +62,33 @@ type Body func(*Case)
 // Generate calls body once on case index of a run with seed, outside the
 // case tree, with the cap of [MaxChoices].
 func Generate(body Body, seed, index uint64, clock assert.Clock) Execution {
-	source := random.ForCase(seed, index)
-	return execute(body, newGenerating(&source), MaxChoices, nil, clock)
+	return execute(body, newGenerating(random.ForCase(seed, index)), MaxChoices, clock)
 }
 
 // Replay calls body once on a case that replays choices, outside the case
 // tree, with the cap of [MaxChoices].
 func Replay(body Body, choices []choice.Choice, clock assert.Clock) Execution {
-	return execute(body, replaying{choices: choices}, MaxChoices, nil, clock)
+	return execute(body, replaying{choices: choices}, MaxChoices, clock)
 }
 
 // Bridge calls body once on a case decoded from a fuzzer's bytes, outside
 // the case tree, with the cap of [MaxChoices].
 func Bridge(body Body, data []byte, clock assert.Clock) Execution {
-	return execute(body, &bridging{data: data}, MaxChoices, nil, clock)
+	return execute(body, &bridging{data: data}, MaxChoices, clock)
 }
 
-// execute calls body once, on a goroutine of its own, on a case whose
-// values come from p, and returns how the case ended. With a tree, the case
-// walks it.
-func execute(body Body, p provider, maxChoices int, t *tree.Tree, clock assert.Clock) Execution {
-	var w *tree.Walker
-	if t != nil {
-		w = t.Walk()
-	}
-	return finish(newCase(p, maxChoices, w, clock), body)
+// execute calls body once, on a goroutine of its own, on a new case outside
+// the case tree whose values come from p, and returns how the case ended.
+func execute(body Body, p provider, maxChoices int, clock assert.Clock) Execution {
+	return finish(newCase(p, maxChoices, nil, clock), body)
 }
 
 // finish calls body once on c, on a goroutine of its own, and returns how
 // the case ended.
 func finish(c *Case, body Body) Execution {
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		defer c.recoverPanic()
-		body(c)
-	}()
-	<-done
+	c.done.Add(1)
+	go c.run(body)
+	c.done.Wait()
 	return executionOf(c)
 }
 

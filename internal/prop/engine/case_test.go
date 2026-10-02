@@ -31,14 +31,14 @@ const (
 	copyAllocs = 1
 	// fatalCaseAllocs are the allocations of a whole replayed case whose
 	// body calls Fatalf.
-	fatalCaseAllocs = 12
+	fatalCaseAllocs = 10
 	// valueCaseAllocs are the allocations of a whole replayed case whose
 	// body makes one choice, through its source, Integer or Structure.
-	valueCaseAllocs = 7
+	valueCaseAllocs = 5
 	// spanCaseAllocs are the allocations of a whole replayed case whose
 	// body makes one choice inside a span: those of a value case, and the
 	// growth of the case's spans and of its stack of open spans.
-	spanCaseAllocs = 9
+	spanCaseAllocs = 7
 )
 
 // wideMax is the upper bound of wideRange, which a random case of the

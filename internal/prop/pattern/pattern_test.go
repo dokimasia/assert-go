@@ -40,7 +40,7 @@ const (
 	stringMatchingAllocs = 18
 	// drawAllocs are the allocations of a whole replayed case that draws a
 	// string of that pattern from no choices.
-	drawAllocs = 27
+	drawAllocs = 25
 )
 
 // identifier is the pattern of the benchmarks and the allocation checks.

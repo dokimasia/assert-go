@@ -25,7 +25,7 @@ const (
 	// collectCaseAllocs are the allocations of a whole replayed case that
 	// collects one element of one choice: three choices, the element's span
 	// and the collection's set of keys.
-	collectCaseAllocs = 14
+	collectCaseAllocs = 12
 )
 
 // rejectedPairs are the choices of a collection with a minimum length of

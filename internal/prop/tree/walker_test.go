@@ -29,6 +29,32 @@ func TestWalker(t *testing.T) {
 
 	digit, bit := integerBounds(t, 9), integerBounds(t, 1)
 
+	t.Run("Restart", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns the walker to the root of its tree", func(t *testing.T) {
+			t.Parallel()
+			tr := tree.New(tree.NodeLimit)
+			w := tr.Walk()
+			assert.NoError(t, w.Step(digit, integer(7)), "the first case of 7")
+			assert.NoError(t, w.End(), "the end of the first case")
+			w.Restart()
+			assert.ErrorIs(t, w.Step(digit, integer(7)), tree.ErrRepeated, "the second case of 7, from the root")
+		})
+
+		t.Run("checks the steps of a case after a walk that found the tree at its limit", func(t *testing.T) {
+			t.Parallel()
+			tr := tree.New(3)
+			assert.NoError(t, walk(tr, step{bit, integer(0)}, step{bit, integer(0)}), "a case that fills the tree")
+			w := tr.Walk()
+			assert.NoError(t, w.Step(bit, integer(0)), "a recorded choice")
+			assert.NoError(t, w.Step(bit, integer(1)), "a choice past the limit")
+			w.Restart()
+			assert.NoError(t, w.Step(bit, integer(0)), "a recorded choice of the next case")
+			assert.ErrorIs(t, w.Step(bit, integer(0)), tree.ErrRepeated, "the repeat that the next case finds")
+		})
+	})
+
 	t.Run("Step", func(t *testing.T) {
 		t.Parallel()
 
@@ -124,10 +150,12 @@ func TestWalker(t *testing.T) {
 	})
 }
 
-// TestWalkerZeroAlloc checks that a step on an existing edge and an end
-// at an existing leaf allocate nothing.
+// TestWalkerZeroAlloc checks that a restart, a step on an existing edge and
+// an end at an existing leaf allocate nothing.
 func TestWalkerZeroAlloc(t *testing.T) {
 	digit := integerBounds(t, 9)
+	restarted := tree.New(tree.NodeLimit).Walk()
+	assert.MaxAllocs(t, restarted.Restart, 0, "Restart allocates nothing")
 	repeated := tree.New(tree.NodeLimit)
 	assert.NoError(t, walk(repeated, step{digit, integer(7)}), "a case of 7")
 	at := repeated.Walk()
@@ -138,10 +166,22 @@ func TestWalkerZeroAlloc(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = again.End() }, 0, "End at an existing leaf allocates nothing")
 }
 
-// BenchmarkWalker measures a step on an existing edge and an end at an
-// existing leaf under a ceiling of no allocation.
+// BenchmarkWalker measures a restart, a step on an existing edge and an end
+// at an existing leaf under a ceiling of no allocation.
 func BenchmarkWalker(b *testing.B) {
 	digit := integerBounds(b, 9)
+
+	b.Run("Restart", func(b *testing.B) {
+		tr := tree.New(tree.NodeLimit)
+		assert.NoError(b, walk(tr, step{digit, integer(7)}), "a case of 7")
+		w := tr.Walk()
+		c := bench.Start(b).MaxAllocs(0)
+		defer c.End()
+		for c.Loop() {
+			w.Restart()
+		}
+		assert.ErrorIs(b, w.Step(digit, integer(7)), tree.ErrRepeated, "the walker is at the root")
+	})
 
 	b.Run("Step", func(b *testing.B) {
 		var got error

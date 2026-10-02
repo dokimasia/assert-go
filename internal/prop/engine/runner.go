@@ -185,7 +185,7 @@ func Conclude(body Body, s Settings, failing Execution) Result {
 func RunReplay(body Body, s Settings, choices []choice.Choice) Result {
 	s = withClocks(s)
 	t := &tally{seed: s.Seed, labels: make(map[string]int)}
-	r, ended := t.take(execute(body, replaying{choices: choices}, s.MaxChoices, nil, s.Clock))
+	r, ended := t.take(execute(body, replaying{choices: choices}, s.MaxChoices, s.Clock))
 	if !ended {
 		if r, ended = t.missing(); !ended {
 			r = t.result(Passed)
@@ -212,10 +212,11 @@ type tally struct {
 
 // take counts one case, and returns the result it ends the run with.
 func (t *tally) take(e Execution) (Result, bool) {
-	t.requested = t.requested || len(e.Case.Draws()) > 0 || len(e.Case.Choices()) > 0
+	t.requested = t.requested || e.Case.requested()
 	if e.Status == CaseFailed {
+		failing := e
 		r := t.result(Counterexample)
-		r.Failing = &e
+		r.Failing = &failing
 		return r, true
 	}
 	if e.Status == CaseDiverged {
@@ -327,7 +328,7 @@ func explore(body Body, s Settings) Result {
 	t := &tally{seed: s.Seed, labels: make(map[string]int)}
 	stored := make([]Execution, 0, len(s.Stored))
 	for _, choices := range s.Stored {
-		e := execute(body, replaying{choices: choices}, s.MaxChoices, nil, s.Clock)
+		e := execute(body, replaying{choices: choices}, s.MaxChoices, s.Clock)
 		stored = append(stored, e)
 		if r, ended := t.take(e); ended {
 			r.Stored = stored

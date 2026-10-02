@@ -19,11 +19,11 @@ const invalidStatus engine.Status = 5
 // The allocations of one execution of a body that draws one integer,
 // measured.
 const (
-	// generateAllocs are the allocations of a generated case, its random
-	// stream and its record of reused values included.
-	generateAllocs = 15
+	// generateAllocs are the allocations of a generated case, its provider
+	// and its record of reused values included.
+	generateAllocs = 12
 	// bridgeAllocs are the allocations of a case decoded from bytes.
-	bridgeAllocs = 11
+	bridgeAllocs = 9
 )
 
 // TestExecution checks how one call of a body ends, under each of the

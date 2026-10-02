@@ -34,38 +34,49 @@ type earlierValue struct {
 // identifiers then equals the first in at least one case in four. The
 // earlier values are those whose choices the record still contains, so a
 // filter's next attempt never takes a value of an attempt it rejected.
+//
+// A run on one worker serves every random case with one generating
+// provider, which reset starts over for each case. The map of earlier
+// values keeps its storage across the cases.
 type generating struct {
 	// source is the stream of the case.
-	source *random.Source
+	source random.Source
 	// earlier are the values of the case's reuse requests so far, by their
-	// bounds, in record order.
-	earlier map[choice.Bounds][]earlierValue
+	// bounds, in record order. Only integer requests are marked reuse.
+	earlier map[choice.IntegerBounds][]earlierValue
 }
 
 // newGenerating returns a provider that draws from source.
-func newGenerating(source *random.Source) *generating {
-	return &generating{source: source, earlier: make(map[choice.Bounds][]earlierValue)}
+func newGenerating(source random.Source) *generating {
+	return &generating{source: source, earlier: make(map[choice.IntegerBounds][]earlierValue)}
+}
+
+// reset starts the provider over on source, without earlier values, for
+// the next case. It allocates nothing.
+func (g *generating) reset(source random.Source) {
+	g.source = source
+	clear(g.earlier)
 }
 
 // value returns r's draw from the source, or an earlier value of the case.
-// Only integer requests are marked reuse. The values of choices at index
-// or after it, which a rewind removed from the record, leave the earlier
-// values first.
+// The values of choices at index or after it, which a rewind removed from
+// the record, leave the earlier values first.
 func (g *generating) value(r request, index int) choice.Choice {
-	if !r.reuse || r.bounds.Integer().Lo() == r.bounds.Integer().Hi() {
-		return r.draw(g.source)
+	bounds := r.bounds.Integer()
+	if !r.reuse || bounds.Lo() == bounds.Hi() {
+		return r.draw(&g.source)
 	}
-	earlier := g.earlier[r.bounds]
+	earlier := g.earlier[bounds]
 	for len(earlier) > 0 && earlier[len(earlier)-1].index >= index {
 		earlier = earlier[:len(earlier)-1]
 	}
 	var v choice.Choice
-	if i, ok := random.Reuse(g.source, len(earlier)); ok {
+	if i, ok := random.Reuse(&g.source, len(earlier)); ok {
 		v = earlier[i].value
 	} else {
-		v = r.draw(g.source)
+		v = r.draw(&g.source)
 	}
-	g.earlier[r.bounds] = append(earlier, earlierValue{index: index, value: v})
+	g.earlier[bounds] = append(earlier, earlierValue{index: index, value: v})
 	return v
 }
 
@@ -86,16 +97,14 @@ type trailing struct {
 // newTrailing returns a provider that draws from source and keeps its
 // states.
 func newTrailing(source random.Source) *trailing {
-	t := &trailing{states: []random.Source{source}}
-	t.generating = newGenerating(&source)
-	return t
+	return &trailing{generating: newGenerating(source), states: []random.Source{source}}
 }
 
 // value returns r's value as generating does, and keeps the state of the
 // source after it.
 func (t *trailing) value(r request, index int) choice.Choice {
 	v := t.generating.value(r, index)
-	t.states = append(t.states, *t.source)
+	t.states = append(t.states, t.source)
 	return v
 }
 

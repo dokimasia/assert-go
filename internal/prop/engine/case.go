@@ -22,6 +22,10 @@ import (
 // sequence counts as one choice plus one for each element.
 const MaxChoices = 8192
 
+// stackReserve is the size in bytes of the frame that reserveStack puts on
+// a case's goroutine before the body runs, which grows the stack to 16 KB.
+const stackReserve = 8192
+
 // The bounds that the case's own choices use.
 var (
 	// bitBounds are the bounds [0, 1] of a boolean.
@@ -93,6 +97,8 @@ type Drawn struct {
 type Case struct {
 	// recorder keeps the body's failures in call order.
 	recorder *assert.Recorder
+	// done waits for the goroutine that finish runs the body on.
+	done sync.WaitGroup
 	// mu guards the fields below.
 	mu sync.Mutex
 	// provider supplies the value of every choice.
@@ -107,8 +113,9 @@ type Case struct {
 	cost int
 	// choices are the values of the choices, in order.
 	choices []choice.Choice
-	// requests are the requests behind the choices, in order.
-	requests []request
+	// requests are what the case recorded of the requests behind the
+	// choices, in order.
+	requests []recorded
 	// keepsWalk reports whether the case keeps its walk, which a case that
 	// runs outside the case tree and enters it afterwards does.
 	keepsWalk bool
@@ -121,7 +128,8 @@ type Case struct {
 	open []int
 	// draws are the values the body drew, in order.
 	draws []Drawn
-	// labels are the labels the body classified the case under.
+	// labels are the labels the body classified the case under, and nil
+	// before the first.
 	labels map[string]struct{}
 	// notes are the messages the body attached to the case.
 	notes []string
@@ -155,12 +163,29 @@ var (
 // newCase returns an empty case whose values come from p, capped at
 // maxChoices, which walks w when it is not nil and reads clock.
 func newCase(p provider, maxChoices int, w *tree.Walker, clock assert.Clock) *Case {
-	return &Case{
+	c := new(Case)
+	c.recycle(p, maxChoices, w, clock)
+	return c
+}
+
+// recycle empties c, a case whose body's goroutine has ended, for a new
+// case as newCase describes it. It keeps the storage of the record's
+// choices, requests, spans and draws, and clears their elements. The caller
+// no longer uses c's earlier record.
+func (c *Case) recycle(p provider, maxChoices int, w *tree.Walker, clock assert.Clock) {
+	clear(c.choices)
+	clear(c.spans)
+	clear(c.draws)
+	*c = Case{
 		recorder:   assert.NewRecorder().WithGoexit().WithClock(clock),
 		provider:   p,
 		maxChoices: maxChoices,
 		walker:     w,
-		labels:     make(map[string]struct{}),
+		choices:    c.choices[:0],
+		requests:   c.requests[:0],
+		spans:      c.spans[:0],
+		open:       c.open[:0],
+		draws:      c.draws[:0],
 	}
 }
 
@@ -209,6 +234,9 @@ func (c *Case) Assume(condition bool) {
 func (c *Case) Classify(label string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.labels == nil {
+		c.labels = make(map[string]struct{})
+	}
 	c.labels[label] = struct{}{}
 }
 
@@ -288,6 +316,22 @@ func (c *Case) Failures() []assert.Failure {
 	return c.recorder.Failures()
 }
 
+// requested reports whether the body drew a value or made a choice. It
+// allocates nothing.
+func (c *Case) requested() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.draws) > 0 || len(c.choices) > 0
+}
+
+// record returns the choices the case made, without a copy. The caller
+// reads it once the body's goroutine has ended, and changes nothing in it.
+func (c *Case) record() []choice.Choice {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.choices
+}
+
 // choose returns the value for r and records it, with r. It ends the
 // calling goroutine when the value takes the case past its cap, repeats a
 // tested case or diverges from one.
@@ -303,7 +347,7 @@ func (c *Case) choose(r request) choice.Choice {
 		c.halt(overrun)
 	}
 	c.choices = append(c.choices, value)
-	c.requests = append(c.requests, r)
+	c.requests = append(c.requests, recorded{bounds: r.bounds, structure: r.structure})
 	if c.keepsWalk {
 		c.walk = append(c.walk, walkStep{bounds: r.bounds, value: value, at: len(c.choices) - 1})
 	}
@@ -551,6 +595,17 @@ func (c *Case) halt(s stop) {
 	runtime.Goexit()
 }
 
+// run calls body on c, on the goroutine that finish starts for it. It keeps
+// a panic that ends the body, and marks the goroutine done when the body
+// returns, panics or ends the goroutine. It reserves the goroutine's stack
+// before it calls the body.
+func (c *Case) run(body Body) {
+	defer c.done.Done()
+	defer c.recoverPanic()
+	reserveStack()
+	body(c)
+}
+
 // recoverPanic keeps the identity, the value and the stack of a panic that
 // ends the body. The runner defers it on the body's goroutine. A Goexit is
 // no panic, and recover returns nil for it.
@@ -582,6 +637,30 @@ var _ rand.Source = Source{}
 func (s Source) Uint64() uint64 {
 	return s.c.Integer(unsignedBounds).Magnitude()
 }
+
+// reserveStack grows the calling goroutine's stack until a frame of
+// stackReserve bytes fits on it, while the goroutine is shallow.
+//
+// A case's goroutine starts with the stack size that the runtime averaged
+// over the stacks it scanned at its last collection, which is 2 KB when no
+// body was running then. The engine's frames for one draw take about
+// 4.5 KB, so the stack grows inside the first draw, and the runtime copies
+// and adjusts every frame of the body and the engine. Growing it before the
+// body runs copies two frames. It costs the zeroing of the frame, and the
+// 16 KB stack has room for about 10 KB of the body's own frames beside one
+// draw before it grows again.
+//
+//go:noinline
+func reserveStack() {
+	var frame [stackReserve]byte
+	keep(frame[:])
+}
+
+// keep is an opaque use of frame, which keeps reserveStack's frame on the
+// stack. It does not read the frame.
+//
+//go:noinline
+func keep([]byte) {}
 
 // plain returns the record of a message without an assertion, at the
 // innermost frame of the caller's code.

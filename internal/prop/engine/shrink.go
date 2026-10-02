@@ -18,10 +18,11 @@ import (
 // run may spend when the caller states no number.
 const DefaultShrink = 2000
 
-// node is one recorded choice, with the request it answered.
+// node is one recorded choice, with what its case recorded of the request
+// it answered.
 type node struct {
-	// r is the request.
-	r request
+	// r is what the case recorded of the request.
+	r recorded
 	// c is the choice.
 	c choice.Choice
 }
@@ -50,6 +51,8 @@ type failure struct {
 	execution Execution
 	// nodes are the case's choices with their requests.
 	nodes []node
+	// spans are the case's spans, which the passes read and do not change.
+	spans []Span
 }
 
 // shrinker shrinks every failure of one run over one budget.
@@ -126,9 +129,9 @@ func (sh *shrinker) nodes() []node {
 	return sh.best().nodes
 }
 
-// spans returns the best case's spans.
+// spans returns the best case's spans, which the caller does not change.
 func (sh *shrinker) spans() []Span {
-	return sh.best().execution.Case.Spans()
+	return sh.best().spans
 }
 
 // record keeps a failing run when it is its identity's first or smallest.
@@ -139,7 +142,7 @@ func (sh *shrinker) record(e Execution) {
 		sh.found = append(sh.found, e.Identity)
 	}
 	if !ok || compareNodes(nodes, known.nodes) == -1 {
-		sh.failures[e.Identity] = &failure{identity: e.Identity, execution: e, nodes: nodes}
+		sh.failures[e.Identity] = &failure{identity: e.Identity, execution: e, nodes: nodes, spans: e.Case.Spans()}
 	}
 }
 
@@ -179,7 +182,7 @@ func (sh *shrinker) runAll(choices [][]choice.Choice) []Execution {
 // replay runs the body on a case that replays choices, outside the case
 // tree.
 func (sh *shrinker) replay(choices []choice.Choice) Execution {
-	return execute(sh.body, replaying{choices: choices}, sh.s.MaxChoices, nil, sh.s.Clock)
+	return execute(sh.body, replaying{choices: choices}, sh.s.MaxChoices, sh.s.Clock)
 }
 
 // consider runs a candidate that is smaller than the best case and new,
@@ -226,7 +229,7 @@ func (sh *shrinker) settle(batch []candidate) (accepted, over bool) {
 	}
 	for i, e := range sh.runAll(choices) {
 		sh.runs++
-		sh.sizes[batch[i].token] = len(e.Case.Choices())
+		sh.sizes[batch[i].token] = e.Case.position()
 		if e.Status != CaseFailed {
 			continue
 		}

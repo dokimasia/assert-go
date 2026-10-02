@@ -10,9 +10,9 @@ import (
 	"go.dokimi.dev/assert/internal/prop/choice"
 )
 
-// Walker follows one case down a [Tree]. Create one per case with
-// [Tree.Walk], and call Step for each choice of the case and End when the
-// case ends.
+// Walker follows one case at a time down a [Tree]. Create one with
+// [Tree.Walk], call Step for each choice of the case and End when the case
+// ends, and Restart it for the next case.
 type Walker struct {
 	// tree is the tree the walker follows.
 	tree *Tree
@@ -24,6 +24,13 @@ type Walker struct {
 	off bool
 	// key is the buffer a sequence's edge key is written in.
 	key []byte
+}
+
+// Restart returns w to the root of its tree for one new case, as a walker
+// that [Tree.Walk] returns, and keeps the storage of its path. It allocates
+// nothing.
+func (w *Walker) Restart() {
+	w.path, w.off = append(w.path[:0], root), false
 }
 
 // Step follows the choice that the case took with bounds.

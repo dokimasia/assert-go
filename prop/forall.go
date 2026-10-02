@@ -53,11 +53,12 @@ const duplicate = "prop: two properties of the test have the contract %q, and wo
 //
 // # Allocation contract
 //
-// A run allocates for each case: the goroutine of its body, its record and
-// its choices, and the values its draws decode. A passing run of 100 cases
-// that draw one integer each allocates 2,690 times, one of them for the
+// A run allocates for each case the goroutine of its body, its recorder and
+// the values its draws decode. The cases of a run on one worker reuse the
+// storage of one record of choices, spans and draws. A passing run of 100
+// cases that draw one integer each allocates 486 times, one of them for the
 // adapter of the body to the engine's case. A failing run allocates its
-// record as well.
+// record and the runs of its shrink as well.
 func ForAll(tb assert.TB, contract string, body func(*Case), opts ...Option) {
 	tb.Helper()
 	p, err := newProperty(tb, contract, caller(), configure(opts))

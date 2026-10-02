@@ -8,7 +8,7 @@ package engine
 // requests' bounds first, then the observed fingerprints, then the way the
 // replay ended.
 func confirm(body Body, failing Execution, s Settings) *Divergence {
-	replay := execute(body, replaying{choices: failing.Case.Choices()}, s.MaxChoices, nil, s.Clock)
+	replay := execute(body, replaying{choices: failing.Case.Choices()}, s.MaxChoices, s.Clock)
 	recorded, replayed := nodesOf(failing.Case), nodesOf(replay.Case)
 	for index := range max(len(recorded), len(replayed)) {
 		before, after := requestAt(recorded, index), requestAt(replayed, index)

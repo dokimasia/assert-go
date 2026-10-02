@@ -23,9 +23,9 @@ import (
 const referenceSeed = 7
 
 // shrinkAllocs are the allocations of a run from a stored failing case of
-// 2000 that shrinks to 1001 and explains it, measured: 26 cases of about 27
+// 2000 that shrinks to 1001 and explains it, measured: 26 cases of about 24
 // allocations each, and the record of the stored case's run.
-const shrinkAllocs = 704
+const shrinkAllocs = 616
 
 // property is a body that draws its values and returns the assertion of
 // the failure they make, or "" for none.

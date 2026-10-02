@@ -87,8 +87,7 @@ func fill(sh *shrinker, f *failure, span Span, g erased, base uint64) Relevance 
 	for next := uint64(0); ; {
 		batch := make([][]choice.Choice, 0, sh.workers)
 		for ; next < explainFillings && len(batch) < sh.workers; next++ {
-			source := random.New(base + next)
-			if choices, ok := filled(sh, f.nodes, span, g, &source); ok {
+			if choices, ok := filled(sh, f.nodes, span, g, random.New(base+next)); ok {
 				batch = append(batch, choices)
 			}
 		}
@@ -116,8 +115,8 @@ func fill(sh *shrinker, f *failure, span Span, g erased, base uint64) Relevance 
 // choices that a fresh decode of g, capped at [MaxChoices], draws from
 // source. It reports false when the decode returns no value: it rejects,
 // passes the cap or panics.
-func filled(sh *shrinker, nodes []node, span Span, g erased, source *random.Source) ([]choice.Choice, bool) {
-	fresh := execute(func(c *Case) { g.decode(c) }, newGenerating(source), MaxChoices, nil, sh.s.Clock)
+func filled(sh *shrinker, nodes []node, span Span, g erased, source random.Source) ([]choice.Choice, bool) {
+	fresh := execute(func(c *Case) { g.decode(c) }, newGenerating(source), MaxChoices, sh.s.Clock)
 	if fresh.Status != CasePassed {
 		return nil, false
 	}

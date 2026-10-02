@@ -103,7 +103,7 @@ func (a *ahead) random(index uint64) (Execution, []choice.Choice, random.Source)
 	if e.Status == CaseRepeated {
 		return e, f.c.recordAt(steps), f.trail.after(steps)
 	}
-	return e, f.c.Choices(), f.trail.after(len(f.trail.states) - 1)
+	return e, f.c.record(), f.trail.after(len(f.trail.states) - 1)
 }
 
 // edge takes the edge case of the boundary at and enters it into the tree.

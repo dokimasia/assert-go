@@ -14,9 +14,9 @@ import (
 )
 
 // forAllAllocs are the allocations of a passing run of 100 cases that draw
-// one integer each, measured: the engine's 2,689 for the run's cases, and
-// one for the adapter of the body to the engine's case.
-const forAllAllocs = 2690
+// one integer each, measured: the engine's 485 for the run's cases, and one
+// for the adapter of the body to the engine's case.
+const forAllAllocs = 486
 
 // The contract of the test properties, the label of their draws, and the
 // identities of their failures, as the definition's behaviour vectors

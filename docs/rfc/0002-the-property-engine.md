@@ -4,7 +4,7 @@ title: The property engine in Go
 author: Roy Klopper <roy.klopper@stealthscale.io>
 status: Accepted
 created: 2026-10-01
-updated: 2026-10-01
+updated: 2026-10-02
 discussion: none
 supersedes: none
 superseded-by: none
@@ -565,7 +565,10 @@ for that reason.
 - **A case costs a goroutine and a recorder.** Goexit needs the
   goroutine. A property of 100 cases starts 100 goroutines and builds
   100 recorders, and the benchmarks measure what that costs before any
-  ceiling is stated.
+  ceiling is stated. Each goroutine grows its stack to 16 KB before the
+  body runs. A new goroutine starts with the stack size that the runtime
+  last averaged, which is often 2 KB. The engine's frames for one draw
+  take about 4.5 KB.
 - **A float-keyed `Dict` returns a map that the definition's value does
   not match.** The overlay states the limit.
 - **A change to the definition is two changes.** The reference changes

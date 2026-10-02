@@ -28,11 +28,11 @@ const (
 	// fatalfRunAllocs are the allocations of a run that replays one case
 	// whose body calls Fatalf: those of a replay, the message and its frames,
 	// and the run's record with the sentence the recorder formats from it.
-	fatalfRunAllocs = 48
+	fatalfRunAllocs = 46
 	// drawRunAllocs are the allocations of a run that replays one case whose
-	// body draws one integer: the engine's 13 for the replay, one for the
+	// body draws one integer: the engine's 9 for the replay, one for the
 	// token's choices, and one for the adapter of the body.
-	drawRunAllocs = 15
+	drawRunAllocs = 11
 )
 
 // recorded is the record that a test body reports, as an assertion would.
