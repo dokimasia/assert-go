@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -34,6 +35,44 @@ var pinnedChoices = []choice.Choice{
 // lowest is the most negative finite binary64. Its bits are nearly all
 // ones, so its token contains the base64url character for 63.
 var lowest = float(-math.MaxFloat64)
+
+// FuzzDecode checks that Decode returns an error, and does not panic, for
+// any text that it refuses, and that Encode writes the token that Decode
+// accepted for the choices it returned. A sequence element of 2^32 - 1 can be one that Decode
+// saturated, whose token Encode writes shorter, so a token with one is
+// checked to decode to the same choices instead.
+func FuzzDecode(f *testing.F) {
+	f.Add(token.Prefix)
+	f.Add(tokenOf(f, pinnedBytes))
+	f.Add(tokenOf(f, "0302"+"8080808010"+"ffffffffffffffffff01"))
+	f.Add(tokenOf(f, "0301"+"8080808010"))
+	f.Add(token.Encode([]choice.Choice{lowest, float(math.NaN()), sequence(0, math.MaxUint32)}))
+	f.Fuzz(func(t *testing.T, tok string) {
+		got, err := token.Decode(tok)
+		if err != nil {
+			return
+		}
+		encoded := token.Encode(got)
+		if !saturated(got) && encoded != tok {
+			t.Fatalf("Decode accepts %q, and Encode writes %q for its choices", tok, encoded)
+		}
+		again, err := token.Decode(encoded)
+		if err != nil || !sameChoices(again, got) {
+			t.Fatalf("the token %q of the choices of %q decodes to %v, %v", encoded, tok, again, err)
+		}
+	})
+}
+
+// saturated reports whether a sequence of choices has an element of
+// 2^32 - 1, which Decode returns for every element of 2^32 or more.
+func saturated(choices []choice.Choice) bool {
+	for _, c := range choices {
+		if slices.Contains(c.Sequence, math.MaxUint32) {
+			return true
+		}
+	}
+	return false
+}
 
 // TestToken checks the bytes of a token, its round trip, and the tokens
 // that no encoder writes.

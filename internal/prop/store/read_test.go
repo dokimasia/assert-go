@@ -5,6 +5,7 @@ package store_test
 
 import (
 	"encoding/json"
+	"errors"
 	"maps"
 	"strings"
 	"testing"
@@ -32,6 +33,41 @@ var base = map[string]any{
 	"choices":        "prop1:AAc",
 	"counterexample": []any{},
 	"found":          "2026-10-01",
+}
+
+// FuzzRead checks that Read returns one of its four verdicts for any
+// bytes, and does not panic. The error wraps ErrLater for Skip and
+// ErrDamaged for Damaged and is nil otherwise, and only Replay returns
+// an entry of the contract.
+func FuzzRead(f *testing.F) {
+	pinned, err := json.Marshal(base)
+	if err != nil {
+		f.Fatalf("the pinned entry encodes: %v", err)
+	}
+	f.Add(pinned)
+	f.Add([]byte(`{"store": 2}`))
+	f.Add([]byte(`{`))
+	f.Add([]byte(`{"store": 1, "store": 1}`))
+	f.Add([]byte("{\"store\": \"\xff\"}"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		e, verdict, err := store.Read(data, contract)
+		switch verdict {
+		case store.Replay, store.Other:
+			if err != nil || (e.Property == contract) != (verdict == store.Replay) {
+				t.Fatalf("Read returns %v for the property %q, with %v", verdict, e.Property, err)
+			}
+		case store.Skip:
+			if !errors.Is(err, store.ErrLater) {
+				t.Fatalf("Read skips with %v, which wraps no ErrLater", err)
+			}
+		case store.Damaged:
+			if !errors.Is(err, store.ErrDamaged) {
+				t.Fatalf("Read reports damage with %v, which wraps no ErrDamaged", err)
+			}
+		default:
+			t.Fatalf("Read returns the verdict %d, which is none of the four", verdict)
+		}
+	})
 }
 
 // TestRead checks the verdict on every kind of file, pinned to the store
