@@ -39,8 +39,8 @@ func Recursive[T any](base Generator[T], extend func(self Generator[T]) Generato
 		panic(fmt.Sprintf("prop: %s with %d leaves draws no base value", recursiveID, maxLeaves))
 	}
 	r := &recursion[T]{base: base, maxLeaves: maxLeaves}
-	r.extend = extend(newGenerator(recursiveID, r.position))
-	return newGenerator(recursiveID, func(c *Case) T {
+	r.extend = extend(NewGenerator(recursiveID, r.position))
+	return NewGenerator(recursiveID, func(c *Case) T {
 		defer c.enter(r)()
 		return r.position(c)
 	})
@@ -54,7 +54,7 @@ func (r *recursion[T]) position(c *Case) T {
 	}
 	span := c.openSpan(recursiveID)
 	defer c.closeSpan(span)
-	if c.structure(choices, 0).Magnitude() == 1 {
+	if c.Structure(choices, 0).Magnitude() == 1 {
 		return r.extend.decode(c)
 	}
 	c.addLeaf(r)

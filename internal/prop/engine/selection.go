@@ -31,10 +31,10 @@ func SampledFrom[T any](values ...T) Generator[T] {
 	}
 	stated := slices.Clone(values)
 	bounds := indices(len(stated))
-	return newGenerator(sampledFromID, func(c *Case) T {
+	return NewGenerator(sampledFromID, func(c *Case) T {
 		span := c.openSpan(sampledFromID)
 		defer c.closeSpan(span)
-		return stated[c.structure(bounds, 0).Magnitude()]
+		return stated[c.Structure(bounds, 0).Magnitude()]
 	})
 }
 
@@ -47,10 +47,10 @@ func OneOf[T any](gens ...Generator[T]) Generator[T] {
 	}
 	stated := slices.Clone(gens)
 	bounds := indices(len(stated))
-	return newGenerator(oneOfID, func(c *Case) T {
+	return NewGenerator(oneOfID, func(c *Case) T {
 		span := c.openSpan(oneOfID)
 		defer c.closeSpan(span)
-		return stated[c.structure(bounds, 0).Magnitude()].decode(c)
+		return stated[c.Structure(bounds, 0).Magnitude()].decode(c)
 	})
 }
 
@@ -59,10 +59,10 @@ func OneOf[T any](gens ...Generator[T]) Generator[T] {
 // choices when present. Its simplest value is nil, and the edge phase
 // makes the value present.
 func Optional[T any](of Generator[T]) Generator[*T] {
-	return newGenerator(optionalID, func(c *Case) *T {
+	return NewGenerator(optionalID, func(c *Case) *T {
 		span := c.openSpan(optionalID)
 		defer c.closeSpan(span)
-		if c.structure(bitBounds, 1).Magnitude() == 0 {
+		if c.Structure(bitBounds, 1).Magnitude() == 0 {
 			return nil
 		}
 		v := of.decode(c)
@@ -76,14 +76,14 @@ func Optional[T any](of Generator[T]) Generator[*T] {
 // choice is i, so the simplest value is values in their stated order.
 func Permutation[T any](values ...T) Generator[[]T] {
 	stated := slices.Clone(values)
-	return newGenerator(permutationID, func(c *Case) []T {
+	return NewGenerator(permutationID, func(c *Case) []T {
 		ordered := slices.Clone(stated)
 		last := len(ordered) - 1
 		span := c.openSpan(permutationID)
 		defer c.closeSpan(span)
 		for i := range last {
 			swap := choice.MustIntegerBounds(choice.UintOf(uint64(i)), choice.UintOf(uint64(last)))
-			j := c.integer(swap).Magnitude()
+			j := c.Integer(swap).Magnitude()
 			ordered[i], ordered[j] = ordered[j], ordered[i]
 		}
 		return ordered

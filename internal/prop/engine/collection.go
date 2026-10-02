@@ -33,7 +33,7 @@ type entry[K comparable, V any] struct {
 // admits: per element a continue flag that decides structure, then the
 // element. Its simplest value is the minimum number of simplest elements.
 func List[T any](of Generator[T], sizes choice.Sizes) Generator[[]T] {
-	return newGenerator(listID, func(c *Case) []T {
+	return NewGenerator(listID, func(c *Case) []T {
 		span := c.openSpan(listID)
 		defer c.closeSpan(span)
 		return collect(c, sizes, elementLabel, of.decode, nil)
@@ -44,7 +44,7 @@ func List[T any](of Generator[T], sizes choice.Sizes) Generator[[]T] {
 // element equal to an earlier one. Two values are equal when they have the
 // same type and the same value, with floats compared by their bits.
 func UniqueList[T any](of Generator[T], sizes choice.Sizes) Generator[[]T] {
-	return newGenerator(listID, func(c *Case) []T {
+	return NewGenerator(listID, func(c *Case) []T {
 		span := c.openSpan(listID)
 		defer c.closeSpan(span)
 		return collect(c, sizes, elementLabel, of.decode, func(v T) string { return canonicalKey(v) })
@@ -61,7 +61,7 @@ func Dict[K comparable, V any](keys Generator[K], values Generator[V], sizes cho
 		return entry[K, V]{key: key, value: values.decode(c)}
 	}
 	unique := func(e entry[K, V]) string { return canonicalKey(e.key) }
-	return newGenerator(dictID, func(c *Case) map[K]V {
+	return NewGenerator(dictID, func(c *Case) map[K]V {
 		span := c.openSpan(dictID)
 		defer c.closeSpan(span)
 		entries := collect(c, sizes, entryLabel, decode, unique)
@@ -71,6 +71,17 @@ func Dict[K comparable, V any](keys Generator[K], values Generator[V], sizes cho
 		}
 		return m
 	})
+}
+
+// Collect decodes a collection whose elements the caller keeps itself: per
+// element a continue flag that decides structure, then a call of element
+// in a span labelled "element" that starts at its flag. The number of
+// elements is one that sizes admits.
+func Collect(c *Case, sizes choice.Sizes, element func()) {
+	collect(c, sizes, elementLabel, func(*Case) struct{} {
+		element()
+		return struct{}{}
+	}, nil)
 }
 
 // collect decodes a collection: per element a continue flag, then the

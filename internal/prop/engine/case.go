@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"sync"
 
@@ -135,6 +136,11 @@ type Case struct {
 	divergence *tree.DivergenceError
 	// panicked is the identity of a panic that ended the body.
 	panicked *Identity
+	// panicValue is the value of that panic.
+	panicValue any
+	// panicStack is the stack of the body's goroutine at that panic, as
+	// runtime/debug.Stack formats it.
+	panicStack []byte
 	// recursion are the counts of base values of the recursive values
 	// being decoded, a stack for each recursive generator.
 	recursion map[any][]int
@@ -324,8 +330,12 @@ func (c *Case) walked(err error) stop {
 	return running
 }
 
-// integer returns a value choice in b.
-func (c *Case) integer(b choice.IntegerBounds) choice.Int {
+// Integer returns a value choice in b and records it. The random phase
+// draws it anew, with no reuse of an earlier value, and the edge phase
+// gives it the case's boundary. Like every choice, it ends the calling
+// goroutine when it takes the case past its cap, repeats a tested case or
+// diverges from one.
+func (c *Case) Integer(b choice.IntegerBounds) choice.Int {
 	return c.choose(request{bounds: choice.OfInteger(b)}).Integer
 }
 
@@ -335,9 +345,10 @@ func (c *Case) reusable(b choice.IntegerBounds) choice.Int {
 	return c.choose(request{bounds: choice.OfInteger(b), reuse: true}).Integer
 }
 
-// structure returns a choice in b that decides structure, which the edge
-// phase gives the value edge.
-func (c *Case) structure(b choice.IntegerBounds, edge uint64) choice.Int {
+// Structure returns a choice in b that decides structure, such as an index
+// among alternatives, and records it. The edge phase gives it the value
+// edge. It ends the calling goroutine as [Case.Integer] does.
+func (c *Case) Structure(b choice.IntegerBounds, edge uint64) choice.Int {
 	return c.choose(request{bounds: choice.OfInteger(b), structure: true, edge: choice.UintOf(edge)}).Integer
 }
 
@@ -413,6 +424,16 @@ func (c *Case) closeSpan(index int) {
 	defer c.mu.Unlock()
 	c.open = c.open[:len(c.open)-1]
 	c.spans[index].End = len(c.choices)
+}
+
+// Span calls f inside a span labelled label, which starts at the next
+// choice and ends after the last choice f makes. The span closes when f
+// returns or ends the goroutine. The shrinker deletes, lifts and sorts
+// whole spans.
+func (c *Case) Span(label string, f func()) {
+	span := c.openSpan(label)
+	defer c.closeSpan(span)
+	f()
 }
 
 // draw records a value that g decoded under label, from the span at index
@@ -530,9 +551,9 @@ func (c *Case) halt(s stop) {
 	runtime.Goexit()
 }
 
-// recoverPanic keeps the identity of a panic that ends the body. The
-// runner defers it on the body's goroutine. A Goexit is no panic, and
-// recover returns nil for it.
+// recoverPanic keeps the identity, the value and the stack of a panic that
+// ends the body. The runner defers it on the body's goroutine. A Goexit is
+// no panic, and recover returns nil for it.
 func (c *Case) recoverPanic() {
 	v := recover()
 	if v == nil {
@@ -541,9 +562,10 @@ func (c *Case) recoverPanic() {
 	var pcs [maxFrames]uintptr
 	n := runtime.Callers(1, pcs[:])
 	identity := panicIdentity(v, pcs[:n])
+	stack := debug.Stack()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.panicked = &identity
+	c.panicked, c.panicValue, c.panicStack = &identity, v, stack
 }
 
 // Source is a source of random values whose every value is an integer
@@ -558,7 +580,7 @@ var _ rand.Source = Source{}
 
 // Uint64 returns the next integer choice of the case.
 func (s Source) Uint64() uint64 {
-	return s.c.integer(unsignedBounds).Magnitude()
+	return s.c.Integer(unsignedBounds).Magnitude()
 }
 
 // plain returns the record of a message without an assertion, at the

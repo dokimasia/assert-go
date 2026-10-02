@@ -33,8 +33,24 @@ const (
 	// body calls Fatalf.
 	fatalCaseAllocs = 12
 	// valueCaseAllocs are the allocations of a whole replayed case whose
-	// body draws one value from its source.
+	// body makes one choice, through its source, Integer or Structure.
 	valueCaseAllocs = 7
+	// spanCaseAllocs are the allocations of a whole replayed case whose
+	// body makes one choice inside a span: those of a value case, and the
+	// growth of the case's spans and of its stack of open spans.
+	spanCaseAllocs = 9
+)
+
+// wideMax is the upper bound of wideRange, which a random case of the
+// reference seed draws in none of its first cases.
+const wideMax = 1 << 40
+
+// The bounds of the choices that a test body makes on the case itself.
+var (
+	// digitRange are the bounds [0, 9].
+	digitRange = choice.MustIntegerBounds(choice.Int{}, choice.UintOf(9))
+	// wideRange are the bounds [0, wideMax].
+	wideRange = choice.MustIntegerBounds(choice.Int{}, choice.UintOf(wideMax))
 )
 
 // reported is the record that a test body reports, as an assertion would.
@@ -383,6 +399,92 @@ func TestCase(t *testing.T) {
 			assert.Equal(t, c.Failures(), []assert.Failure{reported}, "the recorded failure")
 		})
 	})
+
+	t.Run("Integer", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name     string
+			give     []choice.Choice
+			want     uint64
+			recorded []choice.Choice
+		}{
+			{name: "returns a replayed choice inside its bounds", give: integers(7), want: 7, recorded: integers(7)},
+			{
+				name:     "returns the target for a replayed choice outside its bounds",
+				give:     integers(12),
+				want:     0,
+				recorded: integers(0),
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				var got uint64
+				e := engine.Replay(func(c *engine.Case) { got = c.Integer(digitRange).Magnitude() }, tt.give, nil)
+				assert.Equal(t, got, tt.want, "the value")
+				assert.True(t, sameChoices(e.Case.Choices(), tt.recorded), "the recorded choice")
+			})
+		}
+
+		t.Run("returns the upper bound on the edge case at the maximum", func(t *testing.T) {
+			t.Parallel()
+			got := failingAt(func(c *engine.Case) uint64 { return c.Integer(wideRange).Magnitude() }, wideMax)
+			assert.Equal(t, got.Outcome, engine.Counterexample, "a case reaches the maximum")
+			assert.Equal(t, got.Cases, 3, "the simplest case and random cases 0 and 1, as the definition pins")
+		})
+	})
+
+	t.Run("Structure", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns a replayed choice inside its bounds", func(t *testing.T) {
+			t.Parallel()
+			var got uint64
+			e := engine.Replay(func(c *engine.Case) { got = c.Structure(digitRange, 0).Magnitude() }, integers(4), nil)
+			assert.Equal(t, got, uint64(4), "the value")
+			assert.True(t, sameChoices(e.Case.Choices(), integers(4)), "the recorded choice")
+		})
+
+		t.Run("returns its edge on the first edge case", func(t *testing.T) {
+			t.Parallel()
+			got := failingAt(func(c *engine.Case) uint64 { return c.Structure(wideRange, 123).Magnitude() }, 123)
+			assert.Equal(t, got.Outcome, engine.Counterexample, "a case reaches the edge")
+			assert.Equal(t, got.Cases, 2, "the simplest case and random case 0, as the definition pins")
+		})
+	})
+
+	t.Run("Span", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("records a span around the choices that f makes", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) {
+				c.Integer(digitRange)
+				c.Span("outer", func() {
+					c.Integer(digitRange)
+					c.Span("inner", func() { c.Integer(digitRange) })
+				})
+			}, integers(1, 2, 3), nil)
+			assert.Equal(t, e.Case.Spans(), []engine.Span{
+				{Label: "outer", Start: 1, End: 3, Depth: 0, Parent: -1},
+				{Label: "inner", Start: 2, End: 3, Depth: 1, Parent: 0},
+			}, "the outer span from the second choice, and the inner one inside it")
+		})
+
+		t.Run("closes the span when f ends the goroutine", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) {
+				c.Span("outer", func() {
+					c.Integer(digitRange)
+					c.Assume(false)
+				})
+			}, integers(1), nil)
+			assert.Equal(t, e.Status, engine.CaseRejected, "the case is rejected")
+			assert.Equal(t, e.Case.Spans(), []engine.Span{{Label: "outer", Start: 0, End: 1, Parent: -1}},
+				"the span ends after the choice f made")
+		})
+	})
 }
 
 // TestCaseZeroAlloc checks the allocation ceilings of the case's methods.
@@ -410,6 +512,15 @@ func TestCaseZeroAlloc(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = c.Notes() }, copyAllocs, "Notes allocates its copy")
 	assert.MaxAllocs(t, func() { _ = c.Fingerprints() }, copyAllocs, "Fingerprints allocates its copy")
 	assert.MaxAllocs(t, func() { _ = c.Failures() }, copyAllocs, "Failures allocates its copy")
+	integer := func(c *engine.Case) { c.Integer(digitRange) }
+	structure := func(c *engine.Case) { c.Structure(digitRange, 0) }
+	spanned := func(c *engine.Case) { c.Span("outer", func() { c.Integer(digitRange) }) }
+	assert.MaxAllocs(t, func() { engine.Replay(integer, nil, nil) }, valueCaseAllocs,
+		"a case that makes a value choice")
+	assert.MaxAllocs(t, func() { engine.Replay(structure, nil, nil) }, valueCaseAllocs,
+		"a case that makes a structure choice")
+	assert.MaxAllocs(t, func() { engine.Replay(spanned, nil, nil) }, spanCaseAllocs,
+		"a case that makes a choice in a span")
 }
 
 // BenchmarkCase measures each method of the case. A method that ends the
@@ -606,6 +717,39 @@ func BenchmarkCase(b *testing.B) {
 		}
 		assert.Equal(b, got, []assert.Failure{reported}, "the record")
 	})
+
+	b.Run("Integer", func(b *testing.B) {
+		var got engine.Execution
+		integer := func(c *engine.Case) { c.Integer(digitRange) }
+		c := bench.Start(b).MaxAllocs(valueCaseAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Replay(integer, nil, nil)
+		}
+		assert.Length(b, got.Case.Choices(), 1, "one choice")
+	})
+
+	b.Run("Structure", func(b *testing.B) {
+		var got engine.Execution
+		structure := func(c *engine.Case) { c.Structure(digitRange, 0) }
+		c := bench.Start(b).MaxAllocs(valueCaseAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Replay(structure, nil, nil)
+		}
+		assert.Length(b, got.Case.Choices(), 1, "one choice")
+	})
+
+	b.Run("Span", func(b *testing.B) {
+		var got engine.Execution
+		spanned := func(c *engine.Case) { c.Span("outer", func() { c.Integer(digitRange) }) }
+		c := bench.Start(b).MaxAllocs(spanCaseAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Replay(spanned, nil, nil)
+		}
+		assert.Length(b, got.Case.Spans(), 1, "one span")
+	})
 }
 
 // leaked returns the case of a replayed body that drew 7 from the digits,
@@ -620,6 +764,19 @@ func leaked() *engine.Case {
 		c.Report(reported, false)
 	}, integers(7), nil)
 	return e.Case
+}
+
+// failingAt runs a property of the reference seed, without shrinking, whose
+// body makes the one choice that choose makes and fails when the choice is
+// value.
+func failingAt(choose func(*engine.Case) uint64, value uint64) engine.Result {
+	s := settled()
+	s.Shrink = 0
+	return engine.Run(func(c *engine.Case) {
+		if choose(c) == value {
+			c.Report(reported, false)
+		}
+	}, s)
 }
 
 // site stores the file and the line of its caller in at and returns the

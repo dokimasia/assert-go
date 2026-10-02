@@ -24,7 +24,15 @@ const (
 	// replayAllocs are the allocations of a replay of one case that draws
 	// one integer.
 	replayAllocs = 13
+	// concludeAllocs are the allocations of concluding the bridged case of
+	// 10,000 for a body that fails from 1,001: the replay that confirms it,
+	// the runs of its shrink and of its explanation, and the result.
+	concludeAllocs = 734
 )
+
+// largestBytes are the fuzzer's bytes that the bridge decodes as 10,000
+// for an integer in [0, 10000]: two bytes, little-endian.
+var largestBytes = []byte{0x10, 0x27}
 
 // invalidOutcome is the first value past the six outcomes.
 const invalidOutcome engine.Outcome = 6
@@ -449,6 +457,15 @@ func TestRunner(t *testing.T) {
 				"the simplest case, random case 0 and two edge cases")
 		})
 
+		t.Run("returns the runs of the stored cases up to the failing one", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Stored, s.Shrink = [][]choice.Choice{integers(100), integers(950), integers(300)}, 0
+			got := engine.Run(atLeast900, s)
+			assert.Length(t, got.Stored, 2, "the passing case and the failing one")
+			assert.Equal(t, drawValues(got.Stored[1].Case.Draws()), []any{950}, "the failing case's value")
+		})
+
 		t.Run("returns the clock of the settings to every case", func(t *testing.T) {
 			t.Parallel()
 			start := time.Date(2026, time.October, 1, 9, 0, 0, 0, time.UTC)
@@ -536,16 +553,57 @@ func TestRunner(t *testing.T) {
 			assert.Equal(t, got, start, "the controlled clock's time")
 		})
 	})
+
+	t.Run("Conclude", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("shrinks and explains a failing case that the bridge decoded", func(t *testing.T) {
+			t.Parallel()
+			failing := engine.Bridge(choiceOf(1001), largestBytes, nil)
+			got := engine.Conclude(choiceOf(1001), settled(), failing)
+			want := []engine.Explained{
+				{Label: drawn, Value: 1001, Relevance: engine.ValueMatters, NearestPassing: 1000},
+			}
+			assert.Equal(t, summary(got), engine.Result{Outcome: engine.Counterexample, Seed: referenceSeed},
+				"a counterexample without a valid case")
+			assert.Equal(t, got.Explanation, want, "the minimal value with its nearest passing value")
+			assert.Equal(t, got.Token, "prop1:AOkH", "the minimal case's token")
+		})
+
+		t.Run("returns Flaky for a failing case whose replay passes", func(t *testing.T) {
+			t.Parallel()
+			calls := 0
+			once := func(c *engine.Case) {
+				calls++
+				engine.Draw(c, digit, drawn)
+				if calls == 1 {
+					c.Report(assert.Failure{Assertion: "once"}, false)
+				}
+			}
+			got := engine.Conclude(once, settled(), engine.Bridge(once, []byte{7}, nil))
+			divergence := &engine.Divergence{
+				What:     engine.VerdictDifference,
+				Index:    1,
+				Recorded: engine.Identity{Assertion: "once"},
+			}
+			want := engine.Result{Outcome: engine.Flaky, Seed: referenceSeed, Divergence: divergence}
+			assert.Equal(t, summary(got), want, "the replay passes")
+		})
+	})
 }
 
-// TestRunnerZeroAlloc checks the allocation ceilings of a run and of a
-// replay, and that no method of Outcome allocates.
+// TestRunnerZeroAlloc checks the allocation ceilings of a run, of a replay
+// and of concluding a bridged case, and that no method of Outcome
+// allocates.
 func TestRunnerZeroAlloc(t *testing.T) {
 	small := engine.Integer(0, 1000)
 	body := func(c *engine.Case) { engine.Draw(c, small, drawn) }
 	s, seven := settled(), integers(7)
+	big := fromThousand()
+	failing := engine.Bridge(big, largestBytes, nil)
 	assert.MaxAllocs(t, func() { engine.Run(body, s) }, runAllocs, "a run of 100 cases")
 	assert.MaxAllocs(t, func() { engine.RunReplay(body, s, seven) }, replayAllocs, "a replay of one case")
+	assert.MaxAllocs(t, func() { engine.Conclude(big, s, failing) }, concludeAllocs, "the conclusion of a case")
 	assert.MaxAllocs(t, func() { _ = engine.Vacuous.Valid() }, 0, "Valid allocates nothing")
 	assert.MaxAllocs(t, func() { _ = engine.Vacuous.String() }, 0, "String allocates nothing")
 }
@@ -576,6 +634,18 @@ func BenchmarkRunner(b *testing.B) {
 			got = engine.RunReplay(body, s, seven)
 		}
 		assert.Equal(b, got.Outcome, engine.Passed, "the replayed case passes")
+	})
+
+	b.Run("Conclude", func(b *testing.B) {
+		var got engine.Result
+		s, big := settled(), fromThousand()
+		failing := engine.Bridge(big, largestBytes, nil)
+		c := bench.Start(b).MaxAllocs(concludeAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Conclude(big, s, failing)
+		}
+		assert.Equal(b, got.Token, "prop1:AOkH", "the minimal case's token")
 	})
 
 	b.Run("Valid", func(b *testing.B) {
@@ -620,6 +690,17 @@ func summary(r engine.Result) engine.Result {
 		Seed:       r.Seed,
 		Divergence: r.Divergence,
 		Shortfall:  r.Shortfall,
+	}
+}
+
+// fromThousand returns the body that draws an integer in [0, 10000] and
+// fails from 1,001.
+func fromThousand() engine.Body {
+	tenThousand := engine.Integer(0, 10_000)
+	return func(c *engine.Case) {
+		if engine.Draw(c, tenThousand, drawn) >= 1001 {
+			c.Report(assert.Failure{Assertion: "big"}, false)
+		}
 	}
 }
 

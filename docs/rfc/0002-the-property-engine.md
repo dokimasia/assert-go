@@ -63,7 +63,9 @@ go.dokimi.dev/assert/conformance              the vectors, beside the corpus run
 Each package imports only the packages above it in this list, and the
 compiler's cycle check enforces that order. `pattern` imports `engine`,
 because a pattern's nodes decode from a case, so `string-matching` is
-built in `pattern` and not in `engine`.
+built in `pattern` and not in `engine`. The engine exports the primitives
+that such a generator decodes with: `NewGenerator`, `Case.Integer`,
+`Case.Structure`, `Case.Span` and `Collect`.
 
 The engine is internal for the reason the matcher is. Its logic exists
 once, and `prop` is a surface of thin wrappers whose types and methods

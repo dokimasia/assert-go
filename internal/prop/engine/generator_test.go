@@ -18,9 +18,16 @@ const drawn = "value"
 
 // The allocations of the combinators and of a draw, measured.
 const (
-	// combinatorAllocs are the allocations of Map, Bind, Composite and
-	// Just: the decode and the decode with its type erased.
+	// newGeneratorAllocs are the allocations of NewGenerator: the decode
+	// with its type erased.
+	newGeneratorAllocs = 1
+	// combinatorAllocs are the allocations of Bind, Composite and Just: the
+	// decode and the decode with its type erased.
 	combinatorAllocs = 2
+	// mapAllocs are the allocations of Map of an integer: the decode, the
+	// decode with its type erased, and the mapping of its values for the
+	// explain phase.
+	mapAllocs = 3
 	// filterAllocs are the allocations of Filter: its attempt, the decode
 	// and the decode with its type erased.
 	filterAllocs = 3
@@ -33,6 +40,24 @@ const (
 // the spans each of them opens.
 func TestGenerator(t *testing.T) {
 	t.Parallel()
+
+	t.Run("NewGenerator", func(t *testing.T) {
+		t.Parallel()
+
+		pair := engine.NewGenerator("pair", decodePair)
+
+		t.Run("returns a generator with the stated id", func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, pair.ID(), "pair", "the id")
+		})
+
+		t.Run("returns a generator whose decode opens no span of its own", func(t *testing.T) {
+			t.Parallel()
+			got, e := decode(t, pair, integers(3, 4)...)
+			assert.Equal(t, got, [2]uint64{3, 4}, "the two choices")
+			assert.Empty(t, e.Case.Spans(), "no span")
+		})
+	})
 
 	t.Run("ID", func(t *testing.T) {
 		t.Parallel()
@@ -52,6 +77,37 @@ func TestGenerator(t *testing.T) {
 			got, e := decode(t, doubled, integers(4)...)
 			assert.Equal(t, got, 8, "the mapped value")
 			assert.Equal(t, labels(e.Case.Spans()), []string{"integer"}, "the source's span alone")
+		})
+
+		t.Run("returns a generator whose nearest passing value is f of the integer's", func(t *testing.T) {
+			t.Parallel()
+			doubled := engine.Integer(0, 10_000).Map(func(v int) int { return 2 * v })
+			got := engine.Run(func(c *engine.Case) {
+				if engine.Draw(c, doubled, drawn) >= 2002 {
+					c.Report(assert.Failure{Assertion: "big"}, false)
+				}
+			}, settled())
+			want := []engine.Explained{
+				{Label: drawn, Value: 2002, Relevance: engine.ValueMatters, NearestPassing: 2000},
+			}
+			assert.Equal(t, got.Explanation, want, "twice the minimal integer and twice the one below it")
+		})
+
+		t.Run("returns a generator of no nearest passing value from one that is no integer", func(t *testing.T) {
+			t.Parallel()
+			labelled := engine.Boolean(1, 2).Map(func(v bool) string {
+				if v {
+					return "on"
+				}
+				return "off"
+			})
+			got := engine.Run(func(c *engine.Case) {
+				if engine.Draw(c, labelled, drawn) == "on" {
+					c.Report(assert.Failure{Assertion: "on"}, false)
+				}
+			}, settled())
+			want := []engine.Explained{{Label: drawn, Value: "on", Relevance: engine.ValueMatters}}
+			assert.Equal(t, got.Explanation, want, "the value that matters, without a nearest passing value")
 		})
 	})
 
@@ -198,8 +254,10 @@ func TestGeneratorZeroAlloc(t *testing.T) {
 	sum := func(c *engine.Case) int { return engine.Draw(c, g, drawn) }
 	body := func(c *engine.Case) { engine.Draw(c, g, drawn) }
 	choices := integers(7)
+	assert.MaxAllocs(t, func() { _ = engine.NewGenerator("pair", decodePair) }, newGeneratorAllocs,
+		"NewGenerator allocates its erased decode")
 	assert.MaxAllocs(t, func() { _ = g.ID() }, 0, "ID allocates nothing")
-	assert.MaxAllocs(t, func() { _ = g.Map(double) }, combinatorAllocs, "Map allocates its decodes")
+	assert.MaxAllocs(t, func() { _ = g.Map(double) }, mapAllocs, "Map allocates its decodes and its mapping")
 	assert.MaxAllocs(t, func() { _ = g.Filter(even) }, filterAllocs, "Filter allocates its attempt and its decodes")
 	assert.MaxAllocs(t, func() { _ = g.Bind(engine.Just[int]) }, combinatorAllocs, "Bind allocates its decodes")
 	assert.MaxAllocs(t, func() { _ = engine.Composite(sum) }, combinatorAllocs, "Composite allocates its decodes")
@@ -211,6 +269,16 @@ func TestGeneratorZeroAlloc(t *testing.T) {
 // a draw from a replayed case.
 func BenchmarkGenerator(b *testing.B) {
 	g := engine.Integer(0, 9)
+
+	b.Run("NewGenerator", func(b *testing.B) {
+		var got engine.Generator[[2]uint64]
+		c := bench.Start(b).MaxAllocs(newGeneratorAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.NewGenerator("pair", decodePair)
+		}
+		assert.Equal(b, got.ID(), "pair", "the id")
+	})
 
 	b.Run("ID", func(b *testing.B) {
 		var got string
@@ -225,7 +293,7 @@ func BenchmarkGenerator(b *testing.B) {
 	b.Run("Map", func(b *testing.B) {
 		var got engine.Generator[int]
 		double := func(v int) int { return 2 * v }
-		c := bench.Start(b).MaxAllocs(combinatorAllocs)
+		c := bench.Start(b).MaxAllocs(mapAllocs)
 		defer c.End()
 		for c.Loop() {
 			got = g.Map(double)
@@ -286,6 +354,13 @@ func BenchmarkGenerator(b *testing.B) {
 		}
 		assert.Equal(b, got, 7, "the replayed value")
 	})
+}
+
+// decodePair returns two value choices of the digits, made on the case
+// without a span.
+func decodePair(c *engine.Case) [2]uint64 {
+	first := c.Integer(digitRange).Magnitude()
+	return [2]uint64{first, c.Integer(digitRange).Magnitude()}
 }
 
 // decode returns the value that g decodes from a case replaying choices,

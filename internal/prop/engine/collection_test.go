@@ -22,6 +22,10 @@ const (
 	// dictAllocs are the allocations of Dict: the decode of an entry, the
 	// key of an entry, the decode and the decode with its type erased.
 	dictAllocs = 4
+	// collectCaseAllocs are the allocations of a whole replayed case that
+	// collects one element of one choice: three choices, the element's span
+	// and the collection's set of keys.
+	collectCaseAllocs = 14
 )
 
 // rejectedPairs are the choices of a collection with a minimum length of
@@ -250,20 +254,74 @@ func TestCollection(t *testing.T) {
 			}), "the recorded flags, keys and values of each case")
 		})
 	})
+
+	t.Run("Collect", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name     string
+			sizes    choice.Sizes
+			give     []choice.Choice
+			want     []uint64
+			recorded []choice.Choice
+		}{
+			{
+				name:     "calls element once for each continue flag",
+				sizes:    sizes(t, 0, 3),
+				give:     integers(1, 7, 1, 3, 0),
+				want:     []uint64{7, 3},
+				recorded: integers(1, 7, 1, 3, 0),
+			},
+			{
+				name:     "calls element the minimum number of times past the last choice",
+				sizes:    unbounded(t, 2),
+				want:     []uint64{0, 0},
+				recorded: integers(1, 0, 1, 0, 0),
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				var got []uint64
+				e := engine.Replay(func(c *engine.Case) {
+					engine.Collect(c, tt.sizes, func() { got = append(got, c.Integer(digitRange).Magnitude()) })
+				}, tt.give, nil)
+				assert.Equal(t, got, tt.want, "the choice of each call")
+				assert.True(t, sameChoices(e.Case.Choices(), tt.recorded), "a flag before each call and one after")
+			})
+		}
+
+		t.Run("records a span for each element that starts at its continue flag", func(t *testing.T) {
+			t.Parallel()
+			upTo := sizes(t, 0, 3)
+			e := engine.Replay(func(c *engine.Case) {
+				engine.Collect(c, upTo, func() { c.Integer(digitRange) })
+			}, integers(1, 7, 1, 3, 0), nil)
+			assert.Equal(t, e.Case.Spans(), []engine.Span{
+				{Label: "element", Start: 0, End: 2, Parent: -1},
+				{Label: "element", Start: 2, End: 4, Parent: -1},
+			}, "each element's span from its flag")
+		})
+	})
 }
 
 // TestCollectionZeroAlloc checks the allocation ceilings of the collection
-// generators' constructors.
+// generators' constructors, and of a whole replayed case that collects one
+// element.
 func TestCollectionZeroAlloc(t *testing.T) {
 	digit, upTo := engine.Integer(0, 9), sizes(t, 0, 3)
+	collect := func(c *engine.Case) { engine.Collect(c, upTo, func() { c.Integer(digitRange) }) }
+	one := integers(1, 7, 0)
 	assert.MaxAllocs(t, func() { _ = engine.List(digit, upTo) }, listAllocs, "List allocates its decodes")
 	assert.MaxAllocs(t, func() { _ = engine.UniqueList(digit, upTo) }, listAllocs, "UniqueList allocates its decodes")
 	assert.MaxAllocs(t, func() { _ = engine.Dict(digit, digit, upTo) }, dictAllocs,
 		"Dict allocates its entry's decode and key and its decodes")
+	assert.MaxAllocs(t, func() { engine.Replay(collect, one, nil) }, collectCaseAllocs,
+		"a case that collects one element")
 }
 
 // BenchmarkCollection measures the constructors of the collection
-// generators.
+// generators, and a whole replayed case that collects one element.
 func BenchmarkCollection(b *testing.B) {
 	digit, upTo := engine.Integer(0, 9), sizes(b, 0, 3)
 
@@ -295,5 +353,17 @@ func BenchmarkCollection(b *testing.B) {
 			got = engine.Dict(digit, digit, upTo)
 		}
 		assert.Equal(b, got.ID(), "dict", "the id")
+	})
+
+	b.Run("Collect", func(b *testing.B) {
+		var got engine.Execution
+		collect := func(c *engine.Case) { engine.Collect(c, upTo, func() { c.Integer(digitRange) }) }
+		one := integers(1, 7, 0)
+		c := bench.Start(b).MaxAllocs(collectCaseAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Replay(collect, one, nil)
+		}
+		assert.Length(b, got.Case.Spans(), 1, "one element")
 	})
 }

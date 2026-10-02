@@ -49,8 +49,13 @@ type erased struct {
 	value func(choice.Int) any
 }
 
-// newGenerator returns a generator with id that decodes with decode.
-func newGenerator[T any](id string, decode func(*Case) T) Generator[T] {
+// NewGenerator returns a generator with id that decodes with decode.
+// decode opens the generator's spans itself, as every generator of the
+// definition opens a span labelled with its id around its choices. A
+// generator built outside this package, such as string-matching, makes its
+// choices with [Case.Integer], [Case.Structure], [Case.Span] and
+// [Collect].
+func NewGenerator[T any](id string, decode func(*Case) T) Generator[T] {
 	return Generator[T]{id: id, decode: decode, erased: erased{decode: func(c *Case) any { return decode(c) }}}
 }
 
@@ -60,9 +65,16 @@ func (g Generator[T]) ID() string {
 }
 
 // Map returns a generator of f applied to each value of g. It makes g's
-// choices and adds no span of its own.
+// choices and adds no span of its own, so a mapped integer or duration is
+// still one for the explain phase: its nearest passing value is f of the
+// value one step towards the target.
 func (g Generator[T]) Map[U any](f func(T) U) Generator[U] {
-	return newGenerator(g.id, func(c *Case) U { return f(g.decode(c)) })
+	mapped := NewGenerator(g.id, func(c *Case) U { return f(g.decode(c)) })
+	if g.erased.integer {
+		mapped.erased.integer, mapped.erased.bounds = true, g.erased.bounds
+		mapped.erased.value = func(i choice.Int) any { return f(g.erased.value(i).(T)) }
+	}
+	return mapped
 }
 
 // Filter returns a generator of g's values that keep reports true for.
@@ -76,7 +88,7 @@ func (g Generator[T]) Filter(keep func(T) bool) Generator[T] {
 		defer c.closeSpan(span)
 		return g.decode(c)
 	}
-	return newGenerator(filterID, func(c *Case) T {
+	return NewGenerator(filterID, func(c *Case) T {
 		at := c.mark()
 		v := attempt(c)
 		for range filterAttempts - 1 {
@@ -94,7 +106,7 @@ func (g Generator[T]) Filter(keep func(T) bool) Generator[T] {
 // Bind returns a generator that decodes a value of g, then a value of the
 // generator that f returns for it, in one span around both.
 func (g Generator[T]) Bind[U any](f func(T) Generator[U]) Generator[U] {
-	return newGenerator(bindID, func(c *Case) U {
+	return NewGenerator(bindID, func(c *Case) U {
 		span := c.openSpan(bindID)
 		defer c.closeSpan(span)
 		return f(g.decode(c)).decode(c)
@@ -105,7 +117,7 @@ func (g Generator[T]) Bind[U any](f func(T) Generator[U]) Generator[U] {
 // receives. f draws from other generators, in one span around all of
 // them.
 func Composite[T any](f func(*Case) T) Generator[T] {
-	return newGenerator(compositeID, func(c *Case) T {
+	return NewGenerator(compositeID, func(c *Case) T {
 		span := c.openSpan(compositeID)
 		defer c.closeSpan(span)
 		return f(c)
@@ -114,7 +126,7 @@ func Composite[T any](f func(*Case) T) Generator[T] {
 
 // Just returns a generator of value alone. It makes no choice.
 func Just[T any](value T) Generator[T] {
-	return newGenerator(justID, func(c *Case) T {
+	return NewGenerator(justID, func(c *Case) T {
 		c.closeSpan(c.openSpan(justID))
 		return value
 	})

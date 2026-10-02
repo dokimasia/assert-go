@@ -28,7 +28,7 @@ const (
 // Its simplest value is the minimum number of copies of "0".
 func String(sizes choice.Sizes) Generator[string] {
 	bounds := choice.MustSequenceBounds(alphabet.Size, sizes)
-	return newGenerator(stringID, func(c *Case) string {
+	return NewGenerator(stringID, func(c *Case) string {
 		span := c.openSpan(stringID)
 		defer c.closeSpan(span)
 		indices := c.sequence(bounds)
@@ -56,7 +56,7 @@ func StringOver(chars string, sizes choice.Sizes) Generator[string] {
 		panic(fmt.Sprintf("prop: alphabet %q repeats a character", chars))
 	}
 	bounds := choice.MustSequenceBounds(uint32(len(runes)), sizes)
-	return newGenerator(stringID, func(c *Case) string {
+	return NewGenerator(stringID, func(c *Case) string {
 		span := c.openSpan(stringID)
 		defer c.closeSpan(span)
 		indices := c.sequence(bounds)
@@ -73,7 +73,7 @@ func StringOver(chars string, sizes choice.Sizes) Generator[string] {
 // minimum number of zero bytes.
 func Bytes(sizes choice.Sizes) Generator[[]byte] {
 	bounds := choice.MustSequenceBounds(byteValues, sizes)
-	return newGenerator(bytesID, func(c *Case) []byte {
+	return NewGenerator(bytesID, func(c *Case) []byte {
 		span := c.openSpan(bytesID)
 		defer c.closeSpan(span)
 		elements := c.sequence(bounds)

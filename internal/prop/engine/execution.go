@@ -47,6 +47,12 @@ type Execution struct {
 	Identity Identity
 	// Divergence is the difference that made a case diverge.
 	Divergence *Divergence
+	// Panic is the value that a failed case's body panicked with, and nil
+	// for a case that failed through a record or did not fail.
+	Panic any
+	// Stack is the stack of the body's goroutine where it panicked, as
+	// runtime/debug.Stack formats it, and nil when Panic is nil.
+	Stack []byte
 }
 
 // Body is a property's body: it draws from the case it receives, and
@@ -140,7 +146,7 @@ func executionOf(c *Case) Execution {
 	if records := c.recorder.Failures(); len(records) > 0 {
 		e.Status, e.Identity = CaseFailed, identityOf(records[0])
 	} else if c.panicked != nil {
-		e.Status, e.Identity = CaseFailed, *c.panicked
+		e.Status, e.Identity, e.Panic, e.Stack = CaseFailed, *c.panicked, c.panicValue, c.panicStack
 	} else if c.stop == rejected {
 		e.Status = CaseRejected
 	}

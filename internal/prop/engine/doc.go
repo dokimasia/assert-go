@@ -48,6 +48,17 @@
 // removed from its record included, and the runner enters them into the
 // case tree as the case would have walked it on one worker.
 //
+// # Generators outside this package
+//
+// A package that builds a generator of the definition, as the pattern
+// package builds string-matching, constructs it with [NewGenerator]. Its
+// decode uses these primitives:
+//
+//   - [Case.Integer] makes a value choice, and [Case.Structure] a choice
+//     that decides structure.
+//   - [Case.Span] groups choices in a span with a label.
+//   - [Collect] repeats choices as the elements of a collection.
+//
 // # Clocks
 //
 // Every case reads [Settings.Clock], the test's clock. [Settings.ShrinkTime]

@@ -55,7 +55,7 @@ func integerOf[T Integral](id string, lo, hi T) Generator[T] {
 		panic(fmt.Sprintf("prop: %s(%v, %v) states no value", id, lo, hi))
 	}
 	bounds := choice.MustIntegerBounds(intOf(lo), intOf(hi))
-	g := newGenerator(id, func(c *Case) T {
+	g := NewGenerator(id, func(c *Case) T {
 		span := c.openSpan(id)
 		defer c.closeSpan(span)
 		return valueOf[T](c.reusable(bounds))
@@ -78,7 +78,7 @@ func Float[T Floating](lo, hi T, nan choice.NaNPolicy) Generator[T] {
 	if err != nil {
 		panic(fmt.Sprintf("prop: %s(%v, %v) states no value: %v", floatID, lo, hi, err))
 	}
-	return newGenerator(floatID, func(c *Case) T {
+	return NewGenerator(floatID, func(c *Case) T {
 		span := c.openSpan(floatID)
 		defer c.closeSpan(span)
 		return T(c.float(bounds))
@@ -95,7 +95,7 @@ func Boolean(num, den uint64) Generator[bool] {
 	}
 	divisor := gcd(num, den)
 	num, den = num/divisor, den/divisor
-	return newGenerator(booleanID, func(c *Case) bool {
+	return NewGenerator(booleanID, func(c *Case) bool {
 		span := c.openSpan(booleanID)
 		defer c.closeSpan(span)
 		return c.coin(num, den)

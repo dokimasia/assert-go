@@ -163,6 +163,24 @@ func TestExecution(t *testing.T) {
 			}, nil, nil)
 			assert.Equal(t, e.Identity, engine.Identity{Assertion: "equal", Where: reported.Where}, "the first record")
 		})
+
+		t.Run("returns no panic value for a case that a record failed first", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) {
+				c.Report(reported, false)
+				panic("late")
+			}, nil, nil)
+			assert.Nil(t, e.Panic, "no panic value")
+			assert.Nil(t, e.Stack, "no stack")
+		})
+
+		t.Run("returns the value and the stack of a panic", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(*engine.Case) { panic("boom") }, nil, nil)
+			assert.Equal(t, e.Status, engine.CaseFailed, "the case fails")
+			assert.Equal[any](t, e.Panic, "boom", "the panic's value")
+			assert.Contains(t, string(e.Stack), "TestExecution", "the stack holds the body's frame")
+		})
 	})
 
 	t.Run("Bridge", func(t *testing.T) {

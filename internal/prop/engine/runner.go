@@ -145,6 +145,9 @@ type Result struct {
 	Token string
 	// Runs is the number of runs that shrinking and explaining spent.
 	Runs int
+	// Stored are the runs of the stored cases, in order, up to the one that
+	// ended the run.
+	Stored []Execution
 }
 
 // Run runs the phases of a property and returns how the run ended.
@@ -165,6 +168,16 @@ type Result struct {
 func Run(body Body, s Settings) Result {
 	s = withClocks(s)
 	return conclude(body, s, explore(body, s))
+}
+
+// Conclude replays, shrinks and explains failing, a case whose status is
+// [CaseFailed] and that a body failed outside a run, such as a case that
+// [Bridge] decoded from a fuzzer's bytes. It returns a counterexample with
+// no valid case counted, or a flaky result when the replay of failing
+// differs from it.
+func Conclude(body Body, s Settings, failing Execution) Result {
+	s = withClocks(s)
+	return conclude(body, s, Result{Outcome: Counterexample, Seed: s.Seed, Failing: &failing})
 }
 
 // RunReplay runs the one case that choices record, and reports a failure
@@ -309,14 +322,26 @@ func (p *phases) runTo(target int) (Result, bool) {
 }
 
 // explore runs the phases until the run ends, without concluding a
-// counterexample.
+// counterexample, and returns the result with the runs of the stored cases.
 func explore(body Body, s Settings) Result {
 	t := &tally{seed: s.Seed, labels: make(map[string]int)}
-	for _, stored := range s.Stored {
-		if r, ended := t.take(execute(body, replaying{choices: stored}, s.MaxChoices, nil, s.Clock)); ended {
+	stored := make([]Execution, 0, len(s.Stored))
+	for _, choices := range s.Stored {
+		e := execute(body, replaying{choices: choices}, s.MaxChoices, nil, s.Clock)
+		stored = append(stored, e)
+		if r, ended := t.take(e); ended {
+			r.Stored = stored
 			return r
 		}
 	}
+	r := generated(body, s, t)
+	r.Stored = stored
+	return r
+}
+
+// generated runs the simplest case and the random and edge cases into the
+// case tree, after the stored cases that t counted, until the run ends.
+func generated(body Body, s Settings, t *tally) Result {
 	caseTree := tree.New(tree.NodeLimit)
 	p := &phases{s: s, t: t, tree: caseTree, cases: newExecutor(body, s, caseTree), edges: boundaries[:]}
 	defer p.cases.close()
