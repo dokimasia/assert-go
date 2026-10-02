@@ -589,7 +589,7 @@ None.
 
 | What | Where |
 |---|---|
-| The definition and its property engine, version 1.2.0 | <https://github.com/dokimasia/assert-spec> |
+| The definition and its property engine, version 1.3.0 | <https://github.com/dokimasia/assert-spec> |
 | `runtime.Goexit` | <https://pkg.go.dev/runtime#Goexit> |
 | `testing.F.Fuzz` | <https://pkg.go.dev/testing#F.Fuzz> |
 | `math/rand/v2.Source` | <https://pkg.go.dev/math/rand/v2#Source> |

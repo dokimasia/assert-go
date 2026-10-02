@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"iter"
 	"slices"
 
 	"go.dokimi.dev/assert/internal/prop/choice"
@@ -212,6 +213,55 @@ func (sh *shrinker) minimizeDuplicates() bool {
 		}
 		improved = sh.consider(targeted) || improved
 	}
+}
+
+// deleteAndLower steps each integer towards its target, and deletes data
+// before the integer in the same candidate. Integers are visited in order.
+// Each step is tried with one span deleted that is not empty and ends at
+// or before the integer, the span that starts last first, and of two that
+// start together the longer first. Then it is tried with one element
+// deleted from a sequence before the integer, the last sequence and its
+// last element first, when the sequence is longer than its minimum length.
+// The step alone is no candidate of the pass. The pass skips the integer
+// at index 0, which has no data before it, and sorts the spans only when a
+// later integer is away from its target.
+func (sh *shrinker) deleteAndLower() bool {
+	return sh.sweep(func() iter.Seq[[]node] {
+		return func(yield func([]node) bool) {
+			nodes := sh.nodes()
+			var spans []Span
+			for index, n := range nodes {
+				if index == 0 || n.r.bounds.Kind() != choice.Integer || n.c.Integer == n.r.bounds.Integer().Target() {
+					continue
+				}
+				if spans == nil {
+					spans = latestFirst(sh.spans())
+				}
+				stepped := replaced(nodes, index, integerChoice(towards(n.c.Integer, n.r.bounds.Integer().Target(), 1)))
+				for _, span := range spans {
+					if span.Start < span.End && span.End <= index && !yield(without(stepped, span.Start, span.End)) {
+						return
+					}
+				}
+				for at := index - 1; at >= 0; at-- {
+					before := stepped[at]
+					if before.r.bounds.Kind() != choice.Sequence {
+						continue
+					}
+					elements := before.c.Sequence
+					if len(elements) <= before.r.bounds.Sequence().Sizes().Min() {
+						continue
+					}
+					for position := range slices.Backward(elements) {
+						kept := slices.Concat(elements[:position], elements[position+1:])
+						if !yield(replaced(stepped, at, sequenceChoice(kept))) {
+							return
+						}
+					}
+				}
+			}
+		}
+	})
 }
 
 // nextAlike returns the index of the next integer choice after index with

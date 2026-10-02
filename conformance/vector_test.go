@@ -15,9 +15,9 @@ import (
 )
 
 // vectorCount is the number of vectors of the vendored definition: 26
-// behaviour, 11 bridge, 12 coverage, 49 decoding, 32 generation, 35
+// behaviour, 11 bridge, 12 coverage, 49 decoding, 32 generation, 36
 // shrinking, 21 store and 17 token vectors.
-const vectorCount = 203
+const vectorCount = 204
 
 // The first vector of the definition, and the prefix of every error that
 // Check returns for a vector that a test builds.

@@ -62,14 +62,15 @@ type failure struct {
 // Choices of one kind compare by their sort keys, and choices of different
 // kinds by kind: integer, then float, then sequence.
 //
-// The shrinker runs its passes over the best case of one failure, in the
-// order shrink lists them, until a whole round accepts no candidate. A
-// candidate runs only when it is smaller than the best case and no earlier
-// candidate had the same choices. It is accepted when its run fails with
-// the same identity and records a smaller case. A run that fails with
-// another identity is kept as a further failure. The failures are shrunk
-// one at a time, the one with the smallest case first, and they share one
-// budget of runs.
+// The shrinker runs rounds of its passes over the best case of one failure,
+// in the order shrink lists them, while each round accepts a candidate.
+// deleteAndLower runs only in a round in which no other pass accepted a
+// candidate. A candidate runs only when it is smaller than the best case
+// and no earlier candidate had the same choices. It is accepted when its
+// run fails with the same identity and records a smaller case. A run that
+// fails with another identity is kept as a further failure. The failures
+// are shrunk one at a time, the one with the smallest case first, and they
+// share one budget of runs.
 //
 // A pass that lists its candidates runs up to Workers of them at once and
 // takes their runs in the pass's order, as one worker would have run them.
@@ -292,7 +293,9 @@ func (sh *shrinker) shrinkAll() {
 }
 
 // shrink runs rounds of every pass on one failure until a round accepts
-// nothing.
+// nothing. deleteAndLower runs only in a round in which no other pass
+// accepted a candidate, and a round that it improves is followed by
+// another.
 func (sh *shrinker) shrink(identity Identity) {
 	sh.target = identity
 	passes := []func() bool{
@@ -319,7 +322,7 @@ func (sh *shrinker) shrink(identity Identity) {
 				improved = true
 			}
 		}
-		if !improved {
+		if !improved && !sh.deleteAndLower() {
 			return
 		}
 	}

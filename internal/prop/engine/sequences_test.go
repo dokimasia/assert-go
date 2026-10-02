@@ -57,9 +57,9 @@ func TestSequences(t *testing.T) {
 						{Label: "xss", Value: [][]int{{0, 1}}, Relevance: engine.ValueMatters},
 					},
 					token:  "prop1:AAEAAQAAAAEAAQAAAAA",
-					runs:   37,
-					calls:  39,
-					digest: "4cb124a385d949968ee7eab95438778199b1b347c88ffbf5a2ca1df188d66f9f",
+					runs:   39,
+					calls:  41,
+					digest: "e7d0957d55c35614c83752eee352b21d81c8bc46a1a0ebe5789d400df353a3d7",
 				},
 			},
 			{
@@ -71,9 +71,9 @@ func TestSequences(t *testing.T) {
 				want: reference{
 					explanation: []engine.Explained{{Label: "xs", Value: []int{0, 9}, Relevance: engine.ValueMatters}},
 					token:       "prop1:AAEAAAABAAkAAA",
-					runs:        20,
-					calls:       22,
-					digest:      "866d86759712746d803937d16395910ef9ee4118a848e418c3999fd8ccc9e37e",
+					runs:        22,
+					calls:       24,
+					digest:      "ed2709e82a77aa82474dd0becc3efc32f265313e6efdd62884352a90ba6a01e0",
 				},
 			},
 			{
@@ -87,9 +87,9 @@ func TestSequences(t *testing.T) {
 						{Label: "xss", Value: [][]int{{0}, {9}}, Relevance: engine.ValueMatters},
 					},
 					token:  "prop1:AAEAAQAAAAAAAQABAAkAAAAA",
-					runs:   32,
-					calls:  34,
-					digest: "f3e9717828bdb20cb2aa3f2047acd7bb38d2c6cdd4a5407d5f2951a35f8f4ee9",
+					runs:   36,
+					calls:  38,
+					digest: "201f60ead739fa0baba6287c47ad6ac15269079623e4ffa202170bfbadcc63a2",
 				},
 			},
 			{
@@ -168,9 +168,9 @@ func TestSequences(t *testing.T) {
 						{Label: "n", Value: 1001, Relevance: engine.ValueMatters, NearestPassing: 1000},
 					},
 					token:  "prop1:AwAA6Qc",
-					runs:   32,
-					calls:  34,
-					digest: "61db0b2f768edc8ed05002a4da289708a29e575e7aa9d592b524d4df6795db8c",
+					runs:   33,
+					calls:  35,
+					digest: "e0d06f0aeb123b1e919e7279b22f721edd74b2ef361fdec39507baa32806e60d",
 				},
 			},
 		}
@@ -195,9 +195,9 @@ func TestSequences(t *testing.T) {
 			matchesReference(t, got, trace, reference{
 				explanation: []engine.Explained{{Label: "tree", Value: []any{0, 0, 0}, Relevance: engine.ValueMatters}},
 				token:       "prop1:AAEAAQAAAAAAAQAAAAAAAQAAAAAAAA",
-				runs:        76,
-				calls:       95,
-				digest:      "9605f9723f51bb09789ab85da54c76d7ec0c6d08a7e1837bc1f4e59974e37f37",
+				runs:        78,
+				calls:       97,
+				digest:      "dcd99fc394fab6903e0071d115f271ca99426dcc79a4bf150af6658e45b9bd48",
 			})
 			assert.Equal(t, got.Cases, 6, "the valid cases of seed 6 before the failure")
 		})

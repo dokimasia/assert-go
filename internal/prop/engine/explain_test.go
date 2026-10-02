@@ -240,9 +240,9 @@ func TestExplain(t *testing.T) {
 						{Label: "xs", Value: []int{0, 1, 2}, Relevance: engine.AnyValueFails},
 					},
 					token:  "prop1:AAEAAAABAAEAAQACAAA",
-					runs:   20,
-					calls:  23,
-					digest: "6c280b38efc143ba281da721da72ba2c5c028ff8e9fdb87f3c03370cac207f85",
+					runs:   23,
+					calls:  26,
+					digest: "c6407d5d1348e0c19315246c2bab9674b42663b922bf06a01f18ad87fd61dca9",
 				},
 			},
 			{

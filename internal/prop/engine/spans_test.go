@@ -145,9 +145,9 @@ func TestSpans(t *testing.T) {
 				want: reference{
 					explanation: []engine.Explained{{Label: "xs", Value: []int{3, 5}, Relevance: engine.ValueMatters}},
 					token:       "prop1:AAEAAwABAAUAAA",
-					runs:        45,
-					calls:       47,
-					digest:      "a3f7a4b906f91ed3df26a45b646db2ba58f76bba328de4fbae3231ec7aa6eb8a",
+					runs:        48,
+					calls:       50,
+					digest:      "fcf8710ac01de5bf3216d2b74227db6e0eea7b3925de7f092b1c7d19cb90309b",
 				},
 			},
 		}

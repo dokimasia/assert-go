@@ -311,6 +311,63 @@ func TestPredicate(t *testing.T) {
 				value:     oneLiteral,
 				predicate: `{"kind":"has-duplicate"}`,
 			},
+			{
+				name:      "keeps a list whose last element indexes a number above the n of indexed-above",
+				value:     `{"type":"list","of":"int","value":[0,200,1]}`,
+				predicate: `{"kind":"indexed-above","n":100}`,
+				holds:     true,
+			},
+			{
+				name:      "keeps a list whose last element 0 indexes a number above the n of indexed-above",
+				value:     `{"type":"list","of":"int","value":[200,0]}`,
+				predicate: `{"kind":"indexed-above","n":100}`,
+				holds:     true,
+			},
+			{
+				name:      "rejects a list whose last element indexes a number equal to the n of indexed-above",
+				value:     `{"type":"list","of":"int","value":[0,100,1]}`,
+				predicate: `{"kind":"indexed-above","n":100}`,
+			},
+			{
+				name:      "rejects a list whose last element indexes itself under indexed-above",
+				value:     `{"type":"list","of":"int","value":[5,1]}`,
+				predicate: `{"kind":"indexed-above","n":0}`,
+			},
+			{
+				name:      "rejects a list whose last element is negative under indexed-above",
+				value:     `{"type":"list","of":"int","value":[200,-1]}`,
+				predicate: `{"kind":"indexed-above","n":100}`,
+			},
+			{
+				name:      "rejects a list whose last element is a float under indexed-above",
+				value:     `{"type":"list","items":[{"type":"int","value":200},{"type":"float","value":0.0}]}`,
+				predicate: `{"kind":"indexed-above","n":100}`,
+			},
+			{
+				name:      "rejects a list whose last element is a bool under indexed-above",
+				value:     `{"type":"list","items":[{"type":"int","value":200},{"type":"bool","value":false}]}`,
+				predicate: `{"kind":"indexed-above","n":100}`,
+			},
+			{
+				name:      "rejects a list whose last element indexes a bool under indexed-above",
+				value:     `{"type":"list","items":[{"type":"bool","value":true},{"type":"int","value":0}]}`,
+				predicate: `{"kind":"indexed-above","n":0}`,
+			},
+			{
+				name:      "rejects an empty list under indexed-above",
+				value:     `{"type":"list","of":"int","value":[]}`,
+				predicate: `{"kind":"indexed-above","n":0}`,
+			},
+			{
+				name:      "rejects a byte string under indexed-above",
+				value:     `{"type":"bytes","value":"c800"}`,
+				predicate: `{"kind":"indexed-above","n":100}`,
+			},
+			{
+				name:      "rejects an int under indexed-above",
+				value:     oneLiteral,
+				predicate: `{"kind":"indexed-above","n":0}`,
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -373,6 +430,11 @@ func TestPredicate(t *testing.T) {
 				name:      "returns an error for length-at-least of a fractional n",
 				predicate: `{"kind":"length-at-least","n":1.5}`,
 				want:      "predicate length-at-least states 1.5, no integer",
+			},
+			{
+				name:      "returns an error for indexed-above without n",
+				predicate: `{"kind":"indexed-above"}`,
+				want:      "predicate indexed-above lacks n",
 			},
 		}
 		for _, tt := range refusals {

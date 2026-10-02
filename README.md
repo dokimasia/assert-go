@@ -312,7 +312,7 @@ holds itself to it on every run:
 - **Parity.** Both surfaces carry the same members.
 - **Meaning.** 87 corpus cases state what an assertion must report,
   shared with every other implementation.
-- **Properties.** 203 vectors state how the property engine decodes,
+- **Properties.** 204 vectors state how the property engine decodes,
   generates and shrinks inputs, decides coverage, encodes replay tokens,
   stores failures and reports a run, shared with every other
   implementation.

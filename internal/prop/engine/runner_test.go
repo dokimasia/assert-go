@@ -27,7 +27,7 @@ const (
 	// concludeAllocs are the allocations of concluding the bridged case of
 	// 10,000 for a body that fails from 1,001: the replay that confirms it,
 	// the runs of its shrink and of its explanation, and the result.
-	concludeAllocs = 639
+	concludeAllocs = 644
 )
 
 // largestBytes are the fuzzer's bytes that the bridge decodes as 10,000

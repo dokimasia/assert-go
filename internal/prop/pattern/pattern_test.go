@@ -201,9 +201,9 @@ func TestPattern(t *testing.T) {
 				want: reference{
 					value:  "aaa0",
 					token:  "prop1:AAEAAAABAAAAAQAAAAAAAA",
-					runs:   30,
-					calls:  33,
-					digest: "c945c37d6e56ae2b1900d21ace67d9891f95d85e0fcff8ece8aadff70283e917",
+					runs:   31,
+					calls:  34,
+					digest: "4c66d19f709c5e3c23860262adf1ec10a6621523ff2754bd505fec0f88c594b9",
 				},
 			},
 			{
@@ -213,9 +213,9 @@ func TestPattern(t *testing.T) {
 				want: reference{
 					value:  "dogdog",
 					token:  "prop1:AAEAAQABAAEAAA",
-					runs:   16,
-					calls:  19,
-					digest: "3944f64da7a3265ff3c5e158de493b78a9a96b1ed45c63543e660c20bcac3347",
+					runs:   19,
+					calls:  22,
+					digest: "0010fa6bbaafd80e2fa0f62cb8e8c143e6653bb83484bfcf474337421bef9c71",
 				},
 			},
 			{
@@ -225,9 +225,9 @@ func TestPattern(t *testing.T) {
 				want: reference{
 					value:  "00A",
 					token:  "prop1:AAEAAAABAAAAAQACAAA",
-					runs:   13,
-					calls:  16,
-					digest: "6c839ce3ef8063f917d5b2846b19e0df826b2fd0603af86c5abda1cf1bfd6f25",
+					runs:   14,
+					calls:  17,
+					digest: "3ba9bbd1038ce768cfa32a889bcd45a6bbd2edaf23d687c857c1ef7d12efe2ba",
 				},
 			},
 		}

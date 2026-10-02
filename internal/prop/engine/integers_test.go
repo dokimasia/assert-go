@@ -12,9 +12,9 @@ import (
 )
 
 // TestIntegers checks the passes that move integers towards their targets,
-// alone, in pairs, in groups and with the spans they size, each through a
-// run from a stored failing case that the pass shrinks, pinned to what the
-// definition's executable reference reports.
+// alone, in pairs, in groups, with the spans they size and with the data
+// before them, each through a run from a stored failing case that the pass
+// shrinks, pinned to what the definition's executable reference reports.
 func TestIntegers(t *testing.T) {
 	t.Parallel()
 
@@ -23,10 +23,22 @@ func TestIntegers(t *testing.T) {
 	signed, positive := engine.Integer(-100, 100), engine.Integer(1, 1000)
 	signedList := engine.List(signed, unbounded(t, 0))
 	unit := engine.Float(0.0, 10.0, choice.ExcludeNaN)
-	firstByte := engine.Bytes(unbounded(t, 1))
+	percent, five := engine.List(hundred, unbounded(t, 0)), engine.Just(5)
+	anyBytes, firstByte := engine.Bytes(unbounded(t, 0)), engine.Bytes(unbounded(t, 1))
+	twoBytes := engine.Bytes(unbounded(t, 2))
 	exact := make([]engine.Generator[[]int], 10)
 	for n := range exact {
 		exact[n] = engine.List(digit, sizes(t, n, n))
+	}
+	indexed := func(c *engine.Case) string {
+		values, index := engine.Draw(c, percent, "xs"), engine.Draw(c, digit, "i")
+		return failsWhen(index < len(values) && values[index] > 50, "indexed")
+	}
+	high := func(g engine.Generator[[]byte]) property {
+		return func(c *engine.Case) string {
+			value, index := engine.Draw(c, g, "b"), engine.Draw(c, digit, "i")
+			return failsWhen(index < len(value) && value[index] > 200, "high")
+		}
 	}
 
 	t.Run("Run", func(t *testing.T) {
@@ -64,9 +76,9 @@ func TestIntegers(t *testing.T) {
 				want: reference{
 					explanation: []engine.Explained{{Label: "xs", Value: []int{0, 1}, Relevance: engine.ValueMatters}},
 					token:       "prop1:AAEAAAABAAEAAA",
-					runs:        25,
-					calls:       27,
-					digest:      "fd6afff264082c65c27e455a58edfc1c6ecfe28ec1c903666bbb59980f2c78f4",
+					runs:        27,
+					calls:       29,
+					digest:      "e476d7f21ca58386a40ec34c6ac82f46bffcfc5d4bec0098d08538475502cacc",
 				},
 			},
 			{
@@ -97,9 +109,9 @@ func TestIntegers(t *testing.T) {
 						{Label: "n", Value: 1001, Relevance: engine.ValueMatters, NearestPassing: 1000},
 					},
 					token:  "prop1:AgAAAAAAAAAAAOkH",
-					runs:   34,
-					calls:  36,
-					digest: "8ff7880f473da01f14b0df2f0d62b45db693224ac7b2ac3f7e1e22da1ae2db2d",
+					runs:   35,
+					calls:  37,
+					digest: "b7d15fb2a89d162a8d2dbe7907454841616c88cb7b18cbe80ad2f69c6912ae9e",
 				},
 			},
 			{
@@ -115,9 +127,9 @@ func TestIntegers(t *testing.T) {
 						{Label: "y", Value: 9, Relevance: engine.ValueMatters, NearestPassing: 8},
 					},
 					token:  "prop1:AAoACQ",
-					runs:   59,
-					calls:  61,
-					digest: "e0fbda3c85ea0c955324748047738a316478723c0d602e8b520f7a6e0813371a",
+					runs:   60,
+					calls:  62,
+					digest: "8b8f6dc890a623a804d6624b11d195c48588d46f6cf3297e5a0e180d3c40fe56",
 				},
 			},
 			{
@@ -133,9 +145,9 @@ func TestIntegers(t *testing.T) {
 						{Label: "y", Value: 4, Relevance: engine.ValueMatters, NearestPassing: 3},
 					},
 					token:  "prop1:AQMABA",
-					runs:   18,
-					calls:  20,
-					digest: "5a5bee4418faf95bb8472958b7087c5a7262d577f3035d1dfbdc70c49df9447f",
+					runs:   19,
+					calls:  21,
+					digest: "1adb8c08f51a530fa2d12261b93b3ff97358cf1decffece82006315408269bb0",
 				},
 			},
 			{
@@ -156,9 +168,9 @@ func TestIntegers(t *testing.T) {
 						{Label: "item", Value: 9, Relevance: engine.ValueMatters, NearestPassing: 8},
 					},
 					token:  "prop1:AAIAAAAJ",
-					runs:   39,
-					calls:  41,
-					digest: "9e5e12381e2b177a5d4bcb97e67bf454b2e04ce81c5052cd3d8c18cc47e282d3",
+					runs:   41,
+					calls:  43,
+					digest: "631cbf2e2819e80f2634adcac8e9ac127b0eacc1af025699f74829bf458965a9",
 				},
 			},
 			{
@@ -193,9 +205,9 @@ func TestIntegers(t *testing.T) {
 						{Label: "xs", Value: []int{9}, Relevance: engine.ValueMatters},
 					},
 					token:  "prop1:AAEAAQAJAAA",
-					runs:   45,
-					calls:  47,
-					digest: "0b80b7c070ed37107c305eae9984105e247668be31b511dc34fc4c198032133f",
+					runs:   46,
+					calls:  48,
+					digest: "1414793e6dccdaae5b2b78ac8f244a58c01ed93da1a12e7caf0d89bd69cc40fc",
 				},
 			},
 			{
@@ -211,9 +223,9 @@ func TestIntegers(t *testing.T) {
 						{Label: "y", Value: 501, Relevance: engine.ValueMatters, NearestPassing: 500},
 					},
 					token:  "prop1:AAAA9QM",
-					runs:   44,
-					calls:  46,
-					digest: "12b07d826d41f89a1e478e3269fad4b5eac8a2d47e70cb721c4eeb0560ed5b77",
+					runs:   45,
+					calls:  47,
+					digest: "2d4c18435a318a457521e59a8b030cc6a3b54a563723ef7763b0e75e54e6c8af",
 				},
 			},
 			{
@@ -229,9 +241,9 @@ func TestIntegers(t *testing.T) {
 						{Label: "y", Value: 401, Relevance: engine.ValueMatters, NearestPassing: 400},
 					},
 					token:  "prop1:AGQAkQM",
-					runs:   65,
-					calls:  67,
-					digest: "5685d78145826a880d24d26f07cdfcc6c9782c0ad2289127e6c0f32cb558f833",
+					runs:   66,
+					calls:  68,
+					digest: "b13ea0a2f68919566f363c93a753bf0bc269a2c8db00c58c6390da038515df79",
 				},
 			},
 			{
@@ -247,9 +259,9 @@ func TestIntegers(t *testing.T) {
 						{Label: "y", Value: -95, Relevance: engine.ValueMatters, NearestPassing: -94},
 					},
 					token:  "prop1:AQoBXw",
-					runs:   26,
-					calls:  28,
-					digest: "e116b830ad59a210320f441d763aaa32cf9b415c90998ef09e8007b171ab8b12",
+					runs:   27,
+					calls:  29,
+					digest: "5952f35b707c7c13cc7d63c63f7e1aaadba7d734fe98821ad9da0d0b8bb8bc58",
 				},
 			},
 			{
@@ -301,9 +313,9 @@ func TestIntegers(t *testing.T) {
 						{Label: "y", Value: 0.0, Relevance: engine.ValueMatters},
 					},
 					token:  "prop1:AgAAAAAAAAAAAAYCAAAAAAAAAAA",
-					runs:   28,
-					calls:  30,
-					digest: "286e1be7a9c0ad9e3524f032f2fac9ef02c2689436d866c7ceb616eda12e22c0",
+					runs:   29,
+					calls:  31,
+					digest: "03b78cbfc36fd34d29e23988f8b8cd6e06227bda3b1e2b06673bf27612dde907",
 				},
 			},
 			{
@@ -319,9 +331,9 @@ func TestIntegers(t *testing.T) {
 						{Label: "y", Value: 1, Relevance: engine.ValueMatters, NearestPassing: 0},
 					},
 					token:  "prop1:AAEAAQ",
-					runs:   58,
-					calls:  60,
-					digest: "95e30156e6084d09f406e583fb3495cebe716f616a8d90f4d0a090b84ecd3701",
+					runs:   59,
+					calls:  61,
+					digest: "9e27bd5891bdfd4d9d947c4bd475c97a51bf71224075d6cfe823d3633b0d2d83",
 				},
 			},
 			{
@@ -339,9 +351,91 @@ func TestIntegers(t *testing.T) {
 						{Label: "z", Value: 0, Relevance: engine.AnyValueFails},
 					},
 					token:  "prop1:AAEAAQAA",
-					runs:   77,
-					calls:  79,
-					digest: "1530c8527b1b858543434745494914ba9639fbd30c3062d8a19f456db0f30507",
+					runs:   78,
+					calls:  80,
+					digest: "65ed9e5ad888c6ef94662827d87682d11b520ca2c4423553f142541af413bf56",
+				},
+			},
+			{
+				name:   "deletes an element before the index that it lowers",
+				p:      indexed,
+				stored: integers(1, 0, 1, 60, 0, 1),
+				want: reference{
+					explanation: []engine.Explained{
+						{Label: "xs", Value: []int{51}, Relevance: engine.ValueMatters},
+						{Label: "i", Value: 0, Relevance: engine.ValueMatters},
+					},
+					token:  "prop1:AAEAMwAAAAA",
+					runs:   64,
+					calls:  66,
+					digest: "ba1851f50ee9ad8c7b302d92f9ae46f8835fcb013e86e11da34ef094448ee98b",
+				},
+			},
+			{
+				name:   "deletes a byte before the index that it lowers",
+				p:      high(anyBytes),
+				stored: []choice.Choice{sequence(1, 250), unsigned(1)},
+				want: reference{
+					explanation: []engine.Explained{
+						{Label: "b", Value: []byte{201}, Relevance: engine.ValueMatters},
+						{Label: "i", Value: 0, Relevance: engine.ValueMatters},
+					},
+					token:  "prop1:AwHJAQAA",
+					runs:   42,
+					calls:  44,
+					digest: "478873bf08b251281e5d19557cb37acd861a9e4211b20f7e3446775f578a3421",
+				},
+			},
+			{
+				name:   "keeps a byte string at its minimum length before the index",
+				p:      high(twoBytes),
+				stored: []choice.Choice{sequence(1, 250), unsigned(1)},
+				want: reference{
+					explanation: []engine.Explained{
+						{Label: "b", Value: []byte{0, 201}, Relevance: engine.ValueMatters},
+						{Label: "i", Value: 1, Relevance: engine.ValueMatters, NearestPassing: 0},
+					},
+					token:  "prop1:AwIAyQEAAQ",
+					runs:   26,
+					calls:  28,
+					digest: "861a87b5655ab8ca1e90754579d309aa6c9ea7f3712bfef704b789fdb7f6cc2b",
+				},
+			},
+			{
+				name: "deletes no empty span before the index that it lowers",
+				p: func(c *engine.Case) string {
+					engine.Draw(c, five, "j")
+					return indexed(c)
+				},
+				stored: integers(1, 0, 1, 60, 0, 1),
+				want: reference{
+					explanation: []engine.Explained{
+						{Label: "j", Value: 5, Relevance: engine.Untested},
+						{Label: "xs", Value: []int{51}, Relevance: engine.ValueMatters},
+						{Label: "i", Value: 0, Relevance: engine.ValueMatters},
+					},
+					token:  "prop1:AAEAMwAAAAA",
+					runs:   64,
+					calls:  66,
+					digest: "3edc5434de5b96a6569f0470e4e4cf7d00a8b81091f44c4a2dddd4b1b16d62ef",
+				},
+			},
+			{
+				name: "runs another round after a deletion that lowers an index",
+				p: func(c *engine.Case) string {
+					values, index := engine.Draw(c, percent, "xs"), engine.Draw(c, digit, "i")
+					return failsWhen(index < len(values) && values[index] > 50+10*index, "offset")
+				},
+				stored: integers(1, 0, 1, 70, 0, 1),
+				want: reference{
+					explanation: []engine.Explained{
+						{Label: "xs", Value: []int{51}, Relevance: engine.ValueMatters},
+						{Label: "i", Value: 0, Relevance: engine.ValueMatters},
+					},
+					token:  "prop1:AAEAMwAAAAA",
+					runs:   70,
+					calls:  72,
+					digest: "54b31da56a7b5a618679d8213f9a1b93a91f01153d9a835edf2c21bc23773604",
 				},
 			},
 		}

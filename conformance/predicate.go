@@ -26,14 +26,15 @@ const (
 	containsKind      = "contains"
 	notSortedKind     = "not-sorted"
 	hasDuplicateKind  = "has-duplicate"
+	indexedAboveKind  = "indexed-above"
 )
 
 // predicateSpec is a predicate as the corpus states it.
 type predicateSpec struct {
 	// Kind names the predicate.
 	Kind string `json:"kind"`
-	// N is the number of at-least, divisible-by, sum-above and
-	// length-at-least.
+	// N is the number of at-least, divisible-by, sum-above,
+	// length-at-least and indexed-above.
 	N json.RawMessage `json:"n"`
 	// Value is the typed literal of equals and contains.
 	Value json.RawMessage `json:"value"`
@@ -72,7 +73,7 @@ func holdsOf(spec predicateSpec) (func(any) bool, error) {
 		return hasDuplicate, nil
 	case equalsKind, containsKind:
 		return valuePredicate(spec)
-	case atLeastKind, divisibleByKind, sumAboveKind, lengthAtLeastKind:
+	case atLeastKind, divisibleByKind, sumAboveKind, lengthAtLeastKind, indexedAboveKind:
 		return numberPredicate(spec)
 	}
 	return nil, fmt.Errorf("conformance: %q names no predicate", spec.Kind)
@@ -95,8 +96,8 @@ func valuePredicate(spec predicateSpec) (func(any) bool, error) {
 	return func(v any) bool { return contains(v, wanted, key) }, nil
 }
 
-// numberPredicate returns at-least, divisible-by, sum-above or
-// length-at-least, of the number that spec states.
+// numberPredicate returns at-least, divisible-by, sum-above,
+// length-at-least or indexed-above, of the number that spec states.
 func numberPredicate(spec predicateSpec) (func(any) bool, error) {
 	if spec.N == nil {
 		return nil, fmt.Errorf("conformance: predicate %s lacks n", spec.Kind)
@@ -110,6 +111,8 @@ func numberPredicate(spec predicateSpec) (func(any) bool, error) {
 		return func(v any) bool { return atLeast(v, n) }, nil
 	case sumAboveKind:
 		return func(v any) bool { return sumAbove(v, n) }, nil
+	case indexedAboveKind:
+		return func(v any) bool { return indexedAbove(v, n) }, nil
 	}
 	if !n.IsInt() {
 		return nil, fmt.Errorf("conformance: predicate %s states %v, no integer", spec.Kind, n)
@@ -320,6 +323,28 @@ func hasDuplicate(v any) bool {
 		seen[text] = true
 	}
 	return false
+}
+
+// indexedAbove reports whether v is a list whose last element is an index,
+// from 0, into the elements before it, where the element at the index is a
+// number above n. A float or a bool is no index, and a bool is no number.
+func indexedAbove(v any, n *big.Float) bool {
+	items := reflect.ValueOf(v)
+	if items.Kind() != reflect.Slice || items.Type().Elem().Kind() == reflect.Uint8 || items.Len() == 0 {
+		return false
+	}
+	last := items.Len() - 1
+	index := elem(items.Index(last))
+	if !index.CanInt() && !index.CanUint() {
+		return false
+	}
+	at, _ := numeric(index)
+	if at.Sign() < 0 || at.Cmp(new(big.Float).SetInt64(int64(last))) >= 0 {
+		return false
+	}
+	position, _ := at.Int64()
+	element, ok := numeric(elem(items.Index(int(position))))
+	return ok && element.Cmp(n) > 0
 }
 
 // elem returns the value inside an interface value, and v otherwise.

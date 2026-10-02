@@ -24,8 +24,10 @@ const referenceSeed = 7
 
 // shrinkAllocs are the allocations of a run from a stored failing case of
 // 2000 that shrinks to 1001 and explains it, measured: 26 cases of about 24
-// allocations each, and the record of the stored case's run.
-const shrinkAllocs = 616
+// allocations each, the record of the stored case's run, and 5 for the
+// delete-and-lower round that ends the shrink, whose one integer is at
+// index 0.
+const shrinkAllocs = 621
 
 // property is a body that draws its values and returns the assertion of
 // the failure they make, or "" for none.
@@ -102,9 +104,9 @@ func TestShrink(t *testing.T) {
 						{Label: "xs", Value: []int{0, 0, 0}, Relevance: engine.ValueMatters},
 					},
 					token:  "prop1:AAEAAAABAAAAAQAAAAA",
-					runs:   34,
-					calls:  37,
-					digest: "cf9fcfa6a070fb9fb4f00a10ed4aa2cbc04874b2dc26c11ef24a7aa963756e1b",
+					runs:   35,
+					calls:  38,
+					digest: "934d85d9eac9fb943b4dd3d5c5cea8f8bcfedb7ab4d899dc8c41dcc19fc25873",
 				},
 			},
 			{
@@ -115,9 +117,9 @@ func TestShrink(t *testing.T) {
 				want: reference{
 					explanation: []engine.Explained{{Label: "xs", Value: []int{1, 0}, Relevance: engine.ValueMatters}},
 					token:       "prop1:AAEAAQABAAAAAA",
-					runs:        29,
-					calls:       32,
-					digest:      "f8a9d1d6714bcd48a5d322cb0aaf6a6e67f4d183cd1b7177576e1a93b1b7f5af",
+					runs:        31,
+					calls:       34,
+					digest:      "042701cea9d5c90e84fba919d277a1b0749b4de9396fc867b5c6d93429addafc",
 				},
 			},
 		}
