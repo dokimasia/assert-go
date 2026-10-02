@@ -4,6 +4,7 @@
 package prop
 
 import (
+	"fmt"
 	"testing"
 
 	"go.dokimi.dev/assert/internal/prop/engine"
@@ -21,8 +22,11 @@ import (
 //
 // A failing input's case is replayed, shrunk and explained as [ForAll]
 // does with a failing case, written to the store, and reported through the
-// input's *testing.T with its replay token. The record states no valid
-// case. Fuzz runs no replay token, and no coverage requirement: [Replay],
+// input's *testing.T with its replay token. The report and the notes on the
+// store are written to the test's output without a source location: the
+// fuzzing machinery calls the target through reflect, so no frame of the
+// caller's code is on the stack. The record states no valid case. Fuzz
+// runs no replay token, and no coverage requirement: [Replay],
 // DOKIMI_ASSERT_PROP_REPLAY, [Cases] and [Require] apply to ForAll alone.
 //
 // Fuzz fails f at once, without registering the target, for each fault for
@@ -46,15 +50,16 @@ func Fuzz(f *testing.F, contract string, body func(*Case), opts ...Option) {
 		p.report(f, engine.RunReplay(run, p.settings, entry.Choices))
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
-		t.Helper()
 		e := engine.Bridge(run, data, p.settings.Clock)
 		if e.Status != engine.CaseFailed {
 			return
 		}
 		r := engine.Conclude(run, p.settings, e)
 		if r.Outcome == engine.Counterexample {
-			note(t, p.save(r))
+			for _, n := range p.save(r) {
+				fmt.Fprintln(t.Output(), n)
+			}
 		}
-		p.report(t, r)
+		p.reportInput(t, r)
 	})
 }

@@ -6,6 +6,7 @@ package prop
 import (
 	"fmt"
 	"runtime"
+	"testing"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/matcher"
@@ -129,16 +130,31 @@ func (p property) report(tb assert.TB, r engine.Result) {
 	if r.Outcome == engine.Passed {
 		return
 	}
-	f := assert.Failure{Assertion: forAllID, Contract: p.contract, Detail: detailOf(r), Where: whereOf(p.pc)}
+	f := p.failure(r)
 	if reporter, ok := tb.(assert.Reporter); ok {
 		reporter.Report(f, true)
 		return
 	}
-	var notes []string
-	if r.Failing != nil {
-		notes = r.Failing.Case.Notes()
-	}
-	tb.Fatalf("%s", render(f, notes))
+	tb.Fatalf("%s", render(f, notesOf(r)))
+}
+
+// reportInput fails t, the test of one fuzz input, with the record of r, the
+// conclusion of the input's failing case, which never passes. It writes the
+// record's sentence, with the notes of the failing case, to t's output,
+// which states no source location, and stops t. The fuzzing machinery calls
+// the fuzz target through reflect, so testing would locate a log line in
+// reflect's source.
+func (p property) reportInput(t *testing.T, r engine.Result) {
+	t.Helper()
+	fmt.Fprintln(t.Output(), render(p.failure(r), notesOf(r)))
+	t.FailNow()
+}
+
+// failure returns the record of r, a run that did not pass: the assertion
+// prop-for-all, the property's contract, the detail of r and the location
+// of the property's call.
+func (p property) failure(r engine.Result) assert.Failure {
+	return assert.Failure{Assertion: forAllID, Contract: p.contract, Detail: detailOf(r), Where: whereOf(p.pc)}
 }
 
 // note adds each note to the log of tb, when tb has a log.
@@ -151,6 +167,15 @@ func note(tb assert.TB, notes []string) {
 	for _, n := range notes {
 		l.Logf("%s", n)
 	}
+}
+
+// notesOf returns the notes of the failing case of r, and none for a run
+// without one.
+func notesOf(r engine.Result) []string {
+	if r.Failing == nil {
+		return nil
+	}
+	return r.Failing.Case.Notes()
 }
 
 // caller returns the program counter of the call of the exported function

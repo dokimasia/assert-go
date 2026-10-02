@@ -5,9 +5,11 @@ package prop_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 
@@ -27,6 +29,10 @@ const (
 	childTimeout = time.Minute
 )
 
+// located matches a record of a run whose line starts with the file and the
+// line that testing puts before a log line.
+var located = regexp.MustCompile(`\.go:\d+: the property holds`)
+
 // The modes of FuzzChild.
 const (
 	// failingMode fuzzes firstByteFrom100 from a seed that fails.
@@ -38,6 +44,9 @@ const (
 	// twiceMode fuzzes a body that never fails, in two properties of one
 	// contract.
 	twiceMode = "twice"
+	// detachedMode fuzzes detached from a seed, a failure that no entry of
+	// the store can keep.
+	detachedMode = "detached"
 )
 
 // TestFuzz checks what Fuzz reports for a failing input and for the store
@@ -59,6 +68,21 @@ func TestFuzz(t *testing.T) {
 				"replay: prop.Replay(",
 			}, "the record of the smallest failing byte string")
 			assert.Length(t, loaded(t, dir).Entries, 1, "the entry of the shrunk case")
+		})
+
+		t.Run("writes the record of a failing input without a source location", func(t *testing.T) {
+			out, err := child(t, failingMode, t.TempDir())
+			assert.HasError(t, err, "the child fails")
+			assert.Contains(t, out, "the property holds: counterexample", "the record of the failing input")
+			assert.False(t, located.MatchString(out), "the record's line starts with no file and line")
+		})
+
+		t.Run("writes a note on a store that cannot keep the case of a failing input", func(t *testing.T) {
+			dir := t.TempDir()
+			out, err := child(t, detachedMode, dir)
+			assert.HasError(t, err, "the child fails")
+			assert.Contains(t, out, fmt.Sprintf("prop: the store %s keeps no case of %q: ", dir, contract),
+				"the note names the store")
 		})
 
 		t.Run("fails at once for a stored case that fails", func(t *testing.T) {
@@ -134,6 +158,11 @@ func FuzzChild(f *testing.F) {
 	if mode == twiceMode {
 		prop.Fuzz(f, contract, draws(prop.Bytes()), stored)
 		prop.Fuzz(f, contract, draws(prop.Bytes()), stored)
+		return
+	}
+	if mode == detachedMode {
+		f.Add([]byte{3})
+		prop.Fuzz(f, contract, detached, stored)
 		return
 	}
 	if mode == failingMode {
