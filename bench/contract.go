@@ -9,7 +9,6 @@ import (
 	"slices"
 	"time"
 
-	"go.dokimi.dev/assert/expect"
 	"go.dokimi.dev/assert/internal/matcher"
 )
 
@@ -200,9 +199,10 @@ func (c *Contract) Loop() bool {
 // every ceiling it exceeded.
 //
 // Call it deferred, so that it runs whatever the benchmark body does. It
-// reports each exceeded ceiling through [go.dokimi.dev/assert/expect],
-// which records a failure and continues. The output of one run lists
-// every ceiling that the benchmark exceeded.
+// reports each exceeded ceiling as a record of its assertion, such as
+// bench-max-latency, with the ceiling as want and the measurement as got,
+// through Errorf, which records a failure and continues. The output of
+// one run lists every ceiling that the benchmark exceeded.
 func (c *Contract) End() {
 	c.b.Helper()
 
@@ -222,22 +222,26 @@ func (c *Contract) End() {
 	c.b.ReportMetric(allocs, unitAllocs)
 	c.b.ReportMetric(bytes, unitBytes)
 
-	if c.maxLatency != unset {
-		expect.InRange(c.b, tail.Nanoseconds(), 0, float64(c.maxLatency.Nanoseconds()),
-			"the p99 latency per iteration stays within its ceiling")
+	if c.maxLatency != unset && tail > c.maxLatency {
+		matcher.Fail(c.b, matcher.Soft, "bench-max-latency",
+			"the p99 latency per iteration is within its ceiling",
+			map[string]any{"want": c.maxLatency, "got": tail})
 	}
-	if c.maxMean != unset {
-		expect.InRange(c.b, mean.Nanoseconds(), 0, float64(c.maxMean.Nanoseconds()),
-			"the mean latency per iteration stays within its ceiling")
+	if c.maxMean != unset && mean > c.maxMean {
+		matcher.Fail(c.b, matcher.Soft, "bench-max-mean",
+			"the mean latency per iteration is within its ceiling",
+			map[string]any{"want": c.maxMean, "got": mean})
 	}
 	counted := matcher.AllocationsCounted()
-	if c.maxAllocs != unset && counted {
-		expect.InRange(c.b, math.Floor(allocs), 0, float64(c.maxAllocs),
-			"the allocations per iteration stay within their ceiling")
+	if c.maxAllocs != unset && counted && math.Floor(allocs) > float64(c.maxAllocs) {
+		matcher.Fail(c.b, matcher.Soft, "bench-max-allocs",
+			"the allocations per iteration are within their ceiling",
+			map[string]any{"want": uint64(c.maxAllocs), "got": uint64(allocs)})
 	}
-	if c.maxBytes != unset && counted {
-		expect.InRange(c.b, math.Floor(bytes), 0, float64(c.maxBytes),
-			"the bytes allocated per iteration stay within their ceiling")
+	if c.maxBytes != unset && counted && math.Floor(bytes) > float64(c.maxBytes) {
+		matcher.Fail(c.b, matcher.Soft, "bench-max-bytes",
+			"the bytes allocated per iteration are within their ceiling",
+			map[string]any{"want": uint64(c.maxBytes), "got": uint64(bytes)})
 	}
 }
 

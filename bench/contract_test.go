@@ -4,6 +4,7 @@
 package bench_test
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -116,6 +117,23 @@ func TestContract(t *testing.T) {
 				"the failure names the ceiling that was exceeded")
 		})
 
+		t.Run("reports a record of bench-max-latency in the test file that ends the contract", func(t *testing.T) {
+			t.Parallel()
+
+			seat := run(10, func(c *bench.Contract) *bench.Contract {
+				return c.MaxLatency(time.Nanosecond)
+			}, func() { time.Sleep(time.Millisecond) })
+
+			records := seat.Records()
+			assert.Length(t, records, 1, "the exceeded ceiling reports one record")
+			assert.Equal(t, records[0].Assertion, "bench-max-latency", "the record names the ceiling")
+			assert.Equal(t, records[0].Detail["want"], any(time.Nanosecond), "the record states the ceiling as want")
+			got, _ := records[0].Detail["got"].(time.Duration)
+			assert.True(t, got >= time.Millisecond, "the record states the p99 latency as got")
+			assert.Equal(t, filepath.Base(records[0].Where.File), "contract_test.go",
+				"the record names the test file that calls End")
+		})
+
 		t.Run("reports allocations above their ceiling in a build that counts them", func(t *testing.T) {
 			t.Parallel()
 
@@ -125,6 +143,13 @@ func TestContract(t *testing.T) {
 
 			assert.Equal(t, seat.Failed(), matcher.AllocationsCounted(),
 				"a body that allocates exceeds a ceiling of zero allocations in a build that checks it")
+			if matcher.AllocationsCounted() {
+				records := seat.Records()
+				assert.Equal(t, records[0].Assertion, "bench-max-allocs", "the record names the ceiling")
+				assert.Equal(t, records[0].Detail["want"], any(uint64(0)), "the record states the ceiling as want")
+				got, _ := records[0].Detail["got"].(uint64)
+				assert.True(t, got >= 1, "the record states the allocations per iteration as got")
+			}
 		})
 
 		t.Run("reports bytes above their ceiling in a build that counts them", func(t *testing.T) {
@@ -136,6 +161,13 @@ func TestContract(t *testing.T) {
 
 			assert.Equal(t, seat.Failed(), matcher.AllocationsCounted(),
 				"a body that allocates exceeds a ceiling of zero bytes in a build that checks it")
+			if matcher.AllocationsCounted() {
+				records := seat.Records()
+				assert.Equal(t, records[0].Assertion, "bench-max-bytes", "the record names the ceiling")
+				assert.Equal(t, records[0].Detail["want"], any(uint64(0)), "the record states the ceiling as want")
+				got, _ := records[0].Detail["got"].(uint64)
+				assert.True(t, got >= 4096, "the record states the bytes per iteration as got")
+			}
 		})
 
 		t.Run("reports each exceeded ceiling", func(t *testing.T) {
@@ -146,6 +178,12 @@ func TestContract(t *testing.T) {
 			}, func() { time.Sleep(time.Millisecond) })
 
 			assert.Length(t, seat.Errs(), 2, "the p99 ceiling and the mean ceiling both fail")
+			var ids []string
+			for _, record := range seat.Records() {
+				ids = append(ids, record.Assertion)
+			}
+			assert.Equal(t, ids, []string{"bench-max-latency", "bench-max-mean"},
+				"each record names the ceiling it exceeded")
 		})
 	})
 

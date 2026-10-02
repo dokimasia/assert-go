@@ -6,6 +6,7 @@ package golden_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -52,6 +53,23 @@ func TestMatch(t *testing.T) {
 				"the failure names the file, then shows the diff")
 		})
 
+		t.Run("differing content reports a record of golden-match-at at the caller's line", func(t *testing.T) {
+			t.Parallel()
+
+			path := written(t, "recorded output")
+			s := &matchertest.Seat{}
+			_, file, line, _ := runtime.Caller(0)
+			golden.MatchAt(s, path, []byte("something else"), checking)
+
+			records := s.Records()
+			assert.Length(t, records, 1, "the comparison reports one record")
+			assert.Equal(t, records[0].Assertion, "golden-match-at", "the record names the comparison")
+			assert.Equal(t, records[0].Detail, map[string]any{"want": "recorded output", "got": "something else"},
+				"the record states the golden content as want and the output as got")
+			assert.Equal(t, records[0].Where, assert.Where{File: file, Line: line + 1},
+				"the record names the line that called the comparison")
+		})
+
 		t.Run("a missing file names the flag that would create it", func(t *testing.T) {
 			t.Parallel()
 
@@ -62,6 +80,19 @@ func TestMatch(t *testing.T) {
 			assert.True(t, s.Failed(), "a golden file that does not exist fails")
 			assert.Contains(t, s.First(), "-update",
 				"the failure names the flag that would create it")
+		})
+
+		t.Run("a missing file reports a record whose want is nil", func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), "absent.txt")
+			s := &matchertest.Seat{}
+			golden.MatchAt(s, path, []byte("anything"), checking)
+
+			records := s.Records()
+			assert.Length(t, records, 1, "the comparison reports one record")
+			assert.Equal(t, records[0].Detail, map[string]any{"want": nil, "got": "anything"},
+				"the record states no golden content and the output")
 		})
 
 		t.Run("updating writes a missing file and passes", func(t *testing.T) {
@@ -137,6 +168,17 @@ func TestMatch(t *testing.T) {
 
 			assert.Contains(t, s.First(), filepath.Join("testdata", "golden", "resolved.txt"),
 				"the name resolves under testdata/golden")
+		})
+
+		t.Run("reports a record of golden-match", func(t *testing.T) {
+			t.Parallel()
+
+			s := &matchertest.Seat{}
+			golden.Match(s, "resolved.txt", []byte("output"), checking)
+
+			records := s.Records()
+			assert.Length(t, records, 1, "the comparison reports one record")
+			assert.Equal(t, records[0].Assertion, "golden-match", "the record names the comparison")
 		})
 	})
 

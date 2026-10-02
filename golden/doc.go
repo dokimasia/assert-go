@@ -36,12 +36,16 @@
 // golden mismatch would report failures about data it already knows is
 // wrong.
 //
+// A failure is a record of the assertion that failed, golden-match,
+// golden-match-at or golden-match-json-field, with the golden content as
+// want and the output as got, both scrubbed. A missing file or field
+// states want as nil. The sentence is the diff that an Equal failure
+// shows, so a golden failure reads like every other failure in this
+// module: the contract first, then what differed.
+//
 // # Dependency position
 //
-// Imports go.dokimi.dev/assert, and the standard library's
-// encoding/json, flag, fmt, os, path/filepath, regexp and strings.
-//
-// The comparison is [go.dokimi.dev/assert.Equal] rather than a diff of
-// its own, so a golden failure reads like every other failure in this
-// module: the contract first, then what differed.
+// Imports go.dokimi.dev/assert, its internal matcher, and the standard
+// library's encoding/json, flag, fmt, os, path/filepath, regexp and
+// strings.
 package golden

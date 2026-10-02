@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/matcher"
 )
 
 // conventionalDir is where [Match] looks, relative to the test's own
@@ -39,23 +40,40 @@ var update = flag.Bool("update", false,
 // the first test.
 func ShouldUpdate() bool { return *update }
 
+// The ids of the golden comparisons, which their failures report.
+const (
+	matchID     = "golden-match"
+	matchAtID   = "golden-match-at"
+	jsonFieldID = "golden-match-json-field"
+)
+
 // Match compares got against testdata/golden/name, relative to the
 // test's own directory.
 //
 // The file is the assertion. When it does not exist and update is
 // false, that is a failure naming the flag that would create it; when
-// update is true, it is written and the test passes.
+// update is true, it is written and the test passes. A failure is a
+// record of golden-match, with the file's content as want, nil for a
+// missing file, and the output as got, both scrubbed.
 //
 // scrubbers are applied to both sides before the comparison, so
 // content that differs between runs does not defeat it.
 func Match(tb assert.TB, name string, got []byte, update bool, scrubbers ...Scrubber) {
 	tb.Helper()
-	MatchAt(tb, filepath.Join(conventionalDir, name), got, update, scrubbers...)
+	matchFile(tb, matchID, filepath.Join(conventionalDir, name), got, update, scrubbers)
 }
 
 // MatchAt is [Match] with the path taken as given, for a golden file
-// that lives outside the conventional directory.
+// outside the conventional directory. A failure is a record of
+// golden-match-at.
 func MatchAt(tb assert.TB, path string, got []byte, update bool, scrubbers ...Scrubber) {
+	tb.Helper()
+	matchFile(tb, matchAtID, path, got, update, scrubbers)
+}
+
+// matchFile compares got against the golden file at path, and reports a
+// failure as a record of the comparison id.
+func matchFile(tb assert.TB, id, path string, got []byte, update bool, scrubbers []Scrubber) {
 	tb.Helper()
 
 	mine := scrub(string(got), scrubbers)
@@ -66,7 +84,9 @@ func MatchAt(tb assert.TB, path string, got []byte, update bool, scrubbers ...Sc
 			write(tb, path, mine)
 			return
 		}
-		tb.Fatalf("%s: the golden file does not exist; run the test with -update to create it", path)
+		matcher.Fail(tb, matcher.Fatal, id,
+			fmt.Sprintf("%s: the golden file does not exist; run the test with -update to create it", path),
+			map[string]any{"want": nil, "got": mine})
 		return
 	}
 	assert.NoError(tb, err, fmt.Sprintf("%s: the golden file can be read", path))
@@ -79,9 +99,11 @@ func MatchAt(tb assert.TB, path string, got []byte, update bool, scrubbers ...Sc
 		return
 	}
 
-	assert.Equal(tb, mine, theirs,
-		fmt.Sprintf("%s: output matches the golden file; "+
-			"read the diff before running with -update", path))
+	if mine != theirs {
+		matcher.Fail(tb, matcher.Fatal, id,
+			fmt.Sprintf("%s: output matches the golden file; read the diff before running with -update", path),
+			map[string]any{"want": theirs, "got": mine})
+	}
 }
 
 // write records content as the golden file at path, creating the

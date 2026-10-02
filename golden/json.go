@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/matcher"
 )
 
 // jsonIndent is how this package writes a golden JSON file, so a diff
@@ -18,10 +19,10 @@ const jsonIndent = "  "
 // MatchJSONField compares got against one named field of the JSON
 // object at path, taken as given.
 //
-// Use it where one golden file holds several independent values, one
-// per field. Each test then compares only its own, so a failure shows
-// that value's diff rather than the whole file's, and two tests
-// updating different fields do not overwrite each other.
+// Use it where one golden file contains several independent values, one
+// per field. Each test then compares only its own field, so a failure
+// shows the diff of that value alone, and two tests that update
+// different fields do not overwrite each other.
 //
 // Comparison is structural: both sides are re-encoded with the same
 // indentation first, so formatting differences do not fail. got must
@@ -29,15 +30,18 @@ const jsonIndent = "  "
 //
 // A missing file or a missing field behaves as [Match] does for a
 // missing file: a failure naming -update, or the field written and the
-// siblings left alone.
+// siblings left alone. A failure is a record of golden-match-json-field,
+// with the field's golden value as want, nil when it is missing, the
+// value as got, both encoded and scrubbed, and the field's name.
 func MatchJSONField(tb assert.TB, path, field string, got []byte, update bool, scrubbers ...Scrubber) {
 	tb.Helper()
 
 	var value any
 	assert.NoError(tb, json.Unmarshal(got, &value),
 		fmt.Sprintf("%s: the value given for field %q is valid JSON", path, field))
+	mine := scrub(encode(tb, value, path, field), scrubbers)
 
-	document, ok := readObject(tb, path, update)
+	document, ok := readObject(tb, path, field, mine, update)
 	if !ok {
 		return
 	}
@@ -45,8 +49,9 @@ func MatchJSONField(tb assert.TB, path, field string, got []byte, update bool, s
 	held, present := document[field]
 	if !present {
 		if !update {
-			tb.Fatalf("%s: the golden file has no field %q; "+
-				"run the test with -update to add it", path, field)
+			matcher.Fail(tb, matcher.Fatal, jsonFieldID,
+				fmt.Sprintf("%s: the golden file has no field %q; run the test with -update to add it", path, field),
+				map[string]any{"want": nil, "got": mine, "field": field})
 			return
 		}
 		document[field] = value
@@ -54,7 +59,6 @@ func MatchJSONField(tb assert.TB, path, field string, got []byte, update bool, s
 		return
 	}
 
-	mine := scrub(encode(tb, value, path, field), scrubbers)
 	theirs := scrub(encode(tb, held, path, field), scrubbers)
 
 	if update {
@@ -65,22 +69,26 @@ func MatchJSONField(tb assert.TB, path, field string, got []byte, update bool, s
 		return
 	}
 
-	assert.Equal(tb, mine, theirs,
-		fmt.Sprintf("%s: field %q matches the golden file; "+
-			"read the diff before running with -update", path, field))
+	if mine != theirs {
+		matcher.Fail(tb, matcher.Fatal, jsonFieldID,
+			fmt.Sprintf("%s: field %q matches the golden file; read the diff before running with -update", path, field),
+			map[string]any{"want": theirs, "got": mine, "field": field})
+	}
 }
 
 // readObject reads the JSON object at path, reporting whether the
-// caller may carry on. It answers a fresh object when the file is
-// missing and update is set.
-func readObject(tb assert.TB, path string, update bool) (map[string]any, bool) {
+// caller may continue. It returns a fresh object when the file is
+// missing and update is set. For a missing file without update, it
+// reports a failure of field with got as the value, mine.
+func readObject(tb assert.TB, path, field, mine string, update bool) (map[string]any, bool) {
 	tb.Helper()
 
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		if !update {
-			tb.Fatalf("%s: the golden file does not exist; "+
-				"run the test with -update to create it", path)
+			matcher.Fail(tb, matcher.Fatal, jsonFieldID,
+				fmt.Sprintf("%s: the golden file does not exist; run the test with -update to create it", path),
+				map[string]any{"want": nil, "got": mine, "field": field})
 			return nil, false
 		}
 		return map[string]any{}, true
