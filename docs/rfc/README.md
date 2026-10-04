@@ -13,3 +13,4 @@ they record why not.
 | [0005](0005-registrations-preconditions-and-the-helpers-of-a-concept.md) | Registrations, preconditions and the helpers of a concept | Accepted |
 | [0006](0006-the-kind-of-a-shape-fault.md) | The kind of a shape fault | Accepted |
 | [0007](0007-recording-every-assertion-call-and-the-writer.md) | Recording every assertion call, and the writer | Accepted |
+| [0008](0008-one-equality-for-every-comparison.md) | One equality for every comparison | Draft |
