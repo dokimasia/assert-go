@@ -20,7 +20,7 @@ const linearProbes = 4
 // or a sequence tries its target.
 func (sh *shrinker) minimizeChoice() bool {
 	improved := false
-	for index := 0; index < len(sh.nodes()); index++ {
+	for index := 0; index < len(sh.nodes()) && !sh.spent(); index++ {
 		n := sh.nodes()[index]
 		if n.r.bounds.Kind() == choice.Integer {
 			improved = sh.lower([]int{index}) || improved
@@ -54,7 +54,7 @@ func (sh *shrinker) lower(indices []int) bool {
 // element at a time. A step accepted alone moves on to the next integer.
 func (sh *shrinker) lowerAndDelete() bool {
 	improved := false
-	for index := 0; index < len(sh.nodes()); {
+	for index := 0; index < len(sh.nodes()) && !sh.spent(); {
 		before := sh.best()
 		deleted := sh.stepAndDelete(index)
 		improved = improved || sh.best() != before
@@ -101,7 +101,7 @@ func (sh *shrinker) stepAndDelete(index int) bool {
 // accepts. The sum of the two values stays the same.
 func (sh *shrinker) redistribute() bool {
 	improved := false
-	for index := 0; index < len(sh.nodes()); index++ {
+	for index := 0; index < len(sh.nodes()) && !sh.spent(); index++ {
 		improved = sh.move(index) || improved
 	}
 	return improved
@@ -160,7 +160,7 @@ func (sh *shrinker) move(index int) bool {
 // findInteger finds the largest amount the property accepts.
 func (sh *shrinker) lowerTogether() bool {
 	improved := false
-	for index := 0; index < len(sh.nodes()); index++ {
+	for index := 0; index < len(sh.nodes()) && !sh.spent(); index++ {
 		improved = sh.lowerPair(index) || improved
 	}
 	return improved
@@ -181,14 +181,11 @@ func (sh *shrinker) lowerPair(index int) bool {
 		return false
 	}
 	room := min(value.Distance(target), other.Distance(target))
-	moved := func(amount int) bool {
-		if uint64(amount) > room {
-			return false
-		}
-		a, b := towards(value, target, uint64(amount)), towards(other, target, uint64(amount))
+	moved := func(amount uint64) bool {
+		a, b := towards(value, target, amount), towards(other, target, amount)
 		return sh.consider(replaced(replaced(nodes, index, integerChoice(a)), later, integerChoice(b)))
 	}
-	return findInteger(moved) > 0
+	return findInteger(room, moved) > 0
 }
 
 // minimizeDuplicates moves every group of choices that share one value
@@ -199,7 +196,7 @@ func (sh *shrinker) minimizeDuplicates() bool {
 	improved := false
 	for group := 0; ; group++ {
 		groups := duplicates(sh.nodes())
-		if group >= len(groups) {
+		if group >= len(groups) || sh.spent() {
 			return improved
 		}
 		indices := groups[group]
@@ -307,25 +304,29 @@ func duplicates(nodes []node) [][]int {
 }
 
 // findInteger returns a k with f(k) true and f(k + 1) false, given that
-// f(0) is true. It probes 1 to 4 in turn, then doubles until f fails, then
-// bisects.
-func findInteger(f func(int) bool) int {
-	for k := 1; k <= linearProbes; k++ {
-		if !f(k) {
+// f(0) is true and that f is false above limit. It probes 1 to 4 in turn,
+// then doubles until f fails, then bisects. It probes the integers that the
+// same search over unbounded integers probes, and takes a probe above limit
+// as failed without calling f, so no probe overflows and the search ends
+// after at most 64 doublings and 64 bisections.
+func findInteger(limit uint64, f func(uint64) bool) uint64 {
+	for k := uint64(1); k <= linearProbes; k++ {
+		if k > limit || !f(k) {
 			return k - 1
 		}
 	}
-	// low stays below high, so the bisection narrows until they are adjacent.
-	low, high := linearProbes, linearProbes+1
-	for f(high) {
-		low, high = high, high*2
+	// f accepts low and fails low + gap, which can lie past 2^64. Both
+	// searches move gap and not that bound, so gap stays within limit.
+	low, gap := uint64(linearProbes), uint64(1)
+	for gap <= limit-low && f(low+gap) {
+		low, gap = low+gap, low+gap
 	}
-	for low+1 != high {
-		middle := low + (high-low)/2
-		if f(middle) {
-			low = middle
+	for gap > 1 {
+		half := gap / 2
+		if half <= limit-low && f(low+half) {
+			low, gap = low+half, gap-half
 		} else {
-			high = middle
+			gap = half
 		}
 	}
 	return low

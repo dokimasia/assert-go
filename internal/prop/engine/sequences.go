@@ -45,7 +45,7 @@ func (sh *shrinker) sequenceDelete() bool {
 func (sh *shrinker) sequenceLower() bool {
 	improved := false
 	for index := range len(sh.nodes()) {
-		for position := 0; sh.hasElement(index, position); position++ {
+		for position := 0; sh.hasElement(index, position) && !sh.spent(); position++ {
 			improved = sh.lowerElement(index, position) || improved
 		}
 	}

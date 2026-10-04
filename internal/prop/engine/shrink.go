@@ -177,6 +177,13 @@ func (sh *shrinker) room() int {
 	return sh.limit - sh.runs
 }
 
+// spent reports whether the budget or the time is spent. From then on the
+// shrinker runs nothing, no pass starts, and a pass that walks the choices
+// stops at the next one.
+func (sh *shrinker) spent() bool {
+	return sh.room() == 0
+}
+
 // run runs the body on choices, spending one run of the budget, whose
 // calls the slot of the run takes under phase. It reports false, and runs
 // nothing, once the budget or the time is spent. The caller releases the
@@ -360,7 +367,7 @@ func (sh *shrinker) shrinkAll() {
 // shrink runs rounds of every pass on one failure until a round accepts
 // nothing. deleteAndLower runs only in a round in which no other pass
 // accepted a candidate, and a round that it improves is followed by
-// another.
+// another. No pass starts once the budget or the time is spent.
 func (sh *shrinker) shrink(identity Identity) {
 	sh.target = identity
 	passes := []func() bool{
@@ -383,6 +390,9 @@ func (sh *shrinker) shrink(identity Identity) {
 	for {
 		improved := false
 		for _, pass := range passes {
+			if sh.spent() {
+				return
+			}
 			if pass() {
 				improved = true
 			}

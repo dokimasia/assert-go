@@ -24,6 +24,13 @@ import (
 // and token, and not the growth of its record.
 const shrinkAllocs = 478
 
+// spentAllocs are the allocations of a run from a stored failing case of
+// 512 choices whose budget of one run is spent by its first candidate,
+// measured: the run of the stored case and the run of the candidate, each
+// of 512 draws. No pass that starts after the budget is spent builds a
+// candidate.
+const spentAllocs = 4307
+
 // TestShrink checks shrinking through whole runs: the minimal case of each
 // failure, the shared budget of runs and time, and the order of every
 // candidate, pinned by the digest of every call of the body.
@@ -315,6 +322,25 @@ func TestShrinkAllocs(t *testing.T) {
 		}
 	}
 	assert.MaxAllocs(t, func() { engine.Run(body, s) }, shrinkAllocs, "a run that shrinks 2000 to 1001")
+
+	digit := engine.Integer(0, 9)
+	nines := make([]int64, 512)
+	for i := range nines {
+		nines[i] = 9
+	}
+	spent := settled(integers(nines...)...)
+	spent.Shrink = 1
+	sum := func(c *engine.Case) {
+		total := 0
+		for range nines {
+			total += engine.Draw(c, digit, "n")
+		}
+		if total > 0 {
+			c.Report(assert.Failure{Assertion: "positive"}, false)
+		}
+	}
+	assert.MaxAllocs(t, func() { engine.Run(sum, spent) }, spentAllocs,
+		"a run of 512 choices whose budget of one run its first candidate spends")
 }
 
 // BenchmarkShrink measures a run from a stored failing case of 2000 that

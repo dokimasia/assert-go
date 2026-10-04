@@ -19,7 +19,7 @@ const maxIntegral = 9007199254740991
 // integral too, then moves towards its target as an integer does.
 func (sh *shrinker) floatSimplify() bool {
 	improved := false
-	for index := 0; index < len(sh.nodes()); index++ {
+	for index := 0; index < len(sh.nodes()) && !sh.spent(); index++ {
 		nodes := sh.nodes()
 		n := nodes[index]
 		if n.r.bounds.Kind() != choice.Float {

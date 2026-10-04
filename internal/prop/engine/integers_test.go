@@ -4,6 +4,7 @@
 package engine_test
 
 import (
+	"math"
 	"slices"
 	"testing"
 
@@ -21,6 +22,7 @@ func TestIntegers(t *testing.T) {
 	digit, hundred := engine.Integer(0, 9), engine.Integer(0, 100)
 	small, wide := engine.Integer(0, 1000), engine.Integer(0, 1_000_000_000)
 	signed, positive := engine.Integer(-100, 100), engine.Integer(1, 1000)
+	whole := engine.Integer[uint64](0, math.MaxUint64)
 	signedList := engine.List(signed, unbounded(t, 0))
 	unit := engine.Float(0.0, 10.0, choice.ExcludeNaN)
 	percent, five := engine.List(hundred, unbounded(t, 0)), engine.Just(5)
@@ -130,6 +132,24 @@ func TestIntegers(t *testing.T) {
 					runs:   60,
 					calls:  62,
 					digest: "8b8f6dc890a623a804d6624b11d195c48588d46f6cf3297e5a0e180d3c40fe56",
+				},
+			},
+			{
+				name: "lowers two values one apart by amounts beyond 2^63 without overflowing",
+				p: func(c *engine.Case) string {
+					x, y := engine.Draw(c, whole, "x"), engine.Draw(c, whole, "y")
+					return failsWhen(x > y && x-y == 1, "one")
+				},
+				stored: []choice.Choice{unsigned(math.MaxUint64), unsigned(math.MaxUint64 - 1)},
+				want: reference{
+					explanation: []engine.Explained{
+						{Label: "x", Value: uint64(1), Relevance: engine.ValueMatters, NearestPassing: uint64(0)},
+						{Label: "y", Value: uint64(0), Relevance: engine.ValueMatters},
+					},
+					token:  "prop1:AAEAAA",
+					runs:   240,
+					calls:  242,
+					digest: "0aa5c173e2f9289b7832e97b503e6ed912ac3f4918ba08b4fc614ee7dd54f460",
 				},
 			},
 			{

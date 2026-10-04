@@ -85,15 +85,12 @@ func (sh *shrinker) liftDescendant() bool {
 func (sh *shrinker) deleteSpanRun() bool {
 	improved := false
 	for _, parent := range parents(sh.spans()) {
-		for first := 0; first < len(children(sh.spans(), parent)); first++ {
+		for first := 0; first < len(children(sh.spans(), parent)) && !sh.spent(); first++ {
 			original, group := sh.nodes(), children(sh.spans(), parent)
-			deleted := func(count int) bool {
-				if first+count > len(group) {
-					return false
-				}
-				return sh.consider(without(original, group[first].Start, group[first+count-1].End))
+			deleted := func(count uint64) bool {
+				return sh.consider(without(original, group[first].Start, group[first+int(count)-1].End))
 			}
-			if findInteger(deleted) > 0 {
+			if findInteger(uint64(len(group)-first), deleted) > 0 {
 				improved = true
 			}
 		}
