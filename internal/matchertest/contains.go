@@ -10,19 +10,39 @@ import (
 	"go.dokimi.dev/assert/internal/matcher"
 )
 
+// node is a map key that compares by its target as a pointer.
+type node struct {
+	N int
+}
+
 // ContainsCases are the cases every surface's contains assertion must
 // produce. Drive them with [RunPair].
 //
 // Containment depends on the type, and the cases state how: text
 // contains a substring, a sequence contains an element, and a map
-// contains a key.
+// contains a key that equals the needle.
 func ContainsCases() []Case {
+	nan := math.NaN()
 	return []Case{
 		{Name: "text contains a substring", Args: []any{"hello world", "lo wo"}},
 		{Name: "bytes contain a substring", Args: []any{[]byte("hello"), "ell"}},
 		{Name: "a slice contains an element", Args: []any{[]int{1, 2, 3}, 2}},
 		{Name: "an array contains an element", Args: []any{[3]int{1, 2, 3}, 3}},
 		{Name: "a map contains a key", Args: []any{map[string]int{"a": 1}, "a"}},
+		{Name: "a map contains a pointer key of an equal target", Args: []any{map[*node]int{{N: 1}: 1}, &node{N: 1}}},
+		{Name: "a map contains a nil key", Args: []any{map[any]int{nil: 1}, nil}},
+		{
+			Name:      "a NaN key is absent",
+			Args:      []any{map[float64]int{nan: 1}, nan},
+			Fails:     true,
+			Assertion: "contains",
+		},
+		{
+			Name:      "a needle that Go cannot hash is absent",
+			Args:      []any{map[any]int{1: 1}, []int{1}},
+			Fails:     true,
+			Assertion: "contains",
+		},
 		{Name: "a defined string type reads as text", Args: []any{name("hello"), "ell"}},
 		{
 			Name:      "an absent element reports",
@@ -69,9 +89,17 @@ func ContainsCases() []Case {
 // NotContainsCases are the cases every surface's not-contains
 // assertion must produce. Drive them with [RunPair].
 func NotContainsCases() []Case {
+	nan := math.NaN()
 	return []Case{
 		{Name: "an absent element passes", Args: []any{[]int{1, 2}, 9}},
 		{Name: "an absent substring passes", Args: []any{"hello", "xyz"}},
+		{Name: "a NaN key is not contained", Args: []any{map[float64]int{nan: 1}, nan}},
+		{
+			Name:      "a pointer key of an equal target reports",
+			Args:      []any{map[*node]int{{N: 1}: 1}, &node{N: 1}},
+			Fails:     true,
+			Assertion: "not-contains",
+		},
 		{
 			Name:      "a present element reports",
 			Args:      []any{[]int{1, 2}, 1},

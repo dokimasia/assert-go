@@ -31,8 +31,12 @@
 // call on a seat that writes no call record, such as a test's seat while
 // recording is off, and leaves out what the caller's functions allocate. A
 // failing call allocates its record and its text as well, and a recorded
-// call allocates its call record. A comparison goes through go-cmp, whose
-// caches can lower the count of a later call.
+// call allocates its call record.
+//
+// An assertion that compares values builds the interface of each value
+// that it compares. Go builds the interface of a pointer and of an integer
+// below 256 without allocating, and allocates one for most other values. A
+// contract states the count of the values that it names.
 //
 // A count also leaves out the interface that the call site builds for an
 // argument of type any. An assertion that reports the argument in its

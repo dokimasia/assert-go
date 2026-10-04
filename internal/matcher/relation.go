@@ -7,6 +7,9 @@ import (
 	"cmp"
 	"errors"
 	"math/big"
+	"reflect"
+
+	"go.dokimi.dev/assert/internal/equality"
 )
 
 // repetitions is how many times [Deterministic] calls its subject,
@@ -58,15 +61,15 @@ func both[T any](first, second func() (T, error)) (a, b T, failed map[string]any
 }
 
 // settle reports failed, the record of a step that failed, or a record of
-// first and second when they differ as [Equal] compares them under opts.
-func settle(seat Seat, mode Mode, assertion, msg string, first, second any, failed map[string]any, opts []Option) {
+// first and second when they differ as [Equal] compares them under r.
+func settle(seat Seat, mode Mode, assertion, msg string, first, second any, failed map[string]any, r equality.Rules) {
 	seat.Helper()
 
 	if failed != nil {
 		Fail(seat, mode, assertion, msg, failed)
 		return
 	}
-	if !equal(first, second, opts) {
+	if !equal(first, second, r) {
 		Fail(seat, mode, assertion, msg, map[string]any{"first": first, "second": second})
 		return
 	}
@@ -74,9 +77,9 @@ func settle(seat Seat, mode Mode, assertion, msg string, first, second any, fail
 }
 
 // agree runs run repetitions times, and reports the first result that
-// differs from the first result as [Equal] compares them under opts, or
-// the first run that fails.
-func agree[T any](seat Seat, mode Mode, assertion, msg string, run func() (T, error), opts []Option) {
+// differs from the first result as [Equal] compares them under r, or the
+// first run that fails.
+func agree[T any](seat Seat, mode Mode, assertion, msg string, run func() (T, error), r equality.Rules) {
 	seat.Helper()
 
 	var first T
@@ -90,7 +93,7 @@ func agree[T any](seat Seat, mode Mode, assertion, msg string, run func() (T, er
 			first = next
 			continue
 		}
-		if !equal(first, next, opts) {
+		if !equal(first, next, r) {
 			Fail(seat, mode, assertion, msg, map[string]any{"first": first, "second": next})
 			return
 		}
@@ -116,8 +119,7 @@ func agree[T any](seat Seat, mode Mode, assertion, msg string, run func() (T, er
 //
 // # Allocation contract
 //
-// A passing call with readings of one int allocates 24 times, in the
-// comparison of the two readings as [Equal] compares them.
+// A passing call with readings of one int below 256 allocates nothing.
 func Idempotent[I, S any](
 	seat Seat, mode Mode, call func(I) error, input I, observe func() S, msg string, opts ...Option,
 ) {
@@ -131,7 +133,7 @@ func Idempotent[I, S any](
 		return observe(), nil
 	}
 	first, second, failed := both(step, step)
-	settle(seat, mode, "idempotent", msg, first, second, failed, opts)
+	settle(seat, mode, "idempotent", msg, first, second, failed, rulesOf(opts))
 }
 
 // Accumulates reads an integer with observe, calls call with input twice,
@@ -205,11 +207,10 @@ func change(from, to int) any {
 //
 // # Allocation contract
 //
-// A passing call with results of one int allocates 744 times, in the 31
-// comparisons of a result with the first.
+// A passing call with results of one int below 256 allocates nothing.
 func Deterministic[I, O any](seat Seat, mode Mode, call func(I) (O, error), input I, msg string, opts ...Option) {
 	seat.Helper()
-	agree(seat, mode, "deterministic", msg, func() (O, error) { return call(input) }, opts)
+	agree(seat, mode, "deterministic", msg, func() (O, error) { return call(input) }, rulesOf(opts))
 }
 
 // Commutative reports when combine(a, b) differs from combine(b, a).
@@ -220,15 +221,14 @@ func Deterministic[I, O any](seat Seat, mode Mode, call func(I) (O, error), inpu
 //
 // # Allocation contract
 //
-// A passing call with results of one int allocates 24 times, in the
-// comparison of the two results.
+// A passing call with results of one int below 256 allocates nothing.
 func Commutative[T, R any](seat Seat, mode Mode, combine func(a, b T) R, a, b T, msg string, opts ...Option) {
 	seat.Helper()
 
 	first, second, failed := both(
 		func() (R, error) { return combine(a, b), nil },
 		func() (R, error) { return combine(b, a), nil })
-	settle(seat, mode, "commutative", msg, first, second, failed, opts)
+	settle(seat, mode, "commutative", msg, first, second, failed, rulesOf(opts))
 }
 
 // Associative reports when combine(combine(a, b), c) differs from
@@ -241,15 +241,14 @@ func Commutative[T, R any](seat Seat, mode Mode, combine func(a, b T) R, a, b T,
 //
 // # Allocation contract
 //
-// A passing call over ints allocates 24 times, in the comparison of the
-// two groupings.
+// A passing call over ints whose groupings are below 256 allocates nothing.
 func Associative[T any](seat Seat, mode Mode, combine func(a, b T) T, a, b, c T, msg string, opts ...Option) {
 	seat.Helper()
 
 	first, second, failed := both(
 		func() (T, error) { return combine(combine(a, b), c), nil },
 		func() (T, error) { return combine(a, combine(b, c)), nil })
-	settle(seat, mode, "associative", msg, first, second, failed, opts)
+	settle(seat, mode, "associative", msg, first, second, failed, rulesOf(opts))
 }
 
 // RoundTrip converts input with forward, converts the result back with
@@ -261,8 +260,7 @@ func Associative[T any](seat Seat, mode Mode, combine func(a, b T) T, a, b, c T,
 //
 // # Allocation contract
 //
-// A passing call on an int allocates 24 times, in the comparison of input
-// with what came back.
+// A passing call on an int below 256 allocates nothing.
 func RoundTrip[I, E any](
 	seat Seat, mode Mode, forward func(I) (E, error), inverse func(E) (I, error), input I, msg string,
 	opts ...Option,
@@ -281,7 +279,7 @@ func RoundTrip[I, E any](
 		Fail(seat, mode, "round-trip", msg, map[string]any{"want": nil, "got": failure})
 		return
 	}
-	if !equal(input, got, opts) {
+	if !equal(input, got, rulesOf(opts)) {
 		Fail(seat, mode, "round-trip", msg, map[string]any{"want": input, "got": got})
 		return
 	}
@@ -298,11 +296,11 @@ func RoundTrip[I, E any](
 //
 // # Allocation contract
 //
-// A passing call with sequences of three ints allocates 2,852 times, in the
-// 31 comparisons of a sequence with the first.
+// A passing call with sequences of three ints allocates 62 times: the
+// interfaces of the two sequences of each of its 31 comparisons.
 func StableOrder[T any](seat Seat, mode Mode, iterate func() ([]T, error), msg string, opts ...Option) {
 	seat.Helper()
-	agree(seat, mode, "stable-order", msg, iterate, opts)
+	agree(seat, mode, "stable-order", msg, iterate, rulesOf(opts))
 }
 
 // NoDuplicates calls iterate once, and reports the first element that
@@ -316,8 +314,8 @@ func StableOrder[T any](seat Seat, mode Mode, iterate func() ([]T, error), msg s
 //
 // # Allocation contract
 //
-// A passing call on three ints allocates 72 times, in its three
-// comparisons.
+// A passing call on three ints allocates once: the interface of the
+// sequence, through which it compares the elements.
 func NoDuplicates[T any](seat Seat, mode Mode, iterate func() ([]T, error), msg string, opts ...Option) {
 	seat.Helper()
 
@@ -326,9 +324,10 @@ func NoDuplicates[T any](seat Seat, mode Mode, iterate func() ([]T, error), msg 
 		Fail(seat, mode, "no-duplicates", msg, map[string]any{"got": failure, "index": nil})
 		return
 	}
+	r, values := rulesOf(opts), reflect.ValueOf(items)
 	for i := range items {
 		for j := range i {
-			if equal(items[j], items[i], opts) {
+			if equality.Equal(values.Index(j), values.Index(i), r) {
 				Fail(seat, mode, "no-duplicates", msg, map[string]any{"got": items[i], "index": i})
 				return
 			}
@@ -426,8 +425,8 @@ func Total[I any](seat Seat, mode Mode, call func(I) error, domain []I, msg stri
 //
 // # Allocation contract
 //
-// A passing call with readings of one int allocates 26 times, in the
-// comparison of the two readings.
+// A passing call with two readings of an int below 256 allocates nothing.
+// With two larger readings, it allocates twice: the interface of each.
 func NotPure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg string, opts ...Option) {
 	seat.Helper()
 
@@ -442,7 +441,7 @@ func NotPure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg strin
 		Fail(seat, mode, "not-pure", msg, map[string]any{"got": failure})
 		return
 	}
-	if equal(before, after, opts) {
+	if equal(before, after, rulesOf(opts)) {
 		Fail(seat, mode, "not-pure", msg, map[string]any{"got": after})
 		return
 	}

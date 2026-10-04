@@ -32,13 +32,20 @@
 // # Equality
 //
 //   - Comparison is structural and compares every field, unexported
-//     ones included.
+//     ones included. No method of a value runs, so a type's Equal method
+//     does not decide: two [time.Time] values of one instant differ when
+//     their monotonic readings or their locations differ.
 //   - A nil map or slice does not equal an empty one. Pass
 //     [EquateEmpty] where that difference does not matter.
 //   - NaN does not equal NaN. Pass [EquateNaNs] to reverse that.
-//   - Floats compare exactly.
-//   - Two references to one function are equal, and two different
-//     functions are not.
+//   - Floats compare exactly, and -0 equals +0.
+//   - A map key compares as any value compares, so a pointer key matches a
+//     needle whose target is equal, and a NaN key matches only under
+//     [EquateNaNs].
+//   - Two functions are equal when they have the same code pointer. Go
+//     exposes no identity of a closure without unsafe access, so two
+//     closures of one function literal are equal whatever they capture.
+//   - A value that contains itself compares in finite time.
 //   - Values of different types never compare. The assertions take a
 //     type parameter, so a mismatch is a compile error.
 //
@@ -57,8 +64,12 @@
 // call on a seat that writes no call record, such as a test's seat while
 // recording is off, and leaves out what the caller's functions allocate. A
 // failing call allocates its record and its text as well, and a recorded
-// call allocates its call record. A comparison goes through go-cmp, whose
-// caches can lower the count of a later call.
+// call allocates its call record.
+//
+// An assertion that compares values builds the interface of each value
+// that it compares. Go builds the interface of a pointer and of an integer
+// below 256 without allocating, and allocates one for most other values. A
+// contract states the count of the values that it names.
 //
 // A count also leaves out the interface that the call site builds for an
 // argument of type any. An assertion that reports the argument in its

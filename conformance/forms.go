@@ -428,19 +428,5 @@ func (v formVector) compare(f assert.Failure) error {
 		return err
 	}
 	failure, _ := f.Detail[failureField].(assert.Failure)
-	for name, want := range stated {
-		path := []fault.Segment{fault.Field(failureField), fault.Field(detailMember), fault.Key(name)}
-		got, ok := failure.Detail[name]
-		if !ok {
-			return fault.At(fault.New("the failure states no such field, want %s", want), path...)
-		}
-		same, err := sameValue(got, want)
-		if err != nil {
-			return fault.At(err, path...)
-		}
-		if !same {
-			return fault.At(fault.New("the field is %s, want %s", literal.Canonical(got), want), path...)
-		}
-	}
-	return nil
+	return compareDetail("the failure", stated, failure.Detail, fault.Field(failureField))
 }

@@ -25,8 +25,7 @@ import (
 //
 // # Allocation contract
 //
-// A passing call with readings of one int allocates 24 times, in the
-// comparison of the two readings as [Equal] compares them.
+// A passing call with readings of one int below 256 allocates nothing.
 func Idempotent[I, S any](tb assert.TB, call func(I) error, input I, observe func() S, msg string,
 	opts ...Option,
 ) {
@@ -67,8 +66,7 @@ func Accumulates[I any](tb assert.TB, call func(I) error, input I, observe func(
 //
 // # Allocation contract
 //
-// A passing call with results of one int allocates 744 times, in the 31
-// comparisons of a result with the first.
+// A passing call with results of one int below 256 allocates nothing.
 func Deterministic[I, O any](tb assert.TB, call func(I) (O, error), input I, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.Deterministic(tb, matcher.Soft, call, input, msg, opts...)
@@ -85,8 +83,7 @@ func Deterministic[I, O any](tb assert.TB, call func(I) (O, error), input I, msg
 //
 // # Allocation contract
 //
-// A passing call with results of one int allocates 24 times, in the
-// comparison of the two results.
+// A passing call with results of one int below 256 allocates nothing.
 func Commutative[T, R any](tb assert.TB, combine func(a, b T) R, a, b T, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.Commutative(tb, matcher.Soft, combine, a, b, msg, opts...)
@@ -101,8 +98,7 @@ func Commutative[T, R any](tb assert.TB, combine func(a, b T) R, a, b T, msg str
 //
 // # Allocation contract
 //
-// A passing call over ints allocates 24 times, in the comparison of the
-// two groupings.
+// A passing call over ints whose groupings are below 256 allocates nothing.
 func Associative[T any](tb assert.TB, combine func(a, b T) T, a, b, c T, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.Associative(tb, matcher.Soft, combine, a, b, c, msg, opts...)
@@ -118,8 +114,7 @@ func Associative[T any](tb assert.TB, combine func(a, b T) T, a, b, c T, msg str
 //
 // # Allocation contract
 //
-// A passing call on an int allocates 24 times, in the comparison of input
-// with what came back.
+// A passing call on an int below 256 allocates nothing.
 func RoundTrip[I, E any](
 	tb assert.TB, forward func(I) (E, error), inverse func(E) (I, error), input I, msg string, opts ...Option,
 ) {
@@ -140,8 +135,8 @@ func RoundTrip[I, E any](
 //
 // # Allocation contract
 //
-// A passing call with sequences of three ints allocates 2,852 times, in
-// the 31 comparisons of a sequence with the first.
+// A passing call with sequences of three ints allocates 62 times: the
+// interfaces of the two sequences of each of its 31 comparisons.
 func StableOrder[T any](tb assert.TB, iterate func() ([]T, error), msg string, opts ...Option) {
 	tb.Helper()
 	matcher.StableOrder(tb, matcher.Soft, iterate, msg, opts...)
@@ -160,8 +155,8 @@ func StableOrder[T any](tb assert.TB, iterate func() ([]T, error), msg string, o
 //
 // # Allocation contract
 //
-// A passing call on three ints allocates 72 times, in its three
-// comparisons.
+// A passing call on three ints allocates once: the interface of the
+// sequence, through which it compares the elements.
 func NoDuplicates[T any](tb assert.TB, iterate func() ([]T, error), msg string, opts ...Option) {
 	tb.Helper()
 	matcher.NoDuplicates(tb, matcher.Soft, iterate, msg, opts...)
@@ -215,8 +210,8 @@ func Total[I any](tb assert.TB, call func(I) error, domain []I, msg string) {
 //
 // # Allocation contract
 //
-// A passing call with readings of one int allocates 26 times, in the
-// comparison of the two readings.
+// A passing call with two readings of an int below 256 allocates nothing.
+// With two larger readings, it allocates twice: the interface of each.
 func NotPure[S any](tb assert.TB, observe func() S, fn func(), msg string, opts ...Option) {
 	tb.Helper()
 	matcher.NotPure(tb, matcher.Soft, observe, fn, msg, opts...)

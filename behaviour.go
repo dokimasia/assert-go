@@ -90,8 +90,7 @@ func CompletesWithin(tb TB, within time.Duration, fn func(ctx context.Context) e
 //
 // # Allocation contract
 //
-// A passing call with readings of one int allocates 24 times, in the
-// comparison of the two readings as [Equal] compares them.
+// A passing call with readings of one int below 256 allocates nothing.
 func Pure[S any](tb TB, observe func() S, fn func(), msg string, opts ...Option) {
 	tb.Helper()
 	matcher.Pure(tb, matcher.Fatal, observe, fn, msg, opts...)

@@ -27,8 +27,7 @@ import (
 //
 // # Allocation contract
 //
-// A passing call on two ints allocates 24 times, in go-cmp and in the
-// comparison options that each call builds.
+// A passing call on two ints below 256 allocates nothing.
 func Equal[T any](tb assert.TB, got, want T, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.Equal(tb, matcher.Soft, got, want, msg, opts...)
@@ -46,7 +45,7 @@ func Equal[T any](tb assert.TB, got, want T, msg string, opts ...Option) {
 //
 // # Allocation contract
 //
-// A passing call on two ints allocates 24 times, as [Equal] does.
+// A passing call on two ints below 256 allocates nothing.
 func NotEqual[T any](tb assert.TB, got, want T, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.NotEqual(tb, matcher.Soft, got, want, msg, opts...)

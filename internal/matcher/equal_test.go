@@ -46,10 +46,10 @@ func BenchmarkEqual(b *testing.B) {
 // with its allocation ceiling, measured.
 func equalCases() []allocCase {
 	return []allocCase{
-		{name: "Equal", allocs: 24, call: func(seat matcher.Seat) {
+		{name: "Equal", call: func(seat matcher.Seat) {
 			matcher.Equal(seat, matcher.Fatal, 7, 7, allocContract)
 		}},
-		{name: "NotEqual", allocs: 24, call: func(seat matcher.Seat) {
+		{name: "NotEqual", call: func(seat matcher.Seat) {
 			matcher.NotEqual(seat, matcher.Fatal, 7, 8, allocContract)
 		}},
 	}

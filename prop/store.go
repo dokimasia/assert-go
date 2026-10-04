@@ -6,7 +6,6 @@ package prop
 import (
 	"encoding/json"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"sync"
 	"time"
@@ -178,9 +177,10 @@ func (p property) differences(entries []store.Entry, runs []engine.Execution) []
 
 // alike reports whether replayed states the labels of recorded in order,
 // and the value of each draw whose value recorded states. Two values are
-// alike when they decode to the same JSON value, so that the spelling of a
-// number or an escape in a file that another implementation wrote does not
-// count.
+// alike when their typed literals state one value, as the definition
+// compares two literals. The spelling of a number or an escape in a file
+// that another implementation wrote does not count, and a recorded -0
+// differs from a replayed +0.
 func alike(recorded, replayed []store.Draw) bool {
 	if len(recorded) != len(replayed) {
 		return false
@@ -193,11 +193,19 @@ func alike(recorded, replayed []store.Draw) bool {
 	return true
 }
 
-// sameValue reports whether a and b are JSON texts of the same value. A
-// stored value a is JSON, because its file parsed. A replayed value b is
-// nil for a value that no typed literal states, which is the same as no
-// stored value.
+// sameValue reports whether a and b are typed literals of one value: two
+// literals that decode to values with one canonical text. A replayed value
+// b is nil for a value that no typed literal states, which is the same as
+// no stored value, and a stored value a that does not decode differs from
+// every value.
 func sameValue(a, b json.RawMessage) bool {
-	var x, y any
-	return b != nil && json.Unmarshal(a, &x) == nil && json.Unmarshal(b, &y) == nil && reflect.DeepEqual(x, y)
+	if b == nil {
+		return false
+	}
+	x, err := literal.Decode(a)
+	if err != nil {
+		return false
+	}
+	y, err := literal.Decode(b)
+	return err == nil && literal.Canonical(x) == literal.Canonical(y)
 }

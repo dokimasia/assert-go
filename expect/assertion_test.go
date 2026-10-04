@@ -220,8 +220,8 @@ func assertionCases() []alloctest.Case {
 	reading := 1.05
 	return []alloctest.Case{
 		{Name: "That", Call: func(tb assert.TB) { chain = expect.That(tb, 7) }, Allocs: 1},
-		{Name: "Equal", Call: func(tb assert.TB) { expect.That(tb, 7).Equal(7, allocContract) }, Allocs: 24},
-		{Name: "NotEqual", Call: func(tb assert.TB) { expect.That(tb, 7).NotEqual(8, allocContract) }, Allocs: 24},
+		{Name: "Equal", Call: func(tb assert.TB) { expect.That(tb, 7).Equal(7, allocContract) }},
+		{Name: "NotEqual", Call: func(tb assert.TB) { expect.That(tb, 7).NotEqual(8, allocContract) }},
 		{Name: "Nil", Call: func(tb assert.TB) { expect.That(tb, absent).Nil(allocContract) }},
 		{Name: "NotNil", Call: func(tb assert.TB) { expect.That(tb, present).NotNil(allocContract) }},
 		{Name: "Length", Call: func(tb assert.TB) { expect.That(tb, items).Length(3, allocContract) }},

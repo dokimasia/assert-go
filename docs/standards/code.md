@@ -23,8 +23,8 @@ how a concept is implemented once, and how code is documented.
 - A new member of the definition starts as a change in `assert-spec`:
   an RFC, the naming table and every language's overlay. This module
   implements the member after the definition states it.
-- The module depends on the standard library and `go-cmp`. A new
-  dependency needs an RFC.
+- The module depends on the standard library alone. A dependency needs
+  an RFC.
 
 ## Files
 

@@ -5,6 +5,7 @@ package text_test
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -53,6 +54,17 @@ type link struct {
 type wide struct {
 	Values [70000]uint8
 	Last   int
+}
+
+// label is an int whose String method writes a name.
+type label int
+
+// String returns the name of every label.
+func (label) String() string { return "label" }
+
+// tagged contains a label in an unexported field.
+type tagged struct {
+	l label
 }
 
 // hidden contains a scalar of each kind in unexported fields, and a map
@@ -132,6 +144,45 @@ func TestText(t *testing.T) {
 			assert.Matches(t, text.Sprintf("%v", h),
 				`^\{b:true i:-3 u:7 f:1\.5 c:\(1\+2i\) s:x ch:0x[0-9a-f]+ fn:<nil> m:map\[self:<cycle>\]\}$`,
 				"each scalar, the address of a channel, and nil for a nil function")
+		})
+
+		t.Run("returns what fmt.Sprintf returns for maps of structs", func(t *testing.T) {
+			t.Parallel()
+			flat := map[string]struct{ X, Y int }{"a": {1, 2}}
+			assert.Equal(t, text.Sprintf("%v", flat), fmt.Sprintf("%v", flat), "fmt's text of structs of ints")
+			nested := map[string]account{"a": {Name: "ada", Limits: map[string]int{"day": 3}}}
+			assert.Equal(t, text.Sprintf("%v", nested), fmt.Sprintf("%v", nested), "fmt's text of structs of a map")
+		})
+
+		t.Run("writes nil inside a value with a cycle as fmt writes it", func(t *testing.T) {
+			t.Parallel()
+			l := &link{Items: []any{nil, nil}}
+			l.Items[1] = l.Items
+			assert.Equal(t, text.Sprintf("%v", l), "&{Next:<nil> Items:[<nil> <cycle>]}",
+				"a nil pointer and a nil interface")
+		})
+
+		t.Run("writes the value inside a reflect.Value as fmt writes it", func(t *testing.T) {
+			t.Parallel()
+			value := account{Name: "ada", Limits: map[string]int{"day": 3}, Tags: []string{"a"}}
+			assert.Equal(t, text.Sprintf("%+v", reflect.ValueOf(value)), fmt.Sprintf("%+v", value),
+				"fmt's text of the value")
+			assert.Equal(t, text.Sprintf("%v", reflect.Value{}), "<invalid reflect.Value>", "fmt's text of no value")
+		})
+
+		t.Run("writes a reflect.Value of a map inside itself with the cycle marked", func(t *testing.T) {
+			t.Parallel()
+			m := map[string]any{"n": 1}
+			m["self"] = m
+			assert.Equal(t, text.Sprintf("%v", reflect.ValueOf(m)), "map[n:1 self:<cycle>]",
+				"the entries sorted by key")
+		})
+
+		t.Run("writes a value of an unexported field without its methods", func(t *testing.T) {
+			t.Parallel()
+			field := reflect.ValueOf(tagged{l: 3}).Field(0)
+			assert.Equal(t, text.Sprintf("%v", field), "3", "the int inside the field")
+			assert.Equal(t, text.Sprintf("%v", label(3)), "label", "the text of String for the value itself")
 		})
 
 		t.Run("cuts a value after its 65,536th part", func(t *testing.T) {

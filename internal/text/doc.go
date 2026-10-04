@@ -13,6 +13,7 @@
 //
 // # Dependency position
 //
-// Imports the standard library alone. Every other package of this module
-// may import it.
+// Imports the standard library and internal/cycle, which keeps the path of
+// a walk. Every other package of this module but internal/cycle may import
+// it.
 package text

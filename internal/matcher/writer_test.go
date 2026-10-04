@@ -12,16 +12,59 @@ import (
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
-// boxed keeps its contents unexported, which is what most real types
-// do and what cmp refuses to walk without an exporter.
+// boxed keeps its contents in an unexported field.
 type boxed struct{ items []int }
 
-// explodes has an Equal method that panics, so cmp cannot compute a diff
-// of it under any options.
+// explodes has an Equal method that panics, which no comparison runs.
 type explodes struct{}
 
-// Equal panics, as the method of a value that cmp cannot compare does.
+// Equal panics.
 func (explodes) Equal(explodes) bool { panic("this type cannot be compared") }
+
+// order is a value with a slice of structs, a slice of strings and a map.
+type order struct {
+	Lines []line
+	Tags  []string
+	Notes map[string]string
+}
+
+// line is one line of an order.
+type line struct {
+	Quantity int
+}
+
+// tag is an int whose String method writes a name.
+type tag int
+
+// String returns the name of every tag.
+func (tag) String() string { return "tag" }
+
+// tagged contains a tag in an unexported field.
+type tagged struct {
+	t tag
+}
+
+// body is a string of another type than string.
+type body string
+
+// letters returns the ten lines a to j, with the line of index changed to
+// its upper case.
+func letters(index int) string {
+	lines := strings.Split("a\nb\nc\nd\ne\nf\ng\nh\ni\nj", "\n")
+	if index >= 0 {
+		lines[index] = strings.ToUpper(lines[index])
+	}
+	return strings.Join(lines, "\n")
+}
+
+// counting returns the ints from start to start + n - 1.
+func counting(start, n int) []int {
+	out := make([]int, n)
+	for i := range out {
+		out[i] = start + i
+	}
+	return out
+}
 
 // selfContaining returns a map whose one entry is the map itself.
 func selfContaining() map[string]any {
@@ -131,7 +174,7 @@ func TestWriter(t *testing.T) {
 			}
 		})
 
-		t.Run("renders the values of a value that cmp cannot compare", func(t *testing.T) {
+		t.Run("states the fields of two values that differ in no place", func(t *testing.T) {
 			t.Parallel()
 
 			out := matcher.Render(matcher.Failure{
@@ -141,6 +184,106 @@ func TestWriter(t *testing.T) {
 			})
 			if want := "the values match: want {}, got {}"; out != want {
 				t.Errorf("Render() = %q, want %q", out, want)
+			}
+		})
+
+		self := selfContaining()
+		diffs := []struct {
+			name     string
+			giveWant any
+			giveGot  any
+			want     string
+		}{
+			{
+				name: "writes each place where want and got differ on a line of its own",
+				giveWant: order{
+					Lines: []line{{Quantity: 1}, {Quantity: 2}, {Quantity: 3}},
+					Tags:  []string{"new", "gift"},
+					Notes: map[string]string{},
+				},
+				giveGot: order{
+					Lines: []line{{Quantity: 1}, {Quantity: 2}, {Quantity: 4}},
+					Tags:  []string{"new"},
+					Notes: map[string]string{"courier": "leave at the door"},
+				},
+				want: "\t.Lines[2].Quantity: -3 +4\n\t.Tags[1]: -\"gift\"\n\t.Notes[\"courier\"]: +\"leave at the door\"\n",
+			},
+			{name: "writes a place at the roots without a path", giveWant: 1, giveGot: 2, want: "\t-1 +2\n"},
+			{
+				name:     "writes an int key bare",
+				giveWant: map[int]string{7: "a"},
+				giveGot:  map[int]string{7: "b"},
+				want:     "\t[7]: -\"a\" +\"b\"\n",
+			},
+			{
+				name:     "writes the types of two values whose texts are equal",
+				giveWant: 1,
+				giveGot:  int64(1),
+				want:     "\t-int(1) +int64(1)\n",
+			},
+			{
+				name:     "writes a value that contains itself with the cycle marked",
+				giveWant: []any{self},
+				giveGot:  []any{1},
+				want:     "\t[0]: -map[self:<cycle>] +1\n",
+			},
+			{
+				name:     "writes a value of an unexported field without its methods",
+				giveWant: tagged{t: 1},
+				giveGot:  tagged{t: 2},
+				want:     "\t.t: -1 +2\n",
+			},
+			{
+				name:     "writes a line diff of two texts of more than one line, three lines around each change",
+				giveWant: letters(-1),
+				giveGot:  letters(4),
+				want:     "\t  …\n\t  b\n\t  c\n\t  d\n\t- e\n\t+ E\n\t  f\n\t  g\n\t  h\n\t  …\n",
+			},
+			{
+				name:     "writes a line diff without a gap at a change near both ends",
+				giveWant: "a\nb",
+				giveGot:  "a\nc",
+				want:     "\t  a\n\t- b\n\t+ c\n",
+			},
+			{
+				name:     "writes the path of a line diff on a line of its own",
+				giveWant: struct{ Body string }{Body: "x\ny"},
+				giveGot:  struct{ Body string }{Body: "x\nz"},
+				want:     "\t.Body:\n\t  x\n\t- y\n\t+ z\n",
+			},
+			{
+				name:     "writes two texts of other types quoted",
+				giveWant: "a\nb",
+				giveGot:  body("a\nc"),
+				want:     "\t-\"a\\nb\" +\"a\\nc\"\n",
+			},
+		}
+		for _, tt := range diffs {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				got := matcher.Render(matcher.Failure{
+					Assertion: "equal",
+					Contract:  "the order is stored",
+					Detail:    map[string]any{"want": tt.giveWant, "got": tt.giveGot},
+				})
+				if want := "the order is stored: (-want +got)\n" + tt.want; got != want {
+					t.Fatalf("Render() = %q, want %q", got, want)
+				}
+			})
+		}
+
+		t.Run("writes … in place of the places past 64", func(t *testing.T) {
+			t.Parallel()
+
+			got := matcher.Render(matcher.Failure{
+				Assertion: "equal",
+				Contract:  "the counts match",
+				Detail:    map[string]any{"want": counting(0, 70), "got": counting(100, 70)},
+			})
+			lines := strings.Split(strings.TrimSuffix(got, "\n"), "\n")
+			if len(lines) != 66 || lines[64] != "\t[63]: -63 +163" || lines[65] != "\t…" {
+				t.Fatalf("Render() = %q, want the contract, 64 places and a mark", got)
 			}
 		})
 

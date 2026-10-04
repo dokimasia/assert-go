@@ -10,9 +10,6 @@ import (
 	"reflect"
 	"slices"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
-
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/literal"
@@ -184,9 +181,11 @@ func (c Case) checkCall(calls []call, aborting bool) error {
 // checkRecord returns how a record differs from the one that the case
 // states, or nil when it matches.
 //
-// A case states values as typed literals, so an int and a float of the
-// same rendering differ. The comparison is of the decoded value, because
-// the assertion reports a Go value and not a literal.
+// A case states values as typed literals, and a field of the record
+// matches when its value has the canonical text of the case's literal, so
+// an int and a float of the same rendering differ, and every NaN is one
+// value. The comparison uses no comparison of the module, because a
+// defective one could pass the cases that check it.
 func (c Case) checkRecord(f assert.Failure) error {
 	if f.Assertion != c.Assertion {
 		return c.differs(fault.New("the record is of the assertion %q, want %q", f.Assertion, c.Assertion))
@@ -200,22 +199,7 @@ func (c Case) checkRecord(f assert.Failure) error {
 		return c.differs(fault.New("the record states the fields %q, want %q", reported, declared), detailMember)
 	}
 
-	for name, raw := range c.Detail {
-		want, err := literal.Decode(raw)
-		if err != nil {
-			return fault.At(err, fault.Field(c.ID), fault.Field(detailMember), fault.Key(name))
-		}
-		held, ok := f.Detail[name]
-		if !ok {
-			return fault.At(fault.New("the record states no such field, want %+v", want),
-				fault.Field(c.ID), fault.Field(detailMember), fault.Key(name))
-		}
-		if !cmp.Equal(held, want, cmpopts.EquateNaNs()) {
-			return fault.At(fault.New("the field is %+v, want %+v", held, want),
-				fault.Field(c.ID), fault.Field(detailMember), fault.Key(name))
-		}
-	}
-	return nil
+	return compareDetail("the record", c.Detail, f.Detail, fault.Field(c.ID))
 }
 
 // differs returns f at the case's ID and at the members of the case that

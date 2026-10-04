@@ -77,9 +77,9 @@ this document applies to every package, the internal ones included.
 ## Mutation
 
 - `gremlins` mutates the code. The mutation stage of `ergon check`
-  requires a 100% score and 100% mutator coverage for `internal/matcher`
-  and `conformance`. The other packages are measured on demand, against
-  the same bar.
+  requires a 100% score and 100% mutator coverage for `internal/matcher`,
+  `internal/equality` and `conformance`. The other packages are measured
+  on demand, against the same bar.
 - A mutant under which every test passes is a missing assertion, or
   code whose behaviour no caller can observe. Add the assertion, or
   delete the code.
@@ -103,10 +103,10 @@ this document applies to every package, the internal ones included.
   `go test` enforces every ceiling without `-bench` and reports each one
   that a change breaks. It measures the same table in `Benchmark<Subject>`
   under the contract.
-- The tests of `internal/matcher` use the package `testing` alone. Its
-  benchmarks report allocations through `testing.B`, and its
-  `Test<Subject>Allocs` compares `testing.AllocsPerRun` with each
-  ceiling.
+- The tests of `internal/matcher` and `internal/equality` use the
+  package `testing` alone. Their benchmarks report allocations through
+  `testing.B`, and their `Test<Subject>Allocs` compares
+  `testing.AllocsPerRun` with each ceiling.
 - A ceiling is the count that `testing.AllocsPerRun` measures: 0 for a
   function that allocates nothing, and the measured count for any other.
   A ceiling that rises states why in the commit message.
@@ -124,9 +124,11 @@ this document applies to every package, the internal ones included.
 
 ## Verdicts
 
-- The tests of `internal/matcher` and the verdicts of `conformance` use
-  the package `testing` alone. A defective core could pass a test that
-  is written with itself.
+- The tests of `internal/matcher` and `internal/equality` and the
+  verdicts of `conformance` use the package `testing` alone. A defective
+  core could pass a test that is written with itself.
+- The verdicts of `conformance` and of `internal/matchertest` compare a
+  value with code of their own, and never with `internal/equality`.
 - Every other test uses this module's assertions.
 - A test compares the values that the module reports: a failure's
   record, a fault's fields, and a call record. A seat of

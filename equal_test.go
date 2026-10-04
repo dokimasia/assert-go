@@ -49,7 +49,7 @@ func BenchmarkEqual(b *testing.B) {
 // with its allocation ceiling, measured.
 func equalCases() []alloctest.Case {
 	return []alloctest.Case{
-		{Name: "Equal", Call: func(tb assert.TB) { assert.Equal(tb, 7, 7, allocContract) }, Allocs: 24},
-		{Name: "NotEqual", Call: func(tb assert.TB) { assert.NotEqual(tb, 7, 8, allocContract) }, Allocs: 24},
+		{Name: "Equal", Call: func(tb assert.TB) { assert.Equal(tb, 7, 7, allocContract) }},
+		{Name: "NotEqual", Call: func(tb assert.TB) { assert.NotEqual(tb, 7, 8, allocContract) }},
 	}
 }

@@ -3,14 +3,19 @@
 
 package matcher
 
-import "github.com/google/go-cmp/cmp"
+import (
+	"reflect"
+
+	"go.dokimi.dev/assert/internal/equality"
+)
 
 // Equal compares got against want and reports when they differ. It
 // reports nothing and returns when they are equal.
 //
 // The failure is msg, then a diff labelled -want +got. opts relax the
-// comparison for this call alone; see [Options] for the rules that
-// always apply.
+// comparison for this call alone. Two values are equal as the definition's
+// equal states: the same type and the same value, every field taking part,
+// and no method of either running.
 //
 //	matcher.Equal(seat, matcher.Fatal, store.Get(id), item,
 //	    "Get returns the stored item")
@@ -20,21 +25,19 @@ import "github.com/google/go-cmp/cmp"
 //
 // # Allocation contract
 //
-// A passing call on two ints allocates 24 times, in go-cmp and in the
-// options that [Options] builds.
+// A passing call on two ints below 256 allocates nothing.
 func Equal[T any](seat Seat, mode Mode, got, want T, msg string, opts ...Option) {
 	seat.Helper()
-	if diff := cmp.Diff(want, got, Options(opts...)...); diff != "" {
+	if !equal(got, want, rulesOf(opts)) {
 		Fail(seat, mode, "equal", msg, map[string]any{"want": want, "got": got})
 		return
 	}
 	Pass(seat, mode, "equal", msg)
 }
 
-// equal reports whether x and y are equal as [Equal] compares them under
-// opts.
-func equal(x, y any, opts []Option) bool {
-	return cmp.Equal(x, y, Options(opts...)...)
+// equal reports whether x and y are equal as [Equal] compares them under r.
+func equal(x, y any, r equality.Rules) bool {
+	return equality.Equal(reflect.ValueOf(x), reflect.ValueOf(y), r)
 }
 
 // NotEqual compares got against want and reports when they are equal.
@@ -49,10 +52,10 @@ func equal(x, y any, opts []Option) bool {
 //
 // # Allocation contract
 //
-// A passing call on two ints allocates 24 times, as [Equal] does.
+// A passing call on two ints below 256 allocates nothing.
 func NotEqual[T any](seat Seat, mode Mode, got, want T, msg string, opts ...Option) {
 	seat.Helper()
-	if cmp.Equal(got, want, Options(opts...)...) {
+	if equal(got, want, rulesOf(opts)) {
 		Fail(seat, mode, "not-equal", msg, map[string]any{"got": got})
 		return
 	}

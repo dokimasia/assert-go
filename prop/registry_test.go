@@ -4,6 +4,7 @@
 package prop_test
 
 import (
+	"math"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -80,6 +81,9 @@ type (
 	firstOf struct{}
 	// secondOf is a variant of duplicated.
 	secondOf struct{}
+	// reading is a float whose values RegisterValues states: +0, -0 and
+	// NaN.
+	reading float64
 )
 
 func (label) isParcel()        {}
@@ -222,6 +226,7 @@ var (
 func init() {
 	prop.Register(prop.Integer[die](3, 3))
 	prop.RegisterValues(gradeB, gradeA)
+	prop.RegisterValues(reading(0), reading(math.Copysign(0, -1)), reading(math.NaN()))
 	prop.RegisterValues(point{X: 1, Y: 2}, point{X: 3, Y: 4})
 	prop.RegisterVariants[parcel](label(""), letter{}, &crate{})
 	for _, tests := range [][]*registryCase{registerTests, registerValuesTests, registerVariantsTests} {
@@ -311,6 +316,14 @@ func TestRegistry(t *testing.T) {
 			choices, err := engine.Invert(engine.Generator[point](g), point{X: 3, Y: 4})
 			assert.NoError(t, err, "the value runs back")
 			assert.Equal(t, decodedBy(g, choices...), point{X: 3, Y: 4}, "the choices decode to the value")
+		})
+
+		t.Run("runs -0 back to its own choice, apart from +0", func(t *testing.T) {
+			t.Parallel()
+			g := prop.Of[reading]()
+			choices, err := engine.Invert(engine.Generator[reading](g), reading(math.Copysign(0, -1)))
+			assert.NoError(t, err, "-0 runs back")
+			assert.True(t, math.Signbit(float64(decodedBy(g, choices...))), "the choices decode to -0")
 		})
 
 		for _, tt := range registerValuesTests {

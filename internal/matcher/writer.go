@@ -5,13 +5,27 @@ package matcher
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
-	"github.com/google/go-cmp/cmp"
-
+	"go.dokimi.dev/assert/internal/align"
+	"go.dokimi.dev/assert/internal/equality"
 	"go.dokimi.dev/assert/internal/text"
 )
+
+// maxDifferences is the most places of a difference that the text of a
+// failure states.
+const maxDifferences = 64
+
+// contextLines is the number of unchanged lines that a line diff states
+// before and after each change.
+const contextLines = 3
+
+// gapMark replaces the places past maxDifferences, and the unchanged lines
+// of a line diff that no change is near.
+const gapMark = "…"
 
 // Writer turns the records and the faults of this module into the text that
 // a seat receives. Every text that the module sends to a seat comes from
@@ -60,12 +74,13 @@ type textWriter struct{}
 // Failure returns the registered sentence of the record's assertion, when
 // [RegisterSentence] registered one. For any other record without detail,
 // it returns the contract alone. For a mismatch of equal or of a golden
-// comparison, it returns the contract and a diff labelled -want +got.
-// Otherwise it returns the contract and each field of the detail with its
-// value, want before got and the rest in a fixed reading order, with a
-// field that the order does not name after them, alphabetically. A value
-// that contains itself, or that has more than 65,536 parts, states its
-// bounded text as the package text writes it.
+// comparison, it returns the contract and a diff labelled -want +got: each
+// place where want and got differ on a line of its own, at most 64 of
+// them. Otherwise it returns the contract and each field of the detail
+// with its value, want before got and the rest in a fixed reading order,
+// with a field that the order does not name after them, alphabetically. A
+// value that contains itself, or that has more than 65,536 parts, states
+// its bounded text as the package text writes it.
 func (textWriter) Failure(f Failure) string {
 	if sentence, ok := sentences[f.Assertion]; ok {
 		return sentence(f)
@@ -167,12 +182,17 @@ var diffed = map[string]bool{
 }
 
 // equalDiff returns the diff of want and got for an assertion in diffed,
-// and the empty string for anything else.
+// and the empty string for anything else, or for two values that differ
+// in no place.
 //
 // The record contains want and got under the definition's names, and the
-// text states the two as a structural diff, which a Go reader reads more
-// easily than two large structs side by side.
-func equalDiff(f Failure) (diff string) {
+// text states each place where they differ, which a Go reader reads more
+// easily than two large structs side by side. The places are those of the
+// default comparison: a record contains what the definition states, and an
+// option is no part of it. A relaxation only widens what counts as equal,
+// so the text can show a difference that the comparison ignored, and never
+// misses one that it counted.
+func equalDiff(f Failure) string {
 	if !diffed[f.Assertion] {
 		return ""
 	}
@@ -182,24 +202,141 @@ func equalDiff(f Failure) (diff string) {
 		return ""
 	}
 
-	// A diff explains a failure and does not decide one. When cmp cannot
-	// render it, the text states want and got as fields instead. cmp panics
-	// on a value it cannot walk, and that panic would end the test at its
-	// first failure.
-	defer func() {
-		if recover() != nil {
-			diff = ""
+	x, y := reflect.ValueOf(&want).Elem(), reflect.ValueOf(&got).Elem()
+	var b strings.Builder
+	for i, d := range equality.Diff(x, y, equality.Rules{}, maxDifferences+1) {
+		if i == maxDifferences {
+			b.WriteString("\t" + gapMark + "\n")
+			break
 		}
-	}()
+		writeDifference(&b, d)
+	}
+	return b.String()
+}
 
-	// The options the comparison itself used. Without the exporter cmp
-	// refuses any value with an unexported field, which is most of them,
-	// and this library states that unexported fields take part.
-	//
-	// The caller's relaxations are absent: a record contains what the
-	// standard states, and an option is not part of it. Each relaxation
-	// only widens what counts as equal, so a diff rendered without them
-	// can show a difference that the comparison ignored, and cannot miss
-	// one that it counted.
-	return cmp.Diff(want, got, Options()...)
+// writeDifference writes the line of one place where want and got differ:
+// its path, then the value of want after a - and the value of got after a
+// +, each of a side that has the place. Two values whose texts are equal
+// state their types. Two strings of one type of which one has more than
+// one line are a line diff instead.
+func writeDifference(b *strings.Builder, d equality.Difference) {
+	x, y := unwrapped(d.X), unwrapped(d.Y)
+	path := pathText(d.Path)
+	if multiline(x, y) {
+		writeLines(b, path, x.String(), y.String())
+		return
+	}
+
+	var xText, yText string
+	if x.IsValid() {
+		xText = valueText(x)
+	}
+	if y.IsValid() {
+		yText = valueText(y)
+	}
+	if x.IsValid() && y.IsValid() && xText == yText {
+		xText, yText = x.Type().String()+"("+xText+")", y.Type().String()+"("+yText+")"
+	}
+
+	b.WriteString("\t" + path)
+	if path != "" {
+		b.WriteString(": ")
+	}
+	if x.IsValid() {
+		b.WriteString("-" + xText)
+	}
+	if x.IsValid() && y.IsValid() {
+		b.WriteString(" ")
+	}
+	if y.IsValid() {
+		b.WriteString("+" + yText)
+	}
+	b.WriteString("\n")
+}
+
+// pathText returns the text of a path: a field as .Name, an element as [2],
+// and a key as its value's text in brackets, as ["gift"] or [7].
+func pathText(path []equality.Step) string {
+	var b strings.Builder
+	for _, s := range path {
+		if s.Field != "" {
+			b.WriteString("." + s.Field)
+			continue
+		}
+		if s.Key.IsValid() {
+			b.WriteString("[" + valueText(unwrapped(s.Key)) + "]")
+			continue
+		}
+		b.WriteString("[" + strconv.Itoa(s.Index) + "]")
+	}
+	return b.String()
+}
+
+// valueText returns the text of one value of a difference: a string
+// quoted, and any other value as the package text writes it under %+v, so
+// a value of an unexported field states no text of its methods.
+func valueText(v reflect.Value) string {
+	if v.Kind() == reflect.String {
+		return strconv.Quote(v.String())
+	}
+	return text.Sprintf("%+v", v)
+}
+
+// unwrapped returns the value inside v when v is an interface that is not
+// nil, and v otherwise.
+func unwrapped(v reflect.Value) reflect.Value {
+	if v.Kind() == reflect.Interface && !v.IsNil() {
+		return v.Elem()
+	}
+	return v
+}
+
+// multiline reports whether x and y are two strings of one type, of which
+// one has more than one line.
+func multiline(x, y reflect.Value) bool {
+	return x.Kind() == reflect.String && y.Kind() == reflect.String && x.Type() == y.Type() &&
+		(strings.Contains(x.String(), "\n") || strings.Contains(y.String(), "\n"))
+}
+
+// writeLines writes the line diff of the texts x and y at path: the path
+// on a line of its own when it has a step, then each line that only x has
+// after -, each line that only y has after +, and each unchanged line
+// within three lines of a change after two spaces, with … in place of the
+// unchanged lines between.
+func writeLines(b *strings.Builder, path, x, y string) {
+	if path != "" {
+		b.WriteString("\t" + path + ":\n")
+	}
+	xs, ys := strings.Split(x, "\n"), strings.Split(y, "\n")
+	edits := align.Edits(len(xs), len(ys), func(i, j int) bool { return xs[i] == ys[j] })
+	near := make([]bool, len(edits))
+	for k, e := range edits {
+		if e.Op != align.Keep {
+			for c := max(k-contextLines, 0); c <= min(k+contextLines, len(edits)-1); c++ {
+				near[c] = true
+			}
+		}
+	}
+	skipped := false
+	for k, e := range edits {
+		if !near[k] {
+			skipped = true
+			continue
+		}
+		if skipped {
+			b.WriteString("\t  " + gapMark + "\n")
+			skipped = false
+		}
+		switch e.Op {
+		case align.Delete:
+			b.WriteString("\t- " + xs[e.X] + "\n")
+		case align.Insert:
+			b.WriteString("\t+ " + ys[e.Y] + "\n")
+		default:
+			b.WriteString("\t  " + xs[e.X] + "\n")
+		}
+	}
+	if skipped {
+		b.WriteString("\t  " + gapMark + "\n")
+	}
 }

@@ -12,16 +12,17 @@ import "go.dokimi.dev/assert/internal/matcher"
 //   - Text contains text as a substring.
 //   - A slice or array contains an element that equals needle as [Equal]
 //     compares, so an int does not match a float.
-//   - A map contains needle as a key of the map's key type.
+//   - A map contains a key that equals needle as [Equal] compares, so a
+//     pointer key matches a needle whose target is equal.
 //
-// A haystack of any other type fails the assertion. opts relax the element
-// comparison for this call alone.
+// A haystack of any other type fails the assertion. opts relax the
+// comparison of the elements and of the keys for this call alone.
 //
 // # Allocation contract
 //
-// A passing call on text allocates nothing. A call on a slice or an array
-// compares its elements as [Equal] does: 76 allocations for a slice of
-// three ints whose last element is needle.
+// A passing call on text allocates nothing. A passing call on a slice of
+// three ints whose last element is needle allocates once: the interface of
+// the slice.
 func Contains(tb TB, haystack, needle any, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.Contains(tb, matcher.Fatal, haystack, needle, msg, opts...)
@@ -76,8 +77,8 @@ func ContainsInOrder(tb TB, got any, needles []string, msg string) {
 //
 // # Allocation contract
 //
-// A passing call on two slices of three ints allocates 120 times, in the
-// comparisons of their elements.
+// A passing call on two slices of three ints allocates twice: the interface
+// of each slice, through which it compares their elements.
 func Permutation[T any](tb TB, got, want []T, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.Permutation(tb, matcher.Fatal, got, want, msg, opts...)

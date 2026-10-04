@@ -20,11 +20,7 @@ supposed to be true rather than only what was observed:
 
 ```text
 Get returns the stored item: (-want +got)
-  store.Item{
-  	ID:   "abc",
-- 	Name: "widget",
-+ 	Name: "wigdet",
-  }
+	.Name: -"widget" +"wigdet"
 ```
 
 ## Install
@@ -33,7 +29,7 @@ Get returns the stored item: (-want +got)
 go get go.dokimi.dev/assert
 ```
 
-Requires Go 1.27. One dependency: `github.com/google/go-cmp`.
+Requires Go 1.27. No dependency outside the standard library.
 
 ## Two surfaces
 
@@ -72,6 +68,9 @@ stated instead:
 | NaN does not equal NaN | `EquateNaNs()` |
 | Floats compare exactly | `CloseTo` applies a tolerance |
 | Unexported fields take part | — |
+| No method of a value runs, so a type's `Equal` method does not decide | — |
+| A map key compares as any value compares | — |
+| Two functions are equal when they have the same code pointer, so two closures of one function literal are equal whatever they capture | — |
 | Values of different types never compare | — |
 
 The first is the one that catches people. `[]int(nil)` and `[]int{}`
@@ -236,7 +235,7 @@ variable states, and `Records` returns them.
 
 | Name | What it states |
 |---|---|
-| `Equal` | Structural equality. A null collection does not equal an empty one, no type coercion, NaN is unequal to itself, floats compare exactly and negative zero equals zero, cycles stop, functions compare by identity. |
+| `Equal` | Structural equality. A null collection does not equal an empty one, no type coercion, NaN is unequal to itself, floats compare exactly and negative zero equals zero, cycles stop, functions compare by their code pointers. |
 | `NotEqual` | Negation of equal. |
 | `True` | The condition holds. The failure carries the caller's message alone. |
 | `False` | The condition does not hold. |
@@ -250,7 +249,7 @@ variable states, and `Records` returns them.
 
 | Name | What it states |
 |---|---|
-| `Contains` | Text has the substring, a sequence has an element equal to the needle, or a map has the key. An element compares as `Equal` compares, so an int does not match a float. |
+| `Contains` | Text has the substring, a sequence has an element equal to the needle, or a map has a key equal to the needle. An element and a key compare as `Equal` compares, so an int does not match a float. |
 | `NotContains` | Negation of contains. |
 | `ContainsInOrder` | Text holds every needle, each after the previous one's match ends. |
 | `Permutation` | A slice contains the same elements as another, each as often, in any order. Elements compare as `Equal` compares them. |
@@ -367,7 +366,7 @@ holds itself to it on every run:
   number of arguments that the definition states. `NoGoroutineLeaks` is
   the one exception: it returns its check instead of taking the scope.
 - **Parity.** Both surfaces carry the same members.
-- **Meaning.** 170 corpus cases state what an assertion must report,
+- **Meaning.** 182 corpus cases state what an assertion must report,
   shared with every other implementation. Each case runs through every
   function and chain form of both surfaces. The record of a failing
   case must state the case's assertion and the message unchanged, and

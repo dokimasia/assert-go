@@ -165,11 +165,13 @@ func ListItems(v any) ([]any, bool) {
 	return items, true
 }
 
-// sameValue reports whether v is want. Two values of one type compare by
-// their canonical keys. A value of another type, such as one that a typed
-// literal decodes to, compares by its typed literal, as the definition
-// compares two literals.
-func sameValue(v, want any) bool {
+// SameValue reports whether v is want, as the definition compares generated
+// values: two values of one type by their type and value, with floats by
+// their bits, so -0 differs from +0 and every NaN is one value. A value of
+// another type, such as one that a typed literal decodes to, compares by its
+// typed literal, as the definition compares two literals. A value that
+// contains itself compares in finite time.
+func SameValue(v, want any) bool {
 	if reflect.TypeOf(v) == reflect.TypeOf(want) {
 		return canonicalKey(v) == canonicalKey(want)
 	}

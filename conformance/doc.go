@@ -73,8 +73,8 @@
 //
 // # Dependency position
 //
-// Imports the standard library, github.com/google/go-cmp, this module's
-// assert, expect and prop packages, the fault and literal packages, and the
+// Imports the standard library, this module's assert, expect and prop
+// packages, the fault and literal packages, and the
 // internal packages of the property engine: choice, coverage, engine,
 // matching, shape, store and token. Only tests import it. Besides its own
 // tests, the store tests of prop import it to compare the version of a

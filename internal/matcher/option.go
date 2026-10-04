@@ -3,12 +3,7 @@
 
 package matcher
 
-import (
-	"reflect"
-
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
-)
+import "go.dokimi.dev/assert/internal/equality"
 
 // Option relaxes one comparison rule for the call it is passed to.
 //
@@ -16,7 +11,7 @@ import (
 // and across goroutines. The order of options has no effect, and passing
 // one twice has the effect of passing it once: each sets an independent
 // flag.
-type Option func(*config)
+type Option func(equality.Rules) equality.Rules
 
 // FormSeal is the parameter type of the method that makes a type an
 // option of a property form. No package outside this module names it, so
@@ -31,15 +26,6 @@ type FormSeal struct{}
 // FormOption allocates nothing.
 func (Option) FormOption(FormSeal) {}
 
-// config is the relaxation set an [Option] list builds up. The zero
-// value applies no relaxation, which is the default comparison.
-type config struct {
-	// equateEmpty admits cmpopts.EquateEmpty.
-	equateEmpty bool
-	// equateNaNs admits cmpopts.EquateNaNs.
-	equateNaNs bool
-}
-
 // EquateEmpty makes a nil map or slice equal an empty one of the same
 // type.
 //
@@ -51,7 +37,10 @@ type config struct {
 //
 // EquateEmpty allocates nothing.
 func EquateEmpty() Option {
-	return func(c *config) { c.equateEmpty = true }
+	return func(r equality.Rules) equality.Rules {
+		r.EquateEmpty = true
+		return r
+	}
 }
 
 // EquateNaNs makes a NaN float equal another NaN of the same type.
@@ -63,58 +52,19 @@ func EquateEmpty() Option {
 //
 // EquateNaNs allocates nothing.
 func EquateNaNs() Option {
-	return func(c *config) { c.equateNaNs = true }
+	return func(r equality.Rules) equality.Rules {
+		r.EquateNaNs = true
+		return r
+	}
 }
 
-// Options returns the comparison options of one call, with opts applied
-// in order. Each call returns a new slice, which the caller may change.
-//
-// Two options always apply:
-//
-//   - [cmp.Exporter] admits unexported fields, so a struct compares on
-//     every field it contains. Go reads these without unsafe access.
-//   - A comparer compares two functions by code pointer. cmp reports
-//     two non-nil functions as unequal even when they are the same
-//     function, so this comparer adds comparison by identity.
-//
-// Every other rule is cmp's own: floats compare exactly, cycles
-// terminate, and values of different types never compare equal.
-//
-// # Allocation contract
-//
-// Options of one option allocates 9 times: the slice, the two options that
-// always apply, which it builds on every call, and the option of opts.
-func Options(opts ...Option) []cmp.Option {
-	var c config
+// rulesOf returns the rules of one call, with opts applied in order. Each
+// option takes and returns the rules by value, so building them allocates
+// nothing.
+func rulesOf(opts []Option) equality.Rules {
+	var r equality.Rules
 	for _, opt := range opts {
-		opt(&c)
+		r = opt(r)
 	}
-
-	out := []cmp.Option{
-		cmp.Exporter(func(reflect.Type) bool { return true }),
-		cmp.FilterValues(bothFuncs, cmp.Comparer(sameFunc)),
-	}
-	if c.equateEmpty {
-		out = append(out, cmpopts.EquateEmpty())
-	}
-	if c.equateNaNs {
-		out = append(out, cmpopts.EquateNaNs())
-	}
-	return out
-}
-
-// bothFuncs reports whether x and y are both non-nil functions, the only
-// pair that sameFunc compares. cmp's own default compares nil with nil
-// and nil with a non-nil function.
-func bothFuncs(x, y any) bool {
-	return x != nil && y != nil &&
-		reflect.TypeOf(x).Kind() == reflect.Func &&
-		reflect.TypeOf(y).Kind() == reflect.Func
-}
-
-// sameFunc reports whether x and y point at the same code. Two
-// closures over different variables share a code pointer, so sameFunc
-// compares the identity of the function, not of the closure.
-func sameFunc(x, y any) bool {
-	return reflect.ValueOf(x).Pointer() == reflect.ValueOf(y).Pointer()
+	return r
 }

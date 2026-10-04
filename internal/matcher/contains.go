@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/google/go-cmp/cmp"
+	"go.dokimi.dev/assert/internal/equality"
 )
 
 // Contains reports when haystack does not contain needle.
@@ -15,18 +15,20 @@ import (
 // What containing means depends on the haystack. Text contains text as
 // a substring. A slice or array contains an element that equals needle
 // as [Equal] compares under opts, so an int does not match a float. A
-// map contains needle as a key of the map's key type. A haystack of any
-// other type fails the assertion.
+// map contains a key that equals needle as [Equal] compares under opts,
+// so a pointer key matches a needle of an equal target, and a NaN key
+// matches a NaN needle under [EquateNaNs] alone. A haystack of any other
+// type fails the assertion.
 //
 // # Allocation contract
 //
-// A passing call on text allocates nothing. A call on a slice or an array
-// compares its elements as [Equal] does: 76 allocations for a slice of
-// three ints whose last element is needle.
+// A passing call on text allocates nothing. A passing call on a slice of
+// three ints whose last element is needle allocates once: the interface of
+// the slice.
 func Contains(seat Seat, mode Mode, haystack, needle any, msg string, opts ...Option) {
 	seat.Helper()
 
-	found, supported := contained(haystack, needle, opts...)
+	found, supported := contained(haystack, needle, rulesOf(opts))
 	if !supported {
 		Fail(seat, mode, "contains", msg, map[string]any{"haystack": haystack, "needle": needle})
 		return
@@ -48,7 +50,7 @@ func Contains(seat Seat, mode Mode, haystack, needle any, msg string, opts ...Op
 func NotContains(seat Seat, mode Mode, haystack, needle any, msg string, opts ...Option) {
 	seat.Helper()
 
-	found, supported := contained(haystack, needle, opts...)
+	found, supported := contained(haystack, needle, rulesOf(opts))
 	if !supported {
 		Fail(seat, mode, "not-contains", msg, map[string]any{"haystack": haystack, "needle": needle})
 		return
@@ -108,12 +110,12 @@ func ContainsInOrder(seat Seat, mode Mode, haystack any, needles []string, msg s
 //
 // # Allocation contract
 //
-// A passing call on two slices of three ints allocates 120 times, in the
-// comparisons of their elements.
+// A passing call on two slices of three ints allocates twice: the interface
+// of each slice, through which it compares their elements.
 func Permutation[T any](seat Seat, mode Mode, got, want []T, msg string, opts ...Option) {
 	seat.Helper()
 
-	if !permuted(got, want, opts) {
+	if !permuted(got, want, rulesOf(opts)) {
 		Fail(seat, mode, "permutation", msg, map[string]any{"want": want, "got": got})
 		return
 	}
@@ -121,22 +123,23 @@ func Permutation[T any](seat Seat, mode Mode, got, want []T, msg string, opts ..
 }
 
 // permuted reports whether got and want contain the same elements, each as
-// often. Equal is an equivalence on the values that equal themselves, so
-// matching each element of want with the first unmatched equal element of
-// got never takes a match that another element needs.
-func permuted[T any](got, want []T, opts []Option) bool {
+// often, under r. Equal is an equivalence on the values that equal
+// themselves, so matching each element of want with the first unmatched
+// equal element of got never takes a match that another element needs.
+func permuted[T any](got, want []T, r equality.Rules) bool {
 	if len(got) != len(want) {
 		return false
 	}
+	g, w := reflect.ValueOf(got), reflect.ValueOf(want)
 	if len(got) == 0 {
-		return equal(got, want, opts)
+		return equality.Equal(g, w, r)
 	}
 
 	matched := make([]bool, len(got))
-	for _, w := range want {
+	for j := range want {
 		at := -1
 		for i := range got {
-			if !matched[i] && equal(got[i], w, opts) {
+			if !matched[i] && equality.Equal(g.Index(i), w.Index(j), r) {
 				at = i
 				break
 			}
@@ -149,13 +152,14 @@ func permuted[T any](got, want []T, opts []Option) bool {
 	return true
 }
 
-// contained reports whether haystack contains needle, and whether the
-// question applies to haystack's type at all.
+// contained reports whether haystack contains needle under r, and whether
+// the question applies to haystack's type at all.
 //
 // Text contains text as a substring. A slice or array contains an
-// element that is equal under opts. A map contains a key. A nil haystack
-// has the kind [reflect.Invalid], and the question does not apply to it.
-func contained(haystack, needle any, opts ...Option) (found, supported bool) {
+// element that is equal under r. A map contains a key that is equal under
+// r. A nil haystack has the kind [reflect.Invalid], and the question does
+// not apply to it.
+func contained(haystack, needle any, r equality.Rules) (found, supported bool) {
 	if text, ok := textOf(haystack); ok {
 		sub, ok := textOf(needle)
 		if !ok {
@@ -164,21 +168,17 @@ func contained(haystack, needle any, opts ...Option) (found, supported bool) {
 		return strings.Contains(text, sub), true
 	}
 
-	rv := reflect.ValueOf(haystack)
+	rv, key := reflect.ValueOf(haystack), reflect.ValueOf(needle)
 	switch rv.Kind() {
 	case reflect.Slice, reflect.Array:
 		for i := range rv.Len() {
-			if cmp.Equal(rv.Index(i).Interface(), needle, Options(opts...)...) {
+			if equality.Equal(rv.Index(i), key, r) {
 				return true, true
 			}
 		}
 		return false, true
 	case reflect.Map:
-		key := reflect.ValueOf(needle)
-		if !key.IsValid() || !key.Type().AssignableTo(rv.Type().Key()) {
-			return false, true
-		}
-		return rv.MapIndex(key).IsValid(), true
+		return equality.HasKey(rv, key, r), true
 	default:
 		return false, false
 	}

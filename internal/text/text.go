@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"go.dokimi.dev/assert/internal/cycle"
 )
 
 // maxParts is the most values that the walk of one argument visits. It
@@ -19,9 +21,9 @@ const maxParts = 65536
 
 // The marks of the structural text.
 const (
-	// cycleMark stands for a map or a slice inside itself.
+	// cycleMark replaces a map or a slice inside itself.
 	cycleMark = "<cycle>"
-	// cutMark stands for the values past maxParts.
+	// cutMark replaces the values past maxParts.
 	cutMark = "…"
 	// nilMark is the text of nil, as fmt writes it.
 	nilMark = "<nil>"
@@ -35,6 +37,9 @@ const (
 // the layout of fmt's %+v verb, with <cycle> where the walk meets a map or a
 // slice inside itself, and … in place of the values past the 65,536th. The
 // structural text calls no method of the value.
+//
+// An argument of type [reflect.Value] is the value inside it, as fmt takes
+// it, so a value of an unexported field is written without its methods.
 //
 // # Allocation contract
 //
@@ -91,7 +96,7 @@ func bounded(v any) bool {
 		return true
 	}
 	var w walk
-	w.visit(reflect.ValueOf(v), 0)
+	w.visit(valueOf(v), 0)
 	return !w.cycled && w.parts <= maxParts
 }
 
@@ -99,29 +104,30 @@ func bounded(v any) bool {
 func structural(v any) structured {
 	var b strings.Builder
 	w := walk{out: &b}
-	w.visit(reflect.ValueOf(v), 0)
+	w.visit(valueOf(v), 0)
 	return structured(b.String())
+}
+
+// valueOf returns the value of an argument that fmt writes: the value inside
+// a reflect.Value, and the argument itself for any other type.
+func valueOf(arg any) reflect.Value {
+	if v, ok := arg.(reflect.Value); ok {
+		return v
+	}
+	return reflect.ValueOf(arg)
 }
 
 // walk is one walk of a value's parts, in the order fmt visits them.
 type walk struct {
 	// parts counts the values visited.
 	parts int
-	// inside are the maps and slices that contain the value being visited.
-	inside []reference
+	// path are the maps and slices that contain the value being visited.
+	path cycle.Path
 	// cycled reports that the walk met a map or a slice inside itself.
 	cycled bool
 	// out receives the structural text, and is nil for a walk that checks
 	// the value alone and stops at its first cycle or past maxParts.
 	out *strings.Builder
-}
-
-// reference is one map or slice: its type, where its data is, and for a
-// slice its length.
-type reference struct {
-	typ  reflect.Type
-	data uintptr
-	len  int
 }
 
 // halted reports whether the walk visits nothing more: it passed maxParts,
@@ -138,7 +144,8 @@ func (w *walk) write(s string) {
 }
 
 // visit walks v at depth, the number of values that contain it, as fmt
-// walks it. v is valid, because a walk starts at an argument other than nil.
+// walks it. A walk that writes starts at a valid value, because the walk
+// that checks counts the invalid value of a reflect.Value as one part.
 func (w *walk) visit(v reflect.Value, depth int) {
 	if w.halted() {
 		return
@@ -216,10 +223,10 @@ func (w *walk) mapping(v reflect.Value, depth int) {
 			return
 		}
 	}
-	if !w.enter(reference{typ: v.Type(), data: v.Pointer()}) {
+	if !w.enter(v) {
 		return
 	}
-	defer w.leave()
+	defer w.path.Leave()
 	if w.out == nil {
 		for it := v.MapRange(); it.Next() && !w.halted(); {
 			w.visit(it.Key(), depth+1)
@@ -261,10 +268,10 @@ func (w *walk) list(v reflect.Value, depth int) {
 		}
 	}
 	if v.Kind() == reflect.Slice {
-		if !w.enter(reference{typ: v.Type(), data: v.Pointer(), len: v.Len()}) {
+		if !w.enter(v) {
 			return
 		}
-		defer w.leave()
+		defer w.path.Leave()
 	}
 	w.write("[")
 	for i := range v.Len() {
@@ -308,22 +315,16 @@ func (w *walk) scalar(v reflect.Value) {
 	}
 }
 
-// enter adds a map or a slice to those that contain the walk, and reports
-// whether it was not among them already. A walk that meets one inside
+// enter adds the map or the slice v to the path of the walk, and reports
+// whether the path did not contain it already. A walk that meets one inside
 // itself marks the cycle and does not walk it again.
-func (w *walk) enter(r reference) bool {
-	if slices.Contains(w.inside, r) {
+func (w *walk) enter(v reflect.Value) bool {
+	if _, entered := w.path.Enter(v); !entered {
 		w.cycled = true
 		w.write(cycleMark)
 		return false
 	}
-	w.inside = append(w.inside, r)
 	return true
-}
-
-// leave removes the map or the slice that the walk entered last.
-func (w *walk) leave() {
-	w.inside = w.inside[:len(w.inside)-1]
 }
 
 // flatParts returns the parts that the walk visits in a value of type t

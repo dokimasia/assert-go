@@ -19,12 +19,16 @@
 //
 // # Comparison rules
 //
+// Every assertion that compares values compares them as internal/equality
+// does:
+//
 //   - A nil collection does not equal an empty one. [EquateEmpty] reverses this.
 //   - NaN does not equal NaN. [EquateNaNs] reverses this.
 //   - Negative zero equals positive zero, as IEEE 754 states.
-//   - Unexported fields take part.
-//   - Two references to one function are equal, and two different
-//     functions are not.
+//   - Unexported fields take part, and no method of a value runs.
+//   - A map key compares as any value compares.
+//   - Two functions are equal when they have the same code pointer, so two
+//     closures of one function literal are equal whatever they capture.
 //
 // # Allocation counts
 //
@@ -41,6 +45,11 @@
 // allocates its record and its text as well, and a recorded call
 // allocates its call record.
 //
+// A function that compares values builds the interface of each value that
+// it compares. Go builds the interface of a pointer and of an integer below
+// 256 without allocating, and allocates one for most other values. A
+// contract states the count of the values that it names.
+//
 // A count also leaves out the interface that the call site builds for an
 // argument of type any. A function that reports the argument in its
 // failure, such as [CloseTo] for got, lets the argument escape. Its call
@@ -49,8 +58,9 @@
 //
 // # Dependency position
 //
-// Imports github.com/google/go-cmp/cmp, its cmpopts subpackage, the
-// standard library, testing included, and five packages of this module:
+// Imports the standard library, testing included, and seven packages of
+// this module: internal/equality for every comparison of values and the
+// places of a difference, internal/align for the line diff of two texts,
 // internal/fault for the faults it reports, internal/literal for the typed
 // literals of a recorded failure's detail, internal/record for the call
 // records, internal/text for the text of a detail's values, and

@@ -4,12 +4,12 @@
 package matchertest_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
-
 	"go.dokimi.dev/assert/internal/childtest"
+	"go.dokimi.dev/assert/internal/equality"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
@@ -91,7 +91,12 @@ func report(s *matchertest.Seat, assertion, msg string, detail map[string]any) {
 	s.Report(matcher.Failure{Assertion: assertion, Contract: msg, Detail: detail}, true)
 }
 
-// same reports whether x and y are equal under opts.
+// same reports whether x and y are equal under opts, as the assertions of
+// internal/matcher compare them.
 func same(x, y any, opts []matcher.Option) bool {
-	return cmp.Equal(x, y, matcher.Options(opts...)...)
+	var r equality.Rules
+	for _, opt := range opts {
+		r = opt(r)
+	}
+	return equality.Equal(reflect.ValueOf(x), reflect.ValueOf(y), r)
 }

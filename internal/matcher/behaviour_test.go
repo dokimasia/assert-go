@@ -215,7 +215,7 @@ func behaviourCases() []allocCase {
 		{name: "CompletesWithin", allocs: 14, call: func(seat matcher.Seat) {
 			matcher.CompletesWithin(seat, matcher.Fatal, time.Minute, quick, allocContract)
 		}},
-		{name: "Pure", allocs: 24, call: func(seat matcher.Seat) {
+		{name: "Pure", call: func(seat matcher.Seat) {
 			matcher.Pure(seat, matcher.Fatal, observe, func() {}, allocContract)
 		}},
 		{name: "NilContextSafe", call: func(seat matcher.Seat) {

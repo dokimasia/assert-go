@@ -76,7 +76,7 @@ func containsCases() []alloctest.Case {
 		{
 			Name:   "Contains of a slice",
 			Call:   func(tb assert.TB) { expect.Contains(tb, got, 3, allocContract) },
-			Allocs: 76,
+			Allocs: 1,
 		},
 		{Name: "NotContains", Call: func(tb assert.TB) {
 			expect.NotContains(tb, "a cart of three items", "truck", allocContract)
@@ -90,7 +90,7 @@ func containsCases() []alloctest.Case {
 		{
 			Name:   "Permutation",
 			Call:   func(tb assert.TB) { expect.Permutation(tb, got, want, allocContract) },
-			Allocs: 120,
+			Allocs: 2,
 		},
 	}
 }

@@ -273,7 +273,7 @@ func Just[T any](value T) Generator[T] {
 		return value
 	}
 	return NewInvertible(justID, decode, func(v any) ([]Step, T, error) {
-		if !sameValue(v, value) {
+		if !SameValue(v, value) {
 			return nil, value, uninvertible("%v is not %v", v, value)
 		}
 		return nil, value, nil

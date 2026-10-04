@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -157,6 +158,24 @@ func TestStore(t *testing.T) {
 			expectOnlyFault(t, seat.Faults(), decodedFault(dir, moved))
 		})
 
+		t.Run("notes the fault of a stored -0 whose case decodes to +0", func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			negativeZero, _ := literal.Encode(math.Copysign(0, -1))
+			signed := store.Entry{
+				Definition:     "1.2.0",
+				Property:       contract,
+				Identity:       store.Identity{Assertion: big, Contract: fits},
+				Choices:        []choice.Choice{floating(0)},
+				Counterexample: []store.Draw{{Label: drawn, Value: negativeZero}},
+				Found:          earlier,
+			}
+			save(t, dir, signed)
+			seat := newTestSeat(t.Name())
+			prop.ForAll(seat, contract, failsOnFloat, prop.Seed(7), prop.Store(dir))
+			expectOnlyFault(t, seat.Faults(), decodedFault(dir, signed))
+		})
+
 		tests := []struct {
 			name    string
 			changed func(*store.Entry)
@@ -194,6 +213,9 @@ func TestStore(t *testing.T) {
 			}},
 			{name: "notes the fault of another number of stored draws", changed: func(e *store.Entry) {
 				e.Counterexample = append(e.Counterexample, store.Draw{Label: drawn})
+			}},
+			{name: "notes the fault of a stored value that is no typed literal", changed: func(e *store.Entry) {
+				e.Counterexample[0].Value = json.RawMessage(`{"type":"int","value":"950"}`)
 			}},
 		}
 		for _, tt := range differing {
@@ -426,6 +448,13 @@ func detailOfOn(seat *testSeat, body func(*prop.Case), opts ...prop.Option) map[
 		return nil
 	}
 	return records[0].Detail
+}
+
+// failsOnFloat is the body that draws a float in [-1, 1] and fails with the
+// identity of [failsFrom].
+func failsOnFloat(c *prop.Case) {
+	c.Draw(prop.Float(-1.0, 1.0), drawn)
+	c.Report(assert.Failure{Assertion: big, Contract: fits}, true)
 }
 
 // decodedFault returns the fault of ForAll at the file of e in the store

@@ -209,7 +209,7 @@ func TestCorpus(t *testing.T) {
 					assert.Failure{Assertion: "equal", Contract: builtID, Detail: map[string]any{"got": 2}},
 				),
 				wantPath:   atDetail("want"),
-				wantReason: "the record states no such field, want 1",
+				wantReason: `the record states no such field, want {"type":"int","value":1}`,
 			},
 			{
 				name: "returns a fault at the field for a detail field of another value",
@@ -221,7 +221,7 @@ func TestCorpus(t *testing.T) {
 					assert.Failure{Assertion: "equal", Contract: builtID, Detail: map[string]any{"want": 9}},
 				),
 				wantPath:   atDetail("want"),
-				wantReason: "the field is 9, want 1",
+				wantReason: `the field is int:9, want {"type":"int","value":1}`,
 			},
 			{
 				name:       "returns a fault for a recorder without a call record",

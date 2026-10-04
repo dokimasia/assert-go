@@ -35,6 +35,10 @@ const (
 	// list, and a copy of each element that reflect boxes, with the
 	// interface of the slice it reads.
 	listItemsAllocs = 4
+	// sameValueAllocs are the allocations of SameValue of two lists of two
+	// integers: the interfaces of the two lists, and for the canonical key of
+	// each the growth of its bytes, the path that it enters and its text.
+	sameValueAllocs = 12
 )
 
 // point is a struct whose typed literal is a map of its fields.
@@ -831,6 +835,54 @@ func TestInverseParts(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("SameValue", func(t *testing.T) {
+		t.Parallel()
+
+		selfList := []any{nil}
+		selfList[0] = selfList
+		otherSelfList := []any{nil}
+		otherSelfList[0] = otherSelfList
+		tests := []struct {
+			name string
+			give any
+			want any
+			same bool
+		}{
+			{name: "reports true for two equal integers", give: 7, want: 7, same: true},
+			{name: "keeps -0 apart from +0", give: math.Copysign(0, -1), want: 0.0},
+			{
+				name: "reports two NaNs with other payloads as one value",
+				give: math.NaN(),
+				want: math.Float64frombits(0x7FF8000000000001),
+				same: true,
+			},
+			{
+				name: "compares a value of another type by its typed literal",
+				give: int8(3),
+				want: 3,
+				same: true,
+			},
+			{name: "reports false for a value of another type without a typed literal", give: make(chan int), want: 1},
+			{
+				name: "reports true for two lists that contain themselves",
+				give: selfList,
+				want: otherSelfList,
+				same: true,
+			},
+			{
+				name: "keeps a list that contains itself apart from a list that contains an empty list",
+				give: selfList,
+				want: []any{[]any{}},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				assert.Equal(t, engine.SameValue(tt.give, tt.want), tt.same, "whether the values are one value")
+			})
+		}
+	})
 }
 
 // TestInverseAllocs checks the allocation ceiling of Invert of a digit,
@@ -855,6 +907,8 @@ func TestInverseAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = engine.Absent(pair) }, 0, "Absent allocates nothing")
 	assert.MaxAllocs(t, func() { _, _ = engine.ListItems(pair) }, listItemsAllocs, "ListItems allocates its elements")
 	assert.MaxAllocs(t, func() { _, _ = engine.IntegerValue(pair[0]) }, 0, "IntegerValue allocates nothing")
+	assert.MaxAllocs(t, func() { _ = engine.SameValue(pair, pair) }, sameValueAllocs,
+		"SameValue allocates the canonical key of each value")
 }
 
 // BenchmarkInverse measures Invert of a digit, and the parts of an inverse.
@@ -955,6 +1009,17 @@ func BenchmarkInverse(b *testing.B) {
 			got, _ = engine.IntegerValue(7)
 		}
 		assert.Equal(b, got, choice.UintOf(7), "the integer")
+	})
+
+	b.Run("SameValue", func(b *testing.B) {
+		var got bool
+		pair := []int{1, 2}
+		c := bench.Start(b).MaxAllocs(sameValueAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.SameValue(pair, pair)
+		}
+		assert.True(b, got, "a list is itself")
 	})
 }
 

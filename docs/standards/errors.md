@@ -133,8 +133,7 @@ type Error struct {
   trigger such a panic.
 - No other code panics on purpose.
 - A `recover` exists only where a panic is what the code observes: an
-  assertion about panics, the end of a property's case, or a dependency
-  that panics on a value it cannot handle, as `cmp.Diff` does.
+  assertion about panics, or the end of a property's case.
 
 ## Writing
 

@@ -248,10 +248,13 @@ checks:
   mutation:
     # Per-layer thresholds. An empty list short-circuits the check.
     #
-    # The tests of the assertion core and of the conformance package kill
-    # every mutant that gremlins makes in them.
+    # The tests of the assertion core, of the comparison of values and of
+    # the conformance package kill every mutant that gremlins makes in them.
     packages:
       - path: internal/matcher/...
+        score: 100
+        coverage: 100
+      - path: internal/equality/...
         score: 100
         coverage: 100
       - path: conformance/...

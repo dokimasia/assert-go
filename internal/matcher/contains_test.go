@@ -69,7 +69,7 @@ func containsCases() []allocCase {
 		{name: "Contains", call: func(seat matcher.Seat) {
 			matcher.Contains(seat, matcher.Fatal, "a cart of three items", "cart", allocContract)
 		}},
-		{name: "Contains of a slice", allocs: 76, call: func(seat matcher.Seat) {
+		{name: "Contains of a slice", allocs: 1, call: func(seat matcher.Seat) {
 			matcher.Contains(seat, matcher.Fatal, got, 3, allocContract)
 		}},
 		{name: "ContainsInOrder of bytes", allocs: 2, call: func(seat matcher.Seat) {
@@ -81,7 +81,7 @@ func containsCases() []allocCase {
 		{name: "ContainsInOrder", call: func(seat matcher.Seat) {
 			matcher.ContainsInOrder(seat, matcher.Fatal, "a cart of three items", needles, allocContract)
 		}},
-		{name: "Permutation", allocs: 120, call: func(seat matcher.Seat) {
+		{name: "Permutation", allocs: 2, call: func(seat matcher.Seat) {
 			matcher.Permutation(seat, matcher.Fatal, got, want, allocContract)
 		}},
 	}

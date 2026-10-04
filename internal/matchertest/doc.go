@@ -32,8 +32,8 @@
 //
 // # Dependency position
 //
-// Imports github.com/google/go-cmp/cmp and its cmpopts subpackage,
-// internal/matcher for the failure record, the writer's text of a fault
-// and the allocation flag, and the standard library. It imports no
-// surface, so every surface can import it.
+// Imports internal/matcher for the failure record, the writer's text of a
+// fault and the allocation flag, and the standard library. It compares a
+// record's detail with a comparison of its own, and imports no surface, so
+// every surface can import it.
 package matchertest

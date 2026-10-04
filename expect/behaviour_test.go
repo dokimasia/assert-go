@@ -93,7 +93,7 @@ func behaviourCases() []alloctest.Case {
 		{Name: "CompletesWithin", Allocs: 14, Call: func(tb assert.TB) {
 			expect.CompletesWithin(tb, time.Minute, quick, allocContract)
 		}},
-		{Name: "Pure", Call: func(tb assert.TB) { expect.Pure(tb, observe, func() {}, allocContract) }, Allocs: 24},
+		{Name: "Pure", Call: func(tb assert.TB) { expect.Pure(tb, observe, func() {}, allocContract) }},
 		{Name: "NilContextSafe", Call: func(tb assert.TB) { expect.NilContextSafe(tb, quick, allocContract) }},
 	}
 }

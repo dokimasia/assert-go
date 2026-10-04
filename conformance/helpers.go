@@ -5,6 +5,8 @@ package conformance
 
 import (
 	"encoding/json"
+	"maps"
+	"slices"
 	"strconv"
 
 	"go.dokimi.dev/assert"
@@ -81,6 +83,31 @@ func sameValue(got any, want json.RawMessage) (bool, error) {
 		return false, err
 	}
 	return literal.Canonical(got) == literal.Canonical(w), nil
+}
+
+// compareDetail returns how reported, the detail of a failure, differs
+// from stated, the fields that a vector states as typed literals, or nil
+// when each stated field has the stated value. whose names what reported
+// the detail, as "the record". A fault is at the stated field below the
+// segments at, in the order of the fields' names.
+func compareDetail(
+	whose string, stated map[string]json.RawMessage, reported map[string]any, at ...fault.Segment,
+) error {
+	for _, name := range slices.Sorted(maps.Keys(stated)) {
+		path := append(slices.Clip(at), fault.Field(detailMember), fault.Key(name))
+		got, ok := reported[name]
+		if !ok {
+			return fault.At(fault.New("%s states no such field, want %s", whose, stated[name]), path...)
+		}
+		same, err := sameValue(got, stated[name])
+		if err != nil {
+			return fault.At(err, path...)
+		}
+		if !same {
+			return fault.At(fault.New("the field is %s, want %s", literal.Canonical(got), stated[name]), path...)
+		}
+	}
+	return nil
 }
 
 // jsonOf returns the JSON text of v, for the reason of a fault, and the

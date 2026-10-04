@@ -161,28 +161,28 @@ func relationCases() []allocCase {
 	closes := func() error { return nil }
 	refuses := func() error { return errClosed }
 	return []allocCase{
-		{name: "Idempotent", allocs: 24, call: func(seat matcher.Seat) {
+		{name: "Idempotent", call: func(seat matcher.Seat) {
 			matcher.Idempotent(seat, matcher.Fatal, set, 1, read, allocContract)
 		}},
 		{name: "Accumulates", call: func(seat matcher.Seat) {
 			matcher.Accumulates(seat, matcher.Fatal, increment, 1, read, allocContract)
 		}},
-		{name: "Deterministic", allocs: 744, call: func(seat matcher.Seat) {
+		{name: "Deterministic", call: func(seat matcher.Seat) {
 			matcher.Deterministic(seat, matcher.Fatal, double, 3, allocContract)
 		}},
-		{name: "Commutative", allocs: 24, call: func(seat matcher.Seat) {
+		{name: "Commutative", call: func(seat matcher.Seat) {
 			matcher.Commutative(seat, matcher.Fatal, add, 2, 3, allocContract)
 		}},
-		{name: "Associative", allocs: 24, call: func(seat matcher.Seat) {
+		{name: "Associative", call: func(seat matcher.Seat) {
 			matcher.Associative(seat, matcher.Fatal, add, 1, 2, 3, allocContract)
 		}},
-		{name: "RoundTrip", allocs: 24, call: func(seat matcher.Seat) {
+		{name: "RoundTrip", call: func(seat matcher.Seat) {
 			matcher.RoundTrip(seat, matcher.Fatal, format, strconv.Atoi, 42, allocContract)
 		}},
-		{name: "StableOrder", allocs: 2852, call: func(seat matcher.Seat) {
+		{name: "StableOrder", allocs: 62, call: func(seat matcher.Seat) {
 			matcher.StableOrder(seat, matcher.Fatal, listed, allocContract)
 		}},
-		{name: "NoDuplicates", allocs: 72, call: func(seat matcher.Seat) {
+		{name: "NoDuplicates", allocs: 1, call: func(seat matcher.Seat) {
 			matcher.NoDuplicates(seat, matcher.Fatal, listed, allocContract)
 		}},
 		{name: "Monotonic", call: func(seat matcher.Seat) {
@@ -191,7 +191,7 @@ func relationCases() []allocCase {
 		{name: "Total", call: func(seat matcher.Seat) {
 			matcher.Total(seat, matcher.Fatal, accepts, items, allocContract)
 		}},
-		{name: "NotPure", allocs: 26, call: func(seat matcher.Seat) {
+		{name: "NotPure", allocs: 2, call: func(seat matcher.Seat) {
 			matcher.NotPure(seat, matcher.Fatal, read, func() { state++ }, allocContract)
 		}},
 		{name: "FailsAfterClose", call: func(seat matcher.Seat) {

@@ -55,8 +55,8 @@ func That[T any](tb assert.TB, got T) *Assertion[T] {
 //
 // # Allocation contract
 //
-// A passing call on a chain of an int allocates 24 times, as [Equal]
-// does.
+// A passing call on a chain of an int below 256 allocates nothing, as
+// [Equal] does.
 func (a *Assertion[T]) Equal(want T, msg string, opts ...Option) *Assertion[T] {
 	a.tb.Helper()
 	matcher.Equal(a.tb, matcher.Soft, a.got, want, msg, opts...)
@@ -70,8 +70,8 @@ func (a *Assertion[T]) Equal(want T, msg string, opts ...Option) *Assertion[T] {
 //
 // # Allocation contract
 //
-// A passing call on a chain of an int allocates 24 times, as [NotEqual]
-// does.
+// A passing call on a chain of an int below 256 allocates nothing, as
+// [NotEqual] does.
 func (a *Assertion[T]) NotEqual(want T, msg string, opts ...Option) *Assertion[T] {
 	a.tb.Helper()
 	matcher.NotEqual(a.tb, matcher.Soft, a.got, want, msg, opts...)

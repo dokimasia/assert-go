@@ -91,6 +91,6 @@
 // # Dependency position
 //
 // Imports the root package of this module, its internal matcher, fault,
-// literal and record packages, its choice, random, alphabet, token, coverage
-// and tree packages, and the standard library.
+// literal, record and cycle packages, its choice, random, alphabet, token,
+// coverage and tree packages, and the standard library.
 package engine

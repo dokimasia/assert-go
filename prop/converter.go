@@ -707,8 +707,10 @@ func registeredNeutral(cases []variantCase, iface reflect.Type, src reflect.Valu
 
 // literalConverter returns the converter of a literal shape: from the
 // neutral value of one of decoded, the values that its typed literals decode
-// to, to the Go value at its index in values, and back. A value that is
-// none of values passes unchanged, for the shape's inverse to refuse.
+// to, to the Go value at its index in values, and back. A Go value matches
+// a value of values as the property engine compares generated values, so
+// -0 matches -0 and not +0. A value that is none of values passes
+// unchanged, for the shape's inverse to refuse.
 func literalConverter(values []reflect.Value, decoded []any) converter {
 	keys := make([]string, len(decoded))
 	for i, v := range decoded {
@@ -724,7 +726,7 @@ func literalConverter(values []reflect.Value, decoded []any) converter {
 		neutral: func(src reflect.Value) (any, error) {
 			given := unwrapped(src)
 			i := slices.IndexFunc(values, func(value reflect.Value) bool {
-				return reflect.DeepEqual(given, unwrapped(value))
+				return engine.SameValue(given, unwrapped(value))
 			})
 			if i < 0 {
 				return unchanged(src)

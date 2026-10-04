@@ -165,31 +165,19 @@ func relationCases() []alloctest.Case {
 	closes := func() error { return nil }
 	refuses := func() error { return errClosed }
 	return []alloctest.Case{
-		{
-			Name:   "Idempotent",
-			Call:   func(tb assert.TB) { expect.Idempotent(tb, set, 1, read, allocContract) },
-			Allocs: 24,
-		},
+		{Name: "Idempotent", Call: func(tb assert.TB) { expect.Idempotent(tb, set, 1, read, allocContract) }},
 		{Name: "Accumulates", Call: func(tb assert.TB) { expect.Accumulates(tb, increment, 1, read, allocContract) }},
-		{Name: "Deterministic", Allocs: 744, Call: func(tb assert.TB) {
-			expect.Deterministic(tb, double, 3, allocContract)
-		}},
-		{
-			Name:   "Commutative",
-			Call:   func(tb assert.TB) { expect.Commutative(tb, add, 2, 3, allocContract) },
-			Allocs: 24,
-		},
-		{Name: "Associative", Allocs: 24, Call: func(tb assert.TB) {
-			expect.Associative(tb, add, 1, 2, 3, allocContract)
-		}},
-		{Name: "RoundTrip", Allocs: 24, Call: func(tb assert.TB) {
+		{Name: "Deterministic", Call: func(tb assert.TB) { expect.Deterministic(tb, double, 3, allocContract) }},
+		{Name: "Commutative", Call: func(tb assert.TB) { expect.Commutative(tb, add, 2, 3, allocContract) }},
+		{Name: "Associative", Call: func(tb assert.TB) { expect.Associative(tb, add, 1, 2, 3, allocContract) }},
+		{Name: "RoundTrip", Call: func(tb assert.TB) {
 			expect.RoundTrip(tb, format, strconv.Atoi, 42, allocContract)
 		}},
-		{Name: "StableOrder", Call: func(tb assert.TB) { expect.StableOrder(tb, listed, allocContract) }, Allocs: 2852},
-		{Name: "NoDuplicates", Call: func(tb assert.TB) { expect.NoDuplicates(tb, listed, allocContract) }, Allocs: 72},
+		{Name: "StableOrder", Call: func(tb assert.TB) { expect.StableOrder(tb, listed, allocContract) }, Allocs: 62},
+		{Name: "NoDuplicates", Call: func(tb assert.TB) { expect.NoDuplicates(tb, listed, allocContract) }, Allocs: 1},
 		{Name: "Monotonic", Call: func(tb assert.TB) { expect.Monotonic(tb, read, advance, 3, allocContract) }},
 		{Name: "Total", Call: func(tb assert.TB) { expect.Total(tb, accepts, items, allocContract) }},
-		{Name: "NotPure", Allocs: 26, Call: func(tb assert.TB) {
+		{Name: "NotPure", Allocs: 2, Call: func(tb assert.TB) {
 			expect.NotPure(tb, read, func() { state++ }, allocContract)
 		}},
 		{Name: "FailsAfterClose", Call: func(tb assert.TB) {

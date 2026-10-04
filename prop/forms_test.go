@@ -23,16 +23,15 @@ const maxAllocsFormAllocs = 834
 
 // formAllocs are the allocations of a passing run of 100 cases of each
 // property form of formCases, measured: the run's own, and what the form's
-// assertion and its subjects allocate in each case. The forms that compare
-// values allocate in go-cmp, and Deterministic compares 32 results.
+// assertion and its subjects allocate in each case.
 var formAllocs = map[string]uint64{
-	"Equal": 3233, "NotEqual": 3233, "True": 833, "False": 833, "Nil": 833, "NotNil": 933, "Length": 934,
-	"Empty": 1912, "NotEmpty": 2111, "Contains": 4711, "NotContains": 1912, "ContainsInOrder": 1262,
-	"IsPermutation": 50848, "HasPrefix": 1261, "HasSuffix": 1261, "Matches": 3961, "CloseTo": 932,
+	"Equal": 833, "NotEqual": 833, "True": 833, "False": 833, "Nil": 833, "NotNil": 933, "Length": 933,
+	"Empty": 1912, "NotEmpty": 2111, "Contains": 2211, "NotContains": 1912, "ContainsInOrder": 1262,
+	"IsPermutation": 2542, "HasPrefix": 1261, "HasSuffix": 1261, "Matches": 3961, "CloseTo": 932,
 	"InRange": 932, "Pairwise": 2344, "NoError": 833, "HasError": 833, "ErrorIs": 833, "ErrorIsNot": 833,
-	"ErrorAs": 1033, "Panics": 833, "NotPanics": 833, "Pure": 3233, "NotPure": 3236, "NilContextSafe": 833,
-	"HonoursCancellation": 1033, "HonoursDeadline": 1033, "Idempotent": 3236, "Accumulates": 836,
-	"Deterministic": 75233, "Commutative": 3255, "Associative": 3478, "RoundTrip": 3436,
+	"ErrorAs": 1033, "Panics": 833, "NotPanics": 833, "Pure": 833, "NotPure": 836, "NilContextSafe": 833,
+	"HonoursCancellation": 1033, "HonoursDeadline": 1033, "Idempotent": 836, "Accumulates": 836,
+	"Deterministic": 833, "Commutative": 855, "Associative": 1078, "RoundTrip": 1036,
 }
 
 // errSentinel is the error that the subjects of the error forms return.

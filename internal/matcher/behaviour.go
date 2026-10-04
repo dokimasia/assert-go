@@ -8,8 +8,6 @@ import (
 	"errors"
 	"sync/atomic"
 	"time"
-
-	"github.com/google/go-cmp/cmp"
 )
 
 // HonoursCancellation calls fn with a context that is already
@@ -221,8 +219,7 @@ func (s *subject) expire() {
 //
 // # Allocation contract
 //
-// A passing call with readings of one int allocates 24 times, in the
-// comparison of the two readings as [Equal] compares them.
+// A passing call with readings of one int below 256 allocates nothing.
 func Pure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg string, opts ...Option) {
 	seat.Helper()
 
@@ -230,7 +227,7 @@ func Pure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg string, 
 	fn()
 	after := observe()
 
-	if diff := cmp.Diff(before, after, Options(opts...)...); diff != "" {
+	if !equal(before, after, rulesOf(opts)) {
 		Fail(seat, mode, "pure", msg, map[string]any{"want": before, "got": after})
 		return
 	}

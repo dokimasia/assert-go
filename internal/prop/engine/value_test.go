@@ -32,6 +32,10 @@ func TestValue(t *testing.T) {
 
 		channel := make(chan int)
 		negativeZero := math.Copysign(0, -1)
+		selfList, otherSelfList := []any{nil}, []any{nil}
+		selfList[0], otherSelfList[0] = selfList, otherSelfList
+		selfPointer := &fields{}
+		selfPointer.v = selfPointer
 		tests := []struct {
 			name string
 			a, b any
@@ -99,6 +103,19 @@ func TestValue(t *testing.T) {
 			{name: "keeps one of two complex NaNs", a: complex(math.NaN(), 0), b: complex(math.NaN(), 0)},
 			{name: "keeps two channels apart", a: make(chan int), b: make(chan int), want: true},
 			{name: "keeps one of a channel stated twice", a: channel, b: channel},
+			{name: "keeps one of two lists that contain themselves", a: selfList, b: otherSelfList},
+			{
+				name: "keeps a list that contains itself apart from a list that contains an empty list",
+				a:    selfList,
+				b:    []any{[]any{}},
+				want: true,
+			},
+			{
+				name: "keeps a pointer to a struct that contains it apart from a pointer to a zero struct",
+				a:    selfPointer,
+				b:    &fields{},
+				want: true,
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

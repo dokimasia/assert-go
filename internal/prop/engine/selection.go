@@ -41,7 +41,7 @@ func SampledFrom[T any](values ...T) Generator[T] {
 	}
 	return NewInvertible(sampledFromID, decode, func(v any) ([]Step, T, error) {
 		for i, s := range stated {
-			if sameValue(v, s) {
+			if SameValue(v, s) {
 				return []Step{indexStep(bounds, i)}, s, nil
 			}
 		}
@@ -155,7 +155,7 @@ func Permutation[T any](values ...T) Generator[[]T] {
 		last := len(ordered) - 1
 		var steps []Step
 		for i := range last {
-			j := slices.IndexFunc(ordered[i:], func(s T) bool { return sameValue(items[i], s) })
+			j := slices.IndexFunc(ordered[i:], func(s T) bool { return SameValue(items[i], s) })
 			if j < 0 {
 				return nil, nil, fault.At(uninvertible("the element is none of the values left to order"),
 					fault.Index(i))
@@ -164,7 +164,7 @@ func Permutation[T any](values ...T) Generator[[]T] {
 			steps = append(steps, stepOf(swap, choice.UintOf(uint64(i+j))))
 			ordered[i], ordered[i+j] = ordered[i+j], ordered[i]
 		}
-		if last >= 0 && !sameValue(items[last], ordered[last]) {
+		if last >= 0 && !SameValue(items[last], ordered[last]) {
 			return nil, nil, fault.At(uninvertible("the element is not the value left to order"), fault.Index(last))
 		}
 		return steps, ordered, nil

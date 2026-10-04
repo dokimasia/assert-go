@@ -24,7 +24,7 @@ A tool checks a rule wherever one can. Review checks every other rule.
 | A test runs in parallel | `tparallel` |
 | A test takes its context from the test | `usetesting` |
 | 100% statement coverage of every package | The coverage stage of `ergon check` |
-| 100% mutation score of `internal/matcher` and `conformance` | The mutation stage of `ergon check` |
+| 100% mutation score of `internal/matcher`, `internal/equality` and `conformance` | The mutation stage of `ergon check` |
 | The text of `errors.New` starts with the package name | `ergon lint error-prefix` |
 | A skipped test states an expiry date | `ergon lint skip-expiry` |
 | A source file starts with the license header | `ergon lint license` |
