@@ -235,7 +235,10 @@ func examplesOf[T any](f form, g Generator[T], examples []example) ([][]choice.C
 				len(ex.values), len(f.labels)), fault.Field(exampleOption), fault.Index(i))
 		}
 		for j, v := range ex.values {
-			choices, err := engine.Invert(engine.Generator[T](g), v.(T))
+			// ex.typ is T, so the assertion fails only for a nil interface
+			// value, whose T is the zero value.
+			value, _ := v.(T)
+			choices, err := engine.Invert(engine.Generator[T](g), value)
 			if err != nil {
 				return nil, fault.At(err, fault.Field(exampleOption), fault.Index(i), fault.Index(j))
 			}

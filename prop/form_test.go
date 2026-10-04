@@ -150,6 +150,17 @@ func TestForm(t *testing.T) {
 				"the example shrinks to the smallest failing input")
 		})
 
+		t.Run("runs an example of a nil interface", func(t *testing.T) {
+			t.Parallel()
+			rec := assert.NewRecorder()
+			prop.True(rec, func(x any) bool { return x != nil }, contractOfForm, prop.Seed(7), prop.Shrink(0),
+				prop.Using(prop.Just[any](nil)), prop.Example[any](nil))
+			detail := rec.Failures()[0].Detail
+			assert.Equal(t, detail[casesField], any(0), "the example fails first")
+			assert.Equal(t, detail[counterexampleField], any([]prop.Drawn{{Label: "input", Value: nil}}),
+				"the example's nil input")
+		})
+
 		t.Run("runs an example of each generated argument", func(t *testing.T) {
 			t.Parallel()
 			rec := assert.NewRecorder()
