@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/literal"
+	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/internal/prop/store"
 	"go.dokimi.dev/assert/internal/record"
@@ -128,6 +130,24 @@ func drawsOf(draws []engine.Drawn) []store.Draw {
 		}
 	}
 	return out
+}
+
+// storedChoices returns the choices of each entry of stored, oldest first,
+// as the settings of a run state its stored cases.
+func storedChoices(stored store.Stored) [][]choice.Choice {
+	out := make([][]choice.Choice, len(stored.Entries))
+	for i, e := range stored.Entries {
+		out[i] = e.Choices
+	}
+	return out
+}
+
+// storeFaults returns the faults that a run notes about its store, after r
+// replayed the stored cases of stored: the fault of each file that the run
+// skips, and of each stored case that decodes to other values than its
+// entry records.
+func (p property) storeFaults(stored store.Stored, r engine.Result) []error {
+	return slices.Concat(p.skipped(stored), p.differences(stored.Entries, r.Stored))
 }
 
 // skipped returns the fault of each file of stored that the run skips, as a

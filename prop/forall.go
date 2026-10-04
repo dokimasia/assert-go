@@ -5,7 +5,6 @@ package prop
 
 import (
 	"context"
-	"slices"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/fault"
@@ -115,15 +114,13 @@ func (p property) run(tb assert.TB, run matcher.Running, body func(*Case)) {
 		p.fault(tb, run, err)
 		return
 	}
-	for _, e := range stored.Entries {
-		s.Stored = append(s.Stored, e.Choices)
-	}
+	s.Stored = storedChoices(stored)
 	r := engine.Run(cases, s)
 	if r.Refused != nil {
 		p.fault(tb, run, fault.In(p.op, fault.At(r.Refused, fault.Field(drawsOption))))
 		return
 	}
-	faults := slices.Concat(p.skipped(stored), p.differences(stored.Entries, r.Stored))
+	faults := p.storeFaults(stored, r)
 	if r.Outcome == engine.Counterexample {
 		faults = append(faults, p.save(r)...)
 	}

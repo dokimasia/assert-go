@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"testing"
+	"time"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/childtest"
@@ -124,6 +125,55 @@ func TestFuzz(t *testing.T) {
 			assert.Equal(t, []any{call["verdict"], counts(detail)}, []any{"fail", []any{"counterexample", 0.0, 0.0}},
 				"the call of the test fails before any valid case")
 			assert.Equal(t, drawnOf(detail), [][2]any{{drawn, jsonTree(t, string(lit))}}, "the stored case, as found")
+		})
+
+		t.Run("counts the stored cases that pass before a stored case that fails", func(t *testing.T) {
+			dir := t.TempDir()
+			passing, _ := literal.Encode([]byte{7})
+			lit, _ := literal.Encode([]byte{200})
+			save(t, dir, store.Entry{
+				Definition:     "1.2.0",
+				Property:       contract,
+				Identity:       store.Identity{Assertion: big, Contract: fits},
+				Choices:        []choice.Choice{sequence(7)},
+				Counterexample: []store.Draw{{Label: drawn, Value: passing}},
+				Found:          earlier,
+			})
+			save(t, dir, store.Entry{
+				Definition:     "1.2.0",
+				Property:       contract,
+				Identity:       store.Identity{Assertion: big, Contract: fits},
+				Choices:        []choice.Choice{sequence(200)},
+				Counterexample: []store.Draw{{Label: drawn, Value: lit}},
+				Found:          earlier.Add(time.Hour),
+			})
+			out, err := child(t, storedMode, dir, record.Variable+"=1")
+			assert.HasError(t, err, "the child fails")
+			detail, _ := childCall(t, out, "FuzzChild", 1)["detail"].(map[string]any)
+			assert.Equal(t, counts(detail), []any{"counterexample", 1.0, 0.0},
+				"a counterexample after the stored case that passed")
+		})
+
+		t.Run("logs the fault of a stored case that decodes to other values than it records", func(t *testing.T) {
+			dir := t.TempDir()
+			recorded, _ := literal.Encode([]byte{8})
+			moved := store.Entry{
+				Definition:     "1.2.0",
+				Property:       contract,
+				Identity:       store.Identity{Assertion: big, Contract: fits},
+				Choices:        []choice.Choice{sequence(7)},
+				Counterexample: []store.Draw{{Label: drawn, Value: recorded}},
+				Found:          earlier,
+			}
+			save(t, dir, moved)
+			out, err := child(t, storedMode, dir)
+			assert.NoError(t, err, "the child passes")
+			decoded := &fault.Error{
+				Op:     fuzzOp,
+				Path:   fault.Path{fault.Field(dir), fault.Field(moved.Name())},
+				Reason: decodedReason,
+			}
+			assert.Contains(t, out, matcher.RenderFault(decoded), "the fault at the entry's file")
 		})
 
 		t.Run("fails at once for a damaged file in the store", func(t *testing.T) {

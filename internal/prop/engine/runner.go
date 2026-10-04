@@ -368,6 +368,28 @@ func (p *phases) runTo(target int) (Result, bool) {
 	return Result{}, false
 }
 
+// RunStored runs the stored cases of s, oldest first, as [Run] runs them
+// before its other cases, and returns how they ended: a pass that counts
+// them, or the result that the first of them that does not pass ends a run
+// with, a failing case as found, without shrinking or explaining it. The
+// result states the runs of the stored cases up to that one, and the calls
+// of each case are recorded under [record.Stored].
+func RunStored(body Body, s Settings) Result {
+	s = withClocks(s)
+	t := newTally(s)
+	r, ended := stored(body, s, t)
+	if !ended {
+		runs := r.Stored
+		r = t.result(Passed)
+		r.Stored = runs
+		return r
+	}
+	if r.Failing != nil {
+		r.Token = token.Encode(r.Failing.Case.Choices())
+	}
+	return r
+}
+
 // explore runs the phases until the run ends, without concluding a
 // counterexample, and returns the result with the runs of the stored cases.
 func explore(body Body, s Settings) Result {
@@ -375,18 +397,31 @@ func explore(body Body, s Settings) Result {
 	if r, ended := known(body, s, t); ended {
 		return r
 	}
-	stored := make([]Execution, 0, len(s.Stored))
+	r, ended := stored(body, s, t)
+	if ended {
+		return r
+	}
+	runs := r.Stored
+	r = generated(body, s, t)
+	r.Stored = runs
+	return r
+}
+
+// stored runs the stored cases of s oldest first, counted by t. It returns
+// the result that ends the run and true, or a result of the runs alone and
+// false. Either states the runs of the stored cases, up to the one that
+// ended the run.
+func stored(body Body, s Settings, t *tally) (Result, bool) {
+	runs := make([]Execution, 0, len(s.Stored))
 	for _, choices := range s.Stored {
 		e := execute(body, replaying{choices: choices}, s)
-		stored = append(stored, e)
+		runs = append(runs, e)
 		if r, ended := t.take(e, record.Stored); ended {
-			r.Stored = stored
-			return r
+			r.Stored = runs
+			return r, true
 		}
 	}
-	r := generated(body, s, t)
-	r.Stored = stored
-	return r
+	return Result{Stored: runs}, false
 }
 
 // known runs the cases whose values the caller states, outside the case

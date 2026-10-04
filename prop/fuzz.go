@@ -9,7 +9,6 @@ import (
 
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/prop/engine"
-	"go.dokimi.dev/assert/internal/record"
 )
 
 // fuzzOp is the operation of Fuzz, which names its faults.
@@ -21,11 +20,13 @@ const fuzzOp = "prop.Fuzz"
 // fuzzer's bytes almost unchanged.
 //
 // Before it registers the target, Fuzz replays the property's stored cases,
-// oldest first, from the store of the fuzz test, and fails f with the
-// record of the first that fails, as found. go test without -fuzz then runs
-// the stored cases and the seed corpus that f.Add states. The record of the
-// call on f counts the stored cases, and its record states the calls of
-// each under the phase stored.
+// oldest first, from the store of the fuzz test, as [ForAll] replays them,
+// and fails f with the record of the first that fails, as found. go test
+// without -fuzz then runs the stored cases and the seed corpus that f.Add
+// states. The record of the call on f counts the stored cases that ran, the
+// failing one's predecessors included, and its record states the calls of
+// each under the phase stored. Fuzz logs the fault of each stored case that
+// decodes to other values than its entry records, as ForAll does.
 //
 // A failing input's case is replayed, shrunk and explained as [ForAll]
 // does with a failing case. Fuzz writes the counterexample to the store,
@@ -61,22 +62,18 @@ func Fuzz(f *testing.F, contract string, body func(*Case), opts ...Option) {
 		p.fault(f, run, err)
 		return
 	}
-	for _, err := range p.skipped(stored) {
-		matcher.NoteFault(f, err)
-	}
 	s := p.settings
 	s.Slot = run.Slot()
-	replayed := bodyOf(f.Context(), body)
-	total := engine.Result{Outcome: engine.Passed, Seed: s.Seed}
-	for _, entry := range stored.Entries {
-		r := engine.RunReplay(replayed, s, entry.Choices, record.Stored)
-		if r.Outcome != engine.Passed {
-			p.report(f, run, r)
-			return
-		}
-		total.Cases, total.Rejected = total.Cases+r.Cases, total.Rejected+r.Rejected
+	s.Stored = storedChoices(stored)
+	r := engine.RunStored(bodyOf(f.Context(), body), s)
+	for _, err := range p.storeFaults(stored, r) {
+		matcher.NoteFault(f, err)
 	}
-	p.report(f, run, total)
+	if r.Outcome != engine.Passed {
+		p.report(f, run, r)
+		return
+	}
+	p.report(f, run, r)
 	f.Fuzz(func(t *testing.T, data []byte) {
 		p.input(inputSeat{T: t}, bodyOf(t.Context(), body), data)
 	})
