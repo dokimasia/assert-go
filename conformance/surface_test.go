@@ -22,6 +22,7 @@ import (
 	"go.dokimi.dev/assert/conformance"
 	"go.dokimi.dev/assert/expect"
 	"go.dokimi.dev/assert/golden"
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 	"go.dokimi.dev/assert/prop"
@@ -44,9 +45,11 @@ var abortingOnly = map[string]string{
 	"TB":            "the seat interface, declared once and used by both",
 }
 
-// TestSurface compares the members of the two surfaces: every member of the
-// aborting surface has a twin of the same name in the recording surface,
-// unless the naming table or abortingOnly excuses it.
+// TestSurface is the completeness gate. Every assertion of the definition
+// is present under the name that the naming table gives Go, with the
+// definition's arity, or the overlay declares it absent. Every member of
+// the aborting surface has a twin of the same name in the recording
+// surface, unless the naming table or abortingOnly excuses it.
 func TestSurface(t *testing.T) {
 	t.Parallel()
 
@@ -55,6 +58,10 @@ func TestSurface(t *testing.T) {
 
 	recording, err := conformance.Members(conformance.Recording)
 	assert.NoError(t, err, "the recording surface can be read")
+
+	assertions := conformance.Assertions()
+	names := conformance.Names()
+	overlay := conformance.Overlay()
 
 	t.Run("Members", func(t *testing.T) {
 		t.Parallel()
@@ -66,12 +73,45 @@ func TestSurface(t *testing.T) {
 			assert.NotEmpty(t, recording, "the recording surface declares members")
 		})
 
+		t.Run("returns the Go name of every assertion that the overlay does not declare absent", func(t *testing.T) {
+			t.Parallel()
+
+			for id, a := range assertions {
+				name := names[id]
+				where, member := split(name)
+
+				surface, ok := resolve(a.Package, where)
+				assert.True(t, ok, "assertion "+string(id)+" names a package this library has")
+
+				members, err := conformance.Members(surface)
+				assert.NoError(t, err, "the surface of "+string(id)+" can be read")
+
+				present := declares(members, member)
+				declared := overlay.Diverges(id)
+
+				switch {
+				case present && declared:
+					t.Errorf("%s: the overlay declares it absent, but %s is implemented", id, name)
+				case !present && !declared:
+					t.Errorf("%s: %s is not implemented and no overlay entry declares why", id, name)
+				}
+			}
+		})
+
+		t.Run("returns the Go name of every relaxation that the naming table names", func(t *testing.T) {
+			t.Parallel()
+
+			for id, name := range conformance.RelaxationNames() {
+				if name != "" && !declares(aborting, name) {
+					t.Errorf("%s: %s is named and not implemented", id, name)
+				}
+			}
+		})
+
 		t.Run("returns a recording twin for every aborting member", func(t *testing.T) {
 			t.Parallel()
 
-			named, err := conformance.SurfaceNames()
-			assert.NoError(t, err, "the surface table can be read")
-			covered := slices.Collect(maps.Values(named))
+			covered := slices.Collect(maps.Values(conformance.SurfaceNames()))
 
 			for _, name := range aborting {
 				if _, excused := abortingOnly[name]; excused {
@@ -96,31 +136,93 @@ func TestSurface(t *testing.T) {
 			}
 		})
 
-		t.Run("returns an error for a surface whose directory does not exist", func(t *testing.T) {
+		t.Run("returns a fault for a surface whose directory does not exist", func(t *testing.T) {
 			t.Parallel()
 
 			_, err := conformance.Members(conformance.Surface(filepath.Join(t.TempDir(), "missing")))
-			assert.HasError(t, err, "no directory, so no members")
-			assert.Contains(t, err.Error(), "conformance: read", "the error names the read")
+			f := assert.ErrorAs[*fault.Error](t, err, "a fault")
+			assert.Empty(t, f.Path, "the surface itself does not read")
+			assert.Equal(t, f.Reason, "the surface does not read", "the reason")
+			assert.ErrorIs(t, err, fs.ErrNotExist, "the cause is the error of the file system")
 		})
 
-		t.Run("returns an error for a surface of a file that does not parse", func(t *testing.T) {
+		t.Run("returns a fault at the file of a surface of a file that does not parse", func(t *testing.T) {
 			t.Parallel()
 
 			dir := t.TempDir()
 			assert.NoError(t, os.WriteFile(filepath.Join(dir, "broken.go"), []byte("package"), 0o600),
 				"the file is written")
 			_, err := conformance.Members(conformance.Surface(dir))
-			assert.HasError(t, err, "a file that does not parse declares no members")
-			assert.Contains(t, err.Error(), "conformance: parse broken.go", "the error names the file")
+			f := assert.ErrorAs[*fault.Error](t, err, "a fault")
+			assert.Equal(t, f.Path, fault.Path{fault.Field("broken.go")}, "the file that does not parse")
+			assert.Equal(t, f.Reason, "the file does not parse", "the reason")
 		})
 
-		t.Run("returns an error for an arity of a surface whose directory does not exist", func(t *testing.T) {
+		t.Run("returns each excused member for the aborting surface alone", func(t *testing.T) {
+			t.Parallel()
+
+			for name, why := range abortingOnly {
+				assert.Contains(t, aborting, name,
+					"the aborting surface declares "+name+", excused because it "+why)
+				assert.NotContains(t, recording, name,
+					"the recording surface omits "+name+", excused because it "+why)
+			}
+		})
+	})
+
+	t.Run("Arities", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns the definition's arity for every assertion on each surface", func(t *testing.T) {
+			t.Parallel()
+
+			for id, a := range assertions {
+				if overlay.Diverges(id) {
+					continue
+				}
+				where, member := split(names[id])
+				surface, ok := resolve(a.Package, where)
+				assert.True(t, ok, "assertion "+string(id)+" names a package this library has")
+
+				surfaces := []conformance.Surface{surface}
+				if _, only := abortingOnly[member]; surface == conformance.Aborting && !only {
+					surfaces = append(surfaces, conformance.Recording)
+				}
+				want := a.Arity
+				if excuse, excused := arityExcused[id]; excused {
+					want = excuse.arity
+				}
+
+				for _, s := range surfaces {
+					arities, err := conformance.Arities(s)
+					assert.NoError(t, err, "the surface of "+string(id)+" can be read")
+
+					got, declared := arities[member]
+					switch {
+					case !declared:
+						t.Errorf("%s: %s declares no function or method %s", id, s, member)
+					case got != want:
+						t.Errorf("%s: %s in %s takes %d arguments, want %d", id, member, s, got, want)
+					}
+				}
+			}
+		})
+
+		t.Run("excuses only an assertion whose arity differs", func(t *testing.T) {
+			t.Parallel()
+
+			for id, excuse := range arityExcused {
+				assert.NotEqual(t, excuse.arity, assertions[id].Arity,
+					"the arity of "+string(id)+" differs from the definition's, because Go "+excuse.why)
+			}
+		})
+
+		t.Run("returns a fault for a surface whose directory does not exist", func(t *testing.T) {
 			t.Parallel()
 
 			_, err := conformance.Arities(conformance.Surface(filepath.Join(t.TempDir(), "missing")))
-			assert.HasError(t, err, "no directory, so no arities")
-			assert.Contains(t, err.Error(), "conformance: read", "the error names the read")
+			f := assert.ErrorAs[*fault.Error](t, err, "a fault")
+			assert.Equal(t, f.Reason, "the surface does not read", "the reason")
 		})
 
 		t.Run("returns the arity of each exported function and method by the definition's rule", func(t *testing.T) {
@@ -143,18 +245,51 @@ func TestSurface(t *testing.T) {
 				"Probe.Paren": 1,
 			}, "the seat, a variadic and an inferred type parameter do not count, and a stated one does")
 		})
-
-		t.Run("returns each excused member for the aborting surface alone", func(t *testing.T) {
-			t.Parallel()
-
-			for name, why := range abortingOnly {
-				assert.Contains(t, aborting, name,
-					"the aborting surface declares "+name+", excused because it "+why)
-				assert.NotContains(t, recording, name,
-					"the recording surface omits "+name+", excused because it "+why)
-			}
-		})
 	})
+}
+
+// arityExcused names each assertion whose arity in Go differs from the
+// definition's, with the arity that Go declares and the reason.
+var arityExcused = map[conformance.ID]struct {
+	arity int
+	why   string
+}{
+	"no-task-leaks": {
+		arity: 1,
+		why: "marks the scope with the call and the check that the call returns, " +
+			"and the definition counts the scope as an argument",
+	},
+}
+
+// split separates a qualified name into the package it names and the
+// member within it. An unqualified name has no package.
+func split(name string) (pkg, member string) {
+	where, rest, qualified := strings.Cut(name, ".")
+	if !qualified {
+		return "", name
+	}
+	return where, rest
+}
+
+// resolve returns the surface that an assertion's package names.
+func resolve(declared, qualified string) (conformance.Surface, bool) {
+	if declared == "" && qualified == "" {
+		return conformance.Aborting, true
+	}
+	if declared == "" {
+		declared = qualified
+	}
+	return conformance.Subpackage(declared)
+}
+
+// declares reports whether members contains name, or for a method the type
+// that the method belongs to.
+func declares(members []string, name string) bool {
+	owner, _, isMethod := strings.Cut(name, ".")
+	if isMethod {
+		name = owner
+	}
+	return slices.Contains(members, name)
 }
 
 // arityProbe is a surface whose functions and methods state each case of
@@ -239,6 +374,7 @@ var pinned = map[conformance.ID]any{
 	"recorder-seat.message":      (*assert.Recorder).Message,
 	"recorder-seat.messages":     (*assert.Recorder).Messages,
 	"recorder-seat.helper-calls": (*assert.Recorder).HelperCalls,
+	"recorder-seat.records":      (*assert.Recorder).Records,
 
 	"contract.loop":  (*bench.Contract).Loop,
 	"contract.check": (*bench.Contract).End,
@@ -290,6 +426,16 @@ var pinned = map[conformance.ID]any{
 	"prop.explain":         prop.Explain,
 	"prop.workers":         prop.Workers,
 	"prop.fuzz":            prop.Fuzz,
+
+	"prop.of":                prop.Of[int],
+	"prop.of-shape":          prop.OfShape,
+	"prop.shape-of":          prop.ShapeOf[int],
+	"prop.register":          prop.Register[int],
+	"prop.register-values":   prop.RegisterValues[int],
+	"prop.register-variants": prop.RegisterVariants[any],
+	"prop.using":             prop.Using[int],
+	"prop.example":           prop.Example[int],
+	"prop.draws":             prop.Draws,
 }
 
 // TestSurfaceTable compares the pin map with the naming table: the map
@@ -300,18 +446,12 @@ var pinned = map[conformance.ID]any{
 func TestSurfaceTable(t *testing.T) {
 	t.Parallel()
 
-	names, err := conformance.SurfaceNames()
-	if err != nil {
-		t.Fatalf("the surface table can be read: %v", err)
-	}
+	names := conformance.SurfaceNames()
 	if len(names) == 0 {
 		t.Fatal("the surface table states something")
 	}
 
-	overlay, err := conformance.Overlay()
-	if err != nil {
-		t.Fatalf("the overlay can be read: %v", err)
-	}
+	overlay := conformance.Overlay()
 
 	source, err := os.ReadFile("surface_test.go")
 	if err != nil {
@@ -516,10 +656,7 @@ func TestSurfaceRecording(t *testing.T) {
 		t.Fatalf("the recording surface can be read: %v", err)
 	}
 
-	names, err := conformance.Names()
-	if err != nil {
-		t.Fatalf("the naming table can be read: %v", err)
-	}
+	names := conformance.Names()
 
 	var methods []string
 	for method := range reflect.TypeFor[*expect.Assertion[any]]().Methods() {
@@ -688,16 +825,8 @@ func TestSurfaceAborting(t *testing.T) {
 		t.Fatalf("the aborting surface can be read: %v", err)
 	}
 
-	names, err := conformance.Names()
-	if err != nil {
-		t.Fatalf("the naming table can be read: %v", err)
-	}
-
-	table, err := conformance.SurfaceNames()
-	if err != nil {
-		t.Fatalf("the surface table can be read: %v", err)
-	}
-	typed := slices.Collect(maps.Values(table))
+	names := conformance.Names()
+	typed := slices.Collect(maps.Values(conformance.SurfaceNames()))
 
 	var methods []string
 	for method := range reflect.TypeFor[*assert.Assertion[any]]().Methods() {

@@ -4,12 +4,19 @@
 package assert_test
 
 import (
+	"errors"
+	"strconv"
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/alloctest"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
+// errClosed is the error of a subject's call after it closed.
+var errClosed = errors.New("the subject is closed")
+
+// TestRelation runs the shared cases of the relation assertions.
 func TestRelation(t *testing.T) {
 	t.Parallel()
 
@@ -125,4 +132,68 @@ func TestRelation(t *testing.T) {
 			assert.Poisoned(s, induce, observe, msg)
 		})
 	})
+}
+
+// TestRelationAllocs checks the allocation ceiling of a passing call of
+// each relation assertion.
+func TestRelationAllocs(t *testing.T) {
+	alloctest.Check(t, relationCases())
+}
+
+// BenchmarkRelation measures a passing call of each relation assertion.
+func BenchmarkRelation(b *testing.B) {
+	for _, c := range relationCases() {
+		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
+	}
+}
+
+// relationCases returns a passing call of each relation assertion over
+// ints, with its allocation ceiling, measured.
+func relationCases() []alloctest.Case {
+	var state int
+	set := func(x int) error { state = x; return nil }   //nolint:unparam // the assertion's signature
+	increment := func(int) error { state++; return nil } //nolint:unparam // the assertion's signature
+	read := func() int { return state }
+	advance := func() error { state++; return nil } //nolint:unparam // the assertion's signature
+	double := func(x int) (int, error) { return 2 * x, nil }
+	add := func(a, b int) int { return a + b }
+	format := func(x int) (string, error) { return strconv.Itoa(x), nil }
+	items := []int{1, 2, 3}
+	listed := func() ([]int, error) { return items, nil } //nolint:unparam // the assertion's signature
+	accepts := func(int) error { return nil }
+	closes := func() error { return nil }
+	refuses := func() error { return errClosed }
+	return []alloctest.Case{
+		{
+			Name:   "Idempotent",
+			Call:   func(tb assert.TB) { assert.Idempotent(tb, set, 1, read, allocContract) },
+			Allocs: 24,
+		},
+		{Name: "Accumulates", Call: func(tb assert.TB) { assert.Accumulates(tb, increment, 1, read, allocContract) }},
+		{Name: "Deterministic", Allocs: 744, Call: func(tb assert.TB) {
+			assert.Deterministic(tb, double, 3, allocContract)
+		}},
+		{
+			Name:   "Commutative",
+			Call:   func(tb assert.TB) { assert.Commutative(tb, add, 2, 3, allocContract) },
+			Allocs: 24,
+		},
+		{Name: "Associative", Allocs: 24, Call: func(tb assert.TB) {
+			assert.Associative(tb, add, 1, 2, 3, allocContract)
+		}},
+		{Name: "RoundTrip", Allocs: 24, Call: func(tb assert.TB) {
+			assert.RoundTrip(tb, format, strconv.Atoi, 42, allocContract)
+		}},
+		{Name: "StableOrder", Call: func(tb assert.TB) { assert.StableOrder(tb, listed, allocContract) }, Allocs: 2852},
+		{Name: "NoDuplicates", Call: func(tb assert.TB) { assert.NoDuplicates(tb, listed, allocContract) }, Allocs: 72},
+		{Name: "Monotonic", Call: func(tb assert.TB) { assert.Monotonic(tb, read, advance, 3, allocContract) }},
+		{Name: "Total", Call: func(tb assert.TB) { assert.Total(tb, accepts, items, allocContract) }},
+		{Name: "NotPure", Allocs: 26, Call: func(tb assert.TB) {
+			assert.NotPure(tb, read, func() { state++ }, allocContract)
+		}},
+		{Name: "FailsAfterClose", Call: func(tb assert.TB) {
+			assert.FailsAfterClose(tb, closes, refuses, errClosed, allocContract)
+		}},
+		{Name: "Poisoned", Call: func(tb assert.TB) { assert.Poisoned(tb, func() {}, refuses, allocContract) }},
+	}
 }

@@ -4,6 +4,7 @@
 package engine_test
 
 import (
+	"fmt"
 	"math"
 	"slices"
 	"testing"
@@ -16,16 +17,21 @@ import (
 
 // The allocations of each collection generator's constructor, measured.
 const (
-	// listAllocs are the allocations of List and UniqueList: the decode
-	// and the decode with its type erased.
-	listAllocs = 2
+	// listAllocs are the allocations of List and UniqueList: the decode,
+	// the decode with its type erased, and the inverse.
+	listAllocs = 3
 	// dictAllocs are the allocations of Dict: the decode of an entry, the
-	// key of an entry, the decode and the decode with its type erased.
-	dictAllocs = 4
+	// key of an entry, the decode, the decode with its type erased, and the
+	// inverse.
+	dictAllocs = 5
 	// collectCaseAllocs are the allocations of a whole replayed case that
 	// collects one element of one choice: three choices, the element's span
 	// and the collection's set of keys.
 	collectCaseAllocs = 12
+	// elementsCaseAllocs are the allocations of a whole replayed case that
+	// decodes one element of one choice with Elements: those of a collected
+	// case, and the list of the elements.
+	elementsCaseAllocs = 13
 )
 
 // rejectedPairs are the choices of a collection with a minimum length of
@@ -34,8 +40,9 @@ const (
 var rejectedPairs = integers(1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0)
 
 // TestCollection checks the list, unique list and dict generators: the
-// values they decode, the choices and spans they record, and the
-// rejections of a collection that cannot reach its minimum length.
+// values they decode, the choices and spans they record, and the rejection
+// of a case whose collection has fewer elements than its minimum length
+// after ten discards.
 func TestCollection(t *testing.T) {
 	t.Parallel()
 
@@ -126,7 +133,7 @@ func TestCollection(t *testing.T) {
 			choices := integers(1, 4, 1, 4, 1, 5, 0)
 			got, e := decode(t, engine.UniqueList(digit, sizes(t, 0, 3)), choices...)
 			assert.Equal(t, got, []int{4, 5}, "the second 4 is discarded")
-			assert.True(t, sameChoices(e.Case.Choices(), choices), "the discarded element stays recorded")
+			assert.True(t, sameChoices(e.Case.Choices(), choices), "the record keeps the discarded element")
 		})
 
 		t.Run("discards a dict equal to an earlier one in another order", func(t *testing.T) {
@@ -135,13 +142,13 @@ func TestCollection(t *testing.T) {
 			choices := integers(1, 1, 0, 1, 1, 1, 2, 0, 1, 1, 1, 2, 1, 0, 1, 0, 0)
 			got, e := decode(t, engine.UniqueList(pair, sizes(t, 0, 3)), choices...)
 			assert.Equal(t, got, []map[string]int{{"a": 1, "b": 2}}, "the second dict, b then a, is discarded")
-			assert.True(t, sameChoices(e.Case.Choices(), choices), "the discarded dict stays recorded")
+			assert.True(t, sameChoices(e.Case.Choices(), choices), "the record keeps the discarded dict")
 		})
 
 		t.Run("rejects the case below its minimum length after ten discards", func(t *testing.T) {
 			t.Parallel()
 			_, e := decode(t, engine.UniqueList(digit, unbounded(t, 2)))
-			assert.Equal(t, e.Status, engine.CaseRejected, "the list cannot reach two elements")
+			assert.Equal(t, e.Status, engine.CaseRejected, "the list has fewer than two elements")
 			assert.True(t, sameChoices(e.Case.Choices(), rejectedPairs), "ten discards after the first element")
 		})
 
@@ -150,7 +157,7 @@ func TestCollection(t *testing.T) {
 			flags := integers(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
 			got, e := decode(t, engine.UniqueList(engine.Just(5), unbounded(t, 1)), flags...)
 			assert.Equal(t, got, []int{5}, "one element")
-			assert.Equal(t, e.Status, engine.CasePassed, "the list reached its minimum")
+			assert.Equal(t, e.Status, engine.CasePassed, "the list has its minimum length")
 			assert.True(t, sameChoices(e.Case.Choices(), flags), "eleven continue flags and no stop flag")
 		})
 
@@ -211,7 +218,7 @@ func TestCollection(t *testing.T) {
 		t.Run("rejects the case below its minimum length after ten discards", func(t *testing.T) {
 			t.Parallel()
 			_, e := decode(t, engine.Dict(engine.Just("k"), digit, unbounded(t, 2)))
-			assert.Equal(t, e.Status, engine.CaseRejected, "the dict cannot reach two keys")
+			assert.Equal(t, e.Status, engine.CaseRejected, "the dict has fewer than two keys")
 			assert.True(t, sameChoices(e.Case.Choices(), rejectedPairs), "ten discards after the first entry")
 		})
 
@@ -303,12 +310,79 @@ func TestCollection(t *testing.T) {
 			}, "each element's span from its flag")
 		})
 	})
+
+	t.Run("Elements", func(t *testing.T) {
+		t.Parallel()
+
+		digit := func(c *engine.Case) int { return int(c.Integer(digitRange).Magnitude()) }
+		parity := func(v int) string { return fmt.Sprint(v % 2) }
+		tests := []struct {
+			name     string
+			sizes    choice.Sizes
+			key      func(int) string
+			stop     func() bool
+			give     []choice.Choice
+			want     []int
+			recorded []choice.Choice
+		}{
+			{
+				name:     "returns the element of each continue flag",
+				sizes:    sizes(t, 0, 3),
+				give:     integers(1, 7, 1, 3, 0),
+				want:     []int{7, 3},
+				recorded: integers(1, 7, 1, 3, 0),
+			},
+			{
+				name:     "returns the elements of distinct keys",
+				sizes:    sizes(t, 0, 3),
+				key:      parity,
+				give:     integers(1, 7, 1, 3, 1, 4, 0),
+				want:     []int{7, 4},
+				recorded: integers(1, 7, 1, 3, 1, 4, 0),
+			},
+			{
+				name:     "returns the minimum number of elements once stop reports true",
+				sizes:    sizes(t, 1, 3),
+				stop:     func() bool { return true },
+				give:     integers(1, 7, 1, 3, 0),
+				want:     []int{7},
+				recorded: integers(1, 7, 0),
+			},
+			{
+				name:     "returns the elements of the flags while stop reports false",
+				sizes:    sizes(t, 0, 3),
+				stop:     func() bool { return false },
+				give:     integers(1, 7, 1, 3, 0),
+				want:     []int{7, 3},
+				recorded: integers(1, 7, 1, 3, 0),
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				var got []int
+				e := engine.Replay(func(c *engine.Case) {
+					got = engine.Elements(c, tt.sizes, engine.EntryLabel, digit, tt.key, tt.stop)
+				}, tt.give, nil)
+				assert.Equal(t, got, tt.want, "the elements")
+				assert.True(t, sameChoices(e.Case.Choices(), tt.recorded), "the flags and the elements")
+			})
+		}
+
+		t.Run("records each element in a span of its label", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) {
+				engine.Elements(c, sizes(t, 0, 3), engine.EntryLabel, digit, nil, nil)
+			}, integers(1, 7, 0), nil)
+			assert.Equal(t, labels(e.Case.Spans()), []string{engine.EntryLabel}, "one entry")
+		})
+	})
 }
 
-// TestCollectionZeroAlloc checks the allocation ceilings of the collection
+// TestCollectionAllocs checks the allocation ceilings of the collection
 // generators' constructors, and of a whole replayed case that collects one
 // element.
-func TestCollectionZeroAlloc(t *testing.T) {
+func TestCollectionAllocs(t *testing.T) {
 	digit, upTo := engine.Integer(0, 9), sizes(t, 0, 3)
 	collect := func(c *engine.Case) { engine.Collect(c, upTo, func() { c.Integer(digitRange) }) }
 	one := integers(1, 7, 0)
@@ -318,6 +392,12 @@ func TestCollectionZeroAlloc(t *testing.T) {
 		"Dict allocates its entry's decode and key and its decodes")
 	assert.MaxAllocs(t, func() { engine.Replay(collect, one, nil) }, collectCaseAllocs,
 		"a case that collects one element")
+	elements := func(c *engine.Case) {
+		engine.Elements(c, upTo, engine.ElementLabel, func(c *engine.Case) choice.Int { return c.Integer(digitRange) },
+			nil, nil)
+	}
+	assert.MaxAllocs(t, func() { engine.Replay(elements, one, nil) }, elementsCaseAllocs,
+		"a case that decodes one element")
 }
 
 // BenchmarkCollection measures the constructors of the collection
@@ -365,5 +445,20 @@ func BenchmarkCollection(b *testing.B) {
 			got = engine.Replay(collect, one, nil)
 		}
 		assert.Length(b, got.Case.Spans(), 1, "one element")
+	})
+
+	b.Run("Elements", func(b *testing.B) {
+		var got []choice.Int
+		elements := func(c *engine.Case) {
+			got = engine.Elements(c, upTo, engine.ElementLabel,
+				func(c *engine.Case) choice.Int { return c.Integer(digitRange) }, nil, nil)
+		}
+		one := integers(1, 7, 0)
+		c := bench.Start(b).MaxAllocs(elementsCaseAllocs)
+		defer c.End()
+		for c.Loop() {
+			engine.Replay(elements, one, nil)
+		}
+		assert.Equal(b, got, []choice.Int{choice.UintOf(7)}, "one element")
 	})
 }

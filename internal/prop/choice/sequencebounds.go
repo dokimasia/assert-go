@@ -3,7 +3,7 @@
 
 package choice
 
-import "fmt"
+import "go.dokimi.dev/assert/internal/fault"
 
 // SequenceBounds are the bounds of a sequence choice: the range [0, k) of
 // every element, and the [Sizes] of the length.
@@ -22,7 +22,7 @@ type SequenceBounds struct {
 // whose lengths sizes admits. It returns [ErrEmpty] when k is 0.
 func NewSequenceBounds(k uint32, sizes Sizes) (SequenceBounds, error) {
 	if k == 0 {
-		return SequenceBounds{}, fmt.Errorf("%w: sequence elements in [0, 0)", ErrEmpty)
+		return SequenceBounds{}, fault.Of(ErrEmpty, "the elements [0, 0) admit no value")
 	}
 	return SequenceBounds{k: k, sizes: sizes}, nil
 }

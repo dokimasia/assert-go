@@ -70,5 +70,42 @@ func TestDetail(t *testing.T) {
 			got := detailOf(body, prop.Seed(7))
 			assert.Equal(t, got[failureField], any(assert.Failure{Assertion: "first"}), "the first record")
 		})
+
+		t.Run("records the bounds of each side of a differing request as the corpus states them", func(t *testing.T) {
+			t.Parallel()
+			detail := recordedDetail(t, diverges(prop.Integer(0, 9), prop.Boolean()), prop.Seed(7))
+			assert.Equal(t, detail[divergenceField], any(map[string]any{
+				"what": "request", "index": 0.0,
+				"recorded": map[string]any{"kind": "integer", "min": 0.0, "max": 9.0},
+				"replayed": map[string]any{"kind": "integer", "min": 0.0, "max": 1.0},
+			}), "the divergence of the definition's vector")
+		})
+
+		t.Run("records the identity of a verdict that differs as its text, and a pass as null", func(t *testing.T) {
+			t.Parallel()
+			detail := recordedDetail(t, once(func(c *prop.Case) { fail(c, "once") }), prop.Seed(7))
+			assert.Equal(t, detail[divergenceField], any(map[string]any{
+				"what": "verdict", "index": 0.0, "recorded": "once", "replayed": nil,
+			}), "the divergence of a replay that passes")
+		})
+
+		t.Run("records a fingerprint that differs as a number", func(t *testing.T) {
+			t.Parallel()
+			detail := recordedDetail(t, once(func(c *prop.Case) {
+				c.Observe(7)
+				fail(c, always)
+			}), prop.Seed(7))
+			assert.Equal(t, detail[divergenceField], any(map[string]any{
+				"what": "fingerprint", "index": 0.0, "recorded": 7.0, "replayed": nil,
+			}), "the divergence of a replay without the fingerprint")
+		})
+
+		t.Run("records the requirement that a run missed", func(t *testing.T) {
+			t.Parallel()
+			detail := recordedDetail(t, classifies(1000, even, isEven), prop.Seed(7), prop.Require(even, 0.9))
+			assert.Equal(t, detail[coverageField], any(map[string]any{
+				"label": even, "share": 0.9, "counted": 45.0, "valid": 100.0, "verdict": "refuted",
+			}), "the shortfall of the definition's vector")
+		})
 	})
 }

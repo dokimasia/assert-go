@@ -139,8 +139,8 @@ func TestIdentity(t *testing.T) {
 	})
 }
 
-// TestIdentityZeroAlloc checks that Compare allocates nothing.
-func TestIdentityZeroAlloc(t *testing.T) {
+// TestIdentityAllocs checks that Compare allocates nothing.
+func TestIdentityAllocs(t *testing.T) {
 	a, b := engine.Identity{Assertion: "equal"}, engine.Identity{Assertion: "true"}
 	assert.MaxAllocs(t, func() { _ = a.Compare(b) }, 0, "Compare allocates nothing")
 }

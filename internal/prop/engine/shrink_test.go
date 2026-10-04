@@ -4,10 +4,7 @@
 package engine_test
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -18,10 +15,6 @@ import (
 	"go.dokimi.dev/assert/internal/prop/token"
 )
 
-// referenceSeed is the seed of every run whose outcome the tests pin from
-// the definition's executable reference.
-const referenceSeed = 7
-
 // shrinkAllocs are the allocations of a run from a stored failing case of
 // 2000 that shrinks to 1001 and explains it, measured: 26 cases of about 18
 // allocations each, the record of the stored case's run, and 5 for the
@@ -30,39 +23,6 @@ const referenceSeed = 7
 // allocates its recorder, its goroutine and its candidate's choices, nodes
 // and token, and not the growth of its record.
 const shrinkAllocs = 478
-
-// property is a body that draws its values and returns the assertion of
-// the failure they make, or "" for none.
-type property func(c *engine.Case) string
-
-// reference is what the definition's executable reference reports for a
-// run: the explanation of each draw of the minimal case, the minimal case's
-// token, the runs that shrinking and explaining spent, and the number of
-// calls of the body with a SHA-256 digest of the token of each call's
-// choices, joined by newlines.
-type reference struct {
-	// explanation is the explanation of each draw of the minimal case.
-	explanation []engine.Explained
-	// token is the minimal case's replay token.
-	token string
-	// runs are the runs that shrinking and explaining spent.
-	runs int
-	// calls is the number of calls of the body.
-	calls int
-	// digest is the digest of every call's choices.
-	digest string
-}
-
-// other is a further failure of a run: its assertion, the values of its
-// minimal case, and that case's token.
-type other struct {
-	// assertion is the failure's assertion.
-	assertion string
-	// values are the values the minimal case drew.
-	values []any
-	// token is the minimal case's token.
-	token string
-}
 
 // TestShrink checks shrinking through whole runs: the minimal case of each
 // failure, the shared budget of runs and time, and the order of every
@@ -208,7 +168,7 @@ func TestShrink(t *testing.T) {
 			}, s)
 			assert.Equal(t, got.Runs, 2, "the empty case and the target, before the clock passed the deadline")
 			assert.Equal(t, got.Explanation, []engine.Explained{{Label: "n", Value: 2000, Relevance: engine.Untested}},
-				"the stored case, which no explanation run reached")
+				"the stored case, which no explanation run tested")
 		})
 
 		t.Run("runs to the budget when the time is not spent", func(t *testing.T) {
@@ -344,9 +304,9 @@ func TestShrink(t *testing.T) {
 	})
 }
 
-// TestShrinkZeroAlloc checks the allocation ceiling of a run that shrinks
+// TestShrinkAllocs checks the allocation ceiling of a run that shrinks
 // and explains a failing case.
-func TestShrinkZeroAlloc(t *testing.T) {
+func TestShrinkAllocs(t *testing.T) {
 	wide := engine.Integer(0, 1_000_000_000)
 	s := settled(integers(2000)...)
 	body := func(c *engine.Case) {
@@ -379,48 +339,6 @@ func BenchmarkShrink(b *testing.B) {
 	})
 }
 
-// others returns the further failures of a run, in the order it found
-// them.
-func others(r engine.Result) []other {
-	out := make([]other, len(r.Others))
-	for i, e := range r.Others {
-		out[i] = other{e.Identity.Assertion, drawValues(e.Case.Draws()), token.Encode(e.Case.Choices())}
-	}
-	return out
-}
-
-// settled returns the settings of a run of the reference seed that shrinks
-// and explains with the default budget, and tries the stored case of
-// choices first when there are any.
-func settled(choices ...choice.Choice) engine.Settings {
-	s := engine.Settings{
-		Seed:       referenceSeed,
-		Cases:      engine.DefaultCases,
-		MaxChoices: engine.MaxChoices,
-		Shrink:     engine.DefaultShrink,
-		Explain:    true,
-	}
-	if len(choices) > 0 {
-		s.Stored = [][]choice.Choice{choices}
-	}
-	return s
-}
-
-// traced runs p under s, and returns the result and the token of the
-// choices of each call of the body, in call order. The entry of a call is
-// taken as the call ends, so a call that a rejection or a repeat ends has
-// one too.
-func traced(p property, s engine.Settings) (engine.Result, []string) {
-	var trace []string
-	result := engine.Run(func(c *engine.Case) {
-		defer func() { trace = append(trace, token.Encode(c.Choices())) }()
-		if failed := p(c); failed != "" {
-			c.Report(assert.Failure{Assertion: failed}, false)
-		}
-	}, s)
-	return result, trace
-}
-
 // failing returns the body that reports the failure p returns, which is
 // safe to run concurrently with itself.
 func failing(p property) engine.Body {
@@ -429,59 +347,6 @@ func failing(p property) engine.Body {
 			c.Report(assert.Failure{Assertion: failed}, false)
 		}
 	}
-}
-
-// matchesReference checks a counterexample and the trace of its run
-// against what the reference reports for the same run.
-func matchesReference(tb testing.TB, got engine.Result, trace []string, want reference) {
-	tb.Helper()
-	assert.Equal(tb, got.Outcome, engine.Counterexample, "a counterexample")
-	assert.Equal(tb, got.Explanation, want.explanation, "each draw of the minimal case, explained", assert.EquateNaNs())
-	assert.Equal(tb, got.Token, want.token, "the minimal case's token")
-	assert.Equal(tb, got.Runs, want.runs, "the runs that shrinking and explaining spent")
-	assert.Equal(tb, len(trace), want.calls, "the calls of the body")
-	assert.Equal(tb, digestOf(trace), want.digest, "the choices of every call, in order")
-}
-
-// digestOf returns the SHA-256 digest of the trace joined by newlines, in
-// hexadecimal.
-func digestOf(trace []string) string {
-	sum := sha256.Sum256([]byte(strings.Join(trace, "\n")))
-	return hex.EncodeToString(sum[:])
-}
-
-// drawValues returns the values of draws, in order.
-func drawValues(draws []engine.Drawn) []any {
-	out := make([]any, len(draws))
-	for i, d := range draws {
-		out[i] = d.Value
-	}
-	return out
-}
-
-// failsWhen returns assertion when failing is true, and "" otherwise.
-func failsWhen(failing bool, assertion string) string {
-	if failing {
-		return assertion
-	}
-	return ""
-}
-
-// above returns the property that fails with "above" for a value of g
-// above 1000.
-func above(g engine.Generator[int]) property {
-	return func(c *engine.Case) string {
-		return failsWhen(engine.Draw(c, g, "n") > 1000, "above")
-	}
-}
-
-// sum returns the sum of values.
-func sum(values []int) int {
-	total := 0
-	for _, v := range values {
-		total += v
-	}
-	return total
 }
 
 // sorted reports whether values are in ascending order.

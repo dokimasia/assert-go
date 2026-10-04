@@ -8,32 +8,32 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
-	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/prop"
 )
 
 // The allocations of the text generators, measured. Each is the engine's
-// construction of the generator: the closures of its decodes, and what it
-// keeps of its alphabet or its pattern.
+// construction of the generator: the closures of its decodes and of its
+// inverse, and what it keeps of its alphabet or its pattern.
 const (
 	// stringAllocs are the allocations of String over the default alphabet.
-	stringAllocs = 3
+	stringAllocs = 4
 	// alphabetStringAllocs are the allocations of String over a stated
 	// alphabet: those of String, and the alphabet's characters with the
 	// sorted copy that checks them for a repeat.
-	alphabetStringAllocs = 5
+	alphabetStringAllocs = 6
 	// alphabetAllocs are the allocations of Alphabet.
 	alphabetAllocs = 0
 	// bytesAllocs are the allocations of Bytes.
-	bytesAllocs = 3
+	bytesAllocs = 4
 	// stringMatchingAllocs are the allocations of StringMatching for the
-	// pattern [a-c]{2,5}: the parsed pattern and the decoder built from it.
-	stringMatchingAllocs = 13
+	// pattern [a-c]{2,5}: the parsed pattern, the decoder built from it, and
+	// the inverse.
+	stringMatchingAllocs = 14
 )
 
 // outsidePrefix starts the panic of StringMatching for a pattern outside
-// the portable subset.
-const outsidePrefix = "prop: pattern: outside the portable subset: "
+// the portable subset: the package and the generator.
+const outsidePrefix = "prop: string-matching: "
 
 // TestText checks the string and byte string generators and the option
 // that states an alphabet.
@@ -122,14 +122,15 @@ func TestText(t *testing.T) {
 		t.Run("panics for a pattern outside the portable subset", func(t *testing.T) {
 			t.Parallel()
 			got := assert.Panics(t, func() { prop.StringMatching("a{01}") }, "a count with a leading zero")
-			assert.HasPrefix(t, got, outsidePrefix, "the panic states the pattern's fault")
+			assert.Equal(t, got, outsidePrefix+`"a{01}" at 4: the count 01 has a leading zero`,
+				"the panic states the generator and the pattern's fault")
 		})
 	})
 }
 
-// TestTextZeroAlloc checks the allocation ceilings of the text generators
+// TestTextAllocs checks the allocation ceilings of the text generators
 // and the alphabet option.
-func TestTextZeroAlloc(t *testing.T) {
+func TestTextAllocs(t *testing.T) {
 	xyz := prop.Alphabet("xyz")
 	var kept prop.StringOption
 	assert.MaxAllocs(t, func() { kept = prop.Alphabet("xyz") }, alphabetAllocs, "Alphabet allocates its option")
@@ -183,9 +184,4 @@ func BenchmarkText(b *testing.B) {
 		}
 		assert.Equal(b, first(got), "aa", "the simplest match")
 	})
-}
-
-// sequence returns the sequence choice of elements.
-func sequence(elements ...uint32) choice.Choice {
-	return choice.Choice{Kind: choice.Sequence, Sequence: elements}
 }

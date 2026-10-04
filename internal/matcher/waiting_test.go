@@ -13,6 +13,8 @@ import (
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
+// TestWaiting runs the shared cases of the retrying assertions, and their
+// cases under a seat's clock.
 func TestWaiting(t *testing.T) {
 	t.Parallel()
 
@@ -54,6 +56,32 @@ func TestWaiting(t *testing.T) {
 
 		if n := after.Load(); n != 1 {
 			t.Fatalf("the attempt ran on %d times, want once", n)
+		}
+	})
+
+	t.Run("Eventually records the calls of each attempt under its own call", func(t *testing.T) {
+		t.Parallel()
+
+		seat := newKeepingSeat()
+		attempts := 0
+		matcher.Eventually(seat, matcher.Fatal, matchertest.PatientTimeout, matchertest.ShortInterval,
+			func(trial matcher.Seat) {
+				attempts++
+				matcher.True(trial, matcher.Fatal, attempts > 1, "the second attempt passes")
+			}, "the body settles")
+
+		lines := seat.lines(t)
+		if len(lines) != 3 {
+			t.Fatalf("wrote %d records, want 3: %v", len(lines), lines)
+		}
+		if lines[0]["assertion"] != "eventually" || lines[0]["verdict"] != "pass" || lines[0]["seq"] != 1.0 {
+			t.Fatalf("wrote %v first, want the passing call of eventually as 1", lines[0])
+		}
+		for i, verdict := range []string{"fail", "pass"} {
+			got := lines[i+1]
+			if got["verdict"] != verdict || got["parent"] != 1.0 || got["run"] != float64(i+1) {
+				t.Fatalf("wrote %v, want a %s of attempt %d under 1", got, verdict, i+1)
+			}
 		}
 	})
 
@@ -155,4 +183,30 @@ func TestWaiting(t *testing.T) {
 			matcher.EventuallyTrue(s, matcher.Fatal, timeout, pred, msg)
 		})
 	})
+}
+
+// TestWaitingAllocs checks the allocation ceiling of a passing call of
+// each retrying assertion.
+func TestWaitingAllocs(t *testing.T) {
+	checkAllocs(t, waitingCases())
+}
+
+// BenchmarkWaiting measures a passing call of each retrying assertion.
+func BenchmarkWaiting(b *testing.B) {
+	benchAllocs(b, waitingCases())
+}
+
+// waitingCases returns a call of each retrying assertion that passes at its
+// first attempt, with its allocation ceiling, measured.
+func waitingCases() []allocCase {
+	settled := func(matcher.Seat) {}
+	ready := func() bool { return true }
+	return []allocCase{
+		{name: "Eventually", allocs: 4, call: func(seat matcher.Seat) {
+			matcher.Eventually(seat, matcher.Fatal, time.Second, time.Millisecond, settled, allocContract)
+		}},
+		{name: "EventuallyTrue", call: func(seat matcher.Seat) {
+			matcher.EventuallyTrue(seat, matcher.Fatal, time.Second, ready, allocContract)
+		}},
+	}
 }

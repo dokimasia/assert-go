@@ -22,8 +22,13 @@ import (
 //
 // [context.Canceled] and [context.DeadlineExceeded] both count, and
 // the error may be wrapped. The cancellation is in place before fn
-// starts, so this asks whether fn checks at all rather than how
-// quickly it notices.
+// starts, so the assertion checks whether fn reads its context at all,
+// not how quickly it notices.
+//
+// # Allocation contract
+//
+// A passing call allocates twice besides what fn allocates: the context
+// that it cancels.
 func HonoursCancellation(tb assert.TB, fn func(ctx context.Context) error, msg string) {
 	tb.Helper()
 	matcher.HonoursCancellation(tb, matcher.Soft, fn, msg)
@@ -33,9 +38,14 @@ func HonoursCancellation(tb assert.TB, fn func(ctx context.Context) error, msg s
 // passed, and records a failure and lets the test continue when fn does
 // not return a deadline error.
 //
-// This differs from [HonoursCancellation] in which failure it asks
-// for: a subject may distinguish a caller who gave up from one who ran
-// out of time.
+// The assertion differs from [HonoursCancellation] in the context that
+// it hands fn, because a subject may treat a caller who gave up apart
+// from one who ran out of time.
+//
+// # Allocation contract
+//
+// A passing call allocates twice besides what fn allocates: the context
+// whose deadline has passed.
 func HonoursDeadline(tb assert.TB, fn func(ctx context.Context) error, msg string) {
 	tb.Helper()
 	matcher.HonoursDeadline(tb, matcher.Soft, fn, msg)
@@ -44,16 +54,21 @@ func HonoursDeadline(tb assert.TB, fn func(ctx context.Context) error, msg strin
 // CompletesWithin calls fn with a context whose deadline is within from
 // now, and records a failure when fn takes longer than within.
 //
-// The verdict is the time fn took, on the seat's clock. What fn returns
-// does not count, because failing quickly is still finishing, and which
-// failures are acceptable is a question for another assertion.
+// The verdict is the time that fn took, on the seat's clock. An error
+// back from fn passes, because failing quickly is still finishing. Other
+// assertions state which failures are acceptable.
 //
-// fn runs on a goroutine of its own. A subject still running when the
-// deadline passes fails then, and runs on, because no goroutine can be
-// stopped from outside. A panic in fn panics again on the calling
+// fn runs on a goroutine of its own. A subject that is still running when
+// the deadline passes fails then and runs on, because a goroutine cannot
+// be stopped from outside. A panic in fn panics again on the calling
 // goroutine.
 //
-// This spends real time, up to within.
+// The assertion spends real time, up to within.
+//
+// # Allocation contract
+//
+// A passing call allocates 14 times besides what fn allocates: the context
+// with its deadline, and the goroutine of fn with its state.
 func CompletesWithin(tb assert.TB, within time.Duration, fn func(ctx context.Context) error, msg string) {
 	tb.Helper()
 	matcher.CompletesWithin(tb, matcher.Soft, within, fn, msg)
@@ -67,11 +82,17 @@ func CompletesWithin(tb assert.TB, within time.Duration, fn func(ctx context.Con
 //	    func() { _, _ = store.Get(ctx, id) },
 //	    "Get does not disturb the store")
 //
-// The projection observe returns defines what changing nothing means:
-// whatever it leaves out, fn is free to change. Return a copy. A
-// projection sharing memory with the subject reads the same value
-// twice and passes whatever fn did. Leave out anything that moves on
-// its own, such as a clock reading or a generated identifier.
+// observe returns a projection of the state, and fn passes when the
+// projection is the same before and after it. fn may change whatever the
+// projection leaves out. Return a copy from observe. A projection that
+// shares memory with the subject reads the same value twice and passes
+// whatever fn did. Leave out anything that moves on its own, such as a
+// clock reading or a generated identifier.
+//
+// # Allocation contract
+//
+// A passing call with readings of one int allocates 24 times, in the
+// comparison of the two readings as [Equal] compares them.
 func Pure[S any](tb assert.TB, observe func() S, fn func(), msg string, opts ...Option) {
 	tb.Helper()
 	matcher.Pure(tb, matcher.Soft, observe, fn, msg, opts...)
@@ -80,9 +101,13 @@ func Pure[S any](tb assert.TB, observe func() S, fn func(), msg string, opts ...
 // NilContextSafe calls fn with a nil context, and records a failure and
 // lets the test continue when fn panics.
 //
-// An error back is fine and expected. The question is only whether a
-// subject handed no context crashes, which a caller does by accident
-// and a middlebox does by omission.
+// An error back from fn passes. The assertion checks only that a subject
+// handed no context does not crash, because a caller passes a nil context
+// by accident.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what fn allocates.
 func NilContextSafe(tb assert.TB, fn func(ctx context.Context) error, msg string) {
 	tb.Helper()
 	matcher.NilContextSafe(tb, matcher.Soft, fn, msg)

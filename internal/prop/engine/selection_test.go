@@ -15,14 +15,16 @@ import (
 // The allocations of each selection generator's constructor, measured.
 const (
 	// sampledFromAllocs are the allocations of SampledFrom and OneOf: the
-	// copy of the values, the decode and the decode with its type erased.
-	sampledFromAllocs = 3
-	// optionalAllocs are the allocations of Optional: the decode and the
-	// decode with its type erased.
-	optionalAllocs = 2
+	// copy of the values, the decode, the decode with its type erased, and
+	// the inverse.
+	sampledFromAllocs = 4
+	// optionalAllocs are the allocations of Optional: the decode, the
+	// decode with its type erased, and the inverse.
+	optionalAllocs = 3
 	// permutationAllocs are the allocations of Permutation: the copy of
-	// the values, the decode and the decode with its type erased.
-	permutationAllocs = 3
+	// the values, the decode, the decode with its type erased, and the
+	// inverse.
+	permutationAllocs = 4
 )
 
 // TestSelection checks the generators that select among stated values or
@@ -239,9 +241,9 @@ func TestSelection(t *testing.T) {
 	})
 }
 
-// TestSelectionZeroAlloc checks the allocation ceilings of the selection
+// TestSelectionAllocs checks the allocation ceilings of the selection
 // generators' constructors.
-func TestSelectionZeroAlloc(t *testing.T) {
+func TestSelectionAllocs(t *testing.T) {
 	digit := engine.Integer(0, 9)
 	assert.MaxAllocs(t, func() { _ = engine.SampledFrom(1, 2, 3) }, sampledFromAllocs,
 		"SampledFrom allocates its values and its decodes")
@@ -296,10 +298,4 @@ func BenchmarkSelection(b *testing.B) {
 		}
 		assert.Equal(b, got.ID(), "permutation", "the id")
 	})
-}
-
-// anyOf returns g with its values as any, so generators of different types
-// share one one-of.
-func anyOf[T any](g engine.Generator[T]) engine.Generator[any] {
-	return g.Map(func(v T) any { return v })
 }

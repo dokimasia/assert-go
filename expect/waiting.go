@@ -22,11 +22,13 @@ import (
 // attempt and not a failure of the test. fn runs at least once however
 // short the timeout. An interval below a millisecond waits a millisecond.
 //
-// Eventually spends real time. [go.dokimi.dev/assert.Eventually] states
-// when that is the right tool and when a controlled clock is.
+// Eventually waits on the seat's clock, as
+// [go.dokimi.dev/assert.Eventually] describes.
 //
-// It is written by hand and not generated, because the core cannot hand
-// the body's seat type to a public package.
+// # Allocation contract
+//
+// A call whose first attempt passes allocates 5 times besides what fn
+// allocates.
 func Eventually(tb assert.TB, timeout, interval time.Duration, fn func(tb assert.TB), msg string) {
 	tb.Helper()
 	matcher.Eventually(tb, matcher.Soft, timeout, interval, func(trial matcher.Seat) {
@@ -47,9 +49,14 @@ func Eventually(tb assert.TB, timeout, interval time.Duration, fn func(tb assert
 //
 // EventuallyTrue differs from [Eventually] in what it reports. A
 // predicate does not report a failure of its own, so the failure states
-// only that the wait ran out. Where the reason matters, write the condition as
-// assertions and use [Eventually]. EventuallyTrue spends real time for
-// the same reason.
+// only that the wait ran out. Where the reason matters, write the
+// condition as assertions and use [Eventually]. EventuallyTrue waits on
+// the seat's clock as Eventually does.
+//
+// # Allocation contract
+//
+// A call whose first attempt passes allocates nothing besides what pred
+// allocates.
 func EventuallyTrue(tb assert.TB, timeout time.Duration, pred func() bool, msg string) {
 	tb.Helper()
 	matcher.EventuallyTrue(tb, matcher.Soft, timeout, pred, msg)

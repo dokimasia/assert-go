@@ -11,6 +11,7 @@ import (
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/random"
 	"go.dokimi.dev/assert/internal/prop/tree"
+	"go.dokimi.dev/assert/internal/record"
 )
 
 //go:generate go run golang.org/x/tools/cmd/stringer@v0.50.0 -type=Status -linecomment -output=execution.string_gen.go
@@ -31,11 +32,14 @@ const (
 	// CaseDiverged is a case whose body made other requests after the same
 	// values than an earlier case made.
 	CaseDiverged Status = 4 // diverged
+	// CaseRefused is a case of [Settings.Draws] that refused the entry of a
+	// draw.
+	CaseRefused Status = 5 // refused
 )
 
-// Valid reports whether s is one of the five statuses.
+// Valid reports whether s is one of the six statuses.
 func (s Status) Valid() bool {
-	return s <= CaseDiverged
+	return s <= CaseRefused
 }
 
 // Execution is one call of a body: its case and how it ended.
@@ -54,6 +58,9 @@ type Execution struct {
 	// Stack is the stack of the body's goroutine where it panicked, as
 	// runtime/debug.Stack formats it, and nil when Panic is nil.
 	Stack []byte
+	// Refusal is the refusal of a refused case, a fault at the entry of
+	// Settings.Draws that the case refused, and nil for any other.
+	Refusal error
 }
 
 // Body is a property's body: it draws from the case it receives, and
@@ -73,25 +80,29 @@ func WithContext(ctx context.Context, body Body) Body {
 // Generate calls body once on case index of a run with seed, outside the
 // case tree, with the cap of [MaxChoices].
 func Generate(body Body, seed, index uint64, clock assert.Clock) Execution {
-	return execute(body, newGenerating(random.ForCase(seed, index)), MaxChoices, clock)
+	return execute(body, newGenerating(random.ForCase(seed, index)), Settings{MaxChoices: MaxChoices, Clock: clock})
 }
 
 // Replay calls body once on a case that replays choices, outside the case
 // tree, with the cap of [MaxChoices].
 func Replay(body Body, choices []choice.Choice, clock assert.Clock) Execution {
-	return execute(body, replaying{choices: choices}, MaxChoices, clock)
+	return execute(body, replaying{choices: choices}, Settings{MaxChoices: MaxChoices, Clock: clock})
 }
 
 // Bridge calls body once on a case decoded from a fuzzer's bytes, outside
-// the case tree, with the cap of [MaxChoices].
-func Bridge(body Body, data []byte, clock assert.Clock) Execution {
-	return execute(body, &bridging{data: data}, MaxChoices, clock)
+// the case tree, with the cap of [MaxChoices], and reads the clock of s.
+// The slot of s takes the calls of the case under the phase fuzz.
+func Bridge(body Body, data []byte, s Settings) Execution {
+	e := execute(body, &bridging{data: data}, Settings{MaxChoices: MaxChoices, Clock: s.Clock, Slot: s.Slot})
+	s.Slot.Take(&e.Case.calls, record.Fuzz)
+	return e
 }
 
 // execute calls body once, on a goroutine of its own, on a new case outside
-// the case tree whose values come from p, and returns how the case ended.
-func execute(body Body, p provider, maxChoices int, clock assert.Clock) Execution {
-	return finish(newCase(p, maxChoices, nil, clock), body)
+// the case tree whose values come from p, capped at s.MaxChoices, and
+// returns how the case ended.
+func execute(body Body, p provider, s Settings) Execution {
+	return finish(newCase(p, s, nil), body)
 }
 
 // finish calls body once on c, on a goroutine of its own, and returns how
@@ -112,19 +123,24 @@ func finish(c *Case, body Body) Execution {
 // stops where such a case would have stopped: at a choice that repeats a
 // tested case, or at a request that differs from the recorded one.
 // [executionOf] then ends the case as it ends a case that walked t as it
-// ran.
+// ran. The case keeps the calls made before the step that stops it, which
+// are the calls of such a case.
 func entered(t *tree.Tree, e Execution) (Execution, int) {
 	c := e.Case
 	c.mu.Lock()
 	c.walker = t.Walk()
 	steps := len(c.walk)
+	stopped := false
 	for index, s := range c.walk {
 		if stop := c.walked(c.walker.Step(s.bounds, s.value)); stop != running {
-			c.stop, steps = stop, index+1
+			c.stop, steps, stopped = stop, index+1, true
 			break
 		}
 	}
 	c.mu.Unlock()
+	if stopped {
+		record.Cut(&c.calls, steps)
+	}
 	return executionOf(c), steps
 }
 
@@ -134,6 +150,9 @@ func entered(t *tree.Tree, e Execution) (Execution, int) {
 func executionOf(c *Case) Execution {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.stop == refused {
+		return Execution{Case: c, Status: CaseRefused, Refusal: c.refusal}
+	}
 	if c.stop == repeated {
 		return Execution{Case: c, Status: CaseRepeated}
 	}

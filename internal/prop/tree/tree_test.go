@@ -180,8 +180,8 @@ func TestTree(t *testing.T) {
 	})
 }
 
-// TestTreeZeroAlloc checks that the queries of a tree allocate nothing.
-func TestTreeZeroAlloc(t *testing.T) {
+// TestTreeAllocs checks that the queries of a tree allocate nothing.
+func TestTreeAllocs(t *testing.T) {
 	tr := tree.New(tree.NodeLimit)
 	assert.MaxAllocs(t, func() { _ = tr.Exhausted() }, 0, "Exhausted allocates nothing")
 	assert.MaxAllocs(t, func() { _ = tr.Full() }, 0, "Full allocates nothing")

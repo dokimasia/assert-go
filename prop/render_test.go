@@ -5,48 +5,11 @@ package prop_test
 
 import (
 	"fmt"
-	"sync"
 	"testing"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/prop"
 )
-
-// sentences is a seat without a Report method, as testing.TB is. It keeps
-// the message of each failure.
-type sentences struct {
-	// mu guards messages.
-	mu sync.Mutex
-	// messages are the messages of the failures, in call order.
-	messages []string
-}
-
-// Helper does nothing: the seat states no location.
-func (*sentences) Helper() {}
-
-// Fatalf keeps the message and returns.
-func (s *sentences) Fatalf(format string, args ...any) {
-	s.keep(format, args)
-}
-
-// Errorf keeps the message.
-func (s *sentences) Errorf(format string, args ...any) {
-	s.keep(format, args)
-}
-
-// keep adds the formatted message to the messages.
-func (s *sentences) keep(format string, args []any) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.messages = append(s.messages, fmt.Sprintf(format, args...))
-}
-
-// all returns a copy of the messages.
-func (s *sentences) all() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return append([]string(nil), s.messages...)
-}
 
 // The parts of a run's sentence, for runs of seed 7.
 const (
@@ -84,21 +47,6 @@ func TestRender(t *testing.T) {
 				body: failsAtLeast(100, 0, every),
 				want: fmt.Sprintf(header, "counterexample", 0) +
 					"\n  value: 0, any value fails" +
-					"\nfailure of every: " +
-					replayZero,
-			},
-			{
-				name: "states the notes of the failing case after its draws",
-				body: func(c *prop.Case) {
-					c.Draw(prop.Integer(0, 100), drawn)
-					c.Logf("opened the ledger")
-					c.Logf("appended twice")
-					fail(c, every)
-				},
-				want: fmt.Sprintf(header, "counterexample", 0) +
-					"\n  value: 0, any value fails" +
-					"\n  note: opened the ledger" +
-					"\n  note: appended twice" +
 					"\nfailure of every: " +
 					replayZero,
 			},

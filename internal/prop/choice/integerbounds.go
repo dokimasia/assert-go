@@ -5,8 +5,9 @@ package choice
 
 import (
 	"errors"
-	"fmt"
 	"math"
+
+	"go.dokimi.dev/assert/internal/fault"
 )
 
 // ErrRange reports integer bounds inside neither the signed nor the
@@ -32,10 +33,10 @@ type IntegerBounds struct {
 // math.MaxInt64, because no 64-bit range contains both.
 func NewIntegerBounds(lo, hi Int) (IntegerBounds, error) {
 	if lo.Compare(hi) > 0 {
-		return IntegerBounds{}, fmt.Errorf("%w: integer bounds [%s, %s]", ErrEmpty, lo, hi)
+		return IntegerBounds{}, fault.Of(ErrEmpty, "the integer bounds [%s, %s] admit no value", lo, hi)
 	}
 	if lo.Negative() && hi.Compare(maxInt) > 0 {
-		return IntegerBounds{}, fmt.Errorf("%w: [%s, %s]", ErrRange, lo, hi)
+		return IntegerBounds{}, fault.Of(ErrRange, "the bounds [%s, %s] lie inside neither 64-bit range", lo, hi)
 	}
 	return IntegerBounds{lo: lo, hi: hi}, nil
 }

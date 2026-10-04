@@ -21,21 +21,24 @@ var absent = [...]string{
 	VerdictDifference:     "a pass",
 }
 
-// render returns the sentence of a failing run's record f, for a seat
-// without a Report method. It states the contract, the outcome with the
-// counts and the seed, and then a line for each part of the detail that the
-// outcome uses: the counterexample's draws and the failing case's notes,
-// its failure and how to replay it, each other failure, the divergence and
-// the coverage requirement.
-func render(f assert.Failure, notes []string) string {
+// The text writer takes the sentence of the record of every property
+// assertion from this package, which registers it while it initialises.
+func init() {
+	matcher.RegisterSentence(sentence, append([]string{forAllID}, formIDs[:]...)...)
+}
+
+// sentence returns the sentence of a failing run's record f, which the text
+// writer sends to a seat without a Report method. It states the contract,
+// the outcome with the counts and the seed, and then a line for each part of
+// the detail that the outcome uses: the counterexample's draws, its failure
+// and how to replay it, each other failure, the divergence and the coverage
+// requirement.
+func sentence(f assert.Failure) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s: %v after %d valid and %d rejected cases, seed %s",
 		f.Contract, f.Detail[outcomeField], f.Detail[casesField], f.Detail[rejectedField], f.Detail[seedField])
 	if drawn, ok := f.Detail[counterexampleField].([]Drawn); ok {
 		writeDraws(&b, drawn)
-	}
-	for _, note := range notes {
-		fmt.Fprintf(&b, "\n  note: %s", note)
 	}
 	if failure, ok := f.Detail[failureField].(assert.Failure); ok {
 		writeFailure(&b, "failure", failure)

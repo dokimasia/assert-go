@@ -1,0 +1,55 @@
+{
+  "fields": [
+    [
+      "id",
+      {
+        "shape": "int",
+        "signed": false,
+        "width": 32
+      }
+    ],
+    [
+      "lines",
+      {
+        "max_size": 3,
+        "of": {
+          "fields": [
+            [
+              "sku",
+              {
+                "shape": "string"
+              }
+            ],
+            [
+              "qty",
+              {
+                "max": 99,
+                "min": 1,
+                "shape": "int",
+                "signed": true,
+                "width": 32
+              }
+            ]
+          ],
+          "shape": "record"
+        },
+        "shape": "list"
+      }
+    ],
+    [
+      "note",
+      {
+        "of": {
+          "max_size": 10,
+          "shape": "string"
+        },
+        "shape": "optional"
+      }
+    ]
+  ],
+  "shape": "record",
+  "source": {
+    "language": "go",
+    "type": "go.dokimi.dev/assert/prop_test.order"
+  }
+}

@@ -88,8 +88,8 @@ func TestSize(t *testing.T) {
 	})
 }
 
-// TestSizeZeroAlloc checks the allocation ceilings of the size options.
-func TestSizeZeroAlloc(t *testing.T) {
+// TestSizeAllocs checks the allocation ceilings of the size options.
+func TestSizeAllocs(t *testing.T) {
 	var kept prop.SizeOption
 	assert.MaxAllocs(t, func() { kept = prop.MinSize(2) }, sizeAllocs, "MinSize allocates its bound")
 	assert.MaxAllocs(t, func() { kept = prop.MaxSize(2) }, sizeAllocs, "MaxSize allocates its bound")

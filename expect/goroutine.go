@@ -27,7 +27,9 @@ import (
 //
 // Each reading dumps the stacks of every goroutine into a buffer of at
 // most 64 MiB. A dump that does not fit leaves the set of new goroutines
-// unknown, so the check records the overflow and states no verdict.
+// unknown. The check then stops the test with a fault and states no
+// verdict. Every fault stops the test, in this package as in
+// [go.dokimi.dev/assert].
 //
 // # Parallel tests
 //
@@ -36,6 +38,13 @@ import (
 // in a test that uses this check. A package whose other tests are
 // parallel can still produce a false report, because each reading covers
 // the whole process.
+//
+// # Allocation contract
+//
+// A call and a check that finds no new goroutine allocate 7 times in a
+// process of a few goroutines, the 1 MiB buffer of the dumps among them.
+// The sets of goroutine ids grow with the goroutines of the process, so a
+// process of more goroutines allocates more.
 func NoGoroutineLeaks(tb assert.TB, msg string) func() {
 	tb.Helper()
 	return matcher.NoGoroutineLeaks(tb, matcher.Soft, msg)

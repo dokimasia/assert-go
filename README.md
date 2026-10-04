@@ -201,6 +201,35 @@ The run also writes the smallest failing case of each failure to
 that case first. Review the store as you review golden files. `prop.Fuzz`
 runs the same body under `go test -fuzz`.
 
+## Call records
+
+Set `DOKIMI_ASSERT_RECORD=1` to record every assertion call of a run:
+
+```sh
+DOKIMI_ASSERT_RECORD=1 go test -json ./...
+```
+
+Each call writes one call record, a JSON object, as an `attr` event of
+its test under the key `dokimi.assert.<seq>`. A call record states:
+
+- The call's number in its test.
+- The assertion, the message, and the verdict: `pass`, `fail` or
+  `error`.
+- Whether the surface stops the test, and the file and the line of the
+  call.
+- The detail of a failure, each value a typed literal of the standard.
+
+A call in the body of a property, of `Eventually` or of `Rejects` states
+the call that ran the body. A call in a property's case also states the
+case's phase, such as `random` or `shrink`. A property's own record
+states the detail of its run on a pass too. A record longer than one
+line of `go test -json` is split over events of the same key, in order.
+
+Recording is off by default, and an unset, empty or `0` value turns it
+off. Any other value is an error that every assertion reports. An
+`assert.Recorder` keeps the call records of its own calls whatever the
+variable states, and `Records` returns them.
+
 ## Assertion reference
 
 ### Values
@@ -342,17 +371,22 @@ holds itself to it on every run:
   shared with every other implementation. Each case runs through every
   function and chain form of both surfaces. The record of a failing
   case must state the case's assertion and the message unchanged, and
-  contain exactly the fields that the assertion declares.
-- **Properties.** 204 vectors state how the property engine decodes,
+  contain exactly the fields that the assertion declares. The call
+  record of each case must state the assertion, the message, the
+  verdict and the surface, and on a failure the same fields as typed
+  literals.
+- **Properties.** 419 vectors state how the property engine decodes,
   generates and shrinks inputs, decides coverage, encodes replay tokens,
-  stores failures and reports a run, shared with every other
-  implementation.
+  stores failures, reports a run and records its calls, shared with
+  every other implementation.
 
 A corpus case states its arguments as data, or names a behaviour that
 each implementation builds, such as a callable that panics. The cases
-cover 39 of the 57 assertions. No case can state an error value, a golden
-file, a benchmark or a predicate, so those assertions are checked for
-presence and tested here. The vectors cover `prop-for-all`.
+cover 39 of the 56 assertions outside `prop`. No case can state an error
+value, a golden file, a benchmark or a predicate, so those assertions are
+checked for presence and tested here. The vectors cover 38 of the 39
+property assertions: `prop-for-all` and every property form but
+`prop-max-allocs`, whose allocation count no vector can state.
 
 ## Development
 

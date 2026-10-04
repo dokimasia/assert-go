@@ -16,8 +16,11 @@ package matcher
 //
 // A slice of nought or one item passes: it has no adjacent pair to
 // break. The failure names the index and both values of the first
-// break, so a reader sees where the order went wrong rather than only
-// that it did.
+// break, so a reader sees where the order went wrong.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what pred allocates.
 func Pairwise[T any](seat Seat, mode Mode, items []T, pred func(earlier, later T) bool, msg string) {
 	seat.Helper()
 
@@ -29,4 +32,5 @@ func Pairwise[T any](seat Seat, mode Mode, items []T, pred func(earlier, later T
 			return
 		}
 	}
+	Pass(seat, mode, "pairwise", msg)
 }

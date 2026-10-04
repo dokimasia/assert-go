@@ -6,24 +6,19 @@ package prop_test
 import (
 	"errors"
 	"fmt"
-	"runtime"
 	"testing"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
-	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/prop"
 )
-
-// invalidDifference is the first value past the three differences.
-const invalidDifference prop.Difference = 3
 
 // thisFile is the base name of this file, as a failure identity states it.
 const thisFile = "divergence_test.go"
 
-// TestDivergence checks what a flaky run reports as its first difference,
-// pinned to the definition's behaviour vectors, with each side in its text
-// form, and pins each difference's spelling.
+// TestDivergence checks which values are differences, and what a flaky run
+// reports as its first difference, pinned to the definition's behaviour
+// vectors, with each side in its text form.
 func TestDivergence(t *testing.T) {
 	t.Parallel()
 
@@ -47,39 +42,14 @@ func TestDivergence(t *testing.T) {
 		}
 	})
 
-	t.Run("String", func(t *testing.T) {
+	t.Run("MarshalText", func(t *testing.T) {
 		t.Parallel()
 
-		tests := []struct {
-			name string
-			give prop.Difference
-			want string
-		}{
-			{name: "returns request for RequestDifference", give: prop.RequestDifference, want: "request"},
-			{
-				name: "returns fingerprint for FingerprintDifference",
-				give: prop.FingerprintDifference,
-				want: "fingerprint",
-			},
-			{name: "returns verdict for VerdictDifference", give: prop.VerdictDifference, want: "verdict"},
-			{
-				name: "returns Difference(3) for a value that is no difference",
-				give: invalidDifference,
-				want: "Difference(3)",
-			},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				assert.Equal(t, tt.give.String(), tt.want, "the difference's spelling")
-			})
-		}
-
-		t.Run("returns the engine's spelling of the same value", func(t *testing.T) {
+		t.Run("returns the spelling of the difference", func(t *testing.T) {
 			t.Parallel()
-			for d := range engine.VerdictDifference + 1 {
-				assert.Equal(t, prop.Difference(d).String(), d.String(), "the spelling of value "+d.String())
-			}
+			got, err := prop.FingerprintDifference.MarshalText()
+			assert.NoError(t, err, "every difference has a spelling")
+			assert.Equal(t, string(got), "fingerprint", "the spelling of the definition")
 		})
 	})
 
@@ -248,15 +218,26 @@ func TestDivergence(t *testing.T) {
 	})
 }
 
-// TestDivergenceZeroAlloc checks that no method of Difference allocates.
-func TestDivergenceZeroAlloc(t *testing.T) {
+// TestDivergenceAllocs checks that Valid allocates nothing, and that
+// MarshalText allocates its text.
+func TestDivergenceAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = prop.VerdictDifference.Valid() }, 0, "Valid allocates nothing")
-	assert.MaxAllocs(t, func() { _ = prop.VerdictDifference.String() }, 0, "String allocates nothing")
+	assert.MaxAllocs(t, func() { _, _ = prop.VerdictDifference.MarshalText() }, 1, "MarshalText allocates its text")
 }
 
-// BenchmarkDivergence measures each method of Difference under a ceiling
-// of no allocation.
+// BenchmarkDivergence measures Valid under a ceiling of no allocation, and
+// MarshalText.
 func BenchmarkDivergence(b *testing.B) {
+	b.Run("MarshalText", func(b *testing.B) {
+		var got []byte
+		c := bench.Start(b).MaxAllocs(1)
+		defer c.End()
+		for c.Loop() {
+			got, _ = prop.VerdictDifference.MarshalText()
+		}
+		assert.Equal(b, string(got), "verdict", "the spelling")
+	})
+
 	b.Run("Valid", func(b *testing.B) {
 		var got bool
 		c := bench.Start(b).MaxAllocs(0)
@@ -266,42 +247,6 @@ func BenchmarkDivergence(b *testing.B) {
 		}
 		assert.True(b, got, "VerdictDifference is a difference")
 	})
-
-	b.Run("String", func(b *testing.B) {
-		var got string
-		c := bench.Start(b).MaxAllocs(0)
-		defer c.End()
-		for c.Loop() {
-			got = prop.VerdictDifference.String()
-		}
-		assert.Equal(b, got, "verdict", "the difference's spelling")
-	})
-}
-
-// diverges returns the body that draws a value of first on its first call
-// and a value of then on every later call.
-func diverges[T, U any](first prop.Generator[T], then prop.Generator[U]) func(*prop.Case) {
-	var calls int
-	return func(c *prop.Case) {
-		calls++
-		if calls == 1 {
-			c.Draw(first, drawn)
-			return
-		}
-		c.Draw(then, drawn)
-	}
-}
-
-// once returns the body that calls failing on its first call and passes on
-// every later call, so the replay of its failing case passes.
-func once(failing func(*prop.Case)) func(*prop.Case) {
-	var calls int
-	return func(c *prop.Case) {
-		calls++
-		if calls == 1 {
-			failing(c)
-		}
-	}
 }
 
 // requested returns the divergence of two requests at the first choice.
@@ -313,12 +258,4 @@ func requested(recorded, replayed any) *prop.Divergence {
 // choice.
 func verdict(recorded, replayed any) *prop.Divergence {
 	return &prop.Divergence{What: prop.VerdictDifference, Recorded: recorded, Replayed: replayed}
-}
-
-// here stores the file and the line of its caller in at and returns the
-// empty string, so that a call inside another call's arguments states
-// where that call is.
-func here(at *assert.Where) string {
-	_, at.File, at.Line, _ = runtime.Caller(1)
-	return ""
 }

@@ -4,7 +4,8 @@
 package engine_test
 
 import (
-	"slices"
+	"errors"
+	"strconv"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -13,27 +14,30 @@ import (
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
 
-// drawn is the label of the one value a test body draws.
-const drawn = "value"
-
-// The allocations of the combinators and of a draw, measured.
+// The allocations of the combinators, measured.
 const (
-	// newGeneratorAllocs are the allocations of NewGenerator: the decode
-	// with its type erased.
+	// newGeneratorAllocs are the allocations of NewGenerator and
+	// NewInvertible: the decode with its type erased.
 	newGeneratorAllocs = 1
-	// combinatorAllocs are the allocations of Bind, Composite and Just: the
+	// combinatorAllocs are the allocations of Bind and Composite: the
 	// decode and the decode with its type erased.
 	combinatorAllocs = 2
+	// justAllocs are the allocations of Just: the decode, the decode with
+	// its type erased, and the inverse.
+	justAllocs = 3
 	// mapAllocs are the allocations of Map of an integer: the decode, the
 	// decode with its type erased, and the mapping of its values for the
 	// explain phase.
 	mapAllocs = 3
-	// filterAllocs are the allocations of Filter: its attempt, the decode
-	// and the decode with its type erased.
-	filterAllocs = 3
-	// drawAllocs are the allocations of a whole case that replays one draw,
-	// its goroutine and its recorder included.
-	drawAllocs = 9
+	// mapBackAllocs are the allocations of MapBack of an integer: the
+	// allocations of Map, the inverse, and the neutral value of a draw.
+	mapBackAllocs = 5
+	// eraseAllocs are the allocations of Erase of a generator with an
+	// inverse: the inverse with its type erased.
+	eraseAllocs = 1
+	// filterAllocs are the allocations of Filter: its attempt, the decode,
+	// the decode with its type erased, and the inverse.
+	filterAllocs = 4
 )
 
 // TestGenerator checks the combinators, the draw that records a value, and
@@ -121,7 +125,11 @@ func TestGenerator(t *testing.T) {
 			t.Parallel()
 			var got int
 			evens := bytes.Filter(even)
-			e := engine.Bridge(func(c *engine.Case) { got = engine.Draw(c, evens, drawn) }, []byte{3, 4}, nil)
+			e := engine.Bridge(
+				func(c *engine.Case) { got = engine.Draw(c, evens, drawn) },
+				[]byte{3, 4},
+				engine.Settings{},
+			)
 			assert.Equal(t, got, 4, "the second attempt's value")
 			assert.True(t, sameChoices(e.Case.Choices(), integers(4)), "the rejected attempt is gone from the record")
 			assert.Equal(t, labels(e.Case.Spans()), []string{"filter", "integer"}, "the kept attempt's spans")
@@ -131,7 +139,11 @@ func TestGenerator(t *testing.T) {
 			t.Parallel()
 			var attempts int
 			counted := bytes.Map(func(v int) int { attempts++; return v }).Filter(even)
-			e := engine.Bridge(func(c *engine.Case) { engine.Draw(c, counted, drawn) }, []byte{1, 3, 5, 7}, nil)
+			e := engine.Bridge(
+				func(c *engine.Case) { engine.Draw(c, counted, drawn) },
+				[]byte{1, 3, 5, 7},
+				engine.Settings{},
+			)
 			assert.Equal(t, e.Status, engine.CaseRejected, "the filter gives up")
 			assert.Equal(t, attempts, 3, "three attempts")
 			assert.True(t, sameChoices(e.Case.Choices(), integers(5)), "the last attempt's choice")
@@ -243,11 +255,74 @@ func TestGenerator(t *testing.T) {
 			assert.Equal(t, [2]any{draws[1].Span, draws[1].Value}, [2]any{1, 1.5}, "the second draw's span")
 		})
 	})
+
+	t.Run("Neutral", func(t *testing.T) {
+		t.Parallel()
+
+		digit := engine.Integer(0, 9)
+		double := func(v int) int { return 2 * v }
+		doubled := digit.MapBack(double, halve)
+
+		t.Run("returns the value of a draw from a generator that states its values itself", func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, drawnFrom(digit, 4), any(4), "the drawn value")
+			assert.Equal(t, neutralOf(t, digit, 4), any(4), "the value itself")
+		})
+
+		t.Run("returns the value that a draw from MapBack maps from", func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, drawnFrom(doubled, 4), any(8), "the mapped value")
+			assert.Equal(t, neutralOf(t, doubled, 4), any(4), "the integer it maps from")
+		})
+
+		t.Run("returns the value of the innermost generator through MapBack of MapBack", func(t *testing.T) {
+			t.Parallel()
+			text := doubled.MapBack(strconv.Itoa, strconv.Atoi)
+			assert.Equal(t, drawnFrom(text, 4), any("8"), "the text of the doubled value")
+			assert.Equal(t, neutralOf(t, text, 4), any(4), "the integer of the innermost generator")
+		})
+
+		t.Run("returns the value as its source states it through Filter and Erase", func(t *testing.T) {
+			t.Parallel()
+			kept := engine.Erase(doubled.Filter(func(v int) bool { return v < 100 }))
+			assert.Equal(t, neutralOf(t, kept, 4), any(4), "the integer that the filtered value maps from")
+		})
+
+		t.Run("returns the value itself through Map, which states no inverse", func(t *testing.T) {
+			t.Parallel()
+			again := doubled.Map(double)
+			assert.Equal(t, neutralOf(t, again, 4), any(16), "the value that Map returns")
+		})
+
+		t.Run("returns the value itself when back refuses it", func(t *testing.T) {
+			t.Parallel()
+			refused := digit.MapBack(double, func(int) (int, error) { return 0, errors.New("no way back") })
+			assert.Equal(t, neutralOf(t, refused, 4), any(8), "the mapped value")
+		})
+	})
 }
 
-// TestGeneratorZeroAlloc checks that a Generator's id allocates nothing,
+// drawnFrom returns the value that g decodes from a case replaying the
+// integer choice v.
+func drawnFrom[T any](g engine.Generator[T], v int64) any {
+	var got T
+	engine.Replay(func(c *engine.Case) { got = engine.Draw(c, g, drawn) }, integers(v), nil)
+	return got
+}
+
+// neutralOf returns the neutral value of the one draw from g of a case
+// replaying the integer choice v.
+func neutralOf[T any](tb testing.TB, g engine.Generator[T], v int64) any {
+	tb.Helper()
+	e := engine.Replay(func(c *engine.Case) { engine.Draw(c, g, drawn) }, integers(v), nil)
+	draws := e.Case.Draws()
+	assert.Length(tb, draws, 1, "one draw")
+	return draws[0].Neutral()
+}
+
+// TestGeneratorAllocs checks that a Generator's id allocates nothing,
 // and the allocation ceiling of each combinator and of a replayed draw.
-func TestGeneratorZeroAlloc(t *testing.T) {
+func TestGeneratorAllocs(t *testing.T) {
 	g := engine.Integer(0, 9)
 	even := func(v int) bool { return v%2 == 0 }
 	double := func(v int) int { return 2 * v }
@@ -256,12 +331,18 @@ func TestGeneratorZeroAlloc(t *testing.T) {
 	choices := integers(7)
 	assert.MaxAllocs(t, func() { _ = engine.NewGenerator("pair", decodePair) }, newGeneratorAllocs,
 		"NewGenerator allocates its erased decode")
+	assert.MaxAllocs(t, func() { _ = engine.NewInvertible("pair", decodePair, invertPair) }, newGeneratorAllocs,
+		"NewInvertible allocates its erased decode")
+	assert.MaxAllocs(t, func() { _ = engine.Erase(g) }, eraseAllocs, "Erase allocates its erased inverse")
 	assert.MaxAllocs(t, func() { _ = g.ID() }, 0, "ID allocates nothing")
 	assert.MaxAllocs(t, func() { _ = g.Map(double) }, mapAllocs, "Map allocates its decodes and its mapping")
-	assert.MaxAllocs(t, func() { _ = g.Filter(even) }, filterAllocs, "Filter allocates its attempt and its decodes")
+	assert.MaxAllocs(t, func() { _ = g.MapBack(double, halve) }, mapBackAllocs,
+		"MapBack allocates its decodes, its mapping and its inverse")
+	assert.MaxAllocs(t, func() { _ = g.Filter(even) }, filterAllocs,
+		"Filter allocates its attempt, its decodes and its inverse")
 	assert.MaxAllocs(t, func() { _ = g.Bind(engine.Just[int]) }, combinatorAllocs, "Bind allocates its decodes")
 	assert.MaxAllocs(t, func() { _ = engine.Composite(sum) }, combinatorAllocs, "Composite allocates its decodes")
-	assert.MaxAllocs(t, func() { _ = engine.Just(7) }, combinatorAllocs, "Just allocates its decodes")
+	assert.MaxAllocs(t, func() { _ = engine.Just(7) }, justAllocs, "Just allocates its decodes and its inverse")
 	assert.MaxAllocs(t, func() { engine.Replay(body, choices, nil) }, drawAllocs, "a replayed draw allocates its case")
 }
 
@@ -278,6 +359,26 @@ func BenchmarkGenerator(b *testing.B) {
 			got = engine.NewGenerator("pair", decodePair)
 		}
 		assert.Equal(b, got.ID(), "pair", "the id")
+	})
+
+	b.Run("NewInvertible", func(b *testing.B) {
+		var got engine.Generator[[2]uint64]
+		c := bench.Start(b).MaxAllocs(newGeneratorAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.NewInvertible("pair", decodePair, invertPair)
+		}
+		assert.Equal(b, got.ID(), "pair", "the id")
+	})
+
+	b.Run("Erase", func(b *testing.B) {
+		var got engine.Generator[any]
+		c := bench.Start(b).MaxAllocs(eraseAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Erase(g)
+		}
+		assert.Equal(b, got.ID(), "integer", "the id of the generator")
 	})
 
 	b.Run("ID", func(b *testing.B) {
@@ -297,6 +398,17 @@ func BenchmarkGenerator(b *testing.B) {
 		defer c.End()
 		for c.Loop() {
 			got = g.Map(double)
+		}
+		assert.Equal(b, got.ID(), "integer", "the id of the source")
+	})
+
+	b.Run("MapBack", func(b *testing.B) {
+		var got engine.Generator[int]
+		double := func(v int) int { return 2 * v }
+		c := bench.Start(b).MaxAllocs(mapBackAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = g.MapBack(double, halve)
 		}
 		assert.Equal(b, got.ID(), "integer", "the id of the source")
 	})
@@ -335,7 +447,7 @@ func BenchmarkGenerator(b *testing.B) {
 
 	b.Run("Just", func(b *testing.B) {
 		var got engine.Generator[int]
-		c := bench.Start(b).MaxAllocs(combinatorAllocs)
+		c := bench.Start(b).MaxAllocs(justAllocs)
 		defer c.End()
 		for c.Loop() {
 			got = engine.Just(7)
@@ -354,104 +466,4 @@ func BenchmarkGenerator(b *testing.B) {
 		}
 		assert.Equal(b, got, 7, "the replayed value")
 	})
-}
-
-// decodePair returns two value choices of the digits, made on the case
-// without a span.
-func decodePair(c *engine.Case) [2]uint64 {
-	first := c.Integer(digitRange).Magnitude()
-	return [2]uint64{first, c.Integer(digitRange).Magnitude()}
-}
-
-// decode returns the value that g decodes from a case replaying choices,
-// with the run of that case.
-func decode[T any](tb testing.TB, g engine.Generator[T], choices ...choice.Choice) (T, engine.Execution) {
-	tb.Helper()
-	var got T
-	e := engine.Replay(func(c *engine.Case) { got = engine.Draw(c, g, drawn) }, choices, nil)
-	return got, e
-}
-
-// integers returns integer choices of the values.
-func integers(values ...int64) []choice.Choice {
-	out := make([]choice.Choice, len(values))
-	for i, v := range values {
-		out[i] = choice.Choice{Kind: choice.Integer, Integer: choice.IntOf(v)}
-	}
-	return out
-}
-
-// unsigned returns the integer choice of v.
-func unsigned(v uint64) choice.Choice {
-	return choice.Choice{Kind: choice.Integer, Integer: choice.UintOf(v)}
-}
-
-// float returns the float choice of v.
-func float(v float64) choice.Choice {
-	return choice.Choice{Kind: choice.Float, Float: v}
-}
-
-// sequence returns the sequence choice of the elements.
-func sequence(elements ...uint32) choice.Choice {
-	return choice.Choice{Kind: choice.Sequence, Sequence: elements}
-}
-
-// generated returns the values that g decodes in the first count cases of
-// seed, and the choices that each case recorded.
-func generated[T any](g engine.Generator[T], seed uint64, count int) ([]T, [][]choice.Choice) {
-	values := make([]T, count)
-	records := make([][]choice.Choice, count)
-	for i := range count {
-		e := engine.Generate(func(c *engine.Case) { values[i] = engine.Draw(c, g, drawn) }, seed, uint64(i), nil)
-		records[i] = e.Case.Choices()
-	}
-	return values, records
-}
-
-// sameChoices reports whether a and b are the same choices in order, with
-// floats compared by their bits.
-func sameChoices(a, b []choice.Choice) bool {
-	return slices.EqualFunc(a, b, choice.Choice.Equal)
-}
-
-// sameRecords reports whether a and b are the same choice sequences in
-// order.
-func sameRecords(a, b [][]choice.Choice) bool {
-	return slices.EqualFunc(a, b, sameChoices)
-}
-
-// labels returns the labels of spans, in order.
-func labels(spans []engine.Span) []string {
-	out := make([]string, len(spans))
-	for i, span := range spans {
-		out[i] = span.Label
-	}
-	return out
-}
-
-// drawLabels returns the labels of draws, in order.
-func drawLabels(draws []engine.Drawn) []string {
-	out := make([]string, len(draws))
-	for i, d := range draws {
-		out[i] = d.Label
-	}
-	return out
-}
-
-// sizes returns the lengths from minSize to maxSize, failing the test when
-// they are invalid.
-func sizes(tb testing.TB, minSize, maxSize int) choice.Sizes {
-	tb.Helper()
-	s, err := choice.NewSizes(minSize, maxSize)
-	assert.NoError(tb, err, "the sizes are valid")
-	return s
-}
-
-// unbounded returns the lengths of minSize or more, failing the test when
-// they are invalid.
-func unbounded(tb testing.TB, minSize int) choice.Sizes {
-	tb.Helper()
-	s, err := choice.NewUnboundedSizes(minSize)
-	assert.NoError(tb, err, "the sizes are valid")
-	return s
 }

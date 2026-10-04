@@ -34,15 +34,15 @@
 // # Writing
 //
 // [Save] writes an entry as indented JSON, and never overwrites a file:
-// an entry whose file exists is kept as it is. [Literal] returns the
-// typed literal of a Go value for an entry's counterexample.
+// an entry whose file exists is kept as it is.
 //
 // # Errors
 //
-// [Read] and [Load] return errors that wrap [ErrDamaged] for a damaged
-// file, and [ErrLater] for a skipped one. [Save] returns an error that
-// wraps [ErrInvalid] for an entry that [Read] would not replay. Every
-// error names the file or the field at fault.
+// [Read] and [Load] return faults of the kind [ErrDamaged] for a damaged
+// file, and of the kind [ErrLater] for a skipped one. [Save] returns a
+// fault of the kind [ErrInvalid] for an entry that [Read] would not
+// replay. A fault's path leads through the file's JSON to the field at
+// fault, and starts at the file's name in [Load].
 //
 // # Concurrency
 //
@@ -56,6 +56,6 @@
 //
 // # Dependency position
 //
-// Imports the choice, random and token packages of this module and the
-// standard library.
+// Imports the fault, choice, random and token packages of this module and
+// the standard library.
 package store

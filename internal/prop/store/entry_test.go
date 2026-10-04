@@ -10,24 +10,7 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
-	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/store"
-)
-
-// The pins of the entry that the definition's executable reference writes
-// for the first store vector of the corpus.
-const (
-	// contract is the property of the pinned entry.
-	contract = "decoding undoes encoding"
-	// pinnedName is the name of the pinned entry's file.
-	pinnedName = "ccc741d57d7f920d.json"
-	// pinnedJSON is the pinned entry as compact JSON, with its fields in the
-	// order that the definition lists them.
-	pinnedJSON = `{"store":1,"definition":"1.2.0","property":"decoding undoes encoding",` +
-		`"identity":{"assertion":"equal","file":"codec_test.go","line":18},` +
-		`"choices":"prop1:AAEAAAABAQEAAA",` +
-		`"counterexample":[{"label":"values","value":{"type":"list","of":"int","value":[0,-1]}}],` +
-		`"found":"2026-10-01"}`
 )
 
 // The allocations of an entry's methods, measured.
@@ -194,9 +177,9 @@ func TestEntry(t *testing.T) {
 	})
 }
 
-// TestEntryZeroAlloc checks that Valid allocates nothing, and the ceilings
+// TestEntryAllocs checks that Valid allocates nothing, and the ceilings
 // of Name and MarshalJSON.
-func TestEntryZeroAlloc(t *testing.T) {
+func TestEntryAllocs(t *testing.T) {
 	id := store.Identity{Assertion: "equal", File: "a_test.go", Line: 3}
 	e := pinned()
 	assert.MaxAllocs(t, func() { _ = id.Valid() }, 0, "Valid allocates nothing")
@@ -237,28 +220,4 @@ func BenchmarkEntry(b *testing.B) {
 		}
 		assert.Equal(b, string(got), pinnedJSON, "the pinned entry")
 	})
-}
-
-// pinned returns the entry of the first store vector of the corpus, found
-// in the morning of 1 October 2026.
-func pinned() store.Entry {
-	return store.Entry{
-		Definition: "1.2.0",
-		Property:   contract,
-		Identity:   store.Identity{Assertion: "equal", File: "codec_test.go", Line: 18},
-		Choices:    integers(1, 0, 1, -1, 0),
-		Counterexample: []store.Draw{
-			{Label: "values", Value: json.RawMessage(`{"type": "list", "of": "int", "value": [0, -1]}`)},
-		},
-		Found: time.Date(2026, time.October, 1, 9, 30, 0, 0, time.UTC),
-	}
-}
-
-// integers returns integer choices of the values.
-func integers(values ...int64) []choice.Choice {
-	out := make([]choice.Choice, len(values))
-	for i, v := range values {
-		out[i] = choice.Choice{Kind: choice.Integer, Integer: choice.IntOf(v)}
-	}
-	return out
 }

@@ -7,9 +7,9 @@ import "go.dokimi.dev/assert/internal/matcher"
 
 // Failure is what a failing assertion reports.
 //
-// The record is the same shape in every implementation of the
-// standard. The sentence a person reads is rendered from it and is not
-// standardised, because each language reads its own conventions.
+// Every implementation of the definition reports the same record. The
+// writer renders the sentence that a person reads from the record, and
+// the definition leaves that sentence to each language.
 type Failure = matcher.Failure
 
 // Where is the call site a failure came from.
@@ -20,12 +20,12 @@ type Where = matcher.Where
 
 // Reporter is a [TB] that takes the record rather than the sentence.
 //
-// [testing.TB] declares three methods and can never grow a fourth, so
-// the record reaches a seat through a second interface a seat may also
-// satisfy. [Recorder] satisfies it and keeps every record;
-// [testing.T] does not and receives the rendered sentence through
+// A seat receives the record through this second interface, so [TB]
+// keeps the three methods that [testing.T] and [testing.B] implement.
+// [Recorder] satisfies it and keeps every record. [testing.T] does not
+// satisfy it, and receives the writer's text of the record through
 // Fatalf or Errorf.
 //
-// aborting is true for the aborting surface and false for the
-// recording one, which is the same distinction Fatalf and Errorf carry.
+// aborting is true for the aborting surface and false for the recording
+// one, as the choice between Fatalf and Errorf is.
 type Reporter = matcher.Reporter

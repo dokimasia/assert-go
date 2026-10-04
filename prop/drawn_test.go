@@ -4,19 +4,16 @@
 package prop_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
-	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/prop"
 )
 
-// invalidRelevance is the first value past the three relevances.
-const invalidRelevance prop.Relevance = 3
-
-// TestDrawn checks the draws of a counterexample, pinned to the
-// definition's behaviour vectors, and pins each relevance's spelling.
+// TestDrawn checks which values are relevances, and the draws of a
+// counterexample, pinned to the definition's behaviour vectors.
 func TestDrawn(t *testing.T) {
 	t.Parallel()
 
@@ -38,38 +35,6 @@ func TestDrawn(t *testing.T) {
 				assert.Equal(t, tt.give.Valid(), tt.want, "whether the value is a relevance")
 			})
 		}
-	})
-
-	t.Run("String", func(t *testing.T) {
-		t.Parallel()
-
-		tests := []struct {
-			name string
-			give prop.Relevance
-			want string
-		}{
-			{name: "returns untested for Untested", give: prop.Untested, want: "untested"},
-			{name: "returns any-value-fails for AnyValueFails", give: prop.AnyValueFails, want: "any-value-fails"},
-			{name: "returns value-matters for ValueMatters", give: prop.ValueMatters, want: "value-matters"},
-			{
-				name: "returns Relevance(3) for a value that is no relevance",
-				give: invalidRelevance,
-				want: "Relevance(3)",
-			},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				assert.Equal(t, tt.give.String(), tt.want, "the relevance's spelling")
-			})
-		}
-
-		t.Run("returns the engine's spelling of the same value", func(t *testing.T) {
-			t.Parallel()
-			for r := range engine.ValueMatters + 1 {
-				assert.Equal(t, prop.Relevance(r).String(), r.String(), "the spelling of value "+r.String())
-			}
-		})
 	})
 
 	t.Run("ForAll", func(t *testing.T) {
@@ -127,17 +92,74 @@ func TestDrawn(t *testing.T) {
 			assert.Equal(t, got[counterexampleField], any(want), "the minimal value, unexplained")
 		})
 	})
+
+	t.Run("MarshalJSON", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			give prop.Drawn
+			want string
+		}{
+			{
+				name: "returns a draw where any value fails",
+				give: prop.Drawn{Label: drawn, Value: 0, Relevance: prop.AnyValueFails},
+				want: `{"label":"value","value":{"type":"int","value":0},"any-value-fails":true,"nearest-passing":null}`,
+			},
+			{
+				name: "returns the nearest passing value of a draw whose value matters",
+				give: prop.Drawn{Label: drawn, Value: 1001, Relevance: prop.ValueMatters, NearestPassing: 1000},
+				want: `{"label":"value","value":{"type":"int","value":1001},"any-value-fails":false,` +
+					`"nearest-passing":{"type":"int","value":1000}}`,
+			},
+			{
+				name: "returns null for whether any value fails of an untested draw",
+				give: prop.Drawn{Label: drawn, Value: 7},
+				want: `{"label":"value","value":{"type":"int","value":7},"any-value-fails":null,"nearest-passing":null}`,
+			},
+			{
+				name: "returns the opaque literal of a value that no typed literal states",
+				give: prop.Drawn{Label: drawn, Value: complex(1, 2)},
+				want: `{"label":"value","value":{"type":"opaque","text":"(1+2i)"},"any-value-fails":null,"nearest-passing":null}`,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				got, err := json.Marshal(tt.give)
+				assert.NoError(t, err, "the draw is JSON")
+				assert.Equal(t, string(got), tt.want, "the draw as the record of a run states it")
+			})
+		}
+	})
 }
 
-// TestDrawnZeroAlloc checks that no method of Relevance allocates.
-func TestDrawnZeroAlloc(t *testing.T) {
+// drawnJSONAllocs are the allocations of MarshalJSON on a draw of an
+// integer whose value matters, measured.
+const drawnJSONAllocs = 20
+
+// TestDrawnAllocs checks that Valid allocates nothing, and the ceiling
+// of MarshalJSON.
+func TestDrawnAllocs(t *testing.T) {
+	d := prop.Drawn{Label: drawn, Value: 1001, Relevance: prop.ValueMatters, NearestPassing: 1000}
 	assert.MaxAllocs(t, func() { _ = prop.ValueMatters.Valid() }, 0, "Valid allocates nothing")
-	assert.MaxAllocs(t, func() { _ = prop.ValueMatters.String() }, 0, "String allocates nothing")
+	assert.MaxAllocs(t, func() { _, _ = d.MarshalJSON() }, drawnJSONAllocs, "MarshalJSON allocates its JSON")
 }
 
-// BenchmarkDrawn measures each method of Relevance under a ceiling of no
-// allocation.
+// BenchmarkDrawn measures Valid under a ceiling of no allocation, and
+// MarshalJSON.
 func BenchmarkDrawn(b *testing.B) {
+	b.Run("MarshalJSON", func(b *testing.B) {
+		d := prop.Drawn{Label: drawn, Value: 1001, Relevance: prop.ValueMatters, NearestPassing: 1000}
+		got, _ := d.MarshalJSON()
+		c := bench.Start(b).MaxAllocs(drawnJSONAllocs)
+		defer c.End()
+		for c.Loop() {
+			got, _ = d.MarshalJSON()
+		}
+		assert.Contains(b, string(got), `"nearest-passing":{"type":"int","value":1000}`, "the nearest passing value")
+	})
+
 	b.Run("Valid", func(b *testing.B) {
 		var got bool
 		c := bench.Start(b).MaxAllocs(0)
@@ -146,15 +168,5 @@ func BenchmarkDrawn(b *testing.B) {
 			got = prop.ValueMatters.Valid()
 		}
 		assert.True(b, got, "ValueMatters is a relevance")
-	})
-
-	b.Run("String", func(b *testing.B) {
-		var got string
-		c := bench.Start(b).MaxAllocs(0)
-		defer c.End()
-		for c.Loop() {
-			got = prop.ValueMatters.String()
-		}
-		assert.Equal(b, got, "value-matters", "the relevance's spelling")
 	})
 }

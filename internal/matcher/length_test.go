@@ -10,6 +10,7 @@ import (
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
+// TestLength runs the shared cases of the length assertions.
 func TestLength(t *testing.T) {
 	t.Parallel()
 
@@ -36,4 +37,30 @@ func TestLength(t *testing.T) {
 				matcher.NotEmpty(s, matcher.Fatal, got, msg)
 			})
 	})
+}
+
+// TestLengthAllocs checks the allocation ceiling of a passing call of each
+// length assertion.
+func TestLengthAllocs(t *testing.T) {
+	checkAllocs(t, lengthCases())
+}
+
+// BenchmarkLength measures a passing call of each length assertion.
+func BenchmarkLength(b *testing.B) {
+	benchAllocs(b, lengthCases())
+}
+
+// lengthCases returns a passing call of each length assertion on a slice
+// of ints, with its allocation ceiling, measured.
+func lengthCases() []allocCase {
+	items, none := []int{1, 2, 3}, []int{}
+	return []allocCase{
+		{name: "Length", call: func(seat matcher.Seat) {
+			matcher.Length(seat, matcher.Fatal, items, 3, allocContract)
+		}},
+		{name: "Empty", call: func(seat matcher.Seat) { matcher.Empty(seat, matcher.Fatal, none, allocContract) }},
+		{name: "NotEmpty", call: func(seat matcher.Seat) {
+			matcher.NotEmpty(seat, matcher.Fatal, items, allocContract)
+		}},
+	}
 }

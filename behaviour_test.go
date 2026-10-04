@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/alloctest"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
+// TestBehaviour runs the shared cases of the behaviour assertions.
 func TestBehaviour(t *testing.T) {
 	t.Parallel()
 
@@ -59,4 +61,38 @@ func TestBehaviour(t *testing.T) {
 			assert.NilContextSafe(s, fn, msg)
 		})
 	})
+}
+
+// TestBehaviourAllocs checks the allocation ceiling of a passing call of
+// each behaviour assertion.
+func TestBehaviourAllocs(t *testing.T) {
+	alloctest.Check(t, behaviourCases())
+}
+
+// BenchmarkBehaviour measures a passing call of each behaviour assertion.
+func BenchmarkBehaviour(b *testing.B) {
+	for _, c := range behaviourCases() {
+		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
+	}
+}
+
+// behaviourCases returns a passing call of each behaviour assertion, with
+// its allocation ceiling, measured. Each subject returns at once.
+func behaviourCases() []alloctest.Case {
+	honours := func(ctx context.Context) error { return ctx.Err() }
+	quick := func(context.Context) error { return nil }
+	observe := func() int { return 1 }
+	return []alloctest.Case{
+		{Name: "HonoursCancellation", Allocs: 2, Call: func(tb assert.TB) {
+			assert.HonoursCancellation(tb, honours, allocContract)
+		}},
+		{Name: "HonoursDeadline", Allocs: 2, Call: func(tb assert.TB) {
+			assert.HonoursDeadline(tb, honours, allocContract)
+		}},
+		{Name: "CompletesWithin", Allocs: 14, Call: func(tb assert.TB) {
+			assert.CompletesWithin(tb, time.Minute, quick, allocContract)
+		}},
+		{Name: "Pure", Call: func(tb assert.TB) { assert.Pure(tb, observe, func() {}, allocContract) }, Allocs: 24},
+		{Name: "NilContextSafe", Call: func(tb assert.TB) { assert.NilContextSafe(tb, quick, allocContract) }},
+	}
 }

@@ -4,6 +4,7 @@
 package matchertest
 
 import (
+	"slices"
 	"testing"
 	"time"
 )
@@ -57,16 +58,29 @@ func RunNoGoroutineLeaks(t *testing.T, invoke LeakInvoke) {
 		checkOutcome(t, seat, Case{})
 	})
 
-	t.Run("reports a goroutine still running", func(t *testing.T) {
+	// Eight goroutines leave a check that skipped the sort one chance in
+	// 40,320 of reporting them in ascending order.
+	t.Run("reports every goroutine still running, in ascending order of id", func(t *testing.T) {
 		seat := &Seat{}
 		check := invoke(seat, contractMsg)
 
 		release := make(chan struct{})
-		go func() { <-release }()
+		for range runningGoroutines {
+			go func() { <-release }()
+		}
 
 		check()
 		close(release)
 
 		checkOutcome(t, seat, Case{Fails: true, Assertion: "no-task-leaks"})
+		leaked, _ := seat.Records()[0].Detail["leaked"].([]uint64)
+		if len(leaked) != runningGoroutines || !slices.IsSorted(leaked) {
+			t.Fatalf("leaked %v, want the %d goroutines in ascending order of id",
+				seat.Records()[0].Detail["leaked"], runningGoroutines)
+		}
 	})
 }
+
+// runningGoroutines is the number of goroutines that the case of a leak
+// starts and leaves running.
+const runningGoroutines = 8

@@ -10,6 +10,11 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
+	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/literal"
+	"go.dokimi.dev/assert/internal/matchertest"
+	"go.dokimi.dev/assert/internal/prop/engine"
+	"go.dokimi.dev/assert/internal/prop/token"
 	"go.dokimi.dev/assert/prop"
 )
 
@@ -90,10 +95,14 @@ func TestOption(t *testing.T) {
 		t.Run("fails the run at once for a token that no encoder writes", func(t *testing.T) {
 			t.Parallel()
 			var calls int
-			rec := assert.NewRecorder()
-			prop.ForAll(rec, contract, func(*prop.Case) { calls++ }, prop.Replay("prop2:AAc"))
-			assert.HasPrefix(t, rec.Message(), `prop: replay "prop2:AAc": token: not a token that an encoder writes`,
-				"the message names the token")
+			seat := &matchertest.Seat{}
+			prop.ForAll(seat, contract, func(*prop.Case) { calls++ }, prop.Replay("prop2:AAc"))
+			expectOnlyFault(t, seat.Faults(), fault.Error{
+				Op:     forAllOp,
+				Path:   fault.Path{fault.Field("Replay")},
+				Kind:   token.ErrInvalid,
+				Reason: `"prop2:AAc" does not start with prop1:`,
+			})
 			assert.Equal(t, calls, 0, "no case runs")
 		})
 	})
@@ -223,6 +232,126 @@ func TestOption(t *testing.T) {
 		})
 	})
 
+	t.Run("Draws", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("runs the case of the entries before any other case", func(t *testing.T) {
+			t.Parallel()
+			got := detailOf(failsAtLeast(10000, 9999, big), prop.Seed(7),
+				prop.Draws(`[{"label": "value", "value": {"type": "int", "value": 9999}}]`))
+			want := []prop.Drawn{{Label: drawn, Value: 9999, Relevance: prop.ValueMatters, NearestPassing: 9998}}
+			assert.Equal(t, got[casesField], any(0), "no valid case ran before the failing one")
+			assert.Equal(t, got[counterexampleField], any(want), "the entry's value, which shrinks no further")
+		})
+
+		t.Run("gives a draw past the last entry its target", func(t *testing.T) {
+			t.Parallel()
+			body := func(c *prop.Case) {
+				if c.Draw(prop.Integer(0, 9), "first") == 4 {
+					c.Draw(prop.Integer(5, 9), "second")
+					fail(c, big)
+				}
+			}
+			got := detailOf(body, prop.Seed(7), prop.Explain(false),
+				prop.Draws(`[{"label": "first", "value": {"type": "int", "value": 4}}]`))
+			want := []prop.Drawn{{Label: "first", Value: 4}, {Label: "second", Value: 5}}
+			assert.Equal(t, got[counterexampleField], any(want), "the entry's value, then the target")
+			assert.Equal(t, got[casesField], any(0), "the case of the entries fails first")
+		})
+
+		t.Run("runs back a value that Of derives from the record of its shape", func(t *testing.T) {
+			t.Parallel()
+			body := func(c *prop.Case) {
+				if len(c.Draw(prop.Of[order](), drawn).Lines) == 2 {
+					fail(c, big)
+				}
+			}
+			entries := `[{"label": "value", "value": {"type": "record", "fields": [` +
+				`["id", {"type": "int", "value": 7}],` +
+				`["lines", {"type": "list", "items": [` +
+				`{"type": "record", "fields": [["sku", {"type": "string", "value": "a"}], ["qty", {"type": "int", "value": 1}]]},` +
+				`{"type": "record", "fields": [["sku", {"type": "string", "value": "b"}], ["qty", {"type": "int", "value": 2}]]}]}],` +
+				`["note", {"type": "null"}]]}}]`
+			got := detailOf(body, prop.Seed(7), prop.Shrink(0), prop.Draws(entries))
+			want := order{ID: 7, Lines: []line{{SKU: "a", Qty: 1}, {SKU: "b", Qty: 2}}}
+			assert.Equal(t, got[counterexampleField], any([]prop.Drawn{{Label: drawn, Value: want}}),
+				"the order of the entry, found by the case of the entries")
+		})
+
+		tests := []struct {
+			name string
+			give string
+			want fault.Error
+		}{
+			{
+				name: "fails the test at a draw whose label differs from its entry's",
+				give: `[{"label": "other", "value": {"type": "int", "value": 4}}]`,
+				want: fault.Error{
+					Op:     forAllOp,
+					Path:   fault.Path{fault.Field("Draws"), fault.Index(0), fault.Field("label")},
+					Reason: `the draw labelled "value" takes the entry labelled "other"`,
+				},
+			},
+			{
+				name: "fails the test at a draw whose generator does not produce its entry's value",
+				give: `[{"label": "value", "value": {"type": "int", "value": 12}}]`,
+				want: fault.Error{
+					Op:     forAllOp,
+					Path:   fault.Path{fault.Field("Draws"), fault.Index(0), fault.Field("value")},
+					Kind:   engine.ErrCannotInvert,
+					Reason: "12 is outside [0, 9]",
+				},
+			},
+			{
+				name: "fails the run at once for entries that are no array",
+				give: `{`,
+				want: fault.Error{
+					Op:     forAllOp,
+					Path:   fault.Path{fault.Field("Draws")},
+					Reason: "the entries are no JSON array of objects",
+				},
+			},
+			{
+				name: "fails the run at once for an entry without a label",
+				give: `[{"value": {"type": "int", "value": 4}}]`,
+				want: fault.Error{
+					Op:     forAllOp,
+					Path:   fault.Path{fault.Field("Draws"), fault.Index(0)},
+					Reason: "the entry states no label or no value",
+				},
+			},
+			{
+				name: "fails the run at once at an entry without a value",
+				give: `[{"label": "value", "value": {"type": "int", "value": 4}}, {"label": "value"}]`,
+				want: fault.Error{
+					Op:     forAllOp,
+					Path:   fault.Path{fault.Field("Draws"), fault.Index(1)},
+					Reason: "the entry states no label or no value",
+				},
+			},
+			{
+				name: "fails the run at once at the value of an entry that is no typed literal",
+				give: `[{"label": "value", "value": {"type": "int", "value": 4}},` +
+					` {"label": "value", "value": {"type": "widget"}}]`,
+				want: fault.Error{
+					Op:     forAllOp,
+					Path:   fault.Path{fault.Field("Draws"), fault.Index(1), fault.Field("value"), fault.Field("type")},
+					Kind:   literal.ErrUnknownType,
+					Reason: `the type "widget" is no type of the encoding`,
+				},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				seat := &matchertest.Seat{}
+				prop.ForAll(seat, contract, failsAtLeast(9, 5, big), prop.Seed(7), prop.Draws(tt.give))
+				expectOnlyFault(t, seat.Faults(), tt.want)
+				assert.Empty(t, seat.Records(), "no record of prop-for-all")
+			})
+		}
+	})
+
 	t.Run("Workers", func(t *testing.T) {
 		t.Parallel()
 
@@ -263,8 +392,8 @@ func TestOption(t *testing.T) {
 	})
 }
 
-// TestOptionZeroAlloc checks the allocation ceilings of the options.
-func TestOptionZeroAlloc(t *testing.T) {
+// TestOptionAllocs checks the allocation ceilings of the options.
+func TestOptionAllocs(t *testing.T) {
 	var kept prop.Option
 	assert.MaxAllocs(t, func() { kept = prop.Cases(10) }, optionAllocs, "Cases allocates its setting")
 	assert.MaxAllocs(t, func() { kept = prop.Seed(7) }, optionAllocs, "Seed allocates its setting")
@@ -277,6 +406,7 @@ func TestOptionZeroAlloc(t *testing.T) {
 	assert.MaxAllocs(t, func() { kept = prop.Store("") }, optionAllocs, "Store allocates its setting")
 	assert.MaxAllocs(t, func() { kept = prop.Explain(false) }, optionAllocs, "Explain allocates its setting")
 	assert.MaxAllocs(t, func() { kept = prop.Workers(2) }, optionAllocs, "Workers allocates its setting")
+	assert.MaxAllocs(t, func() { kept = prop.Draws("[]") }, optionAllocs, "Draws allocates its setting")
 	assert.NotEqual(t, kept, prop.Option{}, "the kept option states a setting")
 }
 
@@ -296,6 +426,7 @@ func BenchmarkOption(b *testing.B) {
 		{name: "Store", option: func() prop.Option { return prop.Store("") }},
 		{name: "Explain", option: func() prop.Option { return prop.Explain(false) }},
 		{name: "Workers", option: func() prop.Option { return prop.Workers(2) }},
+		{name: "Draws", option: func() prop.Option { return prop.Draws("[]") }},
 	}
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {

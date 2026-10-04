@@ -23,6 +23,11 @@ import (
 // The cancellation is in place before fn starts, so the assertion
 // checks whether fn reads its context at all, not how quickly it
 // notices.
+//
+// # Allocation contract
+//
+// A passing call allocates twice besides what fn allocates: the context
+// that it cancels.
 func HonoursCancellation(seat Seat, mode Mode, fn func(ctx context.Context) error, msg string) {
 	seat.Helper()
 
@@ -36,7 +41,9 @@ func HonoursCancellation(seat Seat, mode Mode, fn func(ctx context.Context) erro
 	}
 	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 		Fail(seat, mode, "honours-cancellation", msg, map[string]any{"got": err})
+		return
 	}
+	Pass(seat, mode, "honours-cancellation", msg)
 }
 
 // HonoursDeadline calls fn with a context whose deadline has already
@@ -53,6 +60,11 @@ func HonoursCancellation(seat Seat, mode Mode, fn func(ctx context.Context) erro
 // context decides expiry against the runtime clock alone, so a seat
 // clock ahead of it would hand fn a deadline that has not passed, and
 // a subject that honours it would fail.
+//
+// # Allocation contract
+//
+// A passing call allocates twice besides what fn allocates: the context
+// whose deadline has passed.
 func HonoursDeadline(seat Seat, mode Mode, fn func(ctx context.Context) error, msg string) {
 	seat.Helper()
 
@@ -67,7 +79,9 @@ func HonoursDeadline(seat Seat, mode Mode, fn func(ctx context.Context) error, m
 	}
 	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 		Fail(seat, mode, "honours-deadline", msg, map[string]any{"got": err})
+		return
 	}
+	Pass(seat, mode, "honours-deadline", msg)
 }
 
 // CompletesWithin times fn and reports when it took longer than within.
@@ -95,6 +109,11 @@ func HonoursDeadline(seat Seat, mode Mode, fn func(ctx context.Context) error, m
 // deadline panics on fn's own goroutine.
 //
 // The assertion spends real time, up to within.
+//
+// # Allocation contract
+//
+// A passing call allocates 14 times besides what fn allocates: the context
+// with its deadline, and the goroutine of fn with its state.
 func CompletesWithin(seat Seat, mode Mode, within time.Duration, fn func(ctx context.Context) error, msg string) {
 	seat.Helper()
 
@@ -109,7 +128,7 @@ func CompletesWithin(seat Seat, mode Mode, within time.Duration, fn func(ctx con
 	stop := context.AfterFunc(ctx, s.expire)
 	defer stop()
 	go func() {
-		defer func() { s.end(recover()) }()
+		defer s.end()
 		_ = fn(ctx)
 	}()
 
@@ -125,7 +144,9 @@ func CompletesWithin(seat Seat, mode Mode, within time.Duration, fn func(ctx con
 				"want": within,
 				"got":  elapsed.Round(time.Millisecond),
 			})
+			return
 		}
+		Pass(seat, mode, "completes-within", msg)
 	default:
 		panic(raised)
 	}
@@ -141,8 +162,7 @@ const (
 	// judges its outcome.
 	finished
 	// abandoned is a subject whose deadline passed first. The caller has
-	// reported it, and a panic of the subject panics on the subject's
-	// goroutine.
+	// reported it, and nothing recovers a panic of the subject.
 	abandoned
 )
 
@@ -162,17 +182,16 @@ func newSubject() *subject {
 	return &subject{outcome: make(chan any, 1)}
 }
 
-// end hands raised, the value that the subject panicked with or nil, to
-// the caller when the subject ends first. A subject that ends after its
-// deadline panics again with raised on its own goroutine.
-func (s *subject) end(raised any) {
-	if s.state.CompareAndSwap(running, finished) {
-		s.outcome <- raised
+// end runs deferred on the subject's goroutine. When the subject ends
+// first, it recovers the value that the subject panicked with, or nil, and
+// hands it to the caller. When the deadline passed first, it recovers
+// nothing, so a panic of the subject ends the program, as a panic on any
+// goroutine does.
+func (s *subject) end() {
+	if !s.state.CompareAndSwap(running, finished) {
 		return
 	}
-	if raised != nil {
-		panic(raised)
-	}
+	s.outcome <- recover()
 }
 
 // expire ends the wait for a subject whose deadline passes first.
@@ -199,6 +218,11 @@ func (s *subject) expire() {
 // subject reads the same value twice and passes whatever fn did. Leave
 // out anything that moves on its own, such as a clock reading or a
 // generated identifier.
+//
+// # Allocation contract
+//
+// A passing call with readings of one int allocates 24 times, in the
+// comparison of the two readings as [Equal] compares them.
 func Pure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg string, opts ...Option) {
 	seat.Helper()
 
@@ -208,7 +232,9 @@ func Pure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg string, 
 
 	if diff := cmp.Diff(before, after, Options(opts...)...); diff != "" {
 		Fail(seat, mode, "pure", msg, map[string]any{"want": before, "got": after})
+		return
 	}
+	Pass(seat, mode, "pure", msg)
 }
 
 // NilContextSafe calls fn with a nil context and reports when fn
@@ -216,16 +242,28 @@ func Pure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg string, 
 //
 // An error back from fn passes. The assertion checks only that a
 // subject handed no context does not crash, because a caller passes a
-// nil context by accident.
+// nil context by accident. A fn that ends its goroutine through
+// runtime.Goexit neither panics nor returns, and the call states no
+// verdict.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what fn allocates.
 func NilContextSafe(seat Seat, mode Mode, fn func(ctx context.Context) error, msg string) {
 	seat.Helper()
 
+	returned := false
 	defer func() {
 		if r := recover(); r != nil {
 			Fail(seat, mode, "nil-context-safe", msg, map[string]any{"got": r})
+			return
+		}
+		if returned {
+			Pass(seat, mode, "nil-context-safe", msg)
 		}
 	}()
 
 	//nolint:staticcheck // passing nil is the subject of the assertion
 	_ = fn(nil)
+	returned = true
 }

@@ -8,15 +8,13 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
+	"go.dokimi.dev/assert/internal/enumtest"
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
 
-// invalidRelevance is the first value past the three relevances.
-const invalidRelevance engine.Relevance = 3
-
 // TestExplain checks what the explain phase finds for each draw of a
 // counterexample, through whole runs pinned to what the definition's
-// executable reference reports, and pins each relevance's spelling.
+// executable reference reports.
 func TestExplain(t *testing.T) {
 	t.Parallel()
 
@@ -31,46 +29,12 @@ func TestExplain(t *testing.T) {
 	t.Run("Valid", func(t *testing.T) {
 		t.Parallel()
 
-		tests := []struct {
-			name string
-			give engine.Relevance
-			want bool
-		}{
-			{name: "reports true for Untested", give: engine.Untested, want: true},
-			{name: "reports true for ValueMatters", give: engine.ValueMatters, want: true},
-			{name: "reports false past ValueMatters", give: invalidRelevance, want: false},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				assert.Equal(t, tt.give.Valid(), tt.want, "whether the value is a relevance")
-			})
-		}
-	})
-
-	t.Run("String", func(t *testing.T) {
-		t.Parallel()
-
-		tests := []struct {
-			name string
-			give engine.Relevance
-			want string
-		}{
-			{name: "returns untested for Untested", give: engine.Untested, want: "untested"},
-			{name: "returns any-value-fails for AnyValueFails", give: engine.AnyValueFails, want: "any-value-fails"},
-			{name: "returns value-matters for ValueMatters", give: engine.ValueMatters, want: "value-matters"},
-			{
-				name: "returns Relevance(3) for a value that is no relevance",
-				give: invalidRelevance,
-				want: "Relevance(3)",
-			},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				assert.Equal(t, tt.give.String(), tt.want, "the relevance's spelling")
-			})
-		}
+		t.Run("reports true for the three relevances and false past them", func(t *testing.T) {
+			t.Parallel()
+			enumtest.Members(t,
+				[]engine.Relevance{engine.Untested, engine.AnyValueFails, engine.ValueMatters},
+				[]engine.Relevance{invalidRelevance})
+		})
 	})
 
 	t.Run("Run", func(t *testing.T) {
@@ -299,14 +263,12 @@ func TestExplain(t *testing.T) {
 	})
 }
 
-// TestExplainZeroAlloc checks that no method of Relevance allocates.
-func TestExplainZeroAlloc(t *testing.T) {
+// TestExplainAllocs checks that Valid allocates nothing.
+func TestExplainAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = engine.ValueMatters.Valid() }, 0, "Valid allocates nothing")
-	assert.MaxAllocs(t, func() { _ = engine.ValueMatters.String() }, 0, "String allocates nothing")
 }
 
-// BenchmarkExplain measures each method of Relevance under a ceiling of no
-// allocation.
+// BenchmarkExplain measures Valid under a ceiling of no allocation.
 func BenchmarkExplain(b *testing.B) {
 	b.Run("Valid", func(b *testing.B) {
 		var got bool
@@ -316,15 +278,5 @@ func BenchmarkExplain(b *testing.B) {
 			got = engine.ValueMatters.Valid()
 		}
 		assert.True(b, got, "ValueMatters is a relevance")
-	})
-
-	b.Run("String", func(b *testing.B) {
-		var got string
-		c := bench.Start(b).MaxAllocs(0)
-		defer c.End()
-		for c.Loop() {
-			got = engine.ValueMatters.String()
-		}
-		assert.Equal(b, got, "value-matters", "the relevance's spelling")
 	})
 }

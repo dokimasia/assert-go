@@ -10,6 +10,7 @@ import (
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
+// TestOrder runs the shared cases of Pairwise.
 func TestOrder(t *testing.T) {
 	t.Parallel()
 
@@ -21,4 +22,27 @@ func TestOrder(t *testing.T) {
 			matcher.Pairwise(s, matcher.Fatal, items, pred, msg)
 		})
 	})
+}
+
+// TestOrderAllocs checks the allocation ceiling of a passing call of
+// Pairwise.
+func TestOrderAllocs(t *testing.T) {
+	checkAllocs(t, orderCases())
+}
+
+// BenchmarkOrder measures a passing call of Pairwise.
+func BenchmarkOrder(b *testing.B) {
+	benchAllocs(b, orderCases())
+}
+
+// orderCases returns a passing call of Pairwise on three ascending ints,
+// with its allocation ceiling, measured.
+func orderCases() []allocCase {
+	items := []int{1, 2, 3}
+	ascending := func(earlier, later int) bool { return earlier < later }
+	return []allocCase{
+		{name: "Pairwise", call: func(seat matcher.Seat) {
+			matcher.Pairwise(seat, matcher.Fatal, items, ascending, allocContract)
+		}},
+	}
 }

@@ -12,8 +12,8 @@ import (
 	"go.dokimi.dev/assert/internal/prop/choice"
 )
 
-// TestWidth checks which values are widths, the fields of each format, the
-// assembly of a value from its fields, and each width's spelling.
+// TestWidth checks which values are widths, the fields of each format, and
+// the assembly of a value from its fields.
 func TestWidth(t *testing.T) {
 	t.Parallel()
 
@@ -144,35 +144,14 @@ func TestWidth(t *testing.T) {
 			})
 		}
 	})
-
-	t.Run("String", func(t *testing.T) {
-		t.Parallel()
-
-		tests := []struct {
-			name string
-			give choice.Width
-			want string
-		}{
-			{name: "returns 32 for Width32", give: choice.Width32, want: "32"},
-			{name: "returns 64 for Width64", give: choice.Width64, want: "64"},
-			{name: "returns Width(16) for a value that is no width", give: 16, want: "Width(16)"},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				assert.Equal(t, tt.give.String(), tt.want, "the width's spelling")
-			})
-		}
-	})
 }
 
-// TestWidthZeroAlloc checks that no method of Width allocates.
-func TestWidthZeroAlloc(t *testing.T) {
+// TestWidthAllocs checks that no method of Width allocates.
+func TestWidthAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = choice.Width32.Valid() }, 0, "Valid allocates nothing")
 	assert.MaxAllocs(t, func() { _ = choice.Width32.ExponentBits() }, 0, "ExponentBits allocates nothing")
 	assert.MaxAllocs(t, func() { _ = choice.Width32.MantissaBits() }, 0, "MantissaBits allocates nothing")
 	assert.MaxAllocs(t, func() { _ = choice.Width32.FromParts(1, 126, 1<<22) }, 0, "FromParts allocates nothing")
-	assert.MaxAllocs(t, func() { _ = choice.Width32.String() }, 0, "String allocates nothing")
 }
 
 // BenchmarkWidth measures each method of Width under a ceiling of no
@@ -216,15 +195,5 @@ func BenchmarkWidth(b *testing.B) {
 			got = choice.Width32.FromParts(1, 126, 1<<22)
 		}
 		assert.Equal(b, got, -0.75, "the assembled value")
-	})
-
-	b.Run("String", func(b *testing.B) {
-		var got string
-		c := bench.Start(b).MaxAllocs(0)
-		defer c.End()
-		for c.Loop() {
-			got = choice.Width64.String()
-		}
-		assert.Equal(b, got, "64", "the width's spelling")
 	})
 }

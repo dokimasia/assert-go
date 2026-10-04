@@ -5,14 +5,14 @@ package conformance
 
 import (
 	"encoding/json"
-	"fmt"
 
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/token"
 )
 
 // checkToken encodes the choices of a token vector and compares the token,
 // or decodes its token and compares the choices or the refusal.
-func checkToken(raw json.RawMessage) error {
+func checkToken(raw json.RawMessage, _ string) error {
 	var v struct {
 		// Choices are the choices to encode, and nil for a decoding.
 		Choices []json.RawMessage `json:"choices"`
@@ -23,35 +23,28 @@ func checkToken(raw json.RawMessage) error {
 		// Error reports whether the decoder refuses the token.
 		Error bool `json:"error"`
 	}
-	if err := json.Unmarshal(raw, &v); err != nil {
+	if err := decode(raw, &v); err != nil {
 		return err
 	}
 	if v.Choices != nil {
 		choices, err := parseChoices(v.Choices)
 		if err != nil {
-			return err
+			return fault.At(err, fault.Field(choicesMember))
 		}
 		if got := token.Encode(choices); got != v.Token {
-			return fmt.Errorf("the token is %s, want %s", got, v.Token)
+			return fault.At(fault.New("the token is %s, want %s", got, v.Token), fault.Field(tokenMember))
 		}
 		return nil
 	}
 	choices, err := token.Decode(v.Token)
-	if v.Error {
-		if err == nil {
-			return fmt.Errorf("the token decodes to %v, want a refusal", choices)
-		}
+	switch {
+	case v.Error && err == nil:
+		return fault.At(fault.New("the token decodes, want a refusal"), fault.Field(errorMember))
+	case v.Error:
 		return nil
+	case err != nil:
+		return fault.At(fault.New("the decoder refuses the token, want %s", jsonOf(v.Decoded)).Because(err),
+			fault.Field(tokenMember))
 	}
-	if err != nil {
-		return fmt.Errorf("the decoder refuses the token, want %s: %w", jsonOf(v.Decoded), err)
-	}
-	same, err := sameChoices(choices, v.Decoded)
-	if err != nil {
-		return err
-	}
-	if !same {
-		return fmt.Errorf("the token decodes to %v, want %s", choices, jsonOf(v.Decoded))
-	}
-	return nil
+	return at(compareChoices(choices, v.Decoded), fault.Field(decodedMember))
 }

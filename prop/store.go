@@ -5,26 +5,22 @@ package prop
 
 import (
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"reflect"
 	"sync"
 	"time"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/literal"
 	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/internal/prop/store"
+	"go.dokimi.dev/assert/internal/record"
 )
 
-// The store of a test, and the definition version its entries state.
-const (
-	// definition is the version of the definition that this package
-	// implements, which every entry it writes states.
-	definition = "2.1.0"
-	// storeRoot is the directory of the stores of a package's tests,
-	// relative to the package's directory, beside testdata/golden.
-	storeRoot = "testdata/prop"
-)
+// storeRoot is the directory of the stores of a package's tests, relative
+// to the package's directory, beside testdata/golden.
+const storeRoot = "testdata/prop"
 
 // named is a seat whose test has a name, as testing.TB has.
 type named interface {
@@ -52,11 +48,11 @@ type claimed struct {
 // claims are the claims of the properties of the tests that run, which
 // each test releases when it ends.
 var claims = struct {
-	// mu guards held.
+	// mu guards active.
 	mu sync.Mutex
-	// held are the claims held.
-	held map[claimed]struct{}
-}{held: make(map[claimed]struct{})}
+	// active is the set of the claims.
+	active map[claimed]struct{}
+}{active: make(map[claimed]struct{})}
 
 // directoryOf returns the directory of the store of a run under c on tb:
 // the one that Store states, then testdata/prop/<name> for a seat with a
@@ -83,14 +79,14 @@ func claim(tb assert.TB, dir, contract string) bool {
 	key := claimed{dir: dir, contract: contract}
 	claims.mu.Lock()
 	defer claims.mu.Unlock()
-	if _, held := claims.held[key]; held {
+	if _, taken := claims.active[key]; taken {
 		return false
 	}
-	claims.held[key] = struct{}{}
+	claims.active[key] = struct{}{}
 	c.Cleanup(func() {
 		claims.mu.Lock()
 		defer claims.mu.Unlock()
-		delete(claims.held, key)
+		delete(claims.active, key)
 	})
 	return true
 }
@@ -99,7 +95,7 @@ func claim(tb assert.TB, dir, contract string) bool {
 // contract, found at found.
 func entryOf(contract string, e engine.Execution, found time.Time) store.Entry {
 	return store.Entry{
-		Definition:     definition,
+		Definition:     record.Definition,
 		Property:       contract,
 		Identity:       identityOf(e.Identity),
 		Choices:        e.Case.Choices(),
@@ -120,31 +116,44 @@ func identityOf(i engine.Identity) store.Identity {
 
 // drawsOf returns the draws of a case in the form of an entry: each label
 // with the typed literal of its value, and without a value where no typed
-// literal states it.
+// literal states it. A value that [Of] or [OfShape] derives is stated as its
+// shape states it, such as a record for a struct, so the entry runs back
+// through [Draws].
 func drawsOf(draws []engine.Drawn) []store.Draw {
 	out := make([]store.Draw, len(draws))
 	for i, d := range draws {
 		out[i].Label = d.Label
-		if value, ok := store.Literal(d.Value); ok {
+		if value, ok := literal.Encode(d.Neutral()); ok {
 			out[i].Value = value
 		}
 	}
 	return out
 }
 
-// differences returns a note for each stored entry whose case now decodes
-// to other values than the entry records. runs are the runs of the stored
-// cases in the order of entries, up to the one that ended the run.
-func differences(entries []store.Entry, runs []engine.Execution) []string {
-	var notes []string
+// skipped returns the fault of each file of stored that the run skips, as a
+// fault of the property's operation at the store's directory.
+func (p property) skipped(stored store.Stored) []error {
+	faults := make([]error, len(stored.Skipped))
+	for i, err := range stored.Skipped {
+		faults[i] = fault.In(p.op, fault.At(err, fault.Field(p.dir)))
+	}
+	return faults
+}
+
+// differences returns a fault of the property's operation at the file of
+// each stored entry whose case now decodes to other values than the entry
+// records. runs are the runs of the stored cases in the order of entries,
+// up to the one that ended the run.
+func (p property) differences(entries []store.Entry, runs []engine.Execution) []error {
+	var faults []error
 	for i, run := range runs {
 		if !alike(entries[i].Counterexample, drawsOf(run.Case.Draws())) {
-			notes = append(notes, fmt.Sprintf(
-				"prop: the stored case %s decodes to other values than it records, and the run tested those",
-				entries[i].Name()))
+			faults = append(faults, fault.In(p.op, fault.At(
+				fault.New("the stored case decodes to other values than it records, and the run tested those"),
+				fault.Field(p.dir), fault.Field(entries[i].Name()))))
 		}
 	}
-	return notes
+	return faults
 }
 
 // alike reports whether replayed states the labels of recorded in order,

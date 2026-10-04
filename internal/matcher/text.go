@@ -19,6 +19,10 @@ const lineTerminatorFree = `[^\n\r\x{85}\x{2028}\x{2029}]`
 // HasPrefix reports when got does not start with prefix.
 //
 // got is a string, a []byte, or any type defined over either.
+//
+// # Allocation contract
+//
+// A passing call on a string allocates nothing.
 func HasPrefix(seat Seat, mode Mode, got any, prefix, msg string) {
 	seat.Helper()
 
@@ -29,12 +33,18 @@ func HasPrefix(seat Seat, mode Mode, got any, prefix, msg string) {
 	}
 	if !strings.HasPrefix(text, prefix) {
 		Fail(seat, mode, "has-prefix", msg, map[string]any{"got": text, "prefix": prefix})
+		return
 	}
+	Pass(seat, mode, "has-prefix", msg)
 }
 
 // HasSuffix reports when got does not end with suffix.
 //
 // got is a string, a []byte, or any type defined over either.
+//
+// # Allocation contract
+//
+// A passing call on a string allocates nothing.
 func HasSuffix(seat Seat, mode Mode, got any, suffix, msg string) {
 	seat.Helper()
 
@@ -45,7 +55,9 @@ func HasSuffix(seat Seat, mode Mode, got any, suffix, msg string) {
 	}
 	if !strings.HasSuffix(text, suffix) {
 		Fail(seat, mode, "has-suffix", msg, map[string]any{"got": text, "suffix": suffix})
+		return
 	}
+	Pass(seat, mode, "has-suffix", msg)
 }
 
 // Matches reports when got does not match expr, a regular expression of
@@ -57,6 +69,11 @@ func HasSuffix(seat Seat, mode Mode, got any, suffix, msg string) {
 // U+2029. A pattern outside the subset, such as one with a backreference,
 // a lookaround, a flag or \b, fails the assertion and does not panic,
 // because a test with such a pattern has established nothing.
+//
+// # Allocation contract
+//
+// Matches compiles expr on every call: a passing call of a pattern of a
+// literal, a class and an anchor at each end allocates 62 times.
 func Matches(seat Seat, mode Mode, got any, expr, msg string) {
 	seat.Helper()
 
@@ -69,7 +86,9 @@ func Matches(seat Seat, mode Mode, got any, expr, msg string) {
 	re, err := portable(expr)
 	if err != nil || !re.MatchString(text) {
 		Fail(seat, mode, "matches", msg, map[string]any{"got": text, "pattern": expr})
+		return
 	}
+	Pass(seat, mode, "matches", msg)
 }
 
 // portable compiles expr, a pattern of the portable subset, into the RE2

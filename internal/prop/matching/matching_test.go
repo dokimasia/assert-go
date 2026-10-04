@@ -12,6 +12,7 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/internal/prop/matching"
@@ -21,8 +22,6 @@ import (
 
 // The pins of a test body.
 const (
-	// drawn is the label of the one string a test body draws.
-	drawn = "s"
 	// seeds is the number of seeds whose strings the full-match check
 	// decodes for each pattern.
 	seeds = 200
@@ -36,8 +35,8 @@ const (
 	// stringMatchingAllocs are the allocations of StringMatching on the
 	// pattern of a hexadecimal identifier: the parser and its characters,
 	// the parsed pieces and classes, the decoders built from them, and the
-	// generator's decodes.
-	stringMatchingAllocs = 24
+	// generator's decodes and inverse.
+	stringMatchingAllocs = 25
 	// drawAllocs are the allocations of a whole replayed case that draws a
 	// string of that pattern from no choices.
 	drawAllocs = 25
@@ -223,6 +222,19 @@ func TestMatching(t *testing.T) {
 			}
 		})
 
+		t.Run("returns a generator that runs every string it decodes back to choices", func(t *testing.T) {
+			t.Parallel()
+			for _, text := range accepted {
+				g := generatorOf(t, text)
+				for seed := range uint64(seeds) {
+					var got string
+					engine.Generate(func(c *engine.Case) { got = engine.Draw(c, g, drawn) }, seed, 0, nil)
+					_, err := engine.Invert(g, got)
+					assert.NoError(t, err, text+" runs "+got+" backwards")
+				}
+			}
+		})
+
 		t.Run("returns the error of a pattern outside the portable subset", func(t *testing.T) {
 			t.Parallel()
 			_, err := matching.StringMatching(`a**`)
@@ -299,9 +311,117 @@ func TestMatching(t *testing.T) {
 	})
 }
 
-// TestMatchingZeroAlloc checks the allocation ceilings of StringMatching
+// TestMatchingInverse checks the choices that a string runs back to, pinned
+// from the definition's vectors where the definition states them, the
+// order of the backtracking search, and each string that a pattern does not
+// match in full.
+func TestMatchingInverse(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Invert", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			text string
+			give string
+			want []uint64
+		}{
+			{
+				name: "returns the most repetitions of the first quantifier",
+				text: `a*a*`,
+				give: "aa",
+				want: []uint64{1, 1, 0, 0},
+			},
+			{
+				name: "returns each class member's index between the counted flags",
+				text: `[A-Z]{3}-[0-9]{2}`,
+				give: "ABC-12",
+				want: []uint64{1, 0, 1, 1, 1, 2, 0, 1, 1, 1, 2, 0},
+			},
+			{name: "returns the first branch that matches in full", text: `a|ab`, give: "ab", want: []uint64{1}},
+			{name: "returns the first of two branches that both match", text: `a|a`, give: "a", want: []uint64{0}},
+			{name: "returns the stop of a repetition for the empty string", text: `(a|)*`, give: "", want: []uint64{0}},
+			{
+				name: "returns a member's index across the class's intervals",
+				text: `[x-za-c]`,
+				give: "y",
+				want: []uint64{4},
+			},
+			{
+				name: "returns no repetition of an empty match past the minimum",
+				text: `(a|)*`,
+				give: "a",
+				want: []uint64{1, 0, 0},
+			},
+			{
+				name: "returns the stop of an optional piece at the end of the string",
+				text: `a\d?`,
+				give: "a",
+				want: []uint64{0},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				got, err := engine.Invert(generatorOf(t, tt.text), tt.give)
+				assert.NoError(t, err, "the pattern matches the string in full")
+				assert.Equal(t, valuesOf(got), tt.want, "the choices")
+			})
+		}
+
+		refusals := []struct {
+			name       string
+			text       string
+			give       any
+			wantReason string
+		}{
+			{
+				name:       "returns an error for a string shorter than the pattern",
+				text:       `\d{2}`,
+				give:       "1",
+				wantReason: `\d{2} does not match "1" in full`,
+			},
+			{
+				name:       "returns an error for another literal",
+				text:       `ab`,
+				give:       "ac",
+				wantReason: `ab does not match "ac" in full`,
+			},
+			{
+				name:       "returns an error for a character outside the class",
+				text:       `[a-c]`,
+				give:       "d",
+				wantReason: `[a-c] does not match "d" in full`,
+			},
+			{
+				name:       "returns an error for a value that is no string",
+				text:       `a`,
+				give:       7,
+				wantReason: "7 is no string of UTF-8",
+			},
+			{
+				name:       "returns an error for a string that is not UTF-8",
+				text:       `.`,
+				give:       "\xff",
+				wantReason: "\xff is no string of UTF-8",
+			},
+		}
+		for _, tt := range refusals {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				_, err := engine.Invert(engine.Erase(generatorOf(t, tt.text)), tt.give)
+				assert.ErrorIs(t, err, engine.ErrCannotInvert, "no choices decode to the value")
+				assert.Equal(t, assert.ErrorAs[*fault.Error](t, err, "a fault").Reason, tt.wantReason,
+					"the pattern and the string")
+			})
+		}
+	})
+}
+
+// TestMatchingAllocs checks the allocation ceilings of StringMatching
 // and of a whole replayed case that draws one of its strings.
-func TestMatchingZeroAlloc(t *testing.T) {
+func TestMatchingAllocs(t *testing.T) {
 	g := generatorOf(t, identifier)
 	body := func(c *engine.Case) { engine.Draw(c, g, drawn) }
 	assert.MaxAllocs(t, func() { _, _ = matching.StringMatching(identifier) }, stringMatchingAllocs,
@@ -352,29 +472,6 @@ type reference struct {
 	digest string
 }
 
-// generatorOf returns the generator of text, failing the test when text is
-// outside the portable subset.
-func generatorOf(tb testing.TB, text string) engine.Generator[string] {
-	tb.Helper()
-	g, err := matching.StringMatching(text)
-	assert.NoError(tb, err, "the pattern is in the portable subset")
-	return g
-}
-
-// decode returns the string that text decodes from a case replaying the
-// integer choices of values, with the run of that case.
-func decode(tb testing.TB, text string, values ...uint64) (string, engine.Execution) {
-	tb.Helper()
-	g := generatorOf(tb, text)
-	choices := make([]choice.Choice, len(values))
-	for i, v := range values {
-		choices[i] = choice.Choice{Kind: choice.Integer, Integer: choice.UintOf(v)}
-	}
-	var got string
-	e := engine.Replay(func(c *engine.Case) { got = engine.Draw(c, g, drawn) }, choices, nil)
-	return got, e
-}
-
 // traced runs a property of the reference seed that draws a string of g and
 // fails when fails reports true for it, and returns the result and the
 // token of the choices of each call of the body, in call order.
@@ -402,11 +499,11 @@ func digestOf(trace []string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// labels returns the labels of spans, in order.
-func labels(spans []engine.Span) []string {
-	out := make([]string, len(spans))
-	for i, span := range spans {
-		out[i] = span.Label
+// valuesOf returns the values of integer choices, in order.
+func valuesOf(choices []choice.Choice) []uint64 {
+	out := make([]uint64, len(choices))
+	for i, c := range choices {
+		out[i] = c.Integer.Magnitude()
 	}
 	return out
 }

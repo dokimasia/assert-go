@@ -49,16 +49,37 @@
 // removed from its record included, and the runner enters them into the
 // case tree as the case would have walked it on one worker.
 //
+// # Running backwards
+//
+// Every generator of the definition runs backwards: [Invert] returns the
+// choices that decode to a value, which a run tries as an example through
+// [Settings.Examples]. A filter runs backwards through its source, and
+// [Generator.MapBack] through the inverse it states. [Generator.Map],
+// [Generator.Bind] and [Composite] apply functions without an inverse. The
+// case of [Settings.Draws] runs each draw's generator backwards from the
+// draw's entry.
+//
 // # Generators outside this package
 //
 // A package that builds a generator of the definition, as the matching
-// package builds string-matching, constructs it with [NewGenerator]. Its
-// decode uses these primitives:
+// package builds string-matching, constructs it with [NewInvertible], or
+// with [NewGenerator] when it has no inverse. Its decode uses these
+// primitives:
 //
 //   - [Case.Integer] makes a value choice, and [Case.Structure] a choice
 //     that decides structure.
 //   - [Case.Span] groups choices in a span with a label.
 //   - [Collect] repeats choices as the elements of a collection.
+//
+// Its inverse returns a [Step] for each choice that its decode makes.
+//
+// # Errors
+//
+// Running a generator backwards returns a fault of the kind
+// [ErrCannotInvert], whose path leads to the part of the value that no
+// choice produces. The case of [Settings.Draws] ends with the refusal of an
+// entry, a fault whose path starts at the entry's index and leads through
+// its label or its value.
 //
 // # Clocks
 //
@@ -69,7 +90,7 @@
 //
 // # Dependency position
 //
-// Imports the root package of this module, its internal matcher, its
-// choice, random, alphabet, token, coverage and tree packages, and the
-// standard library.
+// Imports the root package of this module, its internal matcher, fault,
+// literal and record packages, its choice, random, alphabet, token, coverage
+// and tree packages, and the standard library.
 package engine

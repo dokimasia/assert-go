@@ -10,6 +10,7 @@ import (
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
+// TestEqual runs the shared cases of Equal and NotEqual.
 func TestEqual(t *testing.T) {
 	t.Parallel()
 
@@ -28,4 +29,28 @@ func TestEqual(t *testing.T) {
 				matcher.NotEqual(s, matcher.Fatal, got, want, msg)
 			})
 	})
+}
+
+// TestEqualAllocs checks the allocation ceiling of a passing call of Equal
+// and of NotEqual.
+func TestEqualAllocs(t *testing.T) {
+	checkAllocs(t, equalCases())
+}
+
+// BenchmarkEqual measures a passing call of Equal and of NotEqual.
+func BenchmarkEqual(b *testing.B) {
+	benchAllocs(b, equalCases())
+}
+
+// equalCases returns a passing call of Equal and of NotEqual on two ints,
+// with its allocation ceiling, measured.
+func equalCases() []allocCase {
+	return []allocCase{
+		{name: "Equal", allocs: 24, call: func(seat matcher.Seat) {
+			matcher.Equal(seat, matcher.Fatal, 7, 7, allocContract)
+		}},
+		{name: "NotEqual", allocs: 24, call: func(seat matcher.Seat) {
+			matcher.NotEqual(seat, matcher.Fatal, 7, 8, allocContract)
+		}},
+	}
 }

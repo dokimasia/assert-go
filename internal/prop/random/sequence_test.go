@@ -86,9 +86,9 @@ func TestSequence(t *testing.T) {
 	})
 }
 
-// TestSequenceZeroAlloc checks that AppendSequence allocates nothing into
+// TestSequenceAllocs checks that AppendSequence allocates nothing into
 // a slice with the capacity.
-func TestSequenceZeroAlloc(t *testing.T) {
+func TestSequenceAllocs(t *testing.T) {
 	s := random.New(pinnedSeed)
 	b := sequenceBounds(t, byteK, 0, 16)
 	dst := make([]uint32, 0, 16)

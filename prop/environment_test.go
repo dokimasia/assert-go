@@ -8,21 +8,12 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/matchertest"
 	"go.dokimi.dev/assert/internal/prop/random"
+	"go.dokimi.dev/assert/internal/prop/token"
 	"go.dokimi.dev/assert/prop"
 )
-
-// The environment variables that set the defaults of every property of a
-// test run, which the definition names.
-const (
-	seedVariable    = "DOKIMI_ASSERT_PROP_SEED"
-	profileVariable = "DOKIMI_ASSERT_PROP_PROFILE"
-	replayVariable  = "DOKIMI_ASSERT_PROP_REPLAY"
-)
-
-// profileMessage is the problem of the profile nightly, which is neither
-// default nor ci.
-const profileMessage = `prop: DOKIMI_ASSERT_PROP_PROFILE "nightly" names neither the default nor the ci profile`
 
 // TestEnvironment checks the environment variables that set the seed, the
 // profile and the token to replay of every run. Each case sets the
@@ -54,11 +45,14 @@ func TestEnvironment(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				clean(t)
 				t.Setenv(seedVariable, tt.give)
-				rec := assert.NewRecorder()
-				prop.ForAll(rec, contract, failsAtLeast(10000, 1001, big))
-				want := "prop: DOKIMI_ASSERT_PROP_SEED " + strconv.Quote(tt.give) + " is no decimal number below 2^64"
-				assert.Equal(t, rec.Message(), want, "the message names the variable")
-				assert.Empty(t, rec.Failures(), "no run, so no record")
+				seat := &matchertest.Seat{}
+				prop.ForAll(seat, contract, failsAtLeast(10000, 1001, big))
+				expectOnlyFault(t, seat.Faults(), fault.Error{
+					Op:     forAllOp,
+					Path:   fault.Path{fault.Field(seedVariable)},
+					Reason: strconv.Quote(tt.give) + " is no decimal number below 2^64",
+				})
+				assert.Empty(t, seat.Records(), "no run, so no record")
 			})
 		}
 
@@ -96,9 +90,9 @@ func TestEnvironment(t *testing.T) {
 		t.Run("fails the run at once for a profile other than default and ci", func(t *testing.T) {
 			clean(t)
 			t.Setenv(profileVariable, "nightly")
-			rec := assert.NewRecorder()
-			prop.ForAll(rec, contract, failsAtLeast(10000, 1001, big), prop.Seed(7))
-			assert.Equal(t, rec.Message(), profileMessage, "the profile is checked before Seed's seed")
+			seat := &matchertest.Seat{}
+			prop.ForAll(seat, contract, failsAtLeast(10000, 1001, big), prop.Seed(7))
+			expectOnlyFault(t, seat.Faults(), profileFault(forAllOp))
 		})
 
 		t.Run("replays the token of DOKIMI_ASSERT_PROP_REPLAY", func(t *testing.T) {
@@ -119,10 +113,14 @@ func TestEnvironment(t *testing.T) {
 		t.Run("fails the run at once for a variable token that no encoder writes", func(t *testing.T) {
 			clean(t)
 			t.Setenv(replayVariable, "token")
-			rec := assert.NewRecorder()
-			prop.ForAll(rec, contract, failsAtLeast(9, 5, big))
-			assert.HasPrefix(t, rec.Message(), `prop: replay "token": token: not a token that an encoder writes`,
-				"the message names the token")
+			seat := &matchertest.Seat{}
+			prop.ForAll(seat, contract, failsAtLeast(9, 5, big))
+			expectOnlyFault(t, seat.Faults(), fault.Error{
+				Op:     forAllOp,
+				Path:   fault.Path{fault.Field(replayVariable)},
+				Kind:   token.ErrInvalid,
+				Reason: `"token" does not start with prop1:`,
+			})
 		})
 	})
 }

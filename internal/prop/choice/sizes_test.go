@@ -143,9 +143,9 @@ func TestSizes(t *testing.T) {
 	})
 }
 
-// TestSizesZeroAlloc checks that the constructors and every method of
+// TestSizesAllocs checks that the constructors and every method of
 // Sizes allocate nothing.
-func TestSizesZeroAlloc(t *testing.T) {
+func TestSizesAllocs(t *testing.T) {
 	s := sizes(t, 2, 4)
 	assert.MaxAllocs(t, func() { _, _ = choice.NewSizes(2, 4) }, 0, "NewSizes allocates nothing")
 	assert.MaxAllocs(t, func() { _, _ = choice.NewUnboundedSizes(2) }, 0, "NewUnboundedSizes allocates nothing")
@@ -230,22 +230,4 @@ func BenchmarkSizes(b *testing.B) {
 		}
 		assert.Equal(b, got.Hi(), choice.UintOf(1), "a free decision")
 	})
-}
-
-// sizes returns the lengths from minSize to maxSize, failing the test when
-// they are invalid.
-func sizes(tb testing.TB, minSize, maxSize int) choice.Sizes {
-	tb.Helper()
-	s, err := choice.NewSizes(minSize, maxSize)
-	assert.NoError(tb, err, "the sizes are valid")
-	return s
-}
-
-// unboundedSizes returns the lengths of minSize or more, failing the test
-// when they are invalid.
-func unboundedSizes(tb testing.TB, minSize int) choice.Sizes {
-	tb.Helper()
-	s, err := choice.NewUnboundedSizes(minSize)
-	assert.NoError(tb, err, "the sizes are valid")
-	return s
 }

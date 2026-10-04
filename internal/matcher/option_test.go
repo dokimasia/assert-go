@@ -12,13 +12,21 @@ import (
 	"go.dokimi.dev/assert/internal/matcher"
 )
 
+// The results of the allocation cases, which keep each call.
+var (
+	option  matcher.Option
+	options []cmp.Option
+)
+
+// TestOption checks the rules of a comparison and the options that relax
+// them.
 func TestOption(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Options", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("a nil collection does not equal an empty one", func(t *testing.T) {
+		t.Run("keeps a nil collection unequal to an empty one", func(t *testing.T) {
 			t.Parallel()
 
 			var nilSlice []int
@@ -32,7 +40,7 @@ func TestOption(t *testing.T) {
 			}
 		})
 
-		t.Run("unexported fields take part", func(t *testing.T) {
+		t.Run("compares unexported fields", func(t *testing.T) {
 			t.Parallel()
 
 			type hidden struct{ n int }
@@ -45,7 +53,7 @@ func TestOption(t *testing.T) {
 			}
 		})
 
-		t.Run("a function equals itself", func(t *testing.T) {
+		t.Run("makes a function equal itself", func(t *testing.T) {
 			t.Parallel()
 
 			f := func() {}
@@ -54,7 +62,7 @@ func TestOption(t *testing.T) {
 			}
 		})
 
-		t.Run("two functions are unequal", func(t *testing.T) {
+		t.Run("keeps two different functions unequal", func(t *testing.T) {
 			t.Parallel()
 
 			f, g := func() {}, func() {}
@@ -63,7 +71,7 @@ func TestOption(t *testing.T) {
 			}
 		})
 
-		t.Run("NaN does not equal NaN", func(t *testing.T) {
+		t.Run("keeps NaN unequal to NaN", func(t *testing.T) {
 			t.Parallel()
 
 			nan := math.NaN()
@@ -72,18 +80,18 @@ func TestOption(t *testing.T) {
 			}
 		})
 
-		t.Run("floats compare exactly", func(t *testing.T) {
+		t.Run("compares floats exactly", func(t *testing.T) {
 			t.Parallel()
 
 			// Variables, not constants: untyped constant arithmetic is
-			// exact at compile time and would test nothing.
+			// exact at compile time, and 0.1+0.2 would equal 0.3.
 			tenth, fifth := 0.1, 0.2
 			if cmp.Equal(tenth+fifth, 0.3, matcher.Options()...) {
-				t.Fatal("0.1+0.2 equals 0.3; the comparison applied a tolerance")
+				t.Fatal("0.1+0.2 equals 0.3, want an exact comparison without a tolerance")
 			}
 		})
 
-		t.Run("returns a slice the caller owns", func(t *testing.T) {
+		t.Run("returns a new slice on every call", func(t *testing.T) {
 			t.Parallel()
 
 			first := matcher.Options()
@@ -91,7 +99,7 @@ func TestOption(t *testing.T) {
 			first[0] = nil
 
 			if second[0] == nil {
-				t.Fatal("two calls share backing memory; the caller does not own the result")
+				t.Fatal("two calls share backing memory, want a new slice per call")
 			}
 		})
 	})
@@ -108,7 +116,7 @@ func TestOption(t *testing.T) {
 			}
 		})
 
-		t.Run("passing it twice is passing it once", func(t *testing.T) {
+		t.Run("has the effect of one option when passed twice", func(t *testing.T) {
 			t.Parallel()
 
 			var nilSlice []int
@@ -132,13 +140,36 @@ func TestOption(t *testing.T) {
 			}
 		})
 
-		t.Run("does not relax the empty rule", func(t *testing.T) {
+		t.Run("keeps a nil collection unequal to an empty one", func(t *testing.T) {
 			t.Parallel()
 
 			var nilSlice []int
 			if cmp.Equal(nilSlice, []int{}, matcher.Options(matcher.EquateNaNs())...) {
-				t.Fatal("EquateNaNs also equated nil with empty; the flags are not independent")
+				t.Fatal("EquateNaNs also equated nil with empty, want independent flags")
 			}
 		})
 	})
+}
+
+// TestOptionAllocs checks the allocation ceiling of each function and
+// method of option.go.
+func TestOptionAllocs(t *testing.T) {
+	checkAllocs(t, optionCases())
+}
+
+// BenchmarkOption measures each function and method of option.go.
+func BenchmarkOption(b *testing.B) {
+	benchAllocs(b, optionCases())
+}
+
+// optionCases returns a call of each function and method of option.go,
+// with its allocation ceiling, measured: Options of one option.
+func optionCases() []allocCase {
+	empty := matcher.EquateEmpty()
+	return []allocCase{
+		{name: "EquateEmpty", call: func(matcher.Seat) { option = matcher.EquateEmpty() }},
+		{name: "EquateNaNs", call: func(matcher.Seat) { option = matcher.EquateNaNs() }},
+		{name: "Options", call: func(matcher.Seat) { options = matcher.Options(empty) }, allocs: 9},
+		{name: "Option.FormOption", call: func(matcher.Seat) { empty.FormOption(matcher.FormSeal{}) }},
+	}
 }

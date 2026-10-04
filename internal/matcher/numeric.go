@@ -17,6 +17,10 @@ import (
 //
 // A NaN fails, on either side or as the tolerance, because no tolerance
 // contains it.
+//
+// # Allocation contract
+//
+// A passing call on a float64 allocates nothing.
 func CloseTo(seat Seat, mode Mode, got any, want, tolerance float64, msg string) {
 	seat.Helper()
 
@@ -38,7 +42,9 @@ func CloseTo(seat Seat, mode Mode, got any, want, tolerance float64, msg string)
 	if diff > tolerance {
 		Fail(seat, mode, "close-to", msg,
 			map[string]any{"got": got, "want": want, "tolerance": tolerance})
+		return
 	}
+	Pass(seat, mode, "close-to", msg)
 }
 
 // InRange reports when got is outside the closed interval [low, high].
@@ -49,6 +55,10 @@ func CloseTo(seat Seat, mode Mode, got any, want, tolerance float64, msg string)
 // bound is NaN, contains no number, so it fails whatever got is. Every
 // comparison against NaN is false, so a NaN bound tested like any other
 // would admit every value.
+//
+// # Allocation contract
+//
+// A passing call on a float64 allocates nothing.
 func InRange(seat Seat, mode Mode, got any, low, high float64, msg string) {
 	seat.Helper()
 
@@ -75,7 +85,9 @@ func InRange(seat Seat, mode Mode, got any, low, high float64, msg string) {
 	if f < low || f > high {
 		Fail(seat, mode, "in-range", msg,
 			map[string]any{"got": got, "low": low, "high": high})
+		return
 	}
+	Pass(seat, mode, "in-range", msg)
 }
 
 // floatOf reads any numeric value as a float64, so one comparison

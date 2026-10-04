@@ -11,9 +11,6 @@ import (
 	"go.dokimi.dev/assert/internal/prop/choice"
 )
 
-// byteK is one more than the largest byte, the k of a byte string.
-const byteK = 256
-
 // TestSequenceBounds checks the construction, the element bounds, the
 // target, the admission and the replay of sequence bounds.
 func TestSequenceBounds(t *testing.T) {
@@ -153,9 +150,9 @@ func TestSequenceBounds(t *testing.T) {
 	})
 }
 
-// TestSequenceBoundsZeroAlloc checks that the constructor and every method
+// TestSequenceBoundsAllocs checks that the constructor and every method
 // of SequenceBounds that returns no new sequence allocate nothing.
-func TestSequenceBoundsZeroAlloc(t *testing.T) {
+func TestSequenceBoundsAllocs(t *testing.T) {
 	s := sizes(t, 0, 8)
 	b := sequenceBounds(t, byteK, 0, 8)
 	recorded := sequenceChoice(1, 2, 3)
@@ -257,19 +254,4 @@ func BenchmarkSequenceBounds(b *testing.B) {
 		}
 		assert.Equal(b, got, []uint32{1, 2, 0}, "the sequence extended to the minimum")
 	})
-}
-
-// sequenceBounds returns the bounds of sequences of integers in [0, k)
-// with lengths from minSize to maxSize, failing the test when they are
-// invalid.
-func sequenceBounds(tb testing.TB, k uint32, minSize, maxSize int) choice.SequenceBounds {
-	tb.Helper()
-	b, err := choice.NewSequenceBounds(k, sizes(tb, minSize, maxSize))
-	assert.NoError(tb, err, "the bounds are valid")
-	return b
-}
-
-// sequenceChoice returns a sequence choice of the elements.
-func sequenceChoice(elements ...uint32) choice.Choice {
-	return choice.Choice{Kind: choice.Sequence, Sequence: elements}
 }

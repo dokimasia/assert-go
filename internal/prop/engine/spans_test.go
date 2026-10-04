@@ -87,9 +87,9 @@ func TestSpans(t *testing.T) {
 				},
 			},
 			{
-				name: "lifts the inner position of a tree that holds the failing leaf",
+				name: "lifts the inner position of a tree that contains the failing leaf",
 				p: func(c *engine.Case) string {
-					return failsWhen(holds(engine.Draw(c, digitTree, "tree"), 9), "nine")
+					return failsWhen(contains(engine.Draw(c, digitTree, "tree"), 9), "nine")
 				},
 				stored: integers(1, 1, 0, 9, 0),
 				want: reference{
@@ -105,7 +105,10 @@ func TestSpans(t *testing.T) {
 				p: func(c *engine.Case) string {
 					value := engine.Draw(c, digitTree, "tree")
 					_, list := value.([]any)
-					return failsWhen(list && holds(value, 9) && (depth(value) < 2 || leafCount(value) >= 2), "lifted")
+					return failsWhen(
+						list && contains(value, 9) && (depth(value) < 2 || leafCount(value) >= 2),
+						"lifted",
+					)
 				},
 				stored: integers(1, 1, 1, 1, 0, 9, 1, 0, 1, 0, 0),
 				want: reference{
@@ -161,11 +164,11 @@ func TestSpans(t *testing.T) {
 	})
 }
 
-// holds reports whether a tree of digits and lists holds wanted at any
-// depth.
-func holds(value any, wanted int) bool {
+// contains reports whether a tree of digits and lists contains wanted at
+// any depth.
+func contains(value any, wanted int) bool {
 	if items, ok := value.([]any); ok {
-		return slices.ContainsFunc(items, func(item any) bool { return holds(item, wanted) })
+		return slices.ContainsFunc(items, func(item any) bool { return contains(item, wanted) })
 	}
 	return value == wanted
 }
@@ -182,17 +185,4 @@ func depth(value any) int {
 		deepest = max(deepest, depth(item))
 	}
 	return 1 + deepest
-}
-
-// leafCount returns the number of digits in a tree of digits and lists.
-func leafCount(value any) int {
-	items, ok := value.([]any)
-	if !ok {
-		return 1
-	}
-	count := 0
-	for _, item := range items {
-		count += leafCount(item)
-	}
-	return count
 }

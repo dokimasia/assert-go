@@ -170,9 +170,9 @@ func TestSource(t *testing.T) {
 	})
 }
 
-// TestSourceZeroAlloc checks that no function or method of Source
+// TestSourceAllocs checks that no function or method of Source
 // allocates.
-func TestSourceZeroAlloc(t *testing.T) {
+func TestSourceAllocs(t *testing.T) {
 	s := random.New(42)
 	assert.MaxAllocs(t, func() { _ = random.New(42) }, 0, "New allocates nothing")
 	assert.MaxAllocs(t, func() { _ = random.ForCase(42, 7) }, 0, "ForCase allocates nothing")

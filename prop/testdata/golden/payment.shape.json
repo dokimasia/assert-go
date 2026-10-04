@@ -1,0 +1,41 @@
+{
+  "shape": "enum",
+  "source": {
+    "language": "go",
+    "type": "go.dokimi.dev/assert/prop_test.payment"
+  },
+  "variants": [
+    [
+      "pending",
+      null
+    ],
+    [
+      "paid",
+      {
+        "shape": "int",
+        "signed": true,
+        "width": 64
+      }
+    ],
+    [
+      "refunded",
+      {
+        "shape": "string"
+      }
+    ],
+    [
+      "cancelled",
+      {
+        "fields": [
+          [
+            "reason",
+            {
+              "shape": "string"
+            }
+          ]
+        ],
+        "shape": "record"
+      }
+    ]
+  ]
+}

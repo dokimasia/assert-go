@@ -69,3 +69,29 @@ func TestErrors(t *testing.T) {
 		})
 	})
 }
+
+// TestErrorsTwins runs TestErrorsTwinsChild in a child process, and
+// requires the failures of RunErrorAs for twins that return nil and a zero
+// error.
+func TestErrorsTwins(t *testing.T) {
+	t.Parallel()
+	expectBroken(t, "TestErrorsTwinsChild",
+		"returned matchertest: typed error, want the error from the chain",
+		"returned nil for an error already of the target type",
+		"returned matchertest: typed error on failure, want the zero value")
+}
+
+// TestErrorsTwinsChild runs only in the child process of TestErrorsTwins.
+func TestErrorsTwinsChild(t *testing.T) {
+	inChild(t)
+
+	t.Run("RunErrorAs of a twin that returns nil", func(t *testing.T) {
+		matchertest.RunErrorAs(t, func(*matchertest.Seat, error, string) *matchertest.TypedError { return nil })
+	})
+
+	t.Run("RunErrorAs of a twin that returns a zero error", func(t *testing.T) {
+		matchertest.RunErrorAs(t, func(*matchertest.Seat, error, string) *matchertest.TypedError {
+			return &matchertest.TypedError{}
+		})
+	})
+}

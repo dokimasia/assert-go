@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert/conformance"
+	"go.dokimi.dev/assert/internal/fault"
 )
 
 // The literals that the predicates are tested on.
@@ -20,7 +21,9 @@ const (
 
 // TestPredicate checks each predicate of the vocabulary through a filter of
 // one stated value: the case keeps the value where the predicate reports
-// true, and is rejected where it reports false.
+// true, and is rejected where it reports false. Written with testing rather
+// than with this library, because a verdict is not written with the
+// subject.
 func TestPredicate(t *testing.T) {
 	t.Parallel()
 
@@ -372,86 +375,102 @@ func TestPredicate(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				expectCheck(t, check(t, conformance.Decoding, filtered(tt.value, tt.predicate, tt.holds)), "")
+				expectFault(t, check(t, conformance.Decoding, filtered(tt.value, tt.predicate, tt.holds)), nil, "")
 			})
 		}
 
+		at := func(segs ...fault.Segment) fault.Path {
+			return inVector(append([]fault.Segment{fault.Field(generatorAt), fault.Field("keep")}, segs...)...)
+		}
 		refusals := []struct {
-			name      string
-			predicate string
-			want      string
+			name       string
+			predicate  string
+			wantPath   fault.Path
+			wantReason string
 		}{
 			{
-				name:      "returns an error for a predicate that is no JSON object",
-				predicate: `3`,
-				want:      "parse predicate",
+				name:       "returns a fault for a predicate that is no JSON object",
+				predicate:  `3`,
+				wantPath:   at(),
+				wantReason: "the predicate does not parse",
 			},
 			{
-				name:      "returns an error for a predicate of an unknown kind",
-				predicate: `{"kind":"most"}`,
-				want:      `"most" names no predicate`,
+				name:       "returns a fault at the kind for a predicate of an unknown kind",
+				predicate:  `{"kind":"most"}`,
+				wantPath:   at(fault.Field(kindAt)),
+				wantReason: `"most" names no predicate`,
 			},
 			{
-				name:      "returns an error for equals without a value",
-				predicate: `{"kind":"equals"}`,
-				want:      "predicate equals lacks value",
+				name:       "returns a fault for equals without a value",
+				predicate:  `{"kind":"equals"}`,
+				wantPath:   at(),
+				wantReason: "equals states no value",
 			},
 			{
-				name:      "returns an error for contains of a literal of an unknown type",
-				predicate: `{"kind":"contains","value":{"type":"widget"}}`,
-				want:      conformance.ErrUnknownType.Error(),
+				name:       "returns a fault at the value for contains of a literal of an unknown type",
+				predicate:  `{"kind":"contains","value":` + widget + `}`,
+				wantPath:   at(fault.Field(valueAt), fault.Field(typeAt)),
+				wantReason: unknownWidget,
 			},
 			{
-				name:      "returns an error for at-least without n",
-				predicate: `{"kind":"at-least"}`,
-				want:      "predicate at-least lacks n",
+				name:       "returns a fault for at-least without n",
+				predicate:  `{"kind":"at-least"}`,
+				wantPath:   at(),
+				wantReason: "at-least states no n",
 			},
 			{
-				name:      "returns an error for at-least of n NaN",
-				predicate: `{"kind":"at-least","n":"NaN"}`,
-				want:      "the number of a predicate is NaN",
+				name:       "returns a fault at n for at-least of n NaN",
+				predicate:  `{"kind":"at-least","n":"NaN"}`,
+				wantPath:   at(fault.Field("n")),
+				wantReason: "NaN is no number of a predicate",
 			},
 			{
-				name:      "returns an error for at-least of an n of an unknown name",
-				predicate: `{"kind":"at-least","n":"Huge"}`,
-				want:      `unrecognized float literal "Huge"`,
+				name:       "returns a fault at n for at-least of an n of an unknown name",
+				predicate:  `{"kind":"at-least","n":"Huge"}`,
+				wantPath:   at(fault.Field("n")),
+				wantReason: `"Huge" is none of the names NaN, Inf and -Inf`,
 			},
 			{
-				name:      "returns an error for at-least of an n that is no number",
-				predicate: `{"kind":"at-least","n":true}`,
-				want:      "decode float",
+				name:       "returns a fault at n for at-least of an n that is no number",
+				predicate:  `{"kind":"at-least","n":true}`,
+				wantPath:   at(fault.Field("n")),
+				wantReason: "the value is no float",
 			},
 			{
-				name:      "returns an error for divisible-by of a fractional n",
-				predicate: `{"kind":"divisible-by","n":2.5}`,
-				want:      "predicate divisible-by states 2.5, no integer",
+				name:       "returns a fault at n for divisible-by of a fractional n",
+				predicate:  `{"kind":"divisible-by","n":2.5}`,
+				wantPath:   at(fault.Field("n")),
+				wantReason: "2.5 is no integer",
 			},
 			{
-				name:      "returns an error for length-at-least of a fractional n",
-				predicate: `{"kind":"length-at-least","n":1.5}`,
-				want:      "predicate length-at-least states 1.5, no integer",
+				name:       "returns a fault at n for length-at-least of a fractional n",
+				predicate:  `{"kind":"length-at-least","n":1.5}`,
+				wantPath:   at(fault.Field("n")),
+				wantReason: "1.5 is no integer",
 			},
 			{
-				name:      "returns an error for indexed-above without n",
-				predicate: `{"kind":"indexed-above"}`,
-				want:      "predicate indexed-above lacks n",
+				name:       "returns a fault for indexed-above without n",
+				predicate:  `{"kind":"indexed-above"}`,
+				wantPath:   at(),
+				wantReason: "indexed-above states no n",
 			},
 		}
 		for _, tt := range refusals {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				expectCheck(t, check(t, conformance.Decoding, filtered(oneLiteral, tt.predicate, true)), tt.want)
+				err := check(t, conformance.Decoding, filtered(oneLiteral, tt.predicate, true))
+				expectFault(t, err, tt.wantPath, tt.wantReason)
 			})
 		}
 	})
 }
 
 // filtered returns a decoding vector of a filter by predicate of the one
-// typed literal value, which states that the case keeps the value where
-// holds is set, and that the filter rejects the case where not.
-func filtered(value, predicate string, holds bool) string {
+// typed literal value, which states that the case keeps the value when kept
+// is true, and that the filter rejects the case otherwise.
+func filtered(value, predicate string, kept bool) string {
 	stated := null
-	if holds {
+	if kept {
 		stated = value
 	}
 	filter := fmt.Sprintf(`{"gen":"filter","of":{"gen":"just","value":%s},"keep":%s}`, value, predicate)

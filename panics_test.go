@@ -7,9 +7,14 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/alloctest"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
+// recovered keeps what a call of Panics returns.
+var recovered any
+
+// TestPanics runs the shared cases of the panic assertions.
 func TestPanics(t *testing.T) {
 	t.Parallel()
 
@@ -26,4 +31,28 @@ func TestPanics(t *testing.T) {
 			assert.NotPanics(s, fn, msg)
 		})
 	})
+}
+
+// TestPanicsAllocs checks the allocation ceiling of a passing call of each
+// panic assertion.
+func TestPanicsAllocs(t *testing.T) {
+	alloctest.Check(t, panicsCases())
+}
+
+// BenchmarkPanics measures a passing call of each panic assertion.
+func BenchmarkPanics(b *testing.B) {
+	for _, c := range panicsCases() {
+		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
+	}
+}
+
+// panicsCases returns a passing call of each panic assertion, with its
+// allocation ceiling, measured. The subject of Panics panics with a
+// constant text.
+func panicsCases() []alloctest.Case {
+	panicking := func() { panic("the key is empty") }
+	return []alloctest.Case{
+		{Name: "Panics", Call: func(tb assert.TB) { recovered = assert.Panics(tb, panicking, allocContract) }},
+		{Name: "NotPanics", Call: func(tb assert.TB) { assert.NotPanics(tb, func() {}, allocContract) }},
+	}
 }

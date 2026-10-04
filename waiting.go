@@ -21,11 +21,16 @@ import (
 // attempt and does not end the test. fn runs at least once however short
 // the timeout. An interval below a millisecond waits a millisecond.
 //
-// Eventually spends real time. It is for a condition that something
-// outside the test makes true. A controlled clock moves only when the
-// test advances it, and the test cannot advance it while this call
-// blocks. Where the subject reads a clock that the test controls, drive
-// that clock and read the result instead.
+// Eventually waits on the seat's clock. On the runtime clock it spends
+// real time, up to timeout, so it suits a condition that another goroutine
+// or process makes true. On a [Controlled] clock, which a [Recorder]
+// supplies through [Recorder.WithClock], it advances that clock between
+// attempts and spends no real time.
+//
+// # Allocation contract
+//
+// A call whose first attempt passes allocates 5 times besides what fn
+// allocates.
 func Eventually(tb TB, timeout, interval time.Duration, fn func(tb TB), msg string) {
 	tb.Helper()
 	matcher.Eventually(tb, matcher.Fatal, timeout, interval, func(s matcher.Seat) {
@@ -45,9 +50,14 @@ func Eventually(tb TB, timeout, interval time.Duration, fn func(tb TB), msg stri
 //
 // EventuallyTrue differs from [Eventually] in what it reports. A
 // predicate does not report a failure of its own, so the failure states
-// only that the wait ran out. Where the reason matters, write the condition as
-// assertions and use [Eventually]. EventuallyTrue spends real time for
-// the same reason.
+// only that the wait ran out. Where the reason matters, write the
+// condition as assertions and use [Eventually]. EventuallyTrue waits on
+// the seat's clock as Eventually does.
+//
+// # Allocation contract
+//
+// A call whose first attempt passes allocates nothing besides what pred
+// allocates.
 func EventuallyTrue(tb TB, timeout time.Duration, pred func() bool, msg string) {
 	tb.Helper()
 	matcher.EventuallyTrue(tb, matcher.Fatal, timeout, pred, msg)

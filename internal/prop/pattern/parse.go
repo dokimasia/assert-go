@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/alphabet"
 	"go.dokimi.dev/assert/internal/prop/choice"
 )
@@ -52,11 +53,11 @@ type parser struct {
 	depth int
 }
 
-// newParser returns a parser at the first character of text. It returns an
-// error that wraps [ErrOutside] for text that is not UTF-8.
+// newParser returns a parser at the first character of text. It returns a
+// fault of the kind [ErrOutside] for text that is not UTF-8.
 func newParser(text string) (*parser, error) {
 	if !utf8.ValidString(text) {
-		return nil, fmt.Errorf("%w: %q is not UTF-8", ErrOutside, text)
+		return nil, fault.Of(ErrOutside, "%q is not UTF-8", text)
 	}
 	return &parser{text: text, runes: []rune(text)}, nil
 }
@@ -435,10 +436,11 @@ func (p *parser) next(missing string) (rune, error) {
 	return p.take(), nil
 }
 
-// fail returns the error for what is wrong at the current position, which
-// wraps [ErrOutside].
+// fail returns the fault of the kind [ErrOutside] for what is wrong at the
+// current position: the pattern, the index of the character, and format
+// with args, as fmt.Sprintf formats them.
 func (p *parser) fail(format string, args ...any) error {
-	return fmt.Errorf("%w: %q at %d: %s", ErrOutside, p.text, p.at, fmt.Sprintf(format, args...))
+	return fault.Of(ErrOutside, "%q at %d: %s", p.text, p.at, fmt.Sprintf(format, args...))
 }
 
 // isDigit reports whether r is an ASCII digit, the only digits that a count

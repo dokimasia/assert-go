@@ -9,18 +9,17 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
-	"go.dokimi.dev/assert/internal/prop/choice"
-	"go.dokimi.dev/assert/internal/prop/token"
 	"go.dokimi.dev/assert/prop"
 )
 
 // The allocations of the collection generators, measured. Each is the
-// engine's construction of the generator: the closures of its decodes.
+// engine's construction of the generator: the closures of its decodes and
+// of its inverse.
 const (
 	// listAllocs are the allocations of List.
-	listAllocs = 3
+	listAllocs = 4
 	// dictAllocs are the allocations of Dict.
-	dictAllocs = 5
+	dictAllocs = 6
 )
 
 // TestCollection checks the list and dict generators and the option that
@@ -91,9 +90,9 @@ func TestCollection(t *testing.T) {
 	})
 }
 
-// TestCollectionZeroAlloc checks the allocation ceilings of the collection
+// TestCollectionAllocs checks the allocation ceilings of the collection
 // generators and options.
-func TestCollectionZeroAlloc(t *testing.T) {
+func TestCollectionAllocs(t *testing.T) {
 	digit := prop.Integer(0, 9)
 	assert.MaxAllocs(t, func() { _ = prop.Unique() }, 0, "Unique allocates nothing")
 	assert.MaxAllocs(t, func() { _ = prop.List(digit) }, listAllocs, "List allocates its decode")
@@ -133,23 +132,4 @@ func BenchmarkCollection(b *testing.B) {
 		}
 		assert.Equal(b, first(got, 1, 3, 4, 0), map[int]int{3: 4}, "the dict")
 	})
-}
-
-// replayedOf returns the value that g decodes in a run that replays
-// choices.
-func replayedOf[T any](g prop.Generator[T], choices ...choice.Choice) T {
-	var got T
-	prop.ForAll(assert.NewRecorder(), contract, func(c *prop.Case) { got = c.Draw(g, drawn) },
-		prop.Replay(token.Encode(choices)))
-	return got
-}
-
-// integer returns the integer choice of v.
-func integer(v uint64) choice.Choice {
-	return choice.Choice{Kind: choice.Integer, Integer: choice.UintOf(v)}
-}
-
-// floating returns the float choice of v.
-func floating(v float64) choice.Choice {
-	return choice.Choice{Kind: choice.Float, Float: v}
 }

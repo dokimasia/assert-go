@@ -33,22 +33,29 @@ const (
 //	    "Get averages under one allocation per call once the store is warm")
 //
 // In a build where [AllocationsCounted] reports false, it calls fn as
-// an ordinary build does and reports nothing.
+// an ordinary build does and passes.
 //
 // testing.AllocsPerRun panics while a parallel test runs, so the test
 // that calls MaxAllocs does not call t.Parallel.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what the 101 calls of fn
+// allocate.
 func MaxAllocs(seat Seat, mode Mode, fn func(), ceiling uint64, msg string) {
 	seat.Helper()
 
 	got := uint64(testing.AllocsPerRun(allocRuns, fn))
 	if AllocationsCounted() && got > ceiling {
 		Fail(seat, mode, "max-allocs", msg, map[string]any{"want": ceiling, "got": got})
+		return
 	}
+	Pass(seat, mode, "max-allocs", msg)
 }
 
 // AllocationsCounted reports whether the running binary's allocation
-// counts describe the code under test. They do not in two kinds of
-// build:
+// counts describe the code under test. They do not describe it in two
+// kinds of build:
 //
 //   - A build with the race detector, msan or asan, which allocates on
 //     the code's behalf. Under the race detector sync.Pool also drops a
@@ -57,8 +64,12 @@ func MaxAllocs(seat Seat, mode Mode, fn func(), ceiling uint64, msg string) {
 //     debugger's build does. With inlining off, a value that an ordinary
 //     build keeps on the stack can move to the heap.
 //
-// It reads the build information once, and answers from that reading
-// afterwards.
+// It reads the build information on its first call, and returns the result
+// of that reading afterwards.
+//
+// # Allocation contract
+//
+// AllocationsCounted allocates nothing after its first call.
 func AllocationsCounted() bool {
 	return allocationsCounted()
 }
@@ -70,9 +81,13 @@ var allocationsCounted = sync.OnceValue(func() bool {
 })
 
 // OptimisationsOff reports whether info records -gcflags that turn off
-// optimisation (-N) or inlining (-l) for any package. A flag may carry a
+// optimisation (-N) or inlining (-l) for any package. A flag may follow a
 // package pattern, as in all=-N. A nil info, or one that records no
 // -gcflags, reports false.
+//
+// # Allocation contract
+//
+// OptimisationsOff allocates nothing.
 func OptimisationsOff(info *debug.BuildInfo) bool {
 	if info == nil {
 		return false
@@ -85,8 +100,8 @@ func OptimisationsOff(info *debug.BuildInfo) bool {
 	return false
 }
 
-// disablesOptimisation reports whether flags, a -gcflags value, holds -N
-// or -l. Each field is a flag, optionally after a package pattern and an
+// disablesOptimisation reports whether flags, a -gcflags value, contains
+// -N or -l. Each field is a flag, optionally after a package pattern and an
 // equals sign, and the flag's name is compared whole, so -lang is not -l.
 func disablesOptimisation(flags string) bool {
 	for field := range strings.FieldsSeq(flags) {

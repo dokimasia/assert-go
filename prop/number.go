@@ -54,7 +54,7 @@ type BooleanOption struct {
 // is 0 or num exceeds den.
 func Odds(num, den uint64) BooleanOption {
 	if den == 0 || num > den {
-		panic(fmt.Sprintf("prop: the odds %d/%d are no probability", num, den))
+		panic(fmt.Sprintf("prop: Odds(%d, %d) states no probability", num, den))
 	}
 	return BooleanOption{num: num, den: den}
 }

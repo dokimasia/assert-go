@@ -5,15 +5,18 @@ package engine_test
 
 import (
 	"math"
+	"slices"
 	"testing"
 	"time"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
+	"go.dokimi.dev/assert/internal/enumtest"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/coverage"
 	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/internal/prop/token"
+	"go.dokimi.dev/assert/internal/record"
 )
 
 // The allocations of a run, measured.
@@ -34,13 +37,10 @@ const (
 // for an integer in [0, 10000]: two bytes, little-endian.
 var largestBytes = []byte{0x10, 0x27}
 
-// invalidOutcome is the first value past the six outcomes.
-const invalidOutcome engine.Outcome = 6
-
 // TestRunner checks the phases of a run, how a run ends, and the replay of
 // one case, through runs pinned to what the definition's executable
 // reference reports, with a digest of the choices of every call of the
-// body, and pins each outcome's spelling.
+// body.
 func TestRunner(t *testing.T) {
 	t.Parallel()
 
@@ -88,45 +88,15 @@ func TestRunner(t *testing.T) {
 	t.Run("Valid", func(t *testing.T) {
 		t.Parallel()
 
-		tests := []struct {
-			name string
-			give engine.Outcome
-			want bool
-		}{
-			{name: "reports true for Passed", give: engine.Passed, want: true},
-			{name: "reports true for Vacuous", give: engine.Vacuous, want: true},
-			{name: "reports false past Vacuous", give: invalidOutcome, want: false},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				assert.Equal(t, tt.give.Valid(), tt.want, "whether the value is an outcome")
-			})
-		}
-	})
-
-	t.Run("String", func(t *testing.T) {
-		t.Parallel()
-
-		tests := []struct {
-			name string
-			give engine.Outcome
-			want string
-		}{
-			{name: "returns passed for Passed", give: engine.Passed, want: "passed"},
-			{name: "returns counterexample for Counterexample", give: engine.Counterexample, want: "counterexample"},
-			{name: "returns flaky for Flaky", give: engine.Flaky, want: "flaky"},
-			{name: "returns rejected for Rejected", give: engine.Rejected, want: "rejected"},
-			{name: "returns coverage-unmet for CoverageUnmet", give: engine.CoverageUnmet, want: "coverage-unmet"},
-			{name: "returns vacuous for Vacuous", give: engine.Vacuous, want: "vacuous"},
-			{name: "returns Outcome(6) for a value that is no outcome", give: invalidOutcome, want: "Outcome(6)"},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				assert.Equal(t, tt.give.String(), tt.want, "the outcome's spelling")
-			})
-		}
+		t.Run("reports true for the six outcomes and false past them", func(t *testing.T) {
+			t.Parallel()
+			enumtest.Members(t,
+				[]engine.Outcome{
+					engine.Passed, engine.Counterexample, engine.Flaky,
+					engine.Rejected, engine.CoverageUnmet, engine.Vacuous,
+				},
+				[]engine.Outcome{invalidOutcome})
+		})
 	})
 
 	t.Run("Run", func(t *testing.T) {
@@ -493,6 +463,75 @@ func TestRunner(t *testing.T) {
 			engine.Run(func(c *engine.Case) { got = c.Clock() }, settled())
 			assert.Equal[assert.Clock](t, got, assert.System{}, "the runtime clock")
 		})
+
+		t.Run("records the calls of the stated cases first, each under its phase and run", func(t *testing.T) {
+			t.Parallel()
+			s := settled(integers(5)...)
+			s.Examples = [][]choice.Choice{integers(4)}
+			s.Draws = []engine.Entry{{Label: drawn, Value: 3}}
+			got := recordedRun(t, s, func(s engine.Settings) {
+				engine.Run(ended(func(c *engine.Case) { engine.Draw(c, digit, drawn) }), s)
+			})
+			assert.Equal(t, got[:4], []callRecord{
+				{Run: 1, Phase: "example"},
+				{Run: 2, Phase: "example"},
+				{Run: 3, Phase: "stored"},
+				{Run: 4, Phase: "simplest"},
+			}, "the case of Draws, the example, the stored case and the simplest case")
+			assert.Equal(t, got[4], callRecord{Run: 5, Phase: "random"}, "random case 0 after them")
+		})
+
+		t.Run("records random cases before the first coverage check and coverage cases after it", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			require(engine.Requirement{Label: "even", Share: 0.6})(&s)
+			phases := phasesOf(recordedRun(t, s, func(s engine.Settings) {
+				engine.Run(ended(func(c *engine.Case) {
+					if engine.Draw(c, small, drawn)%2 == 0 {
+						c.Classify("even")
+					}
+				}), s)
+			}))
+			lastRandom := -1
+			for i, phase := range phases {
+				if phase == "random" {
+					lastRandom = i
+				}
+			}
+			firstCoverage := slices.Index(phases, "coverage")
+			ordered := lastRandom >= 0 && firstCoverage > lastRandom
+			assert.True(t, ordered, "every random case before the first coverage case")
+			assert.Contains(t, phases, "edge", "the edge cases")
+		})
+
+		t.Run("records the prefix case of a random case of two choices under the phase prefix", func(t *testing.T) {
+			t.Parallel()
+			phases := phasesOf(recordedRun(t, settled(), func(s engine.Settings) {
+				engine.Run(ended(func(c *engine.Case) {
+					engine.Draw(c, small, drawn)
+					engine.Draw(c, small, "second")
+				}), s)
+			}))
+			assert.Equal(t, phases[:3], []string{"simplest", "random", "prefix"}, "random case 0 and its prefix case")
+		})
+
+		t.Run("records the replay of a failing case, and each run of its shrink and explanation", func(t *testing.T) {
+			t.Parallel()
+			var r engine.Result
+			phases := phasesOf(recordedRun(t, settled(), func(s engine.Settings) {
+				r = engine.Run(ended(choiceOf(1001)), s)
+			}))
+			replay := slices.Index(phases, "replay")
+			assert.True(t, replay > 0, "the replay follows the failing case")
+			counts := map[string]int{}
+			for _, phase := range phases[replay:] {
+				counts[phase]++
+			}
+			assert.Equal(t, counts["replay"], 1, "one replay")
+			assert.Equal(t, counts["shrink"]+counts["explain"], r.Runs, "a record for each run of the budget")
+			assert.True(t, counts["shrink"] > 0 && counts["explain"] > 0, "runs of both")
+			assert.Equal(t, phases[len(phases)-1], "explain", "the explanation last")
+		})
 	})
 
 	t.Run("RunReplay", func(t *testing.T) {
@@ -508,7 +547,7 @@ func TestRunner(t *testing.T) {
 			t.Parallel()
 			choices, err := token.Decode("prop1:AAc")
 			assert.NoError(t, err, "the token decodes")
-			got := engine.RunReplay(atLeast5, settled(), choices)
+			got := engine.RunReplay(atLeast5, settled(), choices, record.Token)
 			want := engine.Result{Outcome: engine.Counterexample, Seed: referenceSeed}
 			assert.Equal(t, summary(got), want, "a counterexample")
 			assert.Equal(t, drawValues(got.Failing.Case.Draws()), []any{7}, "the replayed value")
@@ -544,7 +583,7 @@ func TestRunner(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				got := engine.RunReplay(tt.body, settled(), tt.choices)
+				got := engine.RunReplay(tt.body, settled(), tt.choices, record.Token)
 				assert.Equal(t, summary(got), tt.want, "how the replay ended")
 				assert.Nil(t, got.Failing, "no failing case")
 			})
@@ -556,8 +595,16 @@ func TestRunner(t *testing.T) {
 			s := settled()
 			s.Clock = assert.NewControlled(start)
 			var got time.Time
-			engine.RunReplay(func(c *engine.Case) { got = c.Clock().Now() }, s, nil)
+			engine.RunReplay(func(c *engine.Case) { got = c.Clock().Now() }, s, nil, record.Token)
 			assert.Equal(t, got, start, "the controlled clock's time")
+		})
+
+		t.Run("records the calls of the case under the phase that it states", func(t *testing.T) {
+			t.Parallel()
+			got := recordedRun(t, settled(), func(s engine.Settings) {
+				engine.RunReplay(ended(atLeast5), s, integers(3), record.Stored)
+			})
+			assert.Equal(t, got, []callRecord{{Run: 1, Phase: "stored"}}, "the one case, as stored")
 		})
 	})
 
@@ -566,7 +613,7 @@ func TestRunner(t *testing.T) {
 
 		t.Run("shrinks and explains a failing case that the bridge decoded", func(t *testing.T) {
 			t.Parallel()
-			failing := engine.Bridge(choiceOf(1001), largestBytes, nil)
+			failing := engine.Bridge(choiceOf(1001), largestBytes, engine.Settings{})
 			got := engine.Conclude(choiceOf(1001), settled(), failing)
 			want := []engine.Explained{
 				{Label: drawn, Value: 1001, Relevance: engine.ValueMatters, NearestPassing: 1000},
@@ -587,7 +634,7 @@ func TestRunner(t *testing.T) {
 					c.Report(assert.Failure{Assertion: "once"}, false)
 				}
 			}
-			got := engine.Conclude(once, settled(), engine.Bridge(once, []byte{7}, nil))
+			got := engine.Conclude(once, settled(), engine.Bridge(once, []byte{7}, engine.Settings{}))
 			divergence := &engine.Divergence{
 				What:     engine.VerdictDifference,
 				Index:    1,
@@ -596,27 +643,41 @@ func TestRunner(t *testing.T) {
 			want := engine.Result{Outcome: engine.Flaky, Seed: referenceSeed, Divergence: divergence}
 			assert.Equal(t, summary(got), want, "the replay passes")
 		})
+
+		t.Run("records the bridged case, its replay, its shrink and its explanation", func(t *testing.T) {
+			t.Parallel()
+			body := ended(choiceOf(1001))
+			var r engine.Result
+			phases := phasesOf(recordedRun(t, settled(), func(s engine.Settings) {
+				r = engine.Conclude(body, s, engine.Bridge(body, largestBytes, s))
+			}))
+			assert.Equal(t, phases[:2], []string{"fuzz", "replay"}, "the bridged case and its replay")
+			counts := map[string]int{}
+			for _, phase := range phases[2:] {
+				counts[phase]++
+			}
+			assert.Equal(t, counts["shrink"]+counts["explain"], r.Runs, "a record for each run of the budget")
+			assert.Equal(t, len(counts), 2, "runs of the shrink and of the explanation alone")
+		})
 	})
 }
 
-// TestRunnerZeroAlloc checks the allocation ceilings of a run, of a replay
-// and of concluding a bridged case, and that no method of Outcome
-// allocates.
-func TestRunnerZeroAlloc(t *testing.T) {
+// TestRunnerAllocs checks the allocation ceilings of a run, of a replay
+// and of concluding a bridged case, and that Valid allocates nothing.
+func TestRunnerAllocs(t *testing.T) {
 	small := engine.Integer(0, 1000)
 	body := func(c *engine.Case) { engine.Draw(c, small, drawn) }
 	s, seven := settled(), integers(7)
 	big := fromThousand()
-	failing := engine.Bridge(big, largestBytes, nil)
+	failing := engine.Bridge(big, largestBytes, engine.Settings{})
 	assert.MaxAllocs(t, func() { engine.Run(body, s) }, runAllocs, "a run of 100 cases")
-	assert.MaxAllocs(t, func() { engine.RunReplay(body, s, seven) }, replayAllocs, "a replay of one case")
+	assert.MaxAllocs(t, func() { engine.RunReplay(body, s, seven, record.Token) }, replayAllocs, "a replay of one case")
 	assert.MaxAllocs(t, func() { engine.Conclude(big, s, failing) }, concludeAllocs, "the conclusion of a case")
 	assert.MaxAllocs(t, func() { _ = engine.Vacuous.Valid() }, 0, "Valid allocates nothing")
-	assert.MaxAllocs(t, func() { _ = engine.Vacuous.String() }, 0, "String allocates nothing")
 }
 
-// BenchmarkRunner measures a run of 100 cases, a replay of one case, and
-// each method of Outcome.
+// BenchmarkRunner measures a run of 100 cases, a replay of one case, the
+// conclusion of a bridged case, and Valid.
 func BenchmarkRunner(b *testing.B) {
 	small := engine.Integer(0, 1000)
 	body := func(c *engine.Case) { engine.Draw(c, small, drawn) }
@@ -638,7 +699,7 @@ func BenchmarkRunner(b *testing.B) {
 		c := bench.Start(b).MaxAllocs(replayAllocs)
 		defer c.End()
 		for c.Loop() {
-			got = engine.RunReplay(body, s, seven)
+			got = engine.RunReplay(body, s, seven, record.Token)
 		}
 		assert.Equal(b, got.Outcome, engine.Passed, "the replayed case passes")
 	})
@@ -646,7 +707,7 @@ func BenchmarkRunner(b *testing.B) {
 	b.Run("Conclude", func(b *testing.B) {
 		var got engine.Result
 		s, big := settled(), fromThousand()
-		failing := engine.Bridge(big, largestBytes, nil)
+		failing := engine.Bridge(big, largestBytes, engine.Settings{})
 		c := bench.Start(b).MaxAllocs(concludeAllocs)
 		defer c.End()
 		for c.Loop() {
@@ -664,40 +725,6 @@ func BenchmarkRunner(b *testing.B) {
 		}
 		assert.True(b, got, "Vacuous is an outcome")
 	})
-
-	b.Run("String", func(b *testing.B) {
-		var got string
-		c := bench.Start(b).MaxAllocs(0)
-		defer c.End()
-		for c.Loop() {
-			got = engine.Vacuous.String()
-		}
-		assert.Equal(b, got, "vacuous", "the outcome's spelling")
-	})
-}
-
-// recorded runs body under s, and returns the result and the token of the
-// choices of each call of the body when the call ends, however it ends.
-func recorded(body engine.Body, s engine.Settings) (engine.Result, []string) {
-	var trace []string
-	result := engine.Run(func(c *engine.Case) {
-		defer func() { trace = append(trace, token.Encode(c.Choices())) }()
-		body(c)
-	}, s)
-	return result, trace
-}
-
-// summary returns r without its cases, its explanation, its token and its
-// runs: how the run ended and its counts.
-func summary(r engine.Result) engine.Result {
-	return engine.Result{
-		Outcome:    r.Outcome,
-		Cases:      r.Cases,
-		Rejected:   r.Rejected,
-		Seed:       r.Seed,
-		Divergence: r.Divergence,
-		Shortfall:  r.Shortfall,
-	}
 }
 
 // fromThousand returns the body that draws an integer in [0, 10000] and
@@ -709,9 +736,4 @@ func fromThousand() engine.Body {
 			c.Report(assert.Failure{Assertion: "big"}, false)
 		}
 	}
-}
-
-// require returns the adjustment of settings that states requirements.
-func require(requirements ...engine.Requirement) func(*engine.Settings) {
-	return func(s *engine.Settings) { s.Requirements = requirements }
 }

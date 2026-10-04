@@ -13,6 +13,7 @@ import (
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/random"
 	"go.dokimi.dev/assert/internal/prop/token"
+	"go.dokimi.dev/assert/internal/record"
 )
 
 // DefaultShrink is the number of runs that shrinking every failure of a
@@ -20,7 +21,7 @@ import (
 const DefaultShrink = 2000
 
 // node is one recorded choice, with what its case recorded of the request
-// it answered.
+// for it.
 type node struct {
 	// r is what the case recorded of the request.
 	r recorded
@@ -176,15 +177,18 @@ func (sh *shrinker) room() int {
 	return sh.limit - sh.runs
 }
 
-// run runs the body on choices, spending one run of the budget. It reports
-// false, and runs nothing, once the budget or the time is spent. The
-// caller releases the run's case once it no longer reads it.
-func (sh *shrinker) run(choices []choice.Choice) (Execution, bool) {
+// run runs the body on choices, spending one run of the budget, whose
+// calls the slot of the run takes under phase. It reports false, and runs
+// nothing, once the budget or the time is spent. The caller releases the
+// run's case once it no longer reads it.
+func (sh *shrinker) run(choices []choice.Choice, phase record.Phase) (Execution, bool) {
 	if sh.room() == 0 {
 		return Execution{}, false
 	}
 	sh.runs++
-	return finish(sh.replaying(choices), sh.body), true
+	e := finish(sh.replaying(choices), sh.body)
+	sh.s.Slot.Take(&e.Case.calls, phase)
+	return e, true
 }
 
 // runAll runs the body on each of one or more choice sequences at once,
@@ -210,7 +214,7 @@ func (sh *shrinker) runAll(choices [][]choice.Choice) []Execution {
 // choices outside the case tree.
 func (sh *shrinker) replaying(choices []choice.Choice) *Case {
 	c := sh.spareCase()
-	c.recycleReplaying(choices, sh.s.MaxChoices, sh.s.Clock)
+	c.recycleReplaying(choices, sh.s)
 	return c
 }
 
@@ -262,12 +266,17 @@ func (sh *shrinker) fresh(nodes []node, batch []candidate) (candidate, bool) {
 }
 
 // settle runs the candidates of a non-empty batch that the budget leaves
-// room for at once, and takes their runs in order. It charges the budget
-// for each run, records each run's size, and keeps each failure. It stops
-// at the first run that became the best case. It reports whether one did,
-// and whether the search is over: a candidate was accepted, or the budget
-// or the time is spent. The cases of the runs whose failures it discards
-// become spare.
+// room for at once, and takes their runs in order, up to the first run that
+// became the best case. For each run that it takes, settle:
+//
+//   - charges the budget,
+//   - records the run's size,
+//   - hands the run's calls to the slot of the run under the phase shrink,
+//   - keeps the run's failure.
+//
+// It reports whether a run became the best case, and whether the search is
+// over: a candidate was accepted, or the budget or the time is spent. The
+// cases of the runs whose failures it discards become spare.
 func (sh *shrinker) settle(batch []candidate) (accepted, over bool) {
 	room := sh.room()
 	if room == 0 {
@@ -281,6 +290,7 @@ func (sh *shrinker) settle(batch []candidate) (accepted, over bool) {
 	runs := sh.runAll(sh.batch)
 	for i, e := range runs {
 		sh.runs++
+		sh.s.Slot.Take(&e.Case.calls, record.Shrink)
 		sh.sizes[batch[i].token] = e.Case.position()
 		if e.Status != CaseFailed {
 			sh.release(e)

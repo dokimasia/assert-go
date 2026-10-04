@@ -4,12 +4,14 @@
 package golden
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/matcher"
 )
 
@@ -18,15 +20,15 @@ import (
 const conventionalDir = "testdata/golden"
 
 // Permissions for a golden file this package writes, and for the
-// directory it creates to hold one.
+// directory it creates for one.
 const (
 	filePerm = 0o644
 	dirPerm  = 0o755
 )
 
 // update is registered once, so a package using this can be run with
-// -update. Registering it here rather than in each test keeps one flag
-// for the whole binary.
+// -update. One registration in this package keeps one flag for the whole
+// test binary.
 var update = flag.Bool("update", false,
 	"rewrite golden files to match current output")
 
@@ -35,84 +37,139 @@ var update = flag.Bool("update", false,
 //
 //	golden.Match(t, "response.json", got, golden.ShouldUpdate())
 //
-// It is a function rather than a bool so a caller cannot read the flag
-// before [flag.Parse] has run, which under `go test` happens before
-// the first test.
+// It is a function, so a caller cannot read the flag before [flag.Parse]
+// has run, which under `go test` happens before the first test.
+//
+// # Allocation contract
+//
+// ShouldUpdate allocates nothing.
 func ShouldUpdate() bool { return *update }
 
-// The ids of the golden comparisons, which their failures report.
+// The ids of the golden comparisons, which their records state.
 const (
 	matchID     = "golden-match"
 	matchAtID   = "golden-match-at"
 	jsonFieldID = "golden-match-json-field"
 )
 
+// call is one call of a golden comparison: its seat, the operation that
+// its faults state, the assertion and the contract that its record
+// states, and the path of its golden file.
+type call struct {
+	tb       assert.TB
+	op       string
+	id       string
+	contract string
+	path     string
+}
+
+// newFileCall returns the call of the comparison id of the operation op
+// on the golden file at path.
+func newFileCall(tb assert.TB, op, id, path string) call {
+	return call{
+		tb: tb, op: op, id: id, path: path,
+		contract: fmt.Sprintf("the golden file %s matches the output, and -update writes it", path),
+	}
+}
+
+// pass reports that the call passed.
+func (c call) pass() {
+	c.tb.Helper()
+	matcher.Pass(c.tb, matcher.Fatal, c.id, c.contract)
+}
+
+// fail reports that the call failed with detail.
+func (c call) fail(detail map[string]any) {
+	c.tb.Helper()
+	matcher.Fail(c.tb, matcher.Fatal, c.id, c.contract, detail)
+}
+
+// fault reports that the call ended without a verdict, because of err, with
+// the reason that format and args state.
+func (c call) fault(err error, format string, args ...any) {
+	c.tb.Helper()
+	matcher.Fault(c.tb, matcher.Fatal, c.id, c.contract, fault.In(c.op, fault.New(format, args...).Because(err)))
+}
+
+// write writes content as the call's golden file, in the directory that it
+// creates when the directory is missing, and passes. A directory that
+// cannot be created leaves the file unwritten, and the fault states both
+// errors.
+func (c call) write(content string) {
+	c.tb.Helper()
+	dirErr := os.MkdirAll(filepath.Dir(c.path), dirPerm)
+	if err := os.WriteFile(c.path, []byte(content), filePerm); err != nil {
+		c.fault(errors.Join(dirErr, err), "the golden file cannot be written")
+		return
+	}
+	c.pass()
+}
+
 // Match compares got against testdata/golden/name, relative to the
 // test's own directory.
 //
-// The file is the assertion. When it does not exist and update is
-// false, that is a failure naming the flag that would create it; when
-// update is true, it is written and the test passes. A failure is a
-// record of golden-match, with the file's content as want, nil for a
-// missing file, and the output as got, both scrubbed.
+// The file is the assertion. A missing file fails the call while update is
+// false, and update writes the file and passes. A failure is a record of
+// golden-match, with the file's content as want, nil for a missing file,
+// and the output as got, both scrubbed. Its contract states the file and
+// the -update flag.
 //
 // scrubbers are applied to both sides before the comparison, so
 // content that differs between runs does not defeat it.
+//
+// A golden file that cannot be read or written ends the call with a fault,
+// which stops the test.
+//
+// # Allocation contract
+//
+// A passing comparison of a short file without scrubbers allocates 10
+// times: the path of the file, and what [MatchAt] allocates.
 func Match(tb assert.TB, name string, got []byte, update bool, scrubbers ...Scrubber) {
 	tb.Helper()
-	matchFile(tb, matchID, filepath.Join(conventionalDir, name), got, update, scrubbers)
+	matchFile(newFileCall(tb, "golden.Match", matchID, filepath.Join(conventionalDir, name)), got, update, scrubbers)
 }
 
 // MatchAt is [Match] with the path taken as given, for a golden file
 // outside the conventional directory. A failure is a record of
 // golden-match-at.
+//
+// # Allocation contract
+//
+// A passing comparison of a short file without scrubbers allocates 9
+// times. Each scrubber allocates what its replacements allocate.
 func MatchAt(tb assert.TB, path string, got []byte, update bool, scrubbers ...Scrubber) {
 	tb.Helper()
-	matchFile(tb, matchAtID, path, got, update, scrubbers)
+	matchFile(newFileCall(tb, "golden.MatchAt", matchAtID, path), got, update, scrubbers)
 }
 
-// matchFile compares got against the golden file at path, and reports a
-// failure as a record of the comparison id.
-func matchFile(tb assert.TB, id, path string, got []byte, update bool, scrubbers []Scrubber) {
-	tb.Helper()
+// matchFile compares got against the golden file of c, and reports the
+// verdict of c.
+func matchFile(c call, got []byte, update bool, scrubbers []Scrubber) {
+	c.tb.Helper()
 
 	mine := scrub(string(got), scrubbers)
-
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(c.path)
 	if os.IsNotExist(err) {
 		if update {
-			write(tb, path, mine)
+			c.write(mine)
 			return
 		}
-		matcher.Fail(tb, matcher.Fatal, id,
-			fmt.Sprintf("%s: the golden file does not exist; run the test with -update to create it", path),
-			map[string]any{"want": nil, "got": mine})
+		c.fail(map[string]any{"want": nil, "got": mine})
 		return
 	}
-	assert.NoError(tb, err, fmt.Sprintf("%s: the golden file can be read", path))
+	if err != nil {
+		c.fault(err, "the golden file cannot be read")
+		return
+	}
 
 	theirs := scrub(string(raw), scrubbers)
-	if update {
-		if mine != theirs {
-			write(tb, path, mine)
-		}
+	if mine == theirs {
+		c.pass()
 		return
 	}
-
-	if mine != theirs {
-		matcher.Fail(tb, matcher.Fatal, id,
-			fmt.Sprintf("%s: output matches the golden file; read the diff before running with -update", path),
-			map[string]any{"want": theirs, "got": mine})
+	if update {
+		c.write(mine)
+		return
 	}
-}
-
-// write records content as the golden file at path, creating the
-// directory when it is missing.
-func write(tb assert.TB, path, content string) {
-	tb.Helper()
-
-	assert.NoError(tb, os.MkdirAll(filepath.Dir(path), dirPerm),
-		fmt.Sprintf("%s: the golden directory can be created", path))
-	assert.NoError(tb, os.WriteFile(path, []byte(content), filePerm),
-		fmt.Sprintf("%s: the golden file can be written", path))
+	c.fail(map[string]any{"want": theirs, "got": mine})
 }

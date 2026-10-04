@@ -222,9 +222,9 @@ func TestCheck(t *testing.T) {
 	})
 }
 
-// TestCheckZeroAlloc checks that Checks, Bound and Decide allocate
+// TestCheckAllocs checks that Checks, Bound and Decide allocate
 // nothing.
-func TestCheckZeroAlloc(t *testing.T) {
+func TestCheckAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = coverage.Checks() }, 0, "Checks allocates nothing")
 	assert.MaxAllocs(t, func() { _ = coverage.Bound(27, 100, -coverage.Z) }, 0, "Bound allocates nothing")
 	assert.MaxAllocs(t, func() { _ = coverage.Decide(27, 100, 0.1, coverage.Interim) }, 0, "Decide allocates nothing")

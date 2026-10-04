@@ -7,39 +7,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"regexp"
 	"strconv"
 	"time"
 	"unicode/utf8"
 
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/token"
 )
-
-//go:generate go run golang.org/x/tools/cmd/stringer@v0.50.0 -type=Verdict -linecomment -output=read.string_gen.go
-
-// Verdict is what a run does with one file of its store.
-type Verdict uint8
-
-const (
-	// Replay is an entry of [Format] for the property, whose choices the
-	// run tries first.
-	Replay Verdict = 0 // replay
-	// Other is an entry of [Format] for another property of the test,
-	// which the run leaves as it is.
-	Other Verdict = 1 // other
-	// Skip is an entry of a later format, or whose token is of a later
-	// version, which the run notes and passes over.
-	Skip Verdict = 2 // skip
-	// Damaged is a file that is no entry. It fails the test.
-	Damaged Verdict = 3 // damaged
-)
-
-// Valid reports whether v is one of the four verdicts.
-func (v Verdict) Valid() bool {
-	return v <= Damaged
-}
 
 var (
 	// ErrDamaged reports a file of a store that is no entry, whose verdict
@@ -125,13 +101,17 @@ type container struct {
 
 // Read returns the verdict on the content of one file for the property
 // contract, with the entry that the file states for [Replay] and [Other].
-// It returns an error that wraps [ErrLater] for [Skip], and one that wraps
-// [ErrDamaged] for [Damaged], each naming the fault.
 //
 // The checks run in the definition's order: the file's JSON, the format,
 // the fields and their forms, and then the token's version and its
 // choices. A file of a later format is skipped whatever its other fields
 // state.
+//
+// # Errors
+//
+// Read returns a fault of the kind [ErrLater] for [Skip], and one of the
+// kind [ErrDamaged] for [Damaged]. The path of a fault in a field leads to
+// it through the entry's JSON, as identity.line or counterexample[2].
 func Read(data []byte, contract string) (Entry, Verdict, error) {
 	e, err := decode(data)
 	if errors.Is(err, ErrLater) {
@@ -146,48 +126,55 @@ func Read(data []byte, contract string) (Entry, Verdict, error) {
 	return e, Replay, nil
 }
 
-// decode returns the entry that data states. It returns an error that
-// wraps ErrLater for an entry of a later format or token version, and one
-// that wraps ErrDamaged when data is no entry of Format.
+// decode returns the entry that data states. It returns a fault of the
+// kind ErrLater for an entry of a later format or token version, and one of
+// the kind ErrDamaged when data is no entry of Format.
 func decode(data []byte) (Entry, error) {
 	if err := wellFormed(data); err != nil {
-		return Entry{}, fmt.Errorf("%w: %w", ErrDamaged, err)
+		return Entry{}, err
 	}
 	root, ok := members(data)
 	if !ok {
-		return Entry{}, fmt.Errorf("%w: the file is not one JSON object", ErrDamaged)
+		return Entry{}, damaged("the file is not one JSON object")
 	}
 	format := root[fieldStore]
 	if !positive.Match(format) {
-		return Entry{}, fmt.Errorf("%w: the entry states no format as store", ErrDamaged)
+		return Entry{}, fault.At(damaged("the entry states no format"), fault.Field(fieldStore))
 	}
 	if string(format) != strconv.Itoa(Format) {
-		return Entry{}, fmt.Errorf("%w: the entry is of format %s", ErrLater, format)
+		return Entry{}, fault.At(fault.Of(ErrLater, "the entry is of format %s", format), fault.Field(fieldStore))
 	}
 	e, tok, err := entryOf(root)
 	if err != nil {
-		return Entry{}, fmt.Errorf("%w: %w", ErrDamaged, err)
+		return Entry{}, err
 	}
 	stated := tokenVersion.FindStringSubmatch(tok)
 	if stated == nil {
-		return Entry{}, fmt.Errorf("%w: choices %q states no token version", ErrDamaged, tok)
+		return Entry{}, fault.At(damaged("%q states no token version", tok), fault.Field(fieldChoices))
 	}
 	if stated[1] != currentToken {
-		return Entry{}, fmt.Errorf("%w: the token is of version %s", ErrLater, stated[1])
+		return Entry{}, fault.At(fault.Of(ErrLater, "the token is of version %s", stated[1]),
+			fault.Field(fieldChoices))
 	}
 	if e.Choices, err = token.Decode(tok); err != nil {
-		return Entry{}, fmt.Errorf("%w: %w", ErrDamaged, err)
+		return Entry{}, fault.At(damaged("the choices are no token").Because(err), fault.Field(fieldChoices))
 	}
 	return e, nil
 }
 
+// damaged returns a fault of the kind ErrDamaged whose reason is format
+// with args, as fmt.Sprintf formats them.
+func damaged(format string, args ...any) *fault.Error {
+	return fault.Of(ErrDamaged, format, args...)
+}
+
 // wellFormed returns why data is no JSON value that every reader reads
-// alike, and nil when it is one: UTF-8 text of one value, no name that
-// repeats within an object, and at most maxDepth levels of objects and
-// arrays.
+// alike, as a fault of the kind ErrDamaged, and nil when it is one: UTF-8
+// text of one value, no name that repeats within an object, and at most
+// maxDepth levels of objects and arrays.
 func wellFormed(data []byte) error {
 	if !utf8.Valid(data) {
-		return fmt.Errorf("the file is not UTF-8 from byte %d", invalidAt(data))
+		return damaged("the file is not UTF-8 from byte %d", invalidAt(data))
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
@@ -199,7 +186,7 @@ func wellFormed(data []byte) error {
 			break
 		}
 		if err != nil {
-			return err
+			return damaged("the file is no JSON").Because(err)
 		}
 		if n := len(open); n > 0 && open[n-1].atName {
 			if tok == closeObject {
@@ -208,7 +195,7 @@ func wellFormed(data []byte) error {
 			}
 			name, _ := tok.(string)
 			if _, seen := open[n-1].names[name]; seen {
-				return fmt.Errorf("an object repeats the name %q", name)
+				return damaged("an object repeats the name %q", name)
 			}
 			open[n-1].names[name], open[n-1].atName = struct{}{}, false
 			continue
@@ -226,11 +213,11 @@ func wellFormed(data []byte) error {
 			open = ended(open)
 		}
 		if len(open) > maxDepth {
-			return fmt.Errorf("the file nests past %d levels", maxDepth)
+			return damaged("the file nests past %d levels", maxDepth)
 		}
 	}
 	if values != 1 {
-		return fmt.Errorf("the file states %d JSON values, not one", values)
+		return damaged("the file states %d JSON values, not one", values)
 	}
 	return nil
 }
@@ -257,39 +244,43 @@ func ended(open []*container) []*container {
 }
 
 // entryOf returns the entry that the fields of an entry of Format state,
-// without its choices, and its token. It returns an error naming the first
-// field that is missing, extra or out of its form.
+// without its choices, and its token. It returns a fault of the kind
+// ErrDamaged at the first field that is missing or out of its form, and
+// one for an entry of a field too many.
 func entryOf(root map[string]json.RawMessage) (Entry, string, error) {
 	for _, field := range fields {
 		if _, ok := root[field]; !ok {
-			return Entry{}, "", fmt.Errorf("the entry lacks %s", field)
+			return Entry{}, "", fault.At(damaged("the entry lacks the field"), fault.Field(field))
 		}
 	}
 	if len(root) != len(fields) {
-		return Entry{}, "", fmt.Errorf("the entry states %d fields, not the %d of format %d",
+		return Entry{}, "", damaged("the entry states %d fields, not the %d of format %d",
 			len(root), len(fields), Format)
 	}
 	var e Entry
 	var ok bool
 	if e.Definition, ok = text(root[fieldDefinition]); !ok || !version.MatchString(e.Definition) {
-		return Entry{}, "", fmt.Errorf("definition %s is no version", root[fieldDefinition])
+		return Entry{}, "", fault.At(damaged("%s is no version", stated(root[fieldDefinition])),
+			fault.Field(fieldDefinition))
 	}
 	if e.Property, ok = text(root[fieldProperty]); !ok {
-		return Entry{}, "", fmt.Errorf("property %s is no string", root[fieldProperty])
+		return Entry{}, "", fault.At(damaged("%s is no string", stated(root[fieldProperty])),
+			fault.Field(fieldProperty))
 	}
 	var err error
 	if e.Identity, err = identityOf(root[fieldIdentity]); err != nil {
-		return Entry{}, "", err
+		return Entry{}, "", fault.At(err, fault.Field(fieldIdentity))
 	}
 	tok, ok := text(root[fieldChoices])
 	if !ok {
-		return Entry{}, "", fmt.Errorf("choices %s is no string", root[fieldChoices])
+		return Entry{}, "", fault.At(damaged("%s is no string", stated(root[fieldChoices])),
+			fault.Field(fieldChoices))
 	}
 	if e.Counterexample, err = counterexampleOf(root[fieldCounterexample]); err != nil {
-		return Entry{}, "", err
+		return Entry{}, "", fault.At(err, fault.Field(fieldCounterexample))
 	}
 	if e.Found, err = dateOf(root[fieldFound]); err != nil {
-		return Entry{}, "", err
+		return Entry{}, "", fault.At(err, fault.Field(fieldFound))
 	}
 	return e, tok, nil
 }
@@ -300,7 +291,7 @@ func entryOf(root map[string]json.RawMessage) (Entry, string, error) {
 func identityOf(raw json.RawMessage) (Identity, error) {
 	keys, ok := members(raw)
 	if !ok {
-		return Identity{}, fmt.Errorf("identity %s is no object", raw)
+		return Identity{}, damaged("%s is no object", stated(raw))
 	}
 	var id Identity
 	texts := map[string]*string{
@@ -313,21 +304,21 @@ func identityOf(raw json.RawMessage) (Identity, error) {
 		if key == keyLine {
 			line, err := strconv.Atoi(string(value))
 			if !positive.Match(value) || err != nil || line > maxLine {
-				return Identity{}, fmt.Errorf("identity's line %s is no line", value)
+				return Identity{}, fault.At(damaged("%s is no line", stated(value)), fault.Field(keyLine))
 			}
 			id.Line = line
 			continue
 		}
 		field, known := texts[key]
 		if !known {
-			return Identity{}, fmt.Errorf("identity states the key %q", key)
+			return Identity{}, fault.At(damaged("the key is no key of an identity"), fault.Field(key))
 		}
 		if *field, _ = text(value); *field == "" {
-			return Identity{}, fmt.Errorf("identity's %s %s is no non-empty string", key, value)
+			return Identity{}, fault.At(damaged("%s is no non-empty string", stated(value)), fault.Field(key))
 		}
 	}
 	if !id.Valid() {
-		return Identity{}, fmt.Errorf("identity %s has no shape of the format", raw)
+		return Identity{}, damaged("the keys form none of the four shapes of an identity")
 	}
 	return id, nil
 }
@@ -337,23 +328,23 @@ func identityOf(raw json.RawMessage) (Identity, error) {
 func counterexampleOf(raw json.RawMessage) ([]Draw, error) {
 	items, ok := elements(raw)
 	if !ok {
-		return nil, fmt.Errorf("counterexample %s is no array", raw)
+		return nil, damaged("%s is no array", stated(raw))
 	}
 	draws := make([]Draw, 0, len(items))
 	for i, item := range items {
 		keys, ok := members(item)
 		if !ok {
-			return nil, fmt.Errorf("draw %d %s is no object", i, item)
+			return nil, fault.At(damaged("%s is no object", stated(item)), fault.Index(i))
 		}
 		label, ok := text(keys[keyLabel])
 		if !ok {
-			return nil, fmt.Errorf("draw %d %s has no string label", i, item)
+			return nil, fault.At(damaged("the draw states no string label"), fault.Index(i))
 		}
 		value := keys[keyValue]
 		delete(keys, keyLabel)
 		delete(keys, keyValue)
 		if len(keys) > 0 {
-			return nil, fmt.Errorf("draw %d %s states a key other than label and value", i, item)
+			return nil, fault.At(damaged("the draw states a key other than label and value"), fault.Index(i))
 		}
 		draws = append(draws, Draw{Label: label, Value: value})
 	}
@@ -366,9 +357,19 @@ func dateOf(raw json.RawMessage) (time.Time, error) {
 	found, _ := text(raw)
 	date, err := time.Parse(time.DateOnly, found)
 	if err != nil || date.Year() < 1 {
-		return time.Time{}, fmt.Errorf("found %s is no date", raw)
+		return time.Time{}, damaged("%s is no date", stated(raw))
 	}
 	return date, nil
+}
+
+// stated returns the text that a reason gives for raw, a JSON value. It
+// returns the text of a scalar, and "the value" for an object or an array,
+// whose text can span lines.
+func stated(raw json.RawMessage) string {
+	if raw[0] == '{' || raw[0] == '[' {
+		return "the value"
+	}
+	return string(raw)
 }
 
 // members returns the members of the JSON object raw, and false when raw is

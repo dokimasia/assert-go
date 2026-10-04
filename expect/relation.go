@@ -22,6 +22,11 @@ import (
 // An error from call, or a panic of call or observe, is the failure, in
 // the field of the reading that the call did not produce, with the other
 // nil. Return a copy from observe, as [Pure] requires.
+//
+// # Allocation contract
+//
+// A passing call with readings of one int allocates 24 times, in the
+// comparison of the two readings as [Equal] compares them.
 func Idempotent[I, S any](tb assert.TB, call func(I) error, input I, observe func() S, msg string,
 	opts ...Option,
 ) {
@@ -42,6 +47,10 @@ func Idempotent[I, S any](tb assert.TB, call func(I) error, input I, observe fun
 // beyond the range of int, which always fails. An error from call, or a
 // panic of call or observe, is the failure, in the field of the change
 // that the call did not produce, with the other nil.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing for changes within the range of int.
 func Accumulates[I any](tb assert.TB, call func(I) error, input I, observe func() int, msg string) {
 	tb.Helper()
 	matcher.Accumulates(tb, matcher.Soft, call, input, observe, msg)
@@ -55,6 +64,11 @@ func Accumulates[I any](tb assert.TB, call func(I) error, input I, observe func(
 //
 // An error from call, or a panic of call, is the failure: in first on the
 // first call and in second on any later one, with the other nil.
+//
+// # Allocation contract
+//
+// A passing call with results of one int allocates 744 times, in the 31
+// comparisons of a result with the first.
 func Deterministic[I, O any](tb assert.TB, call func(I) (O, error), input I, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.Deterministic(tb, matcher.Soft, call, input, msg, opts...)
@@ -68,6 +82,11 @@ func Deterministic[I, O any](tb assert.TB, call func(I) (O, error), input I, msg
 // first is combine(a, b), and second combine(b, a). A panic of combine is
 // the failure, in the field of the result that it did not return, with the
 // other nil.
+//
+// # Allocation contract
+//
+// A passing call with results of one int allocates 24 times, in the
+// comparison of the two results.
 func Commutative[T, R any](tb assert.TB, combine func(a, b T) R, a, b T, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.Commutative(tb, matcher.Soft, combine, a, b, msg, opts...)
@@ -79,6 +98,11 @@ func Commutative[T, R any](tb assert.TB, combine func(a, b T) R, a, b T, msg str
 // first is the left grouping, and second the right one. A panic of
 // combine is the failure, in the field of the grouping that it did not
 // complete, with the other nil.
+//
+// # Allocation contract
+//
+// A passing call over ints allocates 24 times, in the comparison of the
+// two groupings.
 func Associative[T any](tb assert.TB, combine func(a, b T) T, a, b, c T, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.Associative(tb, matcher.Soft, combine, a, b, c, msg, opts...)
@@ -91,6 +115,11 @@ func Associative[T any](tb assert.TB, combine func(a, b T) T, a, b, c T, msg str
 //
 // want is input, and got what came back. An error from forward or inverse,
 // or a panic of either, is the failure as got, with want nil.
+//
+// # Allocation contract
+//
+// A passing call on an int allocates 24 times, in the comparison of input
+// with what came back.
 func RoundTrip[I, E any](
 	tb assert.TB, forward func(I) (E, error), inverse func(E) (I, error), input I, msg string, opts ...Option,
 ) {
@@ -108,6 +137,11 @@ func RoundTrip[I, E any](
 // a test of an order built from a map uses a map of four entries or more.
 // An error from iterate, or a panic of it, is the failure as
 // [Deterministic] states for its call.
+//
+// # Allocation contract
+//
+// A passing call with sequences of three ints allocates 2,852 times, in
+// the 31 comparisons of a sequence with the first.
 func StableOrder[T any](tb assert.TB, iterate func() ([]T, error), msg string, opts ...Option) {
 	tb.Helper()
 	matcher.StableOrder(tb, matcher.Soft, iterate, msg, opts...)
@@ -123,6 +157,11 @@ func StableOrder[T any](tb assert.TB, iterate func() ([]T, error), msg string, o
 // with every earlier one, which is n(n-1)/2 comparisons for n elements. An
 // error from iterate, or a panic of it, is the failure as got, with index
 // nil.
+//
+// # Allocation contract
+//
+// A passing call on three ints allocates 72 times, in its three
+// comparisons.
 func NoDuplicates[T any](tb assert.TB, iterate func() ([]T, error), msg string, opts ...Option) {
 	tb.Helper()
 	matcher.NoDuplicates(tb, matcher.Soft, iterate, msg, opts...)
@@ -140,6 +179,11 @@ func NoDuplicates[T any](tb assert.TB, iterate func() ([]T, error), msg string, 
 // reading. A string orders as < orders it. A steps of 0 or less checks
 // the first reading alone. An error from advance, or a panic of advance or
 // observe, is the failure as second, with index and first nil.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what observe and advance
+// allocate.
 func Monotonic[N cmp.Ordered](tb assert.TB, observe func() N, advance func() error, steps int, msg string) {
 	tb.Helper()
 	matcher.Monotonic(tb, matcher.Soft, observe, advance, steps, msg)
@@ -153,6 +197,10 @@ func Monotonic[N cmp.Ordered](tb assert.TB, observe func() N, advance func() err
 //
 // index is the element's position, and got the error or the panic value.
 // An empty domain passes.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what call allocates.
 func Total[I any](tb assert.TB, call func(I) error, domain []I, msg string) {
 	tb.Helper()
 	matcher.Total(tb, matcher.Soft, call, domain, msg)
@@ -164,6 +212,11 @@ func Total[I any](tb assert.TB, call func(I) error, domain []I, msg string) {
 // It is the negation of [Pure], and takes the same arguments. got is the
 // reading that did not change. A panic of observe or fn is the failure as
 // got.
+//
+// # Allocation contract
+//
+// A passing call with readings of one int allocates 26 times, in the
+// comparison of the two readings.
 func NotPure[S any](tb assert.TB, observe func() S, fn func(), msg string, opts ...Option) {
 	tb.Helper()
 	matcher.NotPure(tb, matcher.Soft, observe, fn, msg, opts...)
@@ -178,6 +231,10 @@ func NotPure[S any](tb assert.TB, observe func() S, fn func(), msg string, opts 
 //
 // want is sentinel, and got what call returned. An error from closer, or a
 // panic of closer or call, is the failure as got, with want nil.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what closer and call allocate.
 func FailsAfterClose(tb assert.TB, closer, call func() error, sentinel error, msg string) {
 	tb.Helper()
 	matcher.FailsAfterClose(tb, matcher.Soft, closer, call, sentinel, msg)
@@ -194,6 +251,11 @@ func FailsAfterClose(tb assert.TB, closer, call func() error, sentinel error, ms
 // returns no error, because the fault that it induces is often itself a
 // failed call. A panic of induce or observe is the failure as got, with
 // index nil.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what induce and observe
+// allocate.
 func Poisoned(tb assert.TB, induce func(), observe func() error, msg string) {
 	tb.Helper()
 	matcher.Poisoned(tb, matcher.Soft, induce, observe, msg)

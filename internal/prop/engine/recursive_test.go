@@ -14,8 +14,9 @@ import (
 
 // recursiveAllocs are the allocations of Recursive with an extension that
 // allocates nothing: the recursion, the generator of one position with its
-// decodes, and the decodes of the generator it returns.
-const recursiveAllocs = 5
+// decodes and its inverse, and the decodes and the inverse of the generator
+// it returns.
+const recursiveAllocs = 7
 
 // TestRecursive checks the recursive generator: the values it decodes, the
 // choices it records, and the bound on the base values of one value.
@@ -132,9 +133,9 @@ func TestRecursive(t *testing.T) {
 	})
 }
 
-// TestRecursiveZeroAlloc checks the allocation ceiling of Recursive's
+// TestRecursiveAllocs checks the allocation ceiling of Recursive's
 // constructor.
-func TestRecursiveZeroAlloc(t *testing.T) {
+func TestRecursiveAllocs(t *testing.T) {
 	base := engine.Integer(0, 9)
 	same := func(self engine.Generator[int]) engine.Generator[int] { return self }
 	assert.MaxAllocs(t, func() { _ = engine.Recursive(base, same, 3) }, recursiveAllocs,
@@ -155,16 +156,6 @@ func BenchmarkRecursive(b *testing.B) {
 		}
 		assert.Equal(b, got.ID(), "recursive", "the id")
 	})
-}
-
-// tree returns a recursive generator of a digit, or of a list of at most
-// width positions, with at most maxLeaves digits in one value.
-func tree(tb testing.TB, width, maxLeaves int) engine.Generator[any] {
-	tb.Helper()
-	upTo := sizes(tb, 0, width)
-	return engine.Recursive(anyOf(engine.Integer(0, 9)), func(self engine.Generator[any]) engine.Generator[any] {
-		return anyOf(engine.List(self, upTo))
-	}, maxLeaves)
 }
 
 // present returns the value p points at, and nil for a nil p, as the

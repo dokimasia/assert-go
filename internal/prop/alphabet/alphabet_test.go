@@ -163,9 +163,9 @@ func TestAlphabet(t *testing.T) {
 	})
 }
 
-// TestAlphabetZeroAlloc checks that Rune and Index allocate nothing, and
+// TestAlphabetAllocs checks that Rune and Index allocate nothing, and
 // that AppendIndices allocates nothing into a slice with the capacity.
-func TestAlphabetZeroAlloc(t *testing.T) {
+func TestAlphabetAllocs(t *testing.T) {
 	dst := make([]alphabet.Interval, 0, 128)
 	assert.MaxAllocs(t, func() { _ = alphabet.Rune(70000) }, 0, "Rune allocates nothing")
 	assert.MaxAllocs(t, func() { _, _ = alphabet.Index(0x1F600) }, 0, "Index allocates nothing")

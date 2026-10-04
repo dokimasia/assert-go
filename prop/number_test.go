@@ -15,18 +15,18 @@ import (
 )
 
 // The allocations of the number generators, measured. Each is the
-// engine's construction of the generator: the closure of its decode and of
-// its erased decode, and for an integer the closure that converts a choice
-// to its value.
+// engine's construction of the generator: the closure of its decode, of its
+// erased decode and of its inverse, and for an integer the closure that
+// converts a choice to its value.
 const (
 	// integerAllocs are the allocations of Integer.
-	integerAllocs = 3
+	integerAllocs = 4
 	// durationAllocs are the allocations of Duration.
-	durationAllocs = 3
+	durationAllocs = 4
 	// floatAllocs are the allocations of Float.
-	floatAllocs = 2
+	floatAllocs = 3
 	// booleanAllocs are the allocations of Boolean.
-	booleanAllocs = 2
+	booleanAllocs = 3
 )
 
 // cents is an integer type defined over int64, as an amount of money.
@@ -159,17 +159,26 @@ func TestNumber(t *testing.T) {
 		})
 
 		tests := []struct {
-			name     string
-			num, den uint64
+			name string
+			give [2]uint64
+			want string
 		}{
-			{name: "panics for a denominator of 0", num: 0, den: 0},
-			{name: "panics for a numerator above the denominator", num: 2, den: 1},
+			{
+				name: "panics for a denominator of 0",
+				give: [2]uint64{0, 0},
+				want: "prop: Odds(0, 0) states no probability",
+			},
+			{
+				name: "panics for a numerator above the denominator",
+				give: [2]uint64{2, 1},
+				want: "prop: Odds(2, 1) states no probability",
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				got := assert.Panics(t, func() { prop.Odds(tt.num, tt.den) }, "the odds state no probability")
-				assert.Contains(t, got, "are no probability", "the panic names the fault")
+				got := assert.Panics(t, func() { prop.Odds(tt.give[0], tt.give[1]) }, "the odds state no probability")
+				assert.Equal(t, got, any(tt.want), "the panic names the option and its arguments")
 			})
 		}
 
@@ -204,9 +213,9 @@ func TestNumber(t *testing.T) {
 	})
 }
 
-// TestNumberZeroAlloc checks the allocation ceilings of the number
+// TestNumberAllocs checks the allocation ceilings of the number
 // generators.
-func TestNumberZeroAlloc(t *testing.T) {
+func TestNumberAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = prop.Integer(0, 9) }, integerAllocs, "Integer allocates its decode")
 	assert.MaxAllocs(t, func() { _ = prop.Duration(0, time.Second) }, durationAllocs, "Duration allocates its decode")
 	assert.MaxAllocs(t, func() { _ = prop.Float(0.0, 1.0) }, floatAllocs, "Float allocates its decode")

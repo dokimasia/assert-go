@@ -11,11 +11,9 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
+	"go.dokimi.dev/assert/internal/enumtest"
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
-
-// invalidStatus is the first value past the five statuses.
-const invalidStatus engine.Status = 5
 
 // The allocations of one execution of a body that draws one integer,
 // measured.
@@ -30,12 +28,12 @@ const (
 	withContextAllocs = 1
 )
 
-// ledgerKey is the key of the value that a context carries to the context
-// of a case.
+// ledgerKey is the key of a value in the context that WithContext takes.
+// The context of each case derives from that context and returns the value.
 type ledgerKey struct{}
 
 // TestExecution checks how one call of a body ends, under each of the
-// three ways a case gets its values, and pins each status's spelling.
+// three ways a case gets its values.
 func TestExecution(t *testing.T) {
 	t.Parallel()
 
@@ -44,44 +42,15 @@ func TestExecution(t *testing.T) {
 	t.Run("Valid", func(t *testing.T) {
 		t.Parallel()
 
-		tests := []struct {
-			name string
-			give engine.Status
-			want bool
-		}{
-			{name: "reports true for CasePassed", give: engine.CasePassed, want: true},
-			{name: "reports true for CaseDiverged", give: engine.CaseDiverged, want: true},
-			{name: "reports false past CaseDiverged", give: invalidStatus, want: false},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				assert.Equal(t, tt.give.Valid(), tt.want, "whether the value is a status")
-			})
-		}
-	})
-
-	t.Run("String", func(t *testing.T) {
-		t.Parallel()
-
-		tests := []struct {
-			name string
-			give engine.Status
-			want string
-		}{
-			{name: "returns passed for CasePassed", give: engine.CasePassed, want: "passed"},
-			{name: "returns failed for CaseFailed", give: engine.CaseFailed, want: "failed"},
-			{name: "returns rejected for CaseRejected", give: engine.CaseRejected, want: "rejected"},
-			{name: "returns repeated for CaseRepeated", give: engine.CaseRepeated, want: "repeated"},
-			{name: "returns diverged for CaseDiverged", give: engine.CaseDiverged, want: "diverged"},
-			{name: "returns Status(5) for a value that is no status", give: invalidStatus, want: "Status(5)"},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				assert.Equal(t, tt.give.String(), tt.want, "the status's spelling")
-			})
-		}
+		t.Run("reports true for the six statuses and false past them", func(t *testing.T) {
+			t.Parallel()
+			enumtest.Members(t,
+				[]engine.Status{
+					engine.CasePassed, engine.CaseFailed, engine.CaseRejected,
+					engine.CaseRepeated, engine.CaseDiverged, engine.CaseRefused,
+				},
+				[]engine.Status{invalidStatus})
+		})
 	})
 
 	t.Run("Generate", func(t *testing.T) {
@@ -187,7 +156,7 @@ func TestExecution(t *testing.T) {
 			e := engine.Replay(func(*engine.Case) { panic("boom") }, nil, nil)
 			assert.Equal(t, e.Status, engine.CaseFailed, "the case fails")
 			assert.Equal[any](t, e.Panic, "boom", "the panic's value")
-			assert.Contains(t, string(e.Stack), "TestExecution", "the stack holds the body's frame")
+			assert.Contains(t, string(e.Stack), "TestExecution", "the stack contains the body's frame")
 		})
 	})
 
@@ -197,9 +166,18 @@ func TestExecution(t *testing.T) {
 		t.Run("returns a passed execution of the case its bytes decode to", func(t *testing.T) {
 			t.Parallel()
 			g := engine.Integer(0, 1000)
-			e := engine.Bridge(func(c *engine.Case) { engine.Draw(c, g, drawn) }, []byte{0xe8, 0x03}, nil)
+			e := engine.Bridge(func(c *engine.Case) { engine.Draw(c, g, drawn) }, []byte{0xe8, 0x03}, engine.Settings{})
 			assert.Equal(t, e.Status, engine.CasePassed, "the case passes")
 			assert.Equal(t, drawValues(e.Case.Draws()), []any{1000}, "two bytes, little-endian")
+		})
+
+		t.Run("records the calls of the case under the phase fuzz", func(t *testing.T) {
+			t.Parallel()
+			g := engine.Integer(0, 1000)
+			got := recordedRun(t, engine.Settings{}, func(s engine.Settings) {
+				engine.Bridge(ended(func(c *engine.Case) { engine.Draw(c, g, drawn) }), []byte{0xe8, 0x03}, s)
+			})
+			assert.Equal(t, got, []callRecord{{Run: 1, Phase: "fuzz"}}, "the one call of the case")
 		})
 	})
 
@@ -217,25 +195,29 @@ func TestExecution(t *testing.T) {
 	})
 }
 
-// TestExecutionZeroAlloc checks the allocation ceilings of the three ways
-// to execute a body, and that no method of Status allocates.
-func TestExecutionZeroAlloc(t *testing.T) {
+// TestExecutionAllocs checks the allocation ceilings of the three ways
+// to execute a body and of WithContext, and that Valid allocates nothing.
+func TestExecutionAllocs(t *testing.T) {
 	digit := engine.Integer(0, 9)
 	body := func(c *engine.Case) { engine.Draw(c, digit, drawn) }
 	seven, bytes := integers(7), []byte{7}
 	assert.MaxAllocs(t, func() { engine.Generate(body, 7, 0, nil) }, generateAllocs, "a generated case")
 	assert.MaxAllocs(t, func() { engine.Replay(body, seven, nil) }, drawAllocs, "a replayed case")
-	assert.MaxAllocs(t, func() { engine.Bridge(body, bytes, nil) }, bridgeAllocs, "a case decoded from bytes")
+	assert.MaxAllocs(
+		t,
+		func() { engine.Bridge(body, bytes, engine.Settings{}) },
+		bridgeAllocs,
+		"a case decoded from bytes",
+	)
 	assert.MaxAllocs(t, func() { _ = engine.CaseDiverged.Valid() }, 0, "Valid allocates nothing")
-	assert.MaxAllocs(t, func() { _ = engine.CaseDiverged.String() }, 0, "String allocates nothing")
 	ctx := t.Context()
 	assert.MaxAllocs(t, func() { _ = engine.WithContext(ctx, body) }, withContextAllocs,
 		"WithContext allocates the body it returns")
 }
 
 // BenchmarkExecution measures one execution of a body that draws one
-// integer under each of the three ways a case gets its values, and each
-// method of Status.
+// integer under each of the three ways a case gets its values, Valid, and
+// WithContext.
 func BenchmarkExecution(b *testing.B) {
 	digit := engine.Integer(0, 9)
 	body := func(c *engine.Case) { engine.Draw(c, digit, drawn) }
@@ -267,7 +249,7 @@ func BenchmarkExecution(b *testing.B) {
 		c := bench.Start(b).MaxAllocs(bridgeAllocs)
 		defer c.End()
 		for c.Loop() {
-			got = engine.Bridge(body, bytes, nil)
+			got = engine.Bridge(body, bytes, engine.Settings{})
 		}
 		assert.Equal(b, got.Status, engine.CasePassed, "the case passes")
 	})
@@ -280,16 +262,6 @@ func BenchmarkExecution(b *testing.B) {
 			got = engine.CaseDiverged.Valid()
 		}
 		assert.True(b, got, "CaseDiverged is a status")
-	})
-
-	b.Run("String", func(b *testing.B) {
-		var got string
-		c := bench.Start(b).MaxAllocs(0)
-		defer c.End()
-		for c.Loop() {
-			got = engine.CaseDiverged.String()
-		}
-		assert.Equal(b, got, "diverged", "the status's spelling")
 	})
 
 	b.Run("WithContext", func(b *testing.B) {

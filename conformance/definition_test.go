@@ -4,29 +4,20 @@
 package conformance_test
 
 import (
-	"slices"
-	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/conformance"
 )
 
-// TestDefinition is the completeness gate: every assertion of the
-// definition is present under the name that the naming table gives Go, or
-// the overlay declares it absent.
+// TestDefinition checks the readers of the vendored definition, and the
+// rules of an overlay.
 func TestDefinition(t *testing.T) {
 	t.Parallel()
 
-	assertions, err := conformance.Assertions()
-	assert.NoError(t, err, "the assertion table can be read")
-	assert.NotEmpty(t, assertions, "the assertion table states something")
-
-	names, err := conformance.Names()
-	assert.NoError(t, err, "the naming table can be read")
-
-	overlay, err := conformance.Overlay()
-	assert.NoError(t, err, "this language's overlay can be read")
+	assertions := conformance.Assertions()
+	names := conformance.Names()
+	overlay := conformance.Overlay()
 
 	t.Run("Assertions", func(t *testing.T) {
 		t.Parallel()
@@ -34,10 +25,17 @@ func TestDefinition(t *testing.T) {
 		t.Run("returns a summary and an arity for every assertion", func(t *testing.T) {
 			t.Parallel()
 
+			assert.NotEmpty(t, assertions, "the assertion table states something")
 			for id, a := range assertions {
 				assert.NotEmpty(t, a.Summary, "assertion "+string(id)+" states what it means")
 				assert.True(t, a.Arity > 0, "assertion "+string(id)+" states its arity")
 			}
+		})
+
+		t.Run("returns the detail fields of an assertion in the definition's order", func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, assertions["equal"].DetailFields, []string{"want", "got"}, "the fields of equal")
 		})
 	})
 
@@ -48,8 +46,7 @@ func TestDefinition(t *testing.T) {
 			t.Parallel()
 
 			for id := range assertions {
-				assert.Contains(t, names, id,
-					"the naming table gives a Go name for "+string(id))
+				assert.Contains(t, names, id, "the naming table gives a Go name for "+string(id))
 			}
 		})
 
@@ -57,9 +54,28 @@ func TestDefinition(t *testing.T) {
 			t.Parallel()
 
 			for id := range names {
-				assert.Contains(t, assertions, id,
-					"the assertion table declares "+string(id))
+				assert.Contains(t, assertions, id, "the assertion table declares "+string(id))
 			}
+		})
+
+		t.Run("returns a name qualified with its subpackage", func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, names["equal"], "Equal", "the name of an assertion of the root namespace")
+			assert.Equal(t, names["prop-for-all"], "prop.ForAll", "the name of an assertion of prop")
+		})
+	})
+
+	t.Run("SurfaceNames", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns the Go name of a type, a member and a helper", func(t *testing.T) {
+			t.Parallel()
+
+			surface := conformance.SurfaceNames()
+			assert.Equal(t, surface["seat"], "TB", "the name of a type")
+			assert.Equal(t, surface["seat.helper"], "Helper", "the name of a member")
+			assert.Equal(t, surface["prop.integer"], "prop.Integer", "the name of a helper")
 		})
 	})
 
@@ -69,108 +85,22 @@ func TestDefinition(t *testing.T) {
 		t.Run("returns a Go name for every relaxation that the overlay does not decline", func(t *testing.T) {
 			t.Parallel()
 
-			relaxations, err := conformance.RelaxationNames()
-			assert.NoError(t, err, "the relaxations can be read")
+			relaxations := conformance.RelaxationNames()
 			assert.NotEmpty(t, relaxations, "the definition states relaxations")
-
-			members, err := conformance.Members(conformance.Aborting)
-			assert.NoError(t, err, "the surface of the relaxations can be read")
-
 			for id, name := range relaxations {
-				declined := overlay.DeclinesRelaxation(id)
-
-				switch {
-				case name == "" && !declined:
-					t.Errorf("%s: the table gives no Go name and the overlay does not decline it",
-						id)
-				case name != "" && declined:
-					t.Errorf("%s: the table names %s and the overlay declines it, which is a contradiction",
-						id, name)
-				case name != "" && !declares(members, name):
-					t.Errorf("%s: %s is named and not implemented", id, name)
-				}
+				assert.Equal(t, name == "", overlay.DeclinesRelaxation(id),
+					"relaxation "+string(id)+" has a Go name unless the overlay declines it")
 			}
 		})
 	})
 
-	t.Run("Members", func(t *testing.T) {
+	t.Run("Version", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("returns the Go name of every assertion that the overlay does not declare absent", func(t *testing.T) {
+		t.Run("returns the version of the vendored definition without its line break", func(t *testing.T) {
 			t.Parallel()
 
-			for id, a := range assertions {
-				name := names[id]
-				where, member := split(name)
-
-				surface, ok := resolve(a.Package, where)
-				assert.True(t, ok,
-					"assertion "+string(id)+" names a package this library has")
-
-				members, err := conformance.Members(surface)
-				assert.NoError(t, err, "the surface of "+string(id)+" can be read")
-
-				present := declares(members, member)
-				declared := overlay.Diverges(id)
-
-				switch {
-				case present && declared:
-					t.Errorf("%s: the overlay declares it absent, but %s is implemented",
-						id, name)
-				case !present && !declared:
-					t.Errorf("%s: %s is not implemented and no overlay entry declares why",
-						id, name)
-				}
-			}
-		})
-	})
-
-	t.Run("Arities", func(t *testing.T) {
-		t.Parallel()
-
-		t.Run("returns the definition's arity for every assertion on each surface", func(t *testing.T) {
-			t.Parallel()
-
-			for id, a := range assertions {
-				if overlay.Diverges(id) {
-					continue
-				}
-				where, member := split(names[id])
-				surface, ok := resolve(a.Package, where)
-				assert.True(t, ok,
-					"assertion "+string(id)+" names a package this library has")
-
-				surfaces := []conformance.Surface{surface}
-				if _, only := abortingOnly[member]; surface == conformance.Aborting && !only {
-					surfaces = append(surfaces, conformance.Recording)
-				}
-				want := a.Arity
-				if excuse, excused := arityExcused[id]; excused {
-					want = excuse.arity
-				}
-
-				for _, s := range surfaces {
-					arities, err := conformance.Arities(s)
-					assert.NoError(t, err, "the surface of "+string(id)+" can be read")
-
-					got, declared := arities[member]
-					switch {
-					case !declared:
-						t.Errorf("%s: %s declares no function or method %s", id, s, member)
-					case got != want:
-						t.Errorf("%s: %s in %s takes %d arguments, want %d", id, member, s, got, want)
-					}
-				}
-			}
-		})
-
-		t.Run("excuses only an assertion whose arity differs", func(t *testing.T) {
-			t.Parallel()
-
-			for id, excuse := range arityExcused {
-				assert.NotEqual(t, excuse.arity, assertions[id].Arity,
-					"the arity of "+string(id)+" differs from the definition's, because Go "+excuse.why)
-			}
+			assert.Matches(t, conformance.Version(), `^\d+\.\d+\.\d+$`, "a version of three numbers")
 		})
 	})
 
@@ -183,38 +113,16 @@ func TestDefinition(t *testing.T) {
 			// An empty overlay states that Go implements every assertion
 			// of the standard. A divergence changes the library's
 			// contract, and this case with it.
-			assert.Empty(t, overlay.Diverge,
-				"Go implements the whole standard, so it declares nothing absent")
+			assert.Empty(t, overlay.Diverge, "Go implements the whole standard, so it declares nothing absent")
 		})
 
 		t.Run("returns the definition and the language that the overlay extends", func(t *testing.T) {
 			t.Parallel()
 
-			assert.HasPrefix(t, overlay.Extends, "spec://",
-				"the overlay names the definition it extends")
-			assert.Equal(t, overlay.Language, "go",
-				"the overlay names the language it speaks for")
+			assert.HasPrefix(t, overlay.Extends, "spec://", "the overlay names the definition it extends")
+			assert.Equal(t, overlay.Language, "go", "the overlay names the language it speaks for")
 		})
 	})
-
-	t.Run("Version", func(t *testing.T) {
-		t.Parallel()
-
-		t.Run("returns the version of the vendored definition", func(t *testing.T) {
-			t.Parallel()
-
-			version, err := conformance.Version()
-			assert.NoError(t, err, "the version can be read")
-			assert.NotEmpty(t, version, "the version is stated")
-		})
-	})
-}
-
-// TestOverlayRules drives the rules of an overlay that this library's empty
-// overlay cannot: the declared divergences and the declined relaxations of
-// another language.
-func TestOverlayRules(t *testing.T) {
-	t.Parallel()
 
 	declared := conformance.OverlayDoc{
 		Language: "php",
@@ -224,6 +132,9 @@ func TestOverlayRules(t *testing.T) {
 		Relaxations: []conformance.Declined{
 			{ID: "equate-nans", Why: "no comparison options"},
 		},
+		Surface: []conformance.Declined{
+			{ID: "recorder-seat", Why: "no recorder"},
+		},
 	}
 
 	t.Run("Diverges", func(t *testing.T) {
@@ -232,15 +143,13 @@ func TestOverlayRules(t *testing.T) {
 		t.Run("reports true for a declared divergence", func(t *testing.T) {
 			t.Parallel()
 
-			assert.True(t, declared.Diverges("bench-max-allocs"),
-				"a declared divergence is found")
+			assert.True(t, declared.Diverges("bench-max-allocs"), "a declared divergence is found")
 		})
 
 		t.Run("reports false for an assertion without a declared divergence", func(t *testing.T) {
 			t.Parallel()
 
-			assert.False(t, declared.Diverges("equal"),
-				"an assertion nobody declared absent is not a divergence")
+			assert.False(t, declared.Diverges("equal"), "an assertion nobody declared absent is not a divergence")
 		})
 
 		t.Run("reports false for an empty overlay", func(t *testing.T) {
@@ -257,59 +166,29 @@ func TestOverlayRules(t *testing.T) {
 		t.Run("reports true for a declined relaxation", func(t *testing.T) {
 			t.Parallel()
 
-			assert.True(t, declared.DeclinesRelaxation("equate-nans"),
-				"a declined relaxation is found")
+			assert.True(t, declared.DeclinesRelaxation("equate-nans"), "a declined relaxation is found")
 		})
 
 		t.Run("reports false for a relaxation that the overlay does not decline", func(t *testing.T) {
 			t.Parallel()
 
-			assert.False(t, declared.DeclinesRelaxation("equate-empty"),
-				"a relaxation that nobody declined is offered")
+			assert.False(t, declared.DeclinesRelaxation("equate-empty"), "a relaxation that nobody declined is offered")
 		})
 	})
-}
 
-// arityExcused names each assertion whose arity in Go differs from the
-// definition's, with the arity that Go declares and the reason.
-var arityExcused = map[conformance.ID]struct {
-	arity int
-	why   string
-}{
-	"no-task-leaks": {
-		arity: 1,
-		why: "marks the scope with the call and the check that the call returns, " +
-			"and the definition counts the scope as an argument",
-	},
-}
+	t.Run("DeclinesSurface", func(t *testing.T) {
+		t.Parallel()
 
-// split separates a qualified name into the package it names and the
-// member within it. An unqualified name has no package.
-func split(name string) (pkg, member string) {
-	where, rest, qualified := strings.Cut(name, ".")
-	if !qualified {
-		return "", name
-	}
-	return where, rest
-}
+		t.Run("reports true for a declined id of the surface table", func(t *testing.T) {
+			t.Parallel()
 
-// resolve returns the surface that an assertion's package names.
-func resolve(declared, qualified string) (conformance.Surface, bool) {
-	if declared == "" && qualified == "" {
-		return conformance.Aborting, true
-	}
-	if declared == "" {
-		declared = qualified
-	}
-	return conformance.Subpackage(declared)
-}
+			assert.True(t, declared.DeclinesSurface("recorder-seat"), "a declined id is found")
+		})
 
-// declares reports whether members contains name, or for a method the type
-// that the method belongs to.
-func declares(members []string, name string) bool {
-	owner, _, isMethod := strings.Cut(name, ".")
-	if isMethod {
-		name = owner
-	}
-	return slices.Contains(members, name)
+		t.Run("reports false for an id that the overlay does not decline", func(t *testing.T) {
+			t.Parallel()
+
+			assert.False(t, declared.DeclinesSurface("seat"), "an id that nobody declined is offered")
+		})
+	})
 }

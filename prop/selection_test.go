@@ -12,17 +12,18 @@ import (
 )
 
 // The allocations of the selection generators, measured: the engine's
-// construction of the generator, the closures of its decodes and its copy
-// of the stated values, and for OneOf the slice of the engine's generators.
+// construction of the generator, the closures of its decodes and of its
+// inverse and its copy of the stated values, and for OneOf the slice of the
+// engine's generators.
 const (
 	// sampledFromAllocs are the allocations of SampledFrom.
-	sampledFromAllocs = 3
+	sampledFromAllocs = 4
 	// oneOfAllocs are the allocations of OneOf.
-	oneOfAllocs = 4
+	oneOfAllocs = 5
 	// optionalAllocs are the allocations of Optional.
-	optionalAllocs = 2
+	optionalAllocs = 3
 	// permutationAllocs are the allocations of Permutation.
-	permutationAllocs = 3
+	permutationAllocs = 4
 )
 
 // TestSelection checks the generators that select among stated values or
@@ -132,9 +133,9 @@ func TestSelection(t *testing.T) {
 	})
 }
 
-// TestSelectionZeroAlloc checks the allocation ceilings of the selection
+// TestSelectionAllocs checks the allocation ceilings of the selection
 // generators.
-func TestSelectionZeroAlloc(t *testing.T) {
+func TestSelectionAllocs(t *testing.T) {
 	digit := prop.Integer(0, 9)
 	assert.MaxAllocs(t, func() { _ = prop.SampledFrom("a", "b") }, sampledFromAllocs,
 		"SampledFrom allocates its copy and its decode")

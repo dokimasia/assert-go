@@ -5,15 +5,15 @@ package conformance
 
 import (
 	"encoding/json"
-	"fmt"
 
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/coverage"
 )
 
 // checkCoverage decides the requirement of a coverage vector at its check,
 // and compares the verdict. The exact shares of a domain tested in full
 // decide over the last check.
-func checkCoverage(raw json.RawMessage) error {
+func checkCoverage(raw json.RawMessage, _ string) error {
 	var v struct {
 		// Counted is the number of valid cases the label counted.
 		Counted int `json:"counted"`
@@ -28,7 +28,7 @@ func checkCoverage(raw json.RawMessage) error {
 		// Verdict is the verdict's spelling.
 		Verdict string `json:"verdict"`
 	}
-	if err := json.Unmarshal(raw, &v); err != nil {
+	if err := decode(raw, &v); err != nil {
 		return err
 	}
 	stage := coverage.Interim
@@ -39,7 +39,7 @@ func checkCoverage(raw json.RawMessage) error {
 		stage = coverage.Exhausted
 	}
 	if got := coverage.Decide(v.Counted, v.Valid, v.Share, stage); got.String() != v.Verdict {
-		return fmt.Errorf("the verdict is %v, want %s", got, v.Verdict)
+		return fault.At(fault.New("the verdict is %v, want %s", got, v.Verdict), fault.Field(verdictMember))
 	}
 	return nil
 }

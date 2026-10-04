@@ -68,7 +68,9 @@ func settle(seat Seat, mode Mode, assertion, msg string, first, second any, fail
 	}
 	if !equal(first, second, opts) {
 		Fail(seat, mode, assertion, msg, map[string]any{"first": first, "second": second})
+		return
 	}
+	Pass(seat, mode, assertion, msg)
 }
 
 // agree runs run repetitions times, and reports the first result that
@@ -93,6 +95,7 @@ func agree[T any](seat Seat, mode Mode, assertion, msg string, run func() (T, er
 			return
 		}
 	}
+	Pass(seat, mode, assertion, msg)
 }
 
 // Idempotent calls call with input twice, reads the state with observe
@@ -110,6 +113,11 @@ func agree[T any](seat Seat, mode Mode, assertion, msg string, run func() (T, er
 // An error that call returns, or a panic of call or observe, fails the
 // assertion. The failure takes the place of the reading that the call did
 // not produce, and the other reading is nil.
+//
+// # Allocation contract
+//
+// A passing call with readings of one int allocates 24 times, in the
+// comparison of the two readings as [Equal] compares them.
 func Idempotent[I, S any](
 	seat Seat, mode Mode, call func(I) error, input I, observe func() S, msg string, opts ...Option,
 ) {
@@ -139,6 +147,10 @@ func Idempotent[I, S any](
 // An error that call returns, or a panic of call or observe, fails the
 // assertion. The failure takes the place of the change that the call did
 // not produce, and the other change is nil.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing for changes within the range of int.
 func Accumulates[I any](seat Seat, mode Mode, call func(I) error, input I, observe func() int, msg string) {
 	seat.Helper()
 
@@ -166,7 +178,9 @@ func Accumulates[I any](seat Seat, mode Mode, call func(I) error, input I, obser
 	// that includes one is never equal, and such a change always fails.
 	if after == before || first != second {
 		Fail(seat, mode, "accumulates", msg, map[string]any{"first": first, "second": second})
+		return
 	}
+	Pass(seat, mode, "accumulates", msg)
 }
 
 // change returns to minus from exactly: an int, or a *big.Int when the
@@ -188,6 +202,11 @@ func change(from, to int) any {
 // opts relax the comparison for this call alone. An error that call
 // returns, or a panic of call, fails the assertion: in first on the first
 // call and in second on any later one, with the other nil.
+//
+// # Allocation contract
+//
+// A passing call with results of one int allocates 744 times, in the 31
+// comparisons of a result with the first.
 func Deterministic[I, O any](seat Seat, mode Mode, call func(I) (O, error), input I, msg string, opts ...Option) {
 	seat.Helper()
 	agree(seat, mode, "deterministic", msg, func() (O, error) { return call(input) }, opts)
@@ -198,6 +217,11 @@ func Deterministic[I, O any](seat Seat, mode Mode, call func(I) (O, error), inpu
 // first is combine(a, b), and second is combine(b, a). opts relax the
 // comparison for this call alone. A panic of combine fails the assertion,
 // in the field of the result that it did not return, with the other nil.
+//
+// # Allocation contract
+//
+// A passing call with results of one int allocates 24 times, in the
+// comparison of the two results.
 func Commutative[T, R any](seat Seat, mode Mode, combine func(a, b T) R, a, b T, msg string, opts ...Option) {
 	seat.Helper()
 
@@ -214,6 +238,11 @@ func Commutative[T, R any](seat Seat, mode Mode, combine func(a, b T) R, a, b T,
 // comparison for this call alone. A panic of combine fails the assertion,
 // in the field of the grouping that it did not complete, with the other
 // nil.
+//
+// # Allocation contract
+//
+// A passing call over ints allocates 24 times, in the comparison of the
+// two groupings.
 func Associative[T any](seat Seat, mode Mode, combine func(a, b T) T, a, b, c T, msg string, opts ...Option) {
 	seat.Helper()
 
@@ -229,6 +258,11 @@ func Associative[T any](seat Seat, mode Mode, combine func(a, b T) T, a, b, c T,
 // want is input, and got what came back. opts relax the comparison for
 // this call alone. An error that forward or inverse returns, or a panic of
 // either, fails the assertion as got, with want nil.
+//
+// # Allocation contract
+//
+// A passing call on an int allocates 24 times, in the comparison of input
+// with what came back.
 func RoundTrip[I, E any](
 	seat Seat, mode Mode, forward func(I) (E, error), inverse func(E) (I, error), input I, msg string,
 	opts ...Option,
@@ -249,7 +283,9 @@ func RoundTrip[I, E any](
 	}
 	if !equal(input, got, opts) {
 		Fail(seat, mode, "round-trip", msg, map[string]any{"want": input, "got": got})
+		return
 	}
+	Pass(seat, mode, "round-trip", msg)
 }
 
 // StableOrder calls iterate 32 times, and reports the first sequence that
@@ -259,6 +295,11 @@ func RoundTrip[I, E any](
 // differs. opts relax the comparison for this call alone. An error that
 // iterate returns, or a panic of iterate, fails the assertion as
 // [Deterministic] states for its call.
+//
+// # Allocation contract
+//
+// A passing call with sequences of three ints allocates 2,852 times, in the
+// 31 comparisons of a sequence with the first.
 func StableOrder[T any](seat Seat, mode Mode, iterate func() ([]T, error), msg string, opts ...Option) {
 	seat.Helper()
 	agree(seat, mode, "stable-order", msg, iterate, opts)
@@ -272,6 +313,11 @@ func StableOrder[T any](seat Seat, mode Mode, iterate func() ([]T, error), msg s
 // opts relax the comparison for this call alone. An error that iterate
 // returns, or a panic of iterate, fails the assertion as got, with index
 // nil.
+//
+// # Allocation contract
+//
+// A passing call on three ints allocates 72 times, in its three
+// comparisons.
 func NoDuplicates[T any](seat Seat, mode Mode, iterate func() ([]T, error), msg string, opts ...Option) {
 	seat.Helper()
 
@@ -288,6 +334,7 @@ func NoDuplicates[T any](seat Seat, mode Mode, iterate func() ([]T, error), msg 
 			}
 		}
 	}
+	Pass(seat, mode, "no-duplicates", msg)
 }
 
 // Monotonic reads a value with observe, then calls advance and reads
@@ -301,6 +348,11 @@ func NoDuplicates[T any](seat Seat, mode Mode, iterate func() ([]T, error), msg 
 //
 // An error that advance returns, or a panic of advance or observe, fails
 // the assertion as second, with index and first nil.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what observe and advance
+// allocate.
 func Monotonic[N cmp.Ordered](seat Seat, mode Mode, observe func() N, advance func() error, steps int, msg string) {
 	seat.Helper()
 
@@ -334,6 +386,7 @@ func Monotonic[N cmp.Ordered](seat Seat, mode Mode, observe func() N, advance fu
 		}
 		previous = next
 	}
+	Pass(seat, mode, "monotonic", msg)
 }
 
 // isNaN reports whether x is a NaN, the one value of an ordered type that
@@ -347,6 +400,10 @@ func isNaN[N cmp.Ordered](x N) bool {
 //
 // index is the element's position, and got the error that call returned
 // or the value that it panicked with. An empty domain passes.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what call allocates.
 func Total[I any](seat Seat, mode Mode, call func(I) error, domain []I, msg string) {
 	seat.Helper()
 
@@ -357,6 +414,7 @@ func Total[I any](seat Seat, mode Mode, call func(I) error, domain []I, msg stri
 			return
 		}
 	}
+	Pass(seat, mode, "total", msg)
 }
 
 // NotPure reads state with observe, calls fn, reads it again, and reports
@@ -365,6 +423,11 @@ func Total[I any](seat Seat, mode Mode, call func(I) error, domain []I, msg stri
 // It is the negation of [Pure], and takes the same arguments. got is the
 // reading that did not change. opts relax the comparison for this call
 // alone. A panic of observe or fn fails the assertion as got.
+//
+// # Allocation contract
+//
+// A passing call with readings of one int allocates 26 times, in the
+// comparison of the two readings.
 func NotPure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg string, opts ...Option) {
 	seat.Helper()
 
@@ -381,7 +444,9 @@ func NotPure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg strin
 	}
 	if equal(before, after, opts) {
 		Fail(seat, mode, "not-pure", msg, map[string]any{"got": after})
+		return
 	}
+	Pass(seat, mode, "not-pure", msg)
 }
 
 // FailsAfterClose calls closer, then call, and reports when call does not
@@ -390,6 +455,10 @@ func NotPure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg strin
 // want is sentinel, and got what call returned. An error that closer
 // returns, or a panic of closer or call, fails the assertion as got, with
 // want nil.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what closer and call allocate.
 func FailsAfterClose(seat Seat, mode Mode, closer, call func() error, sentinel error, msg string) {
 	seat.Helper()
 
@@ -405,7 +474,9 @@ func FailsAfterClose(seat Seat, mode Mode, closer, call func() error, sentinel e
 	}
 	if !errors.Is(got, sentinel) {
 		Fail(seat, mode, "after-close", msg, map[string]any{"want": sentinel, "got": got})
+		return
 	}
+	Pass(seat, mode, "after-close", msg)
 }
 
 // Poisoned calls induce, then reads the subject with observe 32 times, and
@@ -415,6 +486,11 @@ func FailsAfterClose(seat Seat, mode Mode, closer, call func() error, sentinel e
 // error that induce causes is the caller's to ignore, so induce returns
 // none. A panic of induce or observe fails the assertion as got, with
 // index nil.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what induce and observe
+// allocate.
 func Poisoned(seat Seat, mode Mode, induce func(), observe func() error, msg string) {
 	seat.Helper()
 
@@ -437,4 +513,5 @@ func Poisoned(seat Seat, mode Mode, induce func(), observe func() error, msg str
 			return
 		}
 	}
+	Pass(seat, mode, "poisoned", msg)
 }

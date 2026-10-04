@@ -8,15 +8,10 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
-	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/prop"
 )
 
-// invalidOutcome is the first value past the six outcomes.
-const invalidOutcome prop.Outcome = 6
-
-// TestOutcome checks which values are outcomes, and pins each outcome's
-// spelling to the definition's and to the engine's for the same value.
+// TestOutcome checks which values are outcomes.
 func TestOutcome(t *testing.T) {
 	t.Parallel()
 
@@ -40,47 +35,38 @@ func TestOutcome(t *testing.T) {
 		}
 	})
 
-	t.Run("String", func(t *testing.T) {
+	t.Run("MarshalText", func(t *testing.T) {
 		t.Parallel()
 
-		tests := []struct {
-			name string
-			give prop.Outcome
-			want string
-		}{
-			{name: "returns passed for Passed", give: prop.Passed, want: "passed"},
-			{name: "returns counterexample for Counterexample", give: prop.Counterexample, want: "counterexample"},
-			{name: "returns flaky for Flaky", give: prop.Flaky, want: "flaky"},
-			{name: "returns rejected for Rejected", give: prop.Rejected, want: "rejected"},
-			{name: "returns coverage-unmet for CoverageUnmet", give: prop.CoverageUnmet, want: "coverage-unmet"},
-			{name: "returns vacuous for Vacuous", give: prop.Vacuous, want: "vacuous"},
-			{name: "returns Outcome(6) for a value that is no outcome", give: invalidOutcome, want: "Outcome(6)"},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				assert.Equal(t, tt.give.String(), tt.want, "the outcome's spelling")
-			})
-		}
-
-		t.Run("returns the engine's spelling of the same value", func(t *testing.T) {
+		t.Run("returns the spelling of the outcome", func(t *testing.T) {
 			t.Parallel()
-			for o := range engine.Vacuous + 1 {
-				assert.Equal(t, prop.Outcome(o).String(), o.String(), "the spelling of value "+o.String())
-			}
+			got, err := prop.CoverageUnmet.MarshalText()
+			assert.NoError(t, err, "every outcome has a spelling")
+			assert.Equal(t, string(got), "coverage-unmet", "the spelling of the definition")
 		})
 	})
 }
 
-// TestOutcomeZeroAlloc checks that no method of Outcome allocates.
-func TestOutcomeZeroAlloc(t *testing.T) {
+// TestOutcomeAllocs checks that Valid allocates nothing, and that
+// MarshalText allocates its text.
+func TestOutcomeAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = prop.Vacuous.Valid() }, 0, "Valid allocates nothing")
-	assert.MaxAllocs(t, func() { _ = prop.Vacuous.String() }, 0, "String allocates nothing")
+	assert.MaxAllocs(t, func() { _, _ = prop.Vacuous.MarshalText() }, 1, "MarshalText allocates its text")
 }
 
-// BenchmarkOutcome measures each method of Outcome under a ceiling of no
-// allocation.
+// BenchmarkOutcome measures Valid under a ceiling of no allocation, and
+// MarshalText.
 func BenchmarkOutcome(b *testing.B) {
+	b.Run("MarshalText", func(b *testing.B) {
+		var got []byte
+		c := bench.Start(b).MaxAllocs(1)
+		defer c.End()
+		for c.Loop() {
+			got, _ = prop.Vacuous.MarshalText()
+		}
+		assert.Equal(b, string(got), "vacuous", "the spelling")
+	})
+
 	b.Run("Valid", func(b *testing.B) {
 		var got bool
 		c := bench.Start(b).MaxAllocs(0)
@@ -89,15 +75,5 @@ func BenchmarkOutcome(b *testing.B) {
 			got = prop.Vacuous.Valid()
 		}
 		assert.True(b, got, "Vacuous is an outcome")
-	})
-
-	b.Run("String", func(b *testing.B) {
-		var got string
-		c := bench.Start(b).MaxAllocs(0)
-		defer c.End()
-		for c.Loop() {
-			got = prop.Vacuous.String()
-		}
-		assert.Equal(b, got, "vacuous", "the outcome's spelling")
 	})
 }

@@ -10,6 +10,10 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
+	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/matcher"
+	"go.dokimi.dev/assert/internal/matchertest"
+	"go.dokimi.dev/assert/internal/prop/token"
 	"go.dokimi.dev/assert/prop"
 )
 
@@ -19,37 +23,9 @@ import (
 // case a context.
 const forAllAllocs = 487
 
-// The contract of the test properties, the label of their draws, and the
-// identities of their failures, as the definition's behaviour vectors
-// name them.
-const (
-	// contract is the contract of every test property.
-	contract = "the property holds"
-	// drawn is the label of a body's draw.
-	drawn = "value"
-	// big is the identity of a failure at a large value.
-	big = "big"
-	// every is the identity of a failure at every value.
-	every = "every"
-	// always is the identity of a failure of every case.
-	always = "always"
-)
-
-// The assertion of a failing run's record and the names of its detail
-// fields, which the definition pins.
-const (
-	forAllID            = "prop-for-all"
-	outcomeField        = "outcome"
-	casesField          = "cases"
-	rejectedField       = "rejected"
-	seedField           = "seed"
-	counterexampleField = "counterexample"
-	failureField        = "failure"
-	choicesField        = "choices"
-	othersField         = "others"
-	divergenceField     = "divergence"
-	coverageField       = "coverage"
-)
+// forAllID is the assertion of a failing run's record, which the
+// definition pins.
+const forAllID = "prop-for-all"
 
 // TestForAll checks the outcome of each kind of run, pinned to the
 // definition's behaviour vectors, and the record that a failing run
@@ -169,12 +145,82 @@ func TestForAll(t *testing.T) {
 			assert.Equal(t, got[casesField], any(2), "the simplest case and random case 0")
 			assert.Equal(t, got[choicesField], any("prop1:AAEA9umrigIAAQAAAAA"), "the token of the vector")
 		})
+
+		t.Run("records a passing run with its detail, and the calls of each case under it", func(t *testing.T) {
+			t.Parallel()
+			digit := prop.Integer(0, 9)
+			calls := callsOf(t, func(c *prop.Case) {
+				assert.True(c, c.Draw(digit, drawn) < 10, "a digit")
+			}, prop.Seed(7))
+			run := calls[0]
+			assert.Equal(t, []any{run["seq"], run["assertion"], run["contract"], run["verdict"], run["aborting"]},
+				[]any{1.0, forAllID, contract, "pass", true}, "the property's call first")
+			assert.Equal(t, run["detail"], any(map[string]any{
+				outcomeField: "passed", casesField: 10.0, rejectedField: 0.0, seedField: "7",
+				counterexampleField: nil, failureField: nil, choicesField: nil, othersField: nil,
+				divergenceField: nil, coverageField: nil,
+			}), "the detail of the run, every field that a pass does not use null")
+			assert.Length(t, calls, 11, "the property and one call for each digit")
+			for i, call := range calls[1:] {
+				assert.Equal(
+					t,
+					[]any{call["seq"], call["parent"], call["assertion"]},
+					[]any{float64(i + 2), 1.0, "true"},
+					"a call of a case under the property",
+				)
+			}
+			assert.Equal(t, calls[1]["phase"], any("simplest"), "the simplest case first")
+		})
+
+		t.Run("records a failing run with the detail of its counterexample", func(t *testing.T) {
+			t.Parallel()
+			detail := recordedDetail(t, failsAtLeast(10000, 1001, big), prop.Seed(7))
+			assert.Equal(t, detail[outcomeField], any("counterexample"), "the outcome")
+			assert.Equal(t, detail[counterexampleField], any([]any{map[string]any{
+				"label": drawn, "value": map[string]any{"type": "int", "value": 1001.0},
+				"any-value-fails": false, "nearest-passing": map[string]any{"type": "int", "value": 1000.0},
+			}}), "the draw as a typed literal, with what the explain phase found")
+			assert.Equal(
+				t,
+				detail[failureField],
+				any(map[string]any{"assertion": big, "contract": "", "detail": map[string]any{}}),
+				"the failure record of the minimal case",
+			)
+			assert.Equal(t, detail[choicesField], any("prop1:AOkH"), "the token")
+			assert.Equal(t, detail[othersField], any([]any{}), "no other failure")
+		})
+
+		t.Run("ends the call with a fault for a token that no encoder writes", func(t *testing.T) {
+			t.Parallel()
+			rec := assert.NewRecorder()
+			prop.ForAll(rec, contract, draws(prop.Integer(0, 9)), prop.Replay("nonsense"))
+			calls := decodedCalls(t, rec.Records())
+			assert.Length(t, calls, 1, "the property's call alone")
+			assert.Equal(t, calls[0]["verdict"], any("error"), "a call that ended without a verdict")
+			refused := &fault.Error{
+				Op:     forAllOp,
+				Path:   fault.Path{fault.Field("Replay")},
+				Kind:   token.ErrInvalid,
+				Reason: `"nonsense" does not start with prop1:`,
+			}
+			assert.Equal(t, calls[0]["error"], any(matcher.RenderFault(refused)), "the writer's text of the fault")
+			assert.Empty(t, rec.Failures(), "no failure record")
+		})
+
+		t.Run("records on four workers the calls that one worker records", func(t *testing.T) {
+			t.Parallel()
+			body := func(c *prop.Case) {
+				assert.True(c, c.Draw(prop.Integer(0, 30), drawn) < 25, "below 25")
+			}
+			assert.Equal(t, callsOf(t, body, prop.Seed(7), prop.Workers(4)), callsOf(t, body, prop.Seed(7)),
+				"the calls of the cases of one worker, in its order")
+		})
 	})
 }
 
-// TestForAllZeroAlloc checks the allocation ceiling of a passing run.
-func TestForAllZeroAlloc(t *testing.T) {
-	rec := assert.NewRecorder()
+// TestForAllAllocs checks the allocation ceiling of a passing run.
+func TestForAllAllocs(t *testing.T) {
+	rec := &matchertest.Seat{}
 	body := draws(prop.Integer(0, 1000))
 	assert.MaxAllocs(t, func() { prop.ForAll(rec, contract, body, prop.Seed(7)) }, forAllAllocs,
 		"a run allocates for each case")
@@ -183,7 +229,7 @@ func TestForAllZeroAlloc(t *testing.T) {
 // BenchmarkForAll measures a passing run of 100 cases.
 func BenchmarkForAll(b *testing.B) {
 	b.Run("ForAll", func(b *testing.B) {
-		rec := assert.NewRecorder()
+		rec := &matchertest.Seat{}
 		body := draws(prop.Integer(0, 1000))
 		c := bench.Start(b).MaxAllocs(forAllAllocs)
 		defer c.End()
@@ -192,19 +238,6 @@ func BenchmarkForAll(b *testing.B) {
 		}
 		assert.False(b, rec.Failed(), "every run passes")
 	})
-}
-
-// detailOf runs body as the property contract on a recorder under opts, and
-// returns the detail of the one record that the run reported, or nil for a
-// run that reported none.
-func detailOf(body func(*prop.Case), opts ...prop.Option) map[string]any {
-	rec := assert.NewRecorder()
-	prop.ForAll(rec, contract, body, opts...)
-	records := rec.Failures()
-	if len(records) == 0 {
-		return nil
-	}
-	return records[0].Detail
 }
 
 // completed runs the property contract on rec under opts with a body that
@@ -218,32 +251,4 @@ func completed[T any](rec *assert.Recorder, g prop.Generator[T], opts ...prop.Op
 		calls++
 	}, opts...)
 	return calls
-}
-
-// counts returns the outcome and the counts of valid and rejected cases of
-// a record's detail.
-func counts(detail map[string]any) []any {
-	return []any{detail[outcomeField], detail[casesField], detail[rejectedField]}
-}
-
-// draws returns the body that draws one value of g and never fails.
-func draws[T any](g prop.Generator[T]) func(*prop.Case) {
-	return func(c *prop.Case) { c.Draw(g, drawn) }
-}
-
-// failsAtLeast returns the body that draws an integer in [0, most], and
-// fails with identity at a value of least or more.
-func failsAtLeast(most, least int, identity string) func(*prop.Case) {
-	g := prop.Integer(0, most)
-	return func(c *prop.Case) {
-		if c.Draw(g, drawn) >= least {
-			fail(c, identity)
-		}
-	}
-}
-
-// fail ends the case with an aborting record of identity, without a
-// location, as a body of the definition's vectors fails.
-func fail(c *prop.Case, identity string) {
-	c.Report(assert.Failure{Assertion: identity}, true)
 }

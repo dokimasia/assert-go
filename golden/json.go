@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"go.dokimi.dev/assert"
-	"go.dokimi.dev/assert/internal/matcher"
 )
 
 // jsonIndent is how this package writes a golden JSON file, so a diff
@@ -19,107 +18,111 @@ const jsonIndent = "  "
 // MatchJSONField compares got against one named field of the JSON
 // object at path, taken as given.
 //
-// Use it where one golden file contains several independent values, one
-// per field. Each test then compares only its own field, so a failure
+// Use it where one golden file contains independent values, one per
+// field. Each test then compares only its own field, so a failure
 // shows the diff of that value alone, and two tests that update
 // different fields do not overwrite each other.
 //
 // Comparison is structural: both sides are re-encoded with the same
-// indentation first, so formatting differences do not fail. got must
-// be valid JSON.
+// indentation first, so formatting differences do not fail.
 //
 // A missing file or a missing field behaves as [Match] does for a
-// missing file: a failure naming -update, or the field written and the
-// siblings left alone. A failure is a record of golden-match-json-field,
-// with the field's golden value as want, nil when it is missing, the
-// value as got, both encoded and scrubbed, and the field's name.
+// missing file: the call fails while update is false, and update writes
+// the field, leaves the other fields as they are, and passes. A failure is
+// a record of golden-match-json-field, with the field's golden value as
+// want, nil when it is missing, the value as got, both encoded and
+// scrubbed, and the field's name.
+//
+// A got that is no JSON, a golden file that is no JSON object, and a
+// golden file that cannot be read or written end the call with a fault,
+// which stops the test.
+//
+// # Allocation contract
+//
+// A passing comparison of an integer field in a document of one field
+// allocates 24 times. A larger document allocates more, because the
+// comparison decodes the whole document.
 func MatchJSONField(tb assert.TB, path, field string, got []byte, update bool, scrubbers ...Scrubber) {
 	tb.Helper()
+	c := call{
+		tb: tb, op: "golden.MatchJSONField", id: jsonFieldID, path: path,
+		contract: fmt.Sprintf("the field %q of the golden file %s matches the value, and -update writes it",
+			field, path),
+	}
 
 	var value any
-	assert.NoError(tb, json.Unmarshal(got, &value),
-		fmt.Sprintf("%s: the value given for field %q is valid JSON", path, field))
-	mine := scrub(encode(tb, value, path, field), scrubbers)
+	if err := json.Unmarshal(got, &value); err != nil {
+		c.fault(err, "the value of the field %q is no JSON", field)
+		return
+	}
+	mine := scrub(encode(value), scrubbers)
 
-	document, ok := readObject(tb, path, field, mine, update)
+	document, ok := c.readObject(field, mine, update)
 	if !ok {
 		return
 	}
 
-	held, present := document[field]
+	stored, present := document[field]
 	if !present {
 		if !update {
-			matcher.Fail(tb, matcher.Fatal, jsonFieldID,
-				fmt.Sprintf("%s: the golden file has no field %q; run the test with -update to add it", path, field),
-				map[string]any{"want": nil, "got": mine, "field": field})
+			c.fail(map[string]any{"want": nil, "got": mine, "field": field})
 			return
 		}
 		document[field] = value
-		writeObject(tb, path, document)
+		c.writeObject(document)
 		return
 	}
 
-	theirs := scrub(encode(tb, held, path, field), scrubbers)
-
+	theirs := scrub(encode(stored), scrubbers)
+	if mine == theirs {
+		c.pass()
+		return
+	}
 	if update {
-		if mine != theirs {
-			document[field] = value
-			writeObject(tb, path, document)
-		}
+		document[field] = value
+		c.writeObject(document)
 		return
 	}
-
-	if mine != theirs {
-		matcher.Fail(tb, matcher.Fatal, jsonFieldID,
-			fmt.Sprintf("%s: field %q matches the golden file; read the diff before running with -update", path, field),
-			map[string]any{"want": theirs, "got": mine, "field": field})
-	}
+	c.fail(map[string]any{"want": theirs, "got": mine, "field": field})
 }
 
-// readObject reads the JSON object at path, reporting whether the
-// caller may continue. It returns a fresh object when the file is
-// missing and update is set. For a missing file without update, it
-// reports a failure of field with got as the value, mine.
-func readObject(tb assert.TB, path, field, mine string, update bool) (map[string]any, bool) {
-	tb.Helper()
+// readObject reads the JSON object of the golden file of c, and reports
+// whether the call continues. It returns an empty object for a missing
+// file while update is true. For a missing file without update, it reports
+// the failure of field, with got as mine.
+func (c call) readObject(field, mine string, update bool) (map[string]any, bool) {
+	c.tb.Helper()
 
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(c.path)
 	if os.IsNotExist(err) {
 		if !update {
-			matcher.Fail(tb, matcher.Fatal, jsonFieldID,
-				fmt.Sprintf("%s: the golden file does not exist; run the test with -update to create it", path),
-				map[string]any{"want": nil, "got": mine, "field": field})
+			c.fail(map[string]any{"want": nil, "got": mine, "field": field})
 			return nil, false
 		}
 		return map[string]any{}, true
 	}
-	assert.NoError(tb, err, fmt.Sprintf("%s: the golden file can be read", path))
-
 	document := map[string]any{}
-	assert.NoError(tb, json.Unmarshal(raw, &document),
-		fmt.Sprintf("%s: the golden file is a JSON object", path))
-
+	if err == nil {
+		err = json.Unmarshal(raw, &document)
+	}
+	if err != nil {
+		c.fault(err, "the golden file cannot be read as a JSON object")
+		return nil, false
+	}
 	return document, true
 }
 
-// writeObject records document as the golden file at path.
-func writeObject(tb assert.TB, path string, document map[string]any) {
-	tb.Helper()
-
-	raw, err := json.MarshalIndent(document, "", jsonIndent)
-	assert.NoError(tb, err, fmt.Sprintf("%s: the golden file can be encoded", path))
-
-	write(tb, path, string(raw)+"\n")
+// writeObject writes document as the golden file of c, and passes.
+func (c call) writeObject(document map[string]any) {
+	c.tb.Helper()
+	c.write(encode(document) + "\n")
 }
 
-// encode renders one field's value with the indentation both sides of
-// a comparison use.
-func encode(tb assert.TB, value any, path, field string) string {
-	tb.Helper()
-
-	raw, err := json.MarshalIndent(value, "", jsonIndent)
-	assert.NoError(tb, err,
-		fmt.Sprintf("%s: the value for field %q can be encoded", path, field))
-
+// encode returns the indented JSON of value, which json.Unmarshal decoded
+// or which contains only values that it decoded. MarshalIndent returns no
+// error for such a value, whose numbers are finite and whose strings are
+// UTF-8.
+func encode(value any) string {
+	raw, _ := json.MarshalIndent(value, "", jsonIndent)
 	return string(raw)
 }

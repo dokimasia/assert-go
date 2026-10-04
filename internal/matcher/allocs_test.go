@@ -11,6 +11,12 @@ import (
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
+// The results of the allocation cases, which keep each call.
+var (
+	counted bool
+	off     bool
+)
+
 // TestMaxAllocs does not run in parallel: testing.AllocsPerRun panics
 // while a parallel test runs.
 func TestMaxAllocs(t *testing.T) {
@@ -28,29 +34,32 @@ func buildWith(gcflags string) *debug.BuildInfo {
 	}}
 }
 
+// TestOptimisationsOff checks which -gcflags turn off optimisation or
+// inlining.
 func TestOptimisationsOff(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
+	tests := []struct {
 		name string
-		info *debug.BuildInfo
+		give *debug.BuildInfo
 		want bool
 	}{
-		{"no build information", nil, false},
-		{"no -gcflags recorded", &debug.BuildInfo{}, false},
-		{"flags that change nothing", buildWith("-m -e"), false},
-		{"a flag whose name starts with l", buildWith("-lang=go1.26"), false},
-		{"optimisation off", buildWith("-N"), true},
-		{"inlining off", buildWith("-l"), true},
-		{"both, for every package, as a debugger builds", buildWith("all=-N -l"), true},
-		{"inlining off for one package", buildWith("example.com/pkg=-l"), true},
-		{"inlining off with a level", buildWith("-l=4"), true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+		{"reports false without build information", nil, false},
+		{"reports false for build information without -gcflags", &debug.BuildInfo{}, false},
+		{"reports false for flags that change neither", buildWith("-m -e"), false},
+		{"reports false for a flag whose name starts with l", buildWith("-lang=go1.26"), false},
+		{"reports true for optimisation off", buildWith("-N"), true},
+		{"reports true for inlining off", buildWith("-l"), true},
+		{"reports true for both, for every package, as a debugger builds", buildWith("all=-N -l"), true},
+		{"reports true for inlining off in one package", buildWith("example.com/pkg=-l"), true},
+		{"reports true for inlining off with a level", buildWith("-l=4"), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := matcher.OptimisationsOff(tc.info); got != tc.want {
-				t.Fatalf("OptimisationsOff = %v, want %v", got, tc.want)
+			if got := matcher.OptimisationsOff(tt.give); got != tt.want {
+				t.Fatalf("OptimisationsOff = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -60,6 +69,8 @@ func TestOptimisationsOff(t *testing.T) {
 // detector, msan and asan.
 var instrumentedSettings = map[string]bool{"-race": true, "-msan": true, "-asan": true}
 
+// TestAllocationsCounted checks AllocationsCounted against the build
+// information of the running binary.
 func TestAllocationsCounted(t *testing.T) {
 	t.Parallel()
 
@@ -82,4 +93,28 @@ func TestAllocationsCounted(t *testing.T) {
 			t.Fatalf("AllocationsCounted = %v, want %v for settings %v", got, want, info.Settings)
 		}
 	})
+}
+
+// TestAllocsAllocs checks the allocation ceiling of a passing call of each
+// function of allocs.go.
+func TestAllocsAllocs(t *testing.T) {
+	checkAllocs(t, allocsCases())
+}
+
+// BenchmarkAllocs measures a passing call of each function of allocs.go.
+func BenchmarkAllocs(b *testing.B) {
+	benchAllocs(b, allocsCases())
+}
+
+// allocsCases returns a passing call of each function of allocs.go, with
+// its allocation ceiling, measured.
+func allocsCases() []allocCase {
+	debugger := buildWith("all=-N -l")
+	return []allocCase{
+		{name: "MaxAllocs", call: func(seat matcher.Seat) {
+			matcher.MaxAllocs(seat, matcher.Fatal, func() {}, 0, allocContract)
+		}},
+		{name: "AllocationsCounted", call: func(matcher.Seat) { counted = matcher.AllocationsCounted() }},
+		{name: "OptimisationsOff", call: func(matcher.Seat) { off = matcher.OptimisationsOff(debugger) }},
+	}
 }

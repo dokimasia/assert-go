@@ -22,11 +22,23 @@
 // repetitions, and the simplest character of each class, so [A0a]
 // shrinks to "0".
 //
+// # Running backwards
+//
+// A generator runs backwards from a string that its pattern matches in
+// full, through the match that a backtracking engine finds first. The
+// search tries the branches of an alternation in their stated order, and
+// repeats each quantified piece as often as the rest of the pattern
+// allows. A repetition that matches the empty string does not repeat
+// beyond the quantifier's minimum. The search takes time exponential in
+// the length of the string in the worst case, as a backtracking engine's
+// does.
+//
 // # Errors
 //
-// [StringMatching] returns the error of [pattern.Parse], which wraps
+// [StringMatching] returns the fault of [pattern.Parse], of the kind
 // [pattern.ErrOutside], for a pattern outside the portable subset or that
-// is not UTF-8.
+// is not UTF-8. A generator's inverse returns a fault of the kind
+// [engine.ErrCannotInvert] for a value that its pattern does not match.
 //
 // # Concurrency
 //
@@ -37,10 +49,11 @@
 //
 // [StringMatching] allocates the parsed pattern and the decoder built from
 // it. A decode allocates the string it returns, and the case records its
-// choices and spans.
+// choices and spans. The search of an inverse allocates the steps of each
+// match it tries.
 //
 // # Dependency position
 //
-// Imports the engine, pattern, alphabet and choice packages of this module
-// and the standard library.
+// Imports the fault, engine, pattern, alphabet and choice packages of this
+// module and the standard library.
 package matching

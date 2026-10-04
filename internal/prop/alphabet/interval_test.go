@@ -55,8 +55,8 @@ func TestInterval(t *testing.T) {
 	})
 }
 
-// TestIntervalZeroAlloc checks that Merge allocates nothing.
-func TestIntervalZeroAlloc(t *testing.T) {
+// TestIntervalAllocs checks that Merge allocates nothing.
+func TestIntervalAllocs(t *testing.T) {
 	intervals := []alphabet.Interval{{First: 5, Last: 6}, {First: 0, Last: 2}, {First: 3, Last: 3}}
 	assert.MaxAllocs(t, func() { _ = alphabet.Merge(intervals) }, 0, "Merge allocates nothing")
 }

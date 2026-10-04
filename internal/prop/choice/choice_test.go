@@ -71,8 +71,8 @@ func TestChoice(t *testing.T) {
 	})
 }
 
-// TestChoiceZeroAlloc checks that Equal allocates nothing.
-func TestChoiceZeroAlloc(t *testing.T) {
+// TestChoiceAllocs checks that Equal allocates nothing.
+func TestChoiceAllocs(t *testing.T) {
 	c, d := sequenceChoice(1, 2, 3), sequenceChoice(1, 2, 3)
 	assert.MaxAllocs(t, func() { _ = c.Equal(d) }, 0, "Equal allocates nothing")
 }

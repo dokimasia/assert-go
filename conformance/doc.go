@@ -23,9 +23,9 @@
 //   - [Cases] returns the corpus cases of the assertions. [Registry] drives
 //     an assertion with a case's arguments in each [Form], with the options
 //     that [Relaxations] maps the case's relaxations to. [RunSubject] drives
-//     an assertion with a case's behaviour on both surfaces.
-//   - [Case.Check] compares the assertion's record with the one that the
-//     case states.
+//     an assertion on both surfaces with a behaviour that [Subjects] builds.
+//   - [Case.Check] compares the assertion's record and its call record
+//     with the ones that the case states.
 //
 // # Properties
 //
@@ -35,20 +35,48 @@
 //
 //   - [Decoding], [Generation] and [Bridge] decode a generator from stated
 //     choices, from a seed, or from a fuzzer's bytes.
+//   - [Shapes] decodes a shape from a seed, and [Inverse] runs a shape or a
+//     generator back from a value to its choices.
 //   - [Shrinking] shrinks the failure of a property of one draw.
 //   - [Coverage] decides one coverage requirement.
 //   - [Token] encodes choices as a replay token, or decodes one.
 //   - [Store] writes a store entry, or reads the text of one file.
-//   - [Behaviour] runs a body through [go.dokimi.dev/assert/prop.ForAll].
+//   - [Behaviour] runs a body through [go.dokimi.dev/assert/prop.ForAll],
+//     and [Draws] runs one under a case of stated entries.
+//   - [CallRecords] runs a body through ForAll, and compares the call
+//     records of the run.
+//   - [Fixtures] reads a fixture type of the definition through
+//     [go.dokimi.dev/assert/prop.ShapeOf]. The package declares the 34
+//     fixture types, and registers the values and the variants that two of
+//     them read.
+//   - [Forms] runs a property form on the behaviours that [Subjects]
+//     builds, over the generator that
+//     [go.dokimi.dev/assert/prop.OfShape] returns for a stated shape.
 //
 // A vector states its generators, predicates and bodies in a closed
-// vocabulary. It states each value as a typed literal, which [Decode] reads.
+// vocabulary, and each value as a typed literal.
+//
+// # Errors
+//
+// [Vector.Check], [Case.Check] and [Case.Decoded] return a fault whose path
+// starts at the vector's or the case's ID and leads through its JSON to the
+// part at fault. That part is an input that does not parse or that the
+// vocabulary does not state, or an output that differs from the run. When
+// a library that decodes the input returns a fault, such as the decoder of
+// typed literals, the fault keeps its reason and continues the path.
+// [Members] and [Arities] return a fault for a [Surface] whose files do
+// not read or parse.
+//
+// The readers of the definition return no error. The embed directive
+// includes every file that a reader reads, and a file that does not decode
+// leaves empty the values that it fails to state.
 //
 // # Dependency position
 //
 // Imports the standard library, github.com/google/go-cmp, this module's
-// assert, expect and prop packages, and the internal packages of the
-// property engine: choice, coverage, engine, matching, store and token. Only
-// tests import it. Besides its own tests, the store tests of prop import it
-// to compare the version of a stored case with [Version].
+// assert, expect and prop packages, the fault and literal packages, and the
+// internal packages of the property engine: choice, coverage, engine,
+// matching, shape, store and token. Only tests import it. Besides its own
+// tests, the store tests of prop import it to compare the version of a
+// stored case with [Version].
 package conformance

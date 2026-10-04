@@ -19,8 +19,8 @@ const parseAllocs = 16
 // identifier is the pattern of the benchmark and the allocation check.
 const identifier = `[a-f0-9]{4}-\d{2}`
 
-// TestPatternZeroAlloc checks the allocation ceiling of Parse.
-func TestPatternZeroAlloc(t *testing.T) {
+// TestPatternAllocs checks the allocation ceiling of Parse.
+func TestPatternAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _, _ = pattern.Parse(identifier) }, parseAllocs,
 		"Parse allocates the pattern's characters and its pieces")
 }

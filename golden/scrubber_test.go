@@ -8,12 +8,16 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/golden"
+	"go.dokimi.dev/assert/internal/alloctest"
 )
 
-// This package is a consumer of the library, so its tests are written
-// with it. The assertion core cannot do the same: a package that tests
-// itself with itself lets one bug hide another.
+// scrubbing keeps the scrubber that a case returns, so the compiler keeps
+// the call.
+var scrubbing golden.Scrubber
 
+// TestScrubber checks what each scrubber replaces and what it leaves
+// alone. The package uses this module's assertions, as every package
+// outside internal/matcher does.
 func TestScrubber(t *testing.T) {
 	t.Parallel()
 
@@ -98,7 +102,7 @@ func TestScrubber(t *testing.T) {
 			assert.Contains(t, got, "three", "a field nobody named is left alone")
 		})
 
-		t.Run("naming no field changes nothing", func(t *testing.T) {
+		t.Run("returns the input for no named field", func(t *testing.T) {
 			t.Parallel()
 
 			const in = `{"a":"one"}`
@@ -106,4 +110,29 @@ func TestScrubber(t *testing.T) {
 				"a scrubber naming no field is the identity")
 		})
 	})
+}
+
+// TestScrubberAllocs checks the allocation ceiling of each constructor of
+// a scrubber.
+func TestScrubberAllocs(t *testing.T) {
+	alloctest.Check(t, scrubberCases())
+}
+
+// BenchmarkScrubber measures each constructor of a scrubber.
+func BenchmarkScrubber(b *testing.B) {
+	for _, c := range scrubberCases() {
+		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
+	}
+}
+
+// scrubberCases returns a call of each constructor of a scrubber, with its
+// allocation ceiling, measured.
+func scrubberCases() []alloctest.Case {
+	return []alloctest.Case{
+		{Name: "ScrubTimestamps", Call: func(assert.TB) { scrubbing = golden.ScrubTimestamps() }},
+		{Name: "ScrubHashes", Call: func(assert.TB) { scrubbing = golden.ScrubHashes() }},
+		{Name: "ScrubRunIDs", Call: func(assert.TB) { scrubbing = golden.ScrubRunIDs() }},
+		{Name: "ScrubJSONFields", Call: func(assert.TB) { scrubbing = golden.ScrubJSONFields("token") }, Allocs: 46},
+		{Name: "ScrubJSONFields of no field", Call: func(assert.TB) { scrubbing = golden.ScrubJSONFields() }},
+	}
 }

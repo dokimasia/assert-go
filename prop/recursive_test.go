@@ -12,9 +12,10 @@ import (
 )
 
 // recursiveAllocs are the allocations of Recursive, measured: the engine's
-// recursion, the closures of its decodes, the adapter of extend, and the
-// extension that extend builds.
-const recursiveAllocs = 7
+// recursion, the closures of its decodes and of the inverses of a position
+// and of the whole, the adapter of extend, and the extension that extend
+// builds.
+const recursiveAllocs = 9
 
 // TestRecursive checks the generator of values whose positions are values
 // of the generator itself, and the bound on their base values.
@@ -62,9 +63,9 @@ func TestRecursive(t *testing.T) {
 	})
 }
 
-// TestRecursiveZeroAlloc checks the allocation ceilings of the recursive
+// TestRecursiveAllocs checks the allocation ceilings of the recursive
 // generator and its option.
-func TestRecursiveZeroAlloc(t *testing.T) {
+func TestRecursiveAllocs(t *testing.T) {
 	base := prop.Just("x")
 	assert.MaxAllocs(t, func() { _ = prop.MaxLeaves(1) }, 0, "MaxLeaves allocates nothing")
 	assert.MaxAllocs(t, func() { _ = prop.Recursive(base, nest) }, recursiveAllocs,

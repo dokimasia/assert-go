@@ -83,6 +83,10 @@ type Contract struct {
 }
 
 // Start returns a contract that measures b and states no ceiling.
+//
+// # Allocation contract
+//
+// Start allocates the contract: one allocation.
 func Start(b B) *Contract {
 	b.Helper()
 	return &Contract{
@@ -100,6 +104,10 @@ func Start(b B) *Contract {
 // A p99 ceiling bounds the tail of the latency distribution, which a
 // mean ceiling does not bound. [Contract.MaxMean] states a ceiling on the
 // mean.
+//
+// # Allocation contract
+//
+// MaxLatency allocates nothing.
 func (c *Contract) MaxLatency(d time.Duration) *Contract {
 	c.maxLatency = d
 	return c
@@ -111,6 +119,10 @@ func (c *Contract) MaxLatency(d time.Duration) *Contract {
 // State it together with [Contract.MaxLatency]. A mean ceiling alone
 // passes a benchmark whose tail latency grows while its mean does not
 // change.
+//
+// # Allocation contract
+//
+// MaxMean allocates nothing.
 func (c *Contract) MaxMean(d time.Duration) *Contract {
 	c.maxMean = d
 	return c
@@ -141,9 +153,13 @@ func (c *Contract) MaxMean(d time.Duration) *Contract {
 // In a build with the race detector, msan or asan, and in one whose
 // -gcflags turn off optimisation or inlining, [Contract.End] publishes
 // the count and does not check the ceiling, because those builds
-// allocate differently from the one that ships.
+// allocate differently from a production build.
 // [go.dokimi.dev/assert.MaxAllocs] states the same ceiling in a test,
 // which the ordinary test run checks.
+//
+// # Allocation contract
+//
+// MaxAllocs allocates nothing.
 func (c *Contract) MaxAllocs(n uint64) *Contract {
 	c.maxAllocs = int64(n)
 	return c
@@ -155,6 +171,10 @@ func (c *Contract) MaxAllocs(n uint64) *Contract {
 // [Contract.End] counts the bytes over the same window, with the same
 // exclusions and the same rounding, as the allocations of
 // [Contract.MaxAllocs]. It checks the ceiling in the same builds.
+//
+// # Allocation contract
+//
+// MaxBytes allocates nothing.
 func (c *Contract) MaxBytes(n uint64) *Contract {
 	c.maxBytes = int64(n)
 	return c
@@ -171,6 +191,12 @@ func (c *Contract) MaxBytes(n uint64) *Contract {
 // allocation counters before the first iteration and after the last, so
 // the allocation ceilings count neither the setup before the loop nor
 // the code after it.
+//
+// # Allocation contract
+//
+// Loop allocates nothing per iteration, amortized over the growth of the
+// durations that it keeps. It takes that growth out of the count of the
+// allocation ceilings.
 func (c *Contract) Loop() bool {
 	if c.measuring {
 		elapsed := time.Since(c.started) - c.excluded
@@ -202,7 +228,15 @@ func (c *Contract) Loop() bool {
 // reports each exceeded ceiling as a record of its assertion, such as
 // bench-max-latency, with the ceiling as want and the measurement as got,
 // through Errorf, which records a failure and continues. The output of
-// one run lists every ceiling that the benchmark exceeded.
+// one run lists every ceiling that the benchmark exceeded. Each other
+// stated ceiling passes, an allocation ceiling that the build does not
+// check included.
+//
+// # Allocation contract
+//
+// End allocates a sorted copy of the durations of the iterations: one
+// allocation. A ceiling that the benchmark exceeded allocates its record
+// as well.
 func (c *Contract) End() {
 	c.b.Helper()
 
@@ -222,27 +256,36 @@ func (c *Contract) End() {
 	c.b.ReportMetric(allocs, unitAllocs)
 	c.b.ReportMetric(bytes, unitBytes)
 
-	if c.maxLatency != unset && tail > c.maxLatency {
-		matcher.Fail(c.b, matcher.Soft, "bench-max-latency",
-			"the p99 latency per iteration is within its ceiling",
-			map[string]any{"want": c.maxLatency, "got": tail})
+	if c.maxLatency != unset {
+		c.check("bench-max-latency", "the p99 latency per iteration is within its ceiling",
+			tail > c.maxLatency, map[string]any{"want": c.maxLatency, "got": tail})
 	}
-	if c.maxMean != unset && mean > c.maxMean {
-		matcher.Fail(c.b, matcher.Soft, "bench-max-mean",
-			"the mean latency per iteration is within its ceiling",
-			map[string]any{"want": c.maxMean, "got": mean})
+	if c.maxMean != unset {
+		c.check("bench-max-mean", "the mean latency per iteration is within its ceiling",
+			mean > c.maxMean, map[string]any{"want": c.maxMean, "got": mean})
 	}
 	counted := matcher.AllocationsCounted()
-	if c.maxAllocs != unset && counted && math.Floor(allocs) > float64(c.maxAllocs) {
-		matcher.Fail(c.b, matcher.Soft, "bench-max-allocs",
-			"the allocations per iteration are within their ceiling",
+	if c.maxAllocs != unset {
+		c.check("bench-max-allocs", "the allocations per iteration are within their ceiling",
+			counted && math.Floor(allocs) > float64(c.maxAllocs),
 			map[string]any{"want": uint64(c.maxAllocs), "got": uint64(allocs)})
 	}
-	if c.maxBytes != unset && counted && math.Floor(bytes) > float64(c.maxBytes) {
-		matcher.Fail(c.b, matcher.Soft, "bench-max-bytes",
-			"the bytes allocated per iteration are within their ceiling",
+	if c.maxBytes != unset {
+		c.check("bench-max-bytes", "the bytes allocated per iteration are within their ceiling",
+			counted && math.Floor(bytes) > float64(c.maxBytes),
 			map[string]any{"want": uint64(c.maxBytes), "got": uint64(bytes)})
 	}
+}
+
+// check reports the verdict of the ceiling of assertion: a failure with
+// detail when the measurement exceeded the ceiling, and a pass otherwise.
+func (c *Contract) check(assertion, contract string, exceeded bool, detail map[string]any) {
+	c.b.Helper()
+	if exceeded {
+		matcher.Fail(c.b, matcher.Soft, assertion, contract, detail)
+		return
+	}
+	matcher.Pass(c.b, matcher.Soft, assertion, contract)
 }
 
 // perIteration returns the allocations and the bytes per iteration.
@@ -276,6 +319,10 @@ func (c *Contract) perIteration() (allocs, bytes float64) {
 //
 // Before the first [Contract.Loop] and after the last, Excluding runs
 // work and takes nothing out, because no iteration is being measured.
+//
+// # Allocation contract
+//
+// Excluding allocates nothing besides what work allocates.
 func (c *Contract) Excluding(work func()) {
 	if !c.measuring {
 		work()

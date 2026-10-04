@@ -29,20 +29,27 @@ func (v Verdict) Valid() bool {
 	return v <= Unmet
 }
 
+// MarshalText returns the verdict's spelling, as the record of a run
+// states it.
+func (v Verdict) MarshalText() ([]byte, error) {
+	return []byte(v.String()), nil
+}
+
 // Shortfall is a coverage requirement that a run refuted or left unmet,
-// with the counts the coverage test decided it from.
+// with the counts the coverage test decided it from. Its JSON is the
+// requirement as the record of a run states it.
 type Shortfall struct {
 	// Label is the requirement's label, as [Case.Classify] counts it.
-	Label string
+	Label string `json:"label"`
 	// Share is the share of the valid cases that the label must count, as
 	// [Require] states it.
-	Share float64
+	Share float64 `json:"share"`
 	// Counted is the number of valid cases the label counted.
-	Counted int
+	Counted int `json:"counted"`
 	// Valid is the number of valid cases.
-	Valid int
+	Valid int `json:"valid"`
 	// Verdict is the coverage test's verdict.
-	Verdict Verdict
+	Verdict Verdict `json:"verdict"`
 }
 
 // shortfallOf returns the engine's shortfall s. The engine reports a

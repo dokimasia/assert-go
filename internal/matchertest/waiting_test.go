@@ -54,3 +54,22 @@ func TestWaiting(t *testing.T) {
 		})
 	})
 }
+
+// TestWaitingTwins runs TestWaitingTwinsChild in a child process, and
+// requires the failures of RunEventually for a twin that never runs the
+// body.
+func TestWaitingTwins(t *testing.T) {
+	t.Parallel()
+	expectBroken(t, "TestWaitingTwinsChild",
+		"ran 0 attempts, want at least 3; it did not retry",
+		"the body never ran")
+}
+
+// TestWaitingTwinsChild runs only in the child process of TestWaitingTwins.
+func TestWaitingTwinsChild(t *testing.T) {
+	inChild(t)
+
+	t.Run("RunEventually of a twin that never runs the body", func(t *testing.T) {
+		matchertest.RunEventually(t, func(*matchertest.Seat, time.Duration, time.Duration, func() bool, string) {})
+	})
+}

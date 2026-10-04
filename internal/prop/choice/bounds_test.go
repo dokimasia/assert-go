@@ -4,6 +4,7 @@
 package choice_test
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 
@@ -225,15 +226,113 @@ func TestBounds(t *testing.T) {
 			assert.Equal(t, choice.OfSequence(choice.SequenceBounds{}).Kind(), choice.Sequence, "sequence bounds")
 		})
 	})
+
+	t.Run("String", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			give choice.Bounds
+			want string
+		}{
+			{name: "returns the range of integer bounds", give: integer, want: "integer in [3, 9]"},
+			{
+				name: "returns the range and the width of float bounds",
+				give: float,
+				want: "float in [1, 2] of width 64",
+			},
+			{
+				name: "returns the range, the width and NaN of float bounds that admit NaN",
+				give: choice.OfFloat(floatBounds(t, -0.5, math.Inf(1), choice.AdmitNaN, choice.Width32)),
+				want: "float in [-0.5, +Inf] of width 32 or NaN",
+			},
+			{
+				name: "returns the sizes and the elements of bounded sequence bounds",
+				give: sequence,
+				want: "sequence of 1 to 4 values below 256",
+			},
+			{
+				name: "returns the minimum size and the elements of unbounded sequence bounds",
+				give: choice.OfSequence(choice.MustSequenceBounds(byteK, unboundedSizes(t, 2))),
+				want: "sequence of 2 or more values below 256",
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				assert.Equal(t, tt.give.String(), tt.want, "the text of the request")
+			})
+		}
+	})
+
+	t.Run("MarshalJSON", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			give choice.Bounds
+			want string
+		}{
+			{name: "returns the range of integer bounds", give: integer, want: `{"kind":"integer","min":3,"max":9}`},
+			{
+				name: "returns a decimal string for an integer bound beyond 2^53 - 1",
+				give: choice.OfInteger(signedBounds(t, math.MinInt64, math.MaxInt64)),
+				want: `{"kind":"integer","min":"-9223372036854775808","max":"9223372036854775807"}`,
+			},
+			{
+				name: "returns a decimal string for an unsigned bound beyond the int64 range",
+				give: choice.OfInteger(choice.MustIntegerBounds(choice.Int{}, choice.UintOf(math.MaxUint64))),
+				want: `{"kind":"integer","min":0,"max":"18446744073709551615"}`,
+			},
+			{
+				name: "returns the range, NaN and the width of float bounds",
+				give: float,
+				want: `{"kind":"float","min":1,"max":2,"allow_nan":false,"width":64}`,
+			},
+			{
+				name: "returns the name of an infinite float bound",
+				give: choice.OfFloat(floatBounds(t, -0.5, math.Inf(1), choice.AdmitNaN, choice.Width32)),
+				want: `{"kind":"float","min":-0.5,"max":"Inf","allow_nan":true,"width":32}`,
+			},
+			{
+				name: "returns the elements and the sizes of bounded sequence bounds",
+				give: sequence,
+				want: `{"kind":"sequence","k":256,"min_size":1,"max_size":4}`,
+			},
+			{
+				name: "returns null for the greatest size of unbounded sequence bounds",
+				give: choice.OfSequence(choice.MustSequenceBounds(byteK, unboundedSizes(t, 2))),
+				want: `{"kind":"sequence","k":256,"min_size":2,"max_size":null}`,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				got, err := json.Marshal(tt.give)
+				assert.NoError(t, err, "the bounds are JSON")
+				assert.Equal(t, string(got), tt.want, "the corpus form of the request")
+			})
+		}
+	})
 }
 
-// TestBoundsZeroAlloc checks that no operation of Bounds allocates, but
-// for a sequence's target and the coercion of a sequence that does not
-// fit.
-func TestBoundsZeroAlloc(t *testing.T) {
+// marshalAllocs are the allocations of MarshalJSON on integer bounds of
+// the whole signed range.
+const marshalAllocs = 15
+
+// TestBoundsAllocs checks that no operation of Bounds allocates, but
+// for a sequence's target, the coercion of a sequence that does not fit,
+// the text that String returns, and the JSON that MarshalJSON returns.
+func TestBoundsAllocs(t *testing.T) {
 	integerBounds := signedBounds(t, math.MinInt64, math.MaxInt64)
 	integer := choice.OfInteger(integerBounds)
 	recorded := choice.Choice{Kind: choice.Integer, Integer: choice.IntOf(-3)}
+	float := choice.OfFloat(floatBounds(t, -math.MaxFloat64, math.SmallestNonzeroFloat64, choice.AdmitNaN,
+		choice.Width64))
+	sequence := choice.OfSequence(choice.MustSequenceBounds(math.MaxUint32, sizes(t, 0, math.MaxInt64)))
+	assert.MaxAllocs(t, func() { _ = integer.String() }, 1, "String allocates the text of integer bounds")
+	assert.MaxAllocs(t, func() { _ = float.String() }, 1, "String allocates the text of float bounds with NaN")
+	assert.MaxAllocs(t, func() { _ = sequence.String() }, 1, "String allocates the text of sequence bounds")
 	assert.MaxAllocs(t, func() { _ = choice.OfInteger(integerBounds) }, 0, "OfInteger allocates nothing")
 	assert.MaxAllocs(t, func() { _ = choice.OfFloat(choice.FloatBounds{}) }, 0, "OfFloat allocates nothing")
 	assert.MaxAllocs(t, func() { _ = choice.OfSequence(choice.SequenceBounds{}) }, 0, "OfSequence allocates nothing")
@@ -245,6 +344,7 @@ func TestBoundsZeroAlloc(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = integer.Admits(recorded) }, 0, "Admits allocates nothing")
 	assert.MaxAllocs(t, func() { _ = integer.Coerce(recorded) }, 0, "Coerce of an integer allocates nothing")
 	assert.MaxAllocs(t, func() { _ = integer.Key(recorded) }, 0, "Key allocates nothing")
+	assert.MaxAllocs(t, func() { _, _ = integer.MarshalJSON() }, marshalAllocs, "MarshalJSON allocates its JSON")
 }
 
 // BenchmarkBounds measures the constructors and each operation of Bounds
@@ -362,5 +462,26 @@ func BenchmarkBounds(b *testing.B) {
 			got = bounds.Key(recorded)
 		}
 		assert.Equal(b, got.Compare(integerBounds.Key(choice.IntOf(-3))), 0, "the key of -3")
+	})
+
+	b.Run("String", func(b *testing.B) {
+		var got string
+		c := bench.Start(b).MaxAllocs(1)
+		defer c.End()
+		for c.Loop() {
+			got = bounds.String()
+		}
+		assert.Equal(b, got, "integer in [-9223372036854775808, 9223372036854775807]", "the text")
+	})
+
+	b.Run("MarshalJSON", func(b *testing.B) {
+		got, _ := bounds.MarshalJSON()
+		c := bench.Start(b).MaxAllocs(marshalAllocs)
+		defer c.End()
+		for c.Loop() {
+			got, _ = bounds.MarshalJSON()
+		}
+		assert.Equal(b, string(got), `{"kind":"integer","min":"-9223372036854775808","max":"9223372036854775807"}`,
+			"the corpus form")
 	})
 }

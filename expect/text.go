@@ -11,6 +11,10 @@ import (
 // HasPrefix records a failure when got does not start with prefix.
 //
 // got is a string, a []byte, or any type defined over either.
+//
+// # Allocation contract
+//
+// A passing call on a string allocates nothing.
 func HasPrefix(tb assert.TB, got any, prefix, msg string) {
 	tb.Helper()
 	matcher.HasPrefix(tb, matcher.Soft, got, prefix, msg)
@@ -18,6 +22,10 @@ func HasPrefix(tb assert.TB, got any, prefix, msg string) {
 
 // HasSuffix records a failure when got does not end with suffix. See
 // [HasPrefix] for the types it reads.
+//
+// # Allocation contract
+//
+// A passing call on a string allocates nothing.
 func HasSuffix(tb assert.TB, got any, suffix, msg string) {
 	tb.Helper()
 	matcher.HasSuffix(tb, matcher.Soft, got, suffix, msg)
@@ -37,6 +45,11 @@ func HasSuffix(tb assert.TB, got any, suffix, msg string) {
 // subset, such as one with a backreference, a lookaround, a flag or \b,
 // fails like any other assertion and does not panic, because a test with
 // such a pattern has established nothing.
+//
+// # Allocation contract
+//
+// Matches compiles pattern on every call: a passing call of a pattern of
+// a literal, a class and an anchor at each end allocates 62 times.
 func Matches(tb assert.TB, got any, pattern, msg string) {
 	tb.Helper()
 	matcher.Matches(tb, matcher.Soft, got, pattern, msg)

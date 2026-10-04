@@ -13,8 +13,12 @@ import (
 // It counts the elements of an array, slice or channel, the entries of a
 // map, and the Unicode scalar values of a string, so "é" has one. A
 // []byte is a slice, so its length is its bytes. A byte of a string that
-// is not UTF-8 counts as one. Anything else has no length, and passing
-// one is itself the failure, with got nil, rather than a panic.
+// is not UTF-8 counts as one. Anything else has no length, and Length
+// fails for it with got nil.
+//
+// # Allocation contract
+//
+// A passing call on a slice allocates nothing.
 func Length(seat Seat, mode Mode, got any, want int, msg string) {
 	seat.Helper()
 
@@ -25,12 +29,18 @@ func Length(seat Seat, mode Mode, got any, want int, msg string) {
 	}
 	if n != want {
 		Fail(seat, mode, "length", msg, map[string]any{"want": want, "got": n})
+		return
 	}
+	Pass(seat, mode, "length", msg)
 }
 
 // Empty reports when got has any item. See [Length] for the types that
 // have a length. A value without one, nil included, is no container, and
 // fails with length nil.
+//
+// # Allocation contract
+//
+// A passing call on a slice allocates nothing.
 func Empty(seat Seat, mode Mode, got any, msg string) {
 	seat.Helper()
 
@@ -41,12 +51,18 @@ func Empty(seat Seat, mode Mode, got any, msg string) {
 	}
 	if n != 0 {
 		Fail(seat, mode, "empty", msg, map[string]any{"length": n})
+		return
 	}
+	Pass(seat, mode, "empty", msg)
 }
 
 // NotEmpty reports when got has no item. See [Length] for the types that
 // have a length. A value without one, nil included, is no container, and
 // fails.
+//
+// # Allocation contract
+//
+// A passing call on a slice allocates nothing.
 func NotEmpty(seat Seat, mode Mode, got any, msg string) {
 	seat.Helper()
 
@@ -57,7 +73,9 @@ func NotEmpty(seat Seat, mode Mode, got any, msg string) {
 	}
 	if n == 0 {
 		Fail(seat, mode, "not-empty", msg, nil)
+		return
 	}
+	Pass(seat, mode, "not-empty", msg)
 }
 
 // lengthOf reads the length of anything that has one: the elements of an

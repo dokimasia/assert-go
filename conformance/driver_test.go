@@ -65,4 +65,21 @@ func TestDriver(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("SubjectDrivers", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("drives one set of assertions on both surfaces", func(t *testing.T) {
+			t.Parallel()
+			checks, expects := conformance.SubjectDrivers["check"], conformance.SubjectDrivers["expect"]
+			if len(checks) == 0 || len(checks) != len(expects) {
+				t.Fatalf("the surfaces drive %d and %d assertions, want one set", len(checks), len(expects))
+			}
+			for id := range checks {
+				if _, ok := expects[id]; !ok {
+					t.Fatalf("the recording surface drives no %s", id)
+				}
+			}
+		})
+	})
 }

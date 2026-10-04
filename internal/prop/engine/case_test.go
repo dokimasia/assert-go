@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -44,26 +43,26 @@ const (
 	// body calls Context: the case's own three, and the context with its
 	// cancel function.
 	contextCaseAllocs = 5
+	// countedCaseAllocs are the allocations of a whole replayed case whose
+	// body counts one value: the case's own three, the owner, the case's
+	// map of counts with its storage, the owner's stack, and the function
+	// that ends the count.
+	countedCaseAllocs = 8
 )
+
+// owner is the owner of a count of a test body. Its field gives it a size,
+// so two owners have two addresses.
+type owner struct {
+	_ byte
+}
 
 // wideMax is the upper bound of wideRange, which a random case of the
 // reference seed draws in none of its first cases.
 const wideMax = 1 << 40
 
-// The bounds of the choices that a test body makes on the case itself.
-var (
-	// digitRange are the bounds [0, 9].
-	digitRange = choice.MustIntegerBounds(choice.Int{}, choice.UintOf(9))
-	// wideRange are the bounds [0, wideMax].
-	wideRange = choice.MustIntegerBounds(choice.Int{}, choice.UintOf(wideMax))
-)
-
-// reported is the record that a test body reports, as an assertion would.
-var reported = assert.Failure{
-	Assertion: "equal",
-	Contract:  "the totals match",
-	Where:     assert.Where{File: "ledger_test.go", Line: 12},
-}
+// wideRange are the bounds [0, wideMax] of a choice that a test body makes
+// on the case itself.
+var wideRange = choice.MustIntegerBounds(choice.Int{}, choice.UintOf(wideMax))
 
 // TestCase checks the case as the TB of a body's assertions: how each kind
 // of failure ends it, and what it records.
@@ -598,7 +597,7 @@ func TestCase(t *testing.T) {
 		t.Run("returns the upper bound on the edge case at the maximum", func(t *testing.T) {
 			t.Parallel()
 			got := failingAt(func(c *engine.Case) uint64 { return c.Integer(wideRange).Magnitude() }, wideMax)
-			assert.Equal(t, got.Outcome, engine.Counterexample, "a case reaches the maximum")
+			assert.Equal(t, got.Outcome, engine.Counterexample, "a case fails at the maximum")
 			assert.Equal(t, got.Cases, 3, "the simplest case and random cases 0 and 1, as the definition pins")
 		})
 	})
@@ -617,8 +616,100 @@ func TestCase(t *testing.T) {
 		t.Run("returns its edge on the first edge case", func(t *testing.T) {
 			t.Parallel()
 			got := failingAt(func(c *engine.Case) uint64 { return c.Structure(wideRange, 123).Magnitude() }, 123)
-			assert.Equal(t, got.Outcome, engine.Counterexample, "a case reaches the edge")
+			assert.Equal(t, got.Outcome, engine.Counterexample, "a case fails at the edge")
 			assert.Equal(t, got.Cases, 2, "the simplest case and random case 0, as the definition pins")
+		})
+	})
+
+	t.Run("Reusable", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns a replayed choice inside its bounds", func(t *testing.T) {
+			t.Parallel()
+			var got uint64
+			e := engine.Replay(func(c *engine.Case) { got = c.Reusable(digitRange).Magnitude() }, integers(4), nil)
+			assert.Equal(t, got, uint64(4), "the value")
+			assert.True(t, sameChoices(e.Case.Choices(), integers(4)), "the recorded choice")
+		})
+
+		t.Run("returns an earlier value of the case in some random cases", func(t *testing.T) {
+			t.Parallel()
+			repeats := 0
+			for index := range uint64(100) {
+				var first, second choice.Int
+				engine.Generate(func(c *engine.Case) {
+					first, second = c.Reusable(wideRange), c.Reusable(wideRange)
+				}, 7, index, nil)
+				if first == second {
+					repeats++
+				}
+			}
+			assert.True(t, repeats >= 25, "at least one case in four repeats the earlier value")
+		})
+	})
+
+	t.Run("Coin", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			give []choice.Choice
+			want bool
+		}{
+			{name: "reports true for a replayed 1", give: integers(1), want: true},
+			{name: "reports false for a replayed 0", give: integers(0), want: false},
+			{name: "reports false for the target", want: false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				var got bool
+				engine.Replay(func(c *engine.Case) { got = c.Coin(1, 4) }, tt.give, nil)
+				assert.Equal(t, got, tt.want, "the coin")
+			})
+		}
+
+		t.Run("reports true in about one random case in four of odds 1 in 4", func(t *testing.T) {
+			t.Parallel()
+			heads := 0
+			for index := range uint64(4000) {
+				var got bool
+				engine.Generate(func(c *engine.Case) { got = c.Coin(1, 4) }, 3, index, nil)
+				if got {
+					heads++
+				}
+			}
+			assert.InRange(t, float64(heads)/4000, 0.22, 0.28, "about a quarter")
+		})
+	})
+
+	t.Run("Count", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns 0 for an owner without a value in progress", func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, leaked().Count(&owner{}), 0, "no count")
+		})
+
+		t.Run("returns the count of the innermost value in progress", func(t *testing.T) {
+			t.Parallel()
+			var outer, inner, after []int
+			o := &owner{}
+			engine.Replay(func(c *engine.Case) {
+				end := c.Enter(o)
+				c.Add(o)
+				outer = append(outer, c.Count(o))
+				endInner := c.Enter(o)
+				c.Add(o)
+				c.Add(o)
+				inner = append(inner, c.Count(o))
+				endInner()
+				after = append(after, c.Count(o))
+				end()
+				after = append(after, c.Count(o))
+			}, nil, nil)
+			assert.Equal(t, [3][]int{outer, inner, after}, [3][]int{{1}, {2}, {1, 0}},
+				"each value counts apart, and an ended one leaves the one around it")
 		})
 	})
 
@@ -655,10 +746,10 @@ func TestCase(t *testing.T) {
 	})
 }
 
-// TestCaseZeroAlloc checks the allocation ceilings of the case's methods.
+// TestCaseAllocs checks the allocation ceilings of the case's methods.
 // A method that ends the calling goroutine, and a value that adds a choice,
 // are measured on a whole replayed case.
-func TestCaseZeroAlloc(t *testing.T) {
+func TestCaseAllocs(t *testing.T) {
 	c := leaked()
 	stop := func(c *engine.Case) { c.Fatalf("stop") }
 	value := func(c *engine.Case) { c.Rand().Uint64() }
@@ -685,10 +776,24 @@ func TestCaseZeroAlloc(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = c.Fingerprints() }, copyAllocs, "Fingerprints allocates its copy")
 	assert.MaxAllocs(t, func() { _ = c.Failures() }, copyAllocs, "Failures allocates its copy")
 	integer := func(c *engine.Case) { c.Integer(digitRange) }
+	reusable := func(c *engine.Case) { c.Reusable(digitRange) }
+	coin := func(c *engine.Case) { c.Coin(1, 4) }
 	structure := func(c *engine.Case) { c.Structure(digitRange, 0) }
 	spanned := func(c *engine.Case) { c.Span("outer", func() { c.Integer(digitRange) }) }
+	counted := func(c *engine.Case) {
+		o := &owner{}
+		defer c.Enter(o)()
+		c.Add(o)
+		c.Count(o)
+	}
 	assert.MaxAllocs(t, func() { engine.Replay(integer, nil, nil) }, valueCaseAllocs,
 		"a case that makes a value choice")
+	assert.MaxAllocs(t, func() { engine.Replay(reusable, nil, nil) }, valueCaseAllocs,
+		"a case that makes a reusable value choice")
+	assert.MaxAllocs(t, func() { engine.Replay(coin, nil, nil) }, valueCaseAllocs, "a case that tosses a coin")
+	assert.MaxAllocs(t, func() { _ = c.Count(c) }, 0, "Count allocates nothing")
+	assert.MaxAllocs(t, func() { engine.Replay(counted, nil, nil) }, countedCaseAllocs,
+		"a case that counts a value")
 	assert.MaxAllocs(t, func() { engine.Replay(structure, nil, nil) }, valueCaseAllocs,
 		"a case that makes a structure choice")
 	assert.MaxAllocs(t, func() { engine.Replay(spanned, nil, nil) }, spanCaseAllocs,
@@ -922,6 +1027,55 @@ func BenchmarkCase(b *testing.B) {
 		assert.Length(b, got.Case.Choices(), 1, "one choice")
 	})
 
+	b.Run("Reusable", func(b *testing.B) {
+		var got engine.Execution
+		reusable := func(c *engine.Case) { c.Reusable(digitRange) }
+		c := bench.Start(b).MaxAllocs(valueCaseAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Replay(reusable, nil, nil)
+		}
+		assert.Length(b, got.Case.Choices(), 1, "one choice")
+	})
+
+	b.Run("Coin", func(b *testing.B) {
+		var got engine.Execution
+		coin := func(c *engine.Case) { c.Coin(1, 4) }
+		c := bench.Start(b).MaxAllocs(valueCaseAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Replay(coin, nil, nil)
+		}
+		assert.Length(b, got.Case.Choices(), 1, "one choice")
+	})
+
+	b.Run("Count", func(b *testing.B) {
+		var got int
+		cs := leaked()
+		c := bench.Start(b).MaxAllocs(0)
+		defer c.End()
+		for c.Loop() {
+			got = cs.Count(cs)
+		}
+		assert.Equal(b, got, 0, "no value in progress")
+	})
+
+	b.Run("Enter", func(b *testing.B) {
+		var got int
+		counted := func(c *engine.Case) {
+			o := &owner{}
+			defer c.Enter(o)()
+			c.Add(o)
+			got = c.Count(o)
+		}
+		c := bench.Start(b).MaxAllocs(countedCaseAllocs)
+		defer c.End()
+		for c.Loop() {
+			engine.Replay(counted, nil, nil)
+		}
+		assert.Equal(b, got, 1, "one counted")
+	})
+
 	b.Run("Structure", func(b *testing.B) {
 		var got engine.Execution
 		structure := func(c *engine.Case) { c.Structure(digitRange, 0) }
@@ -973,12 +1127,4 @@ func failingAt(choose func(*engine.Case) uint64, value uint64) engine.Result {
 			c.Report(reported, false)
 		}
 	}, s)
-}
-
-// site stores the file and the line of its caller in at and returns the
-// line, so a call inside another call's arguments states where that call
-// is.
-func site(at *assert.Where) int {
-	_, at.File, at.Line, _ = runtime.Caller(1)
-	return at.Line
 }

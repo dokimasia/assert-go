@@ -10,18 +10,20 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
+	"go.dokimi.dev/assert/internal/alloctest"
 	"go.dokimi.dev/assert/internal/matcher"
+	"go.dokimi.dev/assert/internal/matchertest"
 )
 
 // This package consumes the library, so its tests use the library's own
 // assertions.
 
-// iterations is the number of iterations the stand-in runs. At 100
+// iterations is the number of iterations the fake benchmark runs. At 100
 // iterations the p99 is a different sample from the slowest one.
 const iterations = 100
 
-// run drives a contract over body and returns the benchmark stand-in,
-// which records what the contract reported.
+// run drives a contract over body and returns the fake benchmark, which
+// records what the contract reported.
 func run(iterations int, state func(*bench.Contract) *bench.Contract, body func()) *benchSeat {
 	seat := newBenchSeat(iterations)
 
@@ -37,6 +39,15 @@ func run(iterations int, state func(*bench.Contract) *bench.Contract, body func(
 // noop is a body that does nothing.
 func noop() {}
 
+// verdictOf returns the verdict of a ceiling that a body exceeds: fail in a
+// build that checks it, and pass in any other.
+func verdictOf(checked bool) string {
+	if checked {
+		return "fail"
+	}
+	return "pass"
+}
+
 // allocating returns a body that makes one 4,096-byte heap allocation per
 // call. The body appends each slice to a slice of its own, so the slice
 // escapes to the heap and parallel tests do not share a variable.
@@ -45,6 +56,48 @@ func allocating() func() {
 	return func() { kept = append(kept, make([]byte, 4096)) }
 }
 
+// endlessSeat is a fake benchmark whose Loop never ends and which writes no
+// call record, so a case calls the methods of a contract as often as a
+// measurement does.
+type endlessSeat struct {
+	matchertest.Seat
+}
+
+// Loop reports that another iteration runs.
+func (*endlessSeat) Loop() bool { return true }
+
+// ReportMetric discards the metric.
+func (*endlessSeat) ReportMetric(float64, string) {}
+
+// started keeps the contract that a case starts, so the compiler moves it
+// to the heap.
+var started *bench.Contract
+
+// contractCases returns a call of each function and method of a contract,
+// with its allocation ceiling, measured.
+func contractCases() []alloctest.Case {
+	b := &endlessSeat{}
+	stated := bench.Start(b)
+	running := bench.Start(b)
+	running.Loop()
+	ended := bench.Start(b)
+	for range iterations {
+		ended.Loop()
+	}
+	return []alloctest.Case{
+		{Name: "Start", Call: func(assert.TB) { started = bench.Start(b) }, Allocs: 1},
+		{Name: "MaxLatency", Call: func(assert.TB) { stated.MaxLatency(time.Second) }},
+		{Name: "MaxMean", Call: func(assert.TB) { stated.MaxMean(time.Second) }},
+		{Name: "MaxAllocs", Call: func(assert.TB) { stated.MaxAllocs(1) }},
+		{Name: "MaxBytes", Call: func(assert.TB) { stated.MaxBytes(1) }},
+		{Name: "Loop", Call: func(assert.TB) { running.Loop() }},
+		{Name: "Excluding", Call: func(assert.TB) { running.Excluding(noop) }},
+		{Name: "End", Call: func(assert.TB) { ended.End() }, Allocs: 1},
+	}
+}
+
+// TestContract checks the loop of a contract and the verdict of each ceiling
+// that it states.
 func TestContract(t *testing.T) {
 	t.Parallel()
 
@@ -66,7 +119,7 @@ func TestContract(t *testing.T) {
 	t.Run("End", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("reports nothing when no iteration ran", func(t *testing.T) {
+		t.Run("reports no verdict when no iteration ran", func(t *testing.T) {
 			t.Parallel()
 
 			seat := run(0, func(c *bench.Contract) *bench.Contract {
@@ -74,6 +127,7 @@ func TestContract(t *testing.T) {
 			}, noop)
 
 			assert.False(t, seat.Failed(), "a run of no iterations exceeds no ceiling")
+			assert.Length(t, seat.verdicts(t), 0, "a run of no iterations checks no ceiling")
 		})
 
 		t.Run("publishes a metric under every unit", func(t *testing.T) {
@@ -93,9 +147,10 @@ func TestContract(t *testing.T) {
 			seat := run(iterations, unconstrained, allocating())
 
 			assert.False(t, seat.Failed(), "a ceiling that was not stated is not checked")
+			assert.Length(t, seat.verdicts(t), 0, "a ceiling that was not stated states no verdict")
 		})
 
-		t.Run("reports nothing when every ceiling is met", func(t *testing.T) {
+		t.Run("passes each stated ceiling that the benchmark meets", func(t *testing.T) {
 			t.Parallel()
 
 			seat := run(10, func(c *bench.Contract) *bench.Contract {
@@ -103,6 +158,8 @@ func TestContract(t *testing.T) {
 			}, func() { time.Sleep(time.Millisecond) })
 
 			assert.False(t, seat.Failed(), "a body that sleeps for a millisecond meets ceilings of 50 milliseconds")
+			assert.Equal(t, seat.verdicts(t), []string{"bench-max-latency pass", "bench-max-mean pass"},
+				"each stated ceiling passes")
 		})
 
 		t.Run("reports a p99 latency above its ceiling", func(t *testing.T) {
@@ -112,9 +169,10 @@ func TestContract(t *testing.T) {
 				return c.MaxLatency(time.Nanosecond)
 			}, func() { time.Sleep(time.Millisecond) })
 
-			assert.True(t, seat.Failed(), "a body slower than its ceiling fails the benchmark")
-			assert.Contains(t, seat.First(), "p99",
-				"the failure names the ceiling that was exceeded")
+			records := seat.Records()
+			assert.Length(t, records, 1, "a body slower than its ceiling fails the benchmark")
+			assert.Equal(t, records[0].Contract, "the p99 latency per iteration is within its ceiling",
+				"the contract names the ceiling that was exceeded")
 		})
 
 		t.Run("reports a record of bench-max-latency in the test file that ends the contract", func(t *testing.T) {
@@ -143,6 +201,8 @@ func TestContract(t *testing.T) {
 
 			assert.Equal(t, seat.Failed(), matcher.AllocationsCounted(),
 				"a body that allocates exceeds a ceiling of zero allocations in a build that checks it")
+			assert.Equal(t, seat.verdicts(t), []string{"bench-max-allocs " + verdictOf(matcher.AllocationsCounted())},
+				"the ceiling fails in a build that checks it and passes in any other")
 			if matcher.AllocationsCounted() {
 				records := seat.Records()
 				assert.Equal(t, records[0].Assertion, "bench-max-allocs", "the record names the ceiling")
@@ -161,6 +221,8 @@ func TestContract(t *testing.T) {
 
 			assert.Equal(t, seat.Failed(), matcher.AllocationsCounted(),
 				"a body that allocates exceeds a ceiling of zero bytes in a build that checks it")
+			assert.Equal(t, seat.verdicts(t), []string{"bench-max-bytes " + verdictOf(matcher.AllocationsCounted())},
+				"the ceiling fails in a build that checks it and passes in any other")
 			if matcher.AllocationsCounted() {
 				records := seat.Records()
 				assert.Equal(t, records[0].Assertion, "bench-max-bytes", "the record names the ceiling")
@@ -263,14 +325,15 @@ func runExcluding(
 	return seat
 }
 
-// TestContractAllocs does not run in parallel. The allocation counter is
+// TestContractCounting checks how a contract counts the allocations of a
+// body. It does not run in parallel: the allocation counter is
 // process-wide, so an allocation by a parallel test would count against
 // the ceilings that these cases state.
 //
 // Each Excluding case that takes work out has a twin that runs the same
 // work in the body without Excluding. The twin fails, which proves that
 // the work counts unless Excluding takes it out.
-func TestContractAllocs(t *testing.T) {
+func TestContractCounting(t *testing.T) {
 	nothing := func(c *bench.Contract) *bench.Contract { return c.MaxAllocs(0).MaxBytes(0) }
 	tightAllocs := func(c *bench.Contract) *bench.Contract { return c.MaxAllocs(2) }
 
@@ -421,4 +484,17 @@ func TestContractAllocs(t *testing.T) {
 			assert.True(t, seat.Failed(), "iterations of a millisecond exceed a mean of 0.9 milliseconds")
 		})
 	})
+}
+
+// TestContractAllocs checks the allocation ceiling of each function and
+// method of a contract.
+func TestContractAllocs(t *testing.T) {
+	alloctest.Check(t, contractCases())
+}
+
+// BenchmarkContract measures each function and method of a contract.
+func BenchmarkContract(b *testing.B) {
+	for _, c := range contractCases() {
+		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
+	}
 }

@@ -4,17 +4,17 @@
 package expect_test
 
 import (
-	"strings"
 	"testing"
 
+	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/expect"
+	"go.dokimi.dev/assert/internal/alloctest"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
-// The chain is a third surface over the same comparisons, so it runs
-// the same suites the functions do. A method that drifted from its
-// function fails the shared case rather than passing a case of its
-// own.
+// TestAssertion runs the chain, a third surface over the same comparisons,
+// through the shared cases of the functions. A method that differs from its
+// function fails the shared case.
 func TestAssertion(t *testing.T) {
 	t.Parallel()
 
@@ -138,23 +138,13 @@ func TestAssertion(t *testing.T) {
 			})
 	})
 
-	// What follows belongs to the chain alone: the shared cases say
-	// what one assertion reports, and these say how several compose.
+	// The cases of That test the chain alone. The shared cases state what
+	// one assertion reports, and these state how the methods of one chain
+	// compose.
 	t.Run("That", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("marks the calling frame as a helper", func(t *testing.T) {
-			t.Parallel()
-
-			s := &matchertest.Seat{}
-			expect.That(s, 1)
-
-			if s.HelperCalls() == 0 {
-				t.Fatal("That did not mark its frame as a helper")
-			}
-		})
-
-		t.Run("a method returns the receiver so calls chain", func(t *testing.T) {
+		t.Run("returns the receiver from a method, so calls chain", func(t *testing.T) {
 			t.Parallel()
 
 			a := expect.That(&matchertest.Seat{}, 1)
@@ -163,24 +153,24 @@ func TestAssertion(t *testing.T) {
 			}
 		})
 
-		t.Run("the first failure is the one reported", func(t *testing.T) {
+		t.Run("reports the first failure first", func(t *testing.T) {
 			t.Parallel()
 
 			s := &matchertest.Seat{}
 			expect.That(s, 1).Equal(2, "first failure").Equal(3, "second failure")
 
-			if !strings.HasPrefix(s.First(), "first failure") {
-				t.Fatalf("First() = %q, want it to lead with the first failure", s.First())
+			if records := s.Records(); len(records) == 0 || records[0].Contract != "first failure" {
+				t.Fatalf("Records() = %+v, want the record of the first failure first", records)
 			}
 		})
 
-		t.Run("methods of different families mix in one chain", func(t *testing.T) {
+		t.Run("passes a chain of methods of different families", func(t *testing.T) {
 			t.Parallel()
 
 			s := &matchertest.Seat{}
 			expect.That(s, "store: missing").
-				HasPrefix("store: ", "carries the package").
-				Contains("missing", "says what happened").
+				HasPrefix("store: ", "starts with the package").
+				Contains("missing", "states what happened").
 				NotEqual("", "is not empty")
 
 			if s.Failed() {
@@ -188,7 +178,7 @@ func TestAssertion(t *testing.T) {
 			}
 		})
 
-		t.Run("an option reaches the method it is passed to", func(t *testing.T) {
+		t.Run("applies an option to the method that it is passed to", func(t *testing.T) {
 			t.Parallel()
 
 			s := &matchertest.Seat{}
@@ -200,4 +190,70 @@ func TestAssertion(t *testing.T) {
 			}
 		})
 	})
+}
+
+// chain keeps the chain that a call of That returns.
+var chain *expect.Assertion[int]
+
+// TestAssertionAllocs checks the allocation ceiling of That and of a
+// passing call of each method of a chain.
+func TestAssertionAllocs(t *testing.T) {
+	alloctest.Check(t, assertionCases())
+}
+
+// BenchmarkAssertion measures That and a passing call of each method of a
+// chain.
+func BenchmarkAssertion(b *testing.B) {
+	for _, c := range assertionCases() {
+		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
+	}
+}
+
+// assertionCases returns a call of That and a call of That with one
+// passing method of each kind, on the inputs of the functions' cases, with
+// its allocation ceiling, measured.
+func assertionCases() []alloctest.Case {
+	items, none := []int{1, 2, 3}, []int{}
+	needles := []string{"cart", "items"}
+	var absent *int
+	present := new(int)
+	reading := 1.05
+	return []alloctest.Case{
+		{Name: "That", Call: func(tb assert.TB) { chain = expect.That(tb, 7) }, Allocs: 1},
+		{Name: "Equal", Call: func(tb assert.TB) { expect.That(tb, 7).Equal(7, allocContract) }, Allocs: 24},
+		{Name: "NotEqual", Call: func(tb assert.TB) { expect.That(tb, 7).NotEqual(8, allocContract) }, Allocs: 24},
+		{Name: "Nil", Call: func(tb assert.TB) { expect.That(tb, absent).Nil(allocContract) }},
+		{Name: "NotNil", Call: func(tb assert.TB) { expect.That(tb, present).NotNil(allocContract) }},
+		{Name: "Length", Call: func(tb assert.TB) { expect.That(tb, items).Length(3, allocContract) }},
+		{Name: "Empty", Call: func(tb assert.TB) { expect.That(tb, none).Empty(allocContract) }},
+		{Name: "NotEmpty", Call: func(tb assert.TB) { expect.That(tb, items).NotEmpty(allocContract) }},
+		{Name: "Contains", Allocs: 1, Call: func(tb assert.TB) {
+			expect.That(tb, "a cart of three items").Contains("cart", allocContract)
+		}},
+		{Name: "NotContains", Allocs: 1, Call: func(tb assert.TB) {
+			expect.That(tb, "a cart of three items").NotContains("truck", allocContract)
+		}},
+		{Name: "ContainsInOrder", Allocs: 1, Call: func(tb assert.TB) {
+			expect.That(tb, "a cart of three items").ContainsInOrder(needles, allocContract)
+		}},
+		{Name: "HasPrefix", Allocs: 1, Call: func(tb assert.TB) {
+			expect.That(tb, "store: missing").HasPrefix("store: ", allocContract)
+		}},
+		{Name: "HasSuffix", Allocs: 1, Call: func(tb assert.TB) {
+			expect.That(tb, "store: missing").HasSuffix("missing", allocContract)
+		}},
+		{Name: "Matches", Allocs: 63, Call: func(tb assert.TB) {
+			expect.That(tb, "order 42").Matches(`^order \d+$`, allocContract)
+		}},
+		{
+			Name:   "CloseTo",
+			Call:   func(tb assert.TB) { expect.That(tb, reading).CloseTo(1, 0.1, allocContract) },
+			Allocs: 1,
+		},
+		{
+			Name:   "InRange",
+			Call:   func(tb assert.TB) { expect.That(tb, reading).InRange(0, 2, allocContract) },
+			Allocs: 1,
+		},
+	}
 }

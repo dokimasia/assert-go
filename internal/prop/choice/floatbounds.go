@@ -5,8 +5,9 @@ package choice
 
 import (
 	"errors"
-	"fmt"
 	"math"
+
+	"go.dokimi.dev/assert/internal/fault"
 )
 
 // ErrWidth reports a float width other than [Width32] and [Width64].
@@ -45,16 +46,16 @@ type FloatBounds struct {
 // [ErrNotOfWidth] when a bound is not a value of width w.
 func NewFloatBounds(lo, hi float64, nan NaNPolicy, w Width) (FloatBounds, error) {
 	if !w.Valid() {
-		return FloatBounds{}, fmt.Errorf("%w: %d", ErrWidth, uint8(w))
+		return FloatBounds{}, fault.Of(ErrWidth, "the width %d is neither 32 nor 64", uint8(w))
 	}
 	if !nan.Valid() {
-		return FloatBounds{}, fmt.Errorf("%w: %d", ErrNaNPolicy, uint8(nan))
+		return FloatBounds{}, fault.Of(ErrNaNPolicy, "the NaN policy %d neither excludes nor admits NaN", uint8(nan))
 	}
 	if math.IsNaN(lo) || math.IsNaN(hi) || lo > hi {
-		return FloatBounds{}, fmt.Errorf("%w: float bounds [%v, %v]", ErrEmpty, lo, hi)
+		return FloatBounds{}, fault.Of(ErrEmpty, "the float bounds [%v, %v] admit no value", lo, hi)
 	}
 	if !Representable(lo, w) || !Representable(hi, w) {
-		return FloatBounds{}, fmt.Errorf("%w: [%v, %v] at width %s", ErrNotOfWidth, lo, hi, w)
+		return FloatBounds{}, fault.Of(ErrNotOfWidth, "the bounds [%v, %v] are no values of width %s", lo, hi, w)
 	}
 	return FloatBounds{lo: lo, hi: hi, target: simplest(lo, hi), nan: nan, width: w}, nil
 }

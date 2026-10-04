@@ -22,9 +22,9 @@ type Clock interface {
 
 // Clocked is a [Seat] that supplies a clock.
 //
-// [testing.TB] declares three methods and can never declare a fourth, so
-// a seat supplies a clock through this second interface. An assertion
-// reads [System] when its seat does not satisfy Clocked.
+// A seat supplies a clock through this second interface, so [Seat] keeps
+// the three methods that [testing.T] and [testing.B] implement. An
+// assertion reads [System] when its seat does not satisfy Clocked.
 type Clocked interface {
 	Clock() Clock
 }
@@ -34,13 +34,26 @@ type Clocked interface {
 type System struct{}
 
 // Now returns the runtime's current instant.
+//
+// # Allocation contract
+//
+// Now allocates nothing.
 func (System) Now() time.Time { return time.Now() }
 
 // Sleep blocks for d against the runtime clock.
+//
+// # Allocation contract
+//
+// Sleep allocates nothing.
 func (System) Sleep(d time.Duration) { time.Sleep(d) }
 
 // ClockOf returns the clock that seat supplies, or [System] when it
 // supplies none.
+//
+// # Allocation contract
+//
+// ClockOf allocates nothing besides what the Clock method of seat
+// allocates.
 func ClockOf(seat Seat) Clock {
 	if c, ok := seat.(Clocked); ok {
 		if supplied := c.Clock(); supplied != nil {
@@ -66,6 +79,11 @@ type Controlled struct {
 }
 
 // NewControlled returns a clock that reads start until it is advanced.
+//
+// # Allocation contract
+//
+// NewControlled allocates twice: the clock and the condition that wakes
+// its sleepers.
 func NewControlled(start time.Time) *Controlled {
 	c := &Controlled{instant: start}
 	c.woke = sync.NewCond(&c.mu)
@@ -73,6 +91,10 @@ func NewControlled(start time.Time) *Controlled {
 }
 
 // Now returns the instant that this clock was last advanced to.
+//
+// # Allocation contract
+//
+// Now allocates nothing.
 func (c *Controlled) Now() time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -81,6 +103,10 @@ func (c *Controlled) Now() time.Time {
 
 // Advance moves the clock forward by d, or by nothing when d is not
 // positive, and wakes every sleeper.
+//
+// # Allocation contract
+//
+// Advance allocates nothing.
 func (c *Controlled) Advance(d time.Duration) {
 	c.mu.Lock()
 	c.instant = c.instant.Add(max(d, 0))
@@ -98,6 +124,10 @@ func (c *Controlled) Advance(d time.Duration) {
 // caller that races Sleep against Advance on two goroutines cannot tell
 // which instant Sleep measured from. An assertion that retries advances
 // the clock itself, on its own goroutine, and does not race.
+//
+// # Allocation contract
+//
+// Sleep allocates nothing.
 func (c *Controlled) Sleep(d time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

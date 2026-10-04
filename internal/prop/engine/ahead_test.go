@@ -16,26 +16,6 @@ import (
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
 
-// fourWorkers is the number of workers of the runs that a test compares
-// with a run on one worker.
-const fourWorkers = 4
-
-// runReport is what a run reports, without the cases it ran: how it ended
-// with its counts, its minimal case's token, the runs that shrinking and
-// explaining spent, the explanation, and the other failures.
-type runReport struct {
-	// summary is how the run ended, with its counts.
-	summary engine.Result
-	// token is the token of the minimal case.
-	token string
-	// runs are the runs that shrinking and explaining spent.
-	runs int
-	// explanation explains each draw of the minimal case.
-	explanation []engine.Explained
-	// others are the other failures.
-	others []other
-}
-
 // concurrency counts the cases that run at once, and the most that did.
 type concurrency struct {
 	// mu guards the fields below.
@@ -206,6 +186,10 @@ func TestAhead(t *testing.T) {
 				four.Workers = fourWorkers
 				assert.Equal(t, reportOf(engine.Run(tt.body, four)), reportOf(engine.Run(tt.body, one)),
 					"what four workers report, against one")
+				body := ended(tt.body)
+				assert.Equal(t, recordedRun(t, four, func(s engine.Settings) { engine.Run(body, s) }),
+					recordedRun(t, one, func(s engine.Settings) { engine.Run(body, s) }),
+					"the calls that four workers record, against one")
 			})
 		}
 
@@ -308,11 +292,6 @@ func TestAhead(t *testing.T) {
 			})
 		})
 	})
-}
-
-// reportOf returns what r reports, without the cases it ran.
-func reportOf(r engine.Result) runReport {
-	return runReport{summary: summary(r), token: r.Token, runs: r.Runs, explanation: r.Explanation, others: others(r)}
 }
 
 // raise sets v to n when n is larger.

@@ -9,6 +9,7 @@ import (
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/random"
 	"go.dokimi.dev/assert/internal/prop/tree"
+	"go.dokimi.dev/assert/internal/record"
 )
 
 // flight is one case that a worker of a run on more than one worker runs.
@@ -25,10 +26,15 @@ type flight struct {
 
 // newFlight returns a case whose values come from p, not yet started. The
 // case keeps its walk, which the runner enters into the case tree once the
-// case has ended.
+// case has ended. Each call record that the case keeps states the steps
+// that its walk had made, so the runner keeps only the calls that a run on
+// one worker makes.
 func newFlight(p provider, s Settings) *flight {
-	c := newCase(p, s.MaxChoices, nil, s.Clock)
+	c := newCase(p, s, nil)
 	c.keepsWalk = true
+	if s.Slot != nil {
+		record.Run(&c.calls, s.Slot, c.steps)
+	}
 	return &flight{c: c, done: make(chan struct{})}
 }
 
@@ -94,9 +100,9 @@ func (a *ahead) replay(choices []choice.Choice) Execution {
 	return e
 }
 
-// random takes random case index and enters it into the tree. A case that
-// the tree ends as repeated returns its record and its source as they stood
-// at the repeat, where a run on one worker stops it.
+// random takes random case index and enters it into the tree. For a case
+// that the tree ends as repeated, it returns the record and the source of
+// the case at the step of the repeat, where a run on one worker stops it.
 func (a *ahead) random(index uint64) (Execution, []choice.Choice, random.Source) {
 	f := a.take(randomPosition(index))
 	e, steps := entered(a.tree, f.e)
@@ -152,10 +158,10 @@ func (a *ahead) work() {
 	}
 }
 
-// claim returns the next case for a worker, with a.mu held: a replayed
-// case first, and otherwise the next case ahead while it is at most Workers
-// positions past the runner. It waits while there is none, and returns nil
-// once the run has closed.
+// claim returns the next case for a worker. The caller has locked a.mu.
+// claim returns a replayed case first, and otherwise the next case ahead
+// while it is at most Workers positions past the runner. It waits while
+// there is none, and returns nil once the run has closed.
 func (a *ahead) claim() *flight {
 	for !a.closed {
 		if len(a.replays) > 0 {
@@ -173,8 +179,8 @@ func (a *ahead) claim() *flight {
 	return nil
 }
 
-// flightAt returns the case at position, with a.mu held, and makes it when
-// neither the runner nor a worker has yet.
+// flightAt returns the case at position, and makes it when neither the
+// runner nor a worker has made it yet. The caller has locked a.mu.
 func (a *ahead) flightAt(position int) *flight {
 	if f, ok := a.flights[position]; ok {
 		return f

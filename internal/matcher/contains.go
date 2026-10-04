@@ -15,34 +15,49 @@ import (
 // What containing means depends on the haystack. Text contains text as
 // a substring. A slice or array contains an element that equals needle
 // as [Equal] compares under opts, so an int does not match a float. A
-// map contains needle as a key of the map's key type. Anything else
-// cannot be asked, and asking is itself the failure.
+// map contains needle as a key of the map's key type. A haystack of any
+// other type fails the assertion.
+//
+// # Allocation contract
+//
+// A passing call on text allocates nothing. A call on a slice or an array
+// compares its elements as [Equal] does: 76 allocations for a slice of
+// three ints whose last element is needle.
 func Contains(seat Seat, mode Mode, haystack, needle any, msg string, opts ...Option) {
 	seat.Helper()
 
-	found, supported := holds(haystack, needle, opts...)
+	found, supported := contained(haystack, needle, opts...)
 	if !supported {
 		Fail(seat, mode, "contains", msg, map[string]any{"haystack": haystack, "needle": needle})
 		return
 	}
 	if !found {
 		Fail(seat, mode, "contains", msg, map[string]any{"haystack": haystack, "needle": needle})
+		return
 	}
+	Pass(seat, mode, "contains", msg)
 }
 
 // NotContains reports when haystack contains needle. See [Contains] for
 // what containing means.
+//
+// # Allocation contract
+//
+// A passing call on text allocates nothing. A call on a slice or an array
+// compares its elements as [Contains] does.
 func NotContains(seat Seat, mode Mode, haystack, needle any, msg string, opts ...Option) {
 	seat.Helper()
 
-	found, supported := holds(haystack, needle, opts...)
+	found, supported := contained(haystack, needle, opts...)
 	if !supported {
 		Fail(seat, mode, "not-contains", msg, map[string]any{"haystack": haystack, "needle": needle})
 		return
 	}
 	if found {
 		Fail(seat, mode, "not-contains", msg, map[string]any{"haystack": haystack, "needle": needle})
+		return
 	}
+	Pass(seat, mode, "not-contains", msg)
 }
 
 // ContainsInOrder reports when haystack does not contain every needle
@@ -52,9 +67,13 @@ func NotContains(seat Seat, mode Mode, haystack, needle any, msg string, opts ..
 // a stated order catches a formatter that reorders them, which
 // checking for each field separately does not.
 //
-// The failure names the first needle not found and its index in
-// needles, so a reader sees which needle broke the order. An empty
-// needle list passes.
+// The failure states the first needle not found and its index in
+// needles. An empty needle list passes.
+//
+// # Allocation contract
+//
+// A passing call on a string allocates nothing. A call on a []byte
+// allocates twice: the bytes in the interface of haystack, and their text.
 func ContainsInOrder(seat Seat, mode Mode, haystack any, needles []string, msg string) {
 	seat.Helper()
 
@@ -75,6 +94,7 @@ func ContainsInOrder(seat Seat, mode Mode, haystack any, needles []string, msg s
 		}
 		cursor += at + len(needle)
 	}
+	Pass(seat, mode, "contains-in-order", msg)
 }
 
 // Permutation reports when got and want do not contain the same elements,
@@ -85,12 +105,19 @@ func ContainsInOrder(seat Seat, mode Mode, haystack any, needles []string, msg s
 // len(got)·len(want) comparisons. Two empty slices compare as Equal
 // compares them, so a nil slice does not match an empty one unless opts
 // equate them.
+//
+// # Allocation contract
+//
+// A passing call on two slices of three ints allocates 120 times, in the
+// comparisons of their elements.
 func Permutation[T any](seat Seat, mode Mode, got, want []T, msg string, opts ...Option) {
 	seat.Helper()
 
 	if !permuted(got, want, opts) {
 		Fail(seat, mode, "permutation", msg, map[string]any{"want": want, "got": got})
+		return
 	}
+	Pass(seat, mode, "permutation", msg)
 }
 
 // permuted reports whether got and want contain the same elements, each as
@@ -122,13 +149,13 @@ func permuted[T any](got, want []T, opts []Option) bool {
 	return true
 }
 
-// holds reports whether haystack contains needle, and whether the
+// contained reports whether haystack contains needle, and whether the
 // question applies to haystack's type at all.
 //
 // Text contains text as a substring. A slice or array contains an
 // element that is equal under opts. A map contains a key. A nil haystack
 // has the kind [reflect.Invalid], and the question does not apply to it.
-func holds(haystack, needle any, opts ...Option) (found, supported bool) {
+func contained(haystack, needle any, opts ...Option) (found, supported bool) {
 	if text, ok := textOf(haystack); ok {
 		sub, ok := textOf(needle)
 		if !ok {

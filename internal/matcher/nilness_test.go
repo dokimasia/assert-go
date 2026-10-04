@@ -10,6 +10,7 @@ import (
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
+// TestNilness runs the shared cases of Nil and NotNil.
 func TestNilness(t *testing.T) {
 	t.Parallel()
 
@@ -28,4 +29,26 @@ func TestNilness(t *testing.T) {
 				matcher.NotNil(s, matcher.Fatal, got, msg)
 			})
 	})
+}
+
+// TestNilnessAllocs checks the allocation ceiling of a passing call of Nil
+// and of NotNil.
+func TestNilnessAllocs(t *testing.T) {
+	checkAllocs(t, nilnessCases())
+}
+
+// BenchmarkNilness measures a passing call of Nil and of NotNil.
+func BenchmarkNilness(b *testing.B) {
+	benchAllocs(b, nilnessCases())
+}
+
+// nilnessCases returns a passing call of Nil on a nil pointer and of NotNil
+// on a pointer, with its allocation ceiling, measured.
+func nilnessCases() []allocCase {
+	var absent *int
+	present := new(int)
+	return []allocCase{
+		{name: "Nil", call: func(seat matcher.Seat) { matcher.Nil(seat, matcher.Fatal, absent, allocContract) }},
+		{name: "NotNil", call: func(seat matcher.Seat) { matcher.NotNil(seat, matcher.Fatal, present, allocContract) }},
+	}
 }

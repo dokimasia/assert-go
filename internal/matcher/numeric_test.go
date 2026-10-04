@@ -10,6 +10,7 @@ import (
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
+// TestNumeric runs the shared cases of the numeric assertions.
 func TestNumeric(t *testing.T) {
 	t.Parallel()
 
@@ -28,4 +29,29 @@ func TestNumeric(t *testing.T) {
 				matcher.InRange(s, matcher.Fatal, got, low.(float64), high.(float64), msg)
 			})
 	})
+}
+
+// TestNumericAllocs checks the allocation ceiling of a passing call of
+// each numeric assertion.
+func TestNumericAllocs(t *testing.T) {
+	checkAllocs(t, numericCases())
+}
+
+// BenchmarkNumeric measures a passing call of each numeric assertion.
+func BenchmarkNumeric(b *testing.B) {
+	benchAllocs(b, numericCases())
+}
+
+// numericCases returns a passing call of each numeric assertion on a
+// float64, with its allocation ceiling, measured.
+func numericCases() []allocCase {
+	reading := 1.05
+	return []allocCase{
+		{name: "CloseTo", call: func(seat matcher.Seat) {
+			matcher.CloseTo(seat, matcher.Fatal, reading, 1, 0.1, allocContract)
+		}},
+		{name: "InRange", call: func(seat matcher.Seat) {
+			matcher.InRange(seat, matcher.Fatal, reading, 0, 2, allocContract)
+		}},
+	}
 }

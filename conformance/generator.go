@@ -5,10 +5,11 @@ package conformance
 
 import (
 	"encoding/json"
-	"fmt"
 	"math"
 	"time"
 
+	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/literal"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/internal/prop/matching"
@@ -96,15 +97,17 @@ type generatorSpec struct {
 // generators: int64 or uint64 for an integer, time.Duration, float32 or
 // float64, bool, string, []byte, []any for a list and a permutation,
 // map[any]any for a dict, nil for an absent optional, and the decoded
-// literals of just and sampled-from.
+// literals of just and sampled-from. Each generator runs backwards from
+// the value that a typed literal of one of its values decodes to.
 //
-// It returns an error for a spec that names no generator of the
-// vocabulary or misstates a parameter, and for arguments that state no
-// domain, for which the engine's constructors panic.
+// It returns a fault for a spec that names no generator of the vocabulary
+// or misstates a parameter, whose path leads through the spec to the part
+// at fault. It returns one for arguments that state no domain, for which
+// the engine's constructors panic, with the panic's value as its cause.
 func generatorOf(raw json.RawMessage) (g engine.Generator[any], err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("conformance: %s states no domain: %v", raw, r)
+			err = fault.New("the generator states no domain").Because(fault.New("%v", r))
 		}
 	}()
 	return build(raw, nil)
@@ -115,7 +118,7 @@ func generatorOf(raw json.RawMessage) (g engine.Generator[any], err error) {
 func build(raw json.RawMessage, self *engine.Generator[any]) (engine.Generator[any], error) {
 	var spec generatorSpec
 	if err := json.Unmarshal(raw, &spec); err != nil {
-		return engine.Generator[any]{}, fmt.Errorf("conformance: parse generator: %w", err)
+		return engine.Generator[any]{}, fault.New("the generator does not parse").Because(err)
 	}
 	switch spec.Gen {
 	case integerGen:
@@ -138,17 +141,14 @@ func build(raw json.RawMessage, self *engine.Generator[any]) (engine.Generator[a
 		return recursiveOf(spec)
 	case selfGen:
 		if self == nil {
-			return engine.Generator[any]{}, fmt.Errorf("conformance: %s is outside a recursive extension", selfGen)
+			return engine.Generator[any]{}, fault.At(
+				fault.New("self is outside a recursive extension"),
+				fault.Field(genMember),
+			)
 		}
 		return *self, nil
 	}
-	return engine.Generator[any]{}, fmt.Errorf("conformance: %q names no generator", spec.Gen)
-}
-
-// erased returns g as a generator of any, which makes g's choices and adds
-// no span.
-func erased[T any](g engine.Generator[T]) engine.Generator[any] {
-	return g.Map(func(v T) any { return v })
+	return engine.Generator[any]{}, fault.At(fault.New("%q names no generator", spec.Gen), fault.Field(genMember))
 }
 
 // integerOf returns the integer generator of spec: over int64 for bounds
@@ -161,15 +161,15 @@ func integerOf(spec generatorSpec) (engine.Generator[any], error) {
 	}
 	if low, ok := lo.Int64(); ok {
 		if high, ok := hi.Int64(); ok {
-			return erased(engine.Integer(low, high)), nil
+			return engine.Erase(engine.Integer(low, high)), nil
 		}
 	}
 	low, lok := lo.Uint64()
 	high, hok := hi.Uint64()
 	if !lok || !hok {
-		return engine.Generator[any]{}, fmt.Errorf("conformance: [%s, %s] lies inside no 64-bit range", lo, hi)
+		return engine.Generator[any]{}, fault.New("the bounds [%s, %s] are inside no 64-bit range", lo, hi)
 	}
-	return erased(engine.Integer(low, high)), nil
+	return engine.Erase(engine.Integer(low, high)), nil
 }
 
 // durationOf returns the duration generator of spec, whose bounds are
@@ -182,49 +182,51 @@ func durationOf(spec generatorSpec) (engine.Generator[any], error) {
 	low, lok := lo.Int64()
 	high, hok := hi.Int64()
 	if !lok || !hok {
-		return engine.Generator[any]{}, fmt.Errorf("conformance: [%s, %s] are no durations", lo, hi)
+		return engine.Generator[any]{}, fault.New("the bounds [%s, %s] are no durations", lo, hi)
 	}
-	return erased(engine.Duration(time.Duration(low), time.Duration(high))), nil
+	return engine.Erase(engine.Duration(time.Duration(low), time.Duration(high))), nil
 }
 
 // integerBounds returns the bounds min and max of spec.
 func integerBounds(spec generatorSpec) (choice.Int, choice.Int, error) {
 	lo, err := parseInt(spec.Min)
 	if err != nil {
-		return choice.Int{}, choice.Int{}, fmt.Errorf("conformance: %s min: %w", spec.Gen, err)
+		return choice.Int{}, choice.Int{}, fault.At(err, fault.Field(minMember))
 	}
 	hi, err := parseInt(spec.Max)
 	if err != nil {
-		return choice.Int{}, choice.Int{}, fmt.Errorf("conformance: %s max: %w", spec.Gen, err)
+		return choice.Int{}, choice.Int{}, fault.At(err, fault.Field(maxMember))
 	}
 	return lo, hi, nil
 }
 
 // floatOf returns the float generator of spec, of width 32 or 64.
 func floatOf(spec generatorSpec) (engine.Generator[any], error) {
-	lo, err := decodeFloat(spec.Min)
+	low, err := literal.Float(spec.Min)
 	if err != nil {
-		return engine.Generator[any]{}, err
+		return engine.Generator[any]{}, fault.At(err, fault.Field(minMember))
 	}
-	hi, err := decodeFloat(spec.Max)
+	high, err := literal.Float(spec.Max)
 	if err != nil {
-		return engine.Generator[any]{}, err
+		return engine.Generator[any]{}, fault.At(err, fault.Field(maxMember))
 	}
 	nan := choice.ExcludeNaN
 	if spec.AllowNaN {
 		nan = choice.AdmitNaN
 	}
-	low, high := lo.(float64), hi.(float64)
 	if spec.Width == nil || *spec.Width == width64 {
-		return erased(engine.Float(low, high, nan)), nil
+		return engine.Erase(engine.Float(low, high, nan)), nil
 	}
 	if *spec.Width != width32 {
-		return engine.Generator[any]{}, fmt.Errorf("conformance: a float of width %d", *spec.Width)
+		return engine.Generator[any]{}, fault.At(
+			fault.New("%d is neither 32 nor 64", *spec.Width),
+			fault.Field(widthMember),
+		)
 	}
 	if !sameFloat(float64(float32(low)), low) || !sameFloat(float64(float32(high)), high) {
-		return engine.Generator[any]{}, fmt.Errorf("conformance: [%v, %v] are no floats of width 32", low, high)
+		return engine.Generator[any]{}, fault.New("the bounds [%v, %v] are no floats of width 32", low, high)
 	}
-	return erased(engine.Float(float32(low), float32(high), nan)), nil
+	return engine.Erase(engine.Float(float32(low), float32(high), nan)), nil
 }
 
 // sameFloat reports whether a and b are one float, NaN included.
@@ -235,40 +237,46 @@ func sameFloat(a, b float64) bool {
 // booleanOf returns the boolean generator of spec.
 func booleanOf(spec generatorSpec) (engine.Generator[any], error) {
 	if spec.P == nil {
-		return erased(engine.Boolean(1, 2)), nil
+		return engine.Erase(engine.Boolean(1, 2)), nil
 	}
 	if len(spec.P) != probabilityParts {
-		return engine.Generator[any]{}, fmt.Errorf("conformance: p is %v, not [numerator, denominator]", spec.P)
+		return engine.Generator[any]{}, fault.At(
+			fault.New("%v is no numerator and denominator", spec.P),
+			fault.Field(pMember),
+		)
 	}
-	return erased(engine.Boolean(spec.P[0], spec.P[1])), nil
+	return engine.Erase(engine.Boolean(spec.P[0], spec.P[1])), nil
 }
 
 // valuesOf returns just, sampled-from or permutation, of the typed
 // literals that spec states.
 func valuesOf(spec generatorSpec) (engine.Generator[any], error) {
 	if spec.Gen == justGen {
-		v, err := Decode(spec.Value)
+		v, err := literal.Decode(spec.Value)
 		if err != nil {
-			return engine.Generator[any]{}, err
+			return engine.Generator[any]{}, fault.At(err, fault.Field(valueMember))
 		}
 		return engine.Just(v), nil
 	}
 	var literals []json.RawMessage
 	if err := json.Unmarshal(spec.Values, &literals); err != nil {
-		return engine.Generator[any]{}, fmt.Errorf("conformance: %s values: %w", spec.Gen, err)
+		return engine.Generator[any]{}, fault.At(
+			fault.New("the values are no list").Because(err),
+			fault.Field(valuesMember),
+		)
 	}
 	values := make([]any, len(literals))
 	for i, raw := range literals {
-		v, err := Decode(raw)
+		v, err := literal.Decode(raw)
 		if err != nil {
-			return engine.Generator[any]{}, err
+			return engine.Generator[any]{}, fault.At(err, fault.Field(valuesMember), fault.Index(i))
 		}
 		values[i] = v
 	}
 	if spec.Gen == sampledFromGen {
 		return engine.SampledFrom(values...), nil
 	}
-	return erased(engine.Permutation(values...)), nil
+	return engine.Erase(engine.Permutation(values...)), nil
 }
 
 // composedOf returns one-of, optional, list or filter, over the
@@ -277,13 +285,16 @@ func composedOf(spec generatorSpec, self *engine.Generator[any]) (engine.Generat
 	if spec.Gen == oneOfGen {
 		var specs []json.RawMessage
 		if err := json.Unmarshal(spec.Of, &specs); err != nil {
-			return engine.Generator[any]{}, fmt.Errorf("conformance: one-of of: %w", err)
+			return engine.Generator[any]{}, fault.At(
+				fault.New("the generators are no list").Because(err),
+				fault.Field(ofMember),
+			)
 		}
 		gens := make([]engine.Generator[any], len(specs))
 		for i, raw := range specs {
 			g, err := build(raw, self)
 			if err != nil {
-				return engine.Generator[any]{}, err
+				return engine.Generator[any]{}, fault.At(err, fault.Field(ofMember), fault.Index(i))
 			}
 			gens[i] = g
 		}
@@ -291,27 +302,27 @@ func composedOf(spec generatorSpec, self *engine.Generator[any]) (engine.Generat
 	}
 	of, err := build(spec.Of, self)
 	if err != nil {
-		return engine.Generator[any]{}, err
+		return engine.Generator[any]{}, fault.At(err, fault.Field(ofMember))
 	}
 	if spec.Gen == optionalGen {
-		return engine.Optional(of).Map(func(v *any) any {
+		return engine.Optional(of).MapBack(func(v *any) any {
 			if v == nil {
 				return nil
 			}
 			return *v
-		}), nil
+		}, func(v any) (*any, error) { return &v, nil }), nil
 	}
 	if spec.Gen == filterGen {
 		return filterOf(of, spec.Keep)
 	}
-	sizes, err := sizesOf(spec)
+	sizes, err := sizesOf(spec.MinSize, spec.MaxSize)
 	if err != nil {
 		return engine.Generator[any]{}, err
 	}
 	if spec.Unique {
-		return erased(engine.UniqueList(of, sizes)), nil
+		return engine.Erase(engine.UniqueList(of, sizes)), nil
 	}
-	return erased(engine.List(of, sizes)), nil
+	return engine.Erase(engine.List(of, sizes)), nil
 }
 
 // filterOf returns the generator of the values of g that the predicate keep
@@ -319,7 +330,7 @@ func composedOf(spec generatorSpec, self *engine.Generator[any]) (engine.Generat
 func filterOf(g engine.Generator[any], keep json.RawMessage) (engine.Generator[any], error) {
 	holds, err := predicateOf(keep)
 	if err != nil {
-		return engine.Generator[any]{}, err
+		return engine.Generator[any]{}, fault.At(err, fault.Field(keepMember))
 	}
 	return g.Filter(holds), nil
 }
@@ -328,17 +339,17 @@ func filterOf(g engine.Generator[any], keep json.RawMessage) (engine.Generator[a
 func dictOf(spec generatorSpec, self *engine.Generator[any]) (engine.Generator[any], error) {
 	keys, err := build(spec.Keys, self)
 	if err != nil {
-		return engine.Generator[any]{}, err
+		return engine.Generator[any]{}, fault.At(err, fault.Field(keysMember))
 	}
 	values, err := build(spec.Values, self)
 	if err != nil {
-		return engine.Generator[any]{}, err
+		return engine.Generator[any]{}, fault.At(err, fault.Field(valuesMember))
 	}
-	sizes, err := sizesOf(spec)
+	sizes, err := sizesOf(spec.MinSize, spec.MaxSize)
 	if err != nil {
 		return engine.Generator[any]{}, err
 	}
-	return erased(engine.Dict(keys, values, sizes)), nil
+	return engine.Erase(engine.Dict(keys, values, sizes)), nil
 }
 
 // textOf returns string, bytes or string-matching.
@@ -346,21 +357,21 @@ func textOf(spec generatorSpec) (engine.Generator[any], error) {
 	if spec.Gen == stringMatchingGen {
 		g, err := matching.StringMatching(spec.Pattern)
 		if err != nil {
-			return engine.Generator[any]{}, err
+			return engine.Generator[any]{}, fault.At(err, fault.Field(patternMember))
 		}
-		return erased(g), nil
+		return engine.Erase(g), nil
 	}
-	sizes, err := sizesOf(spec)
+	sizes, err := sizesOf(spec.MinSize, spec.MaxSize)
 	if err != nil {
 		return engine.Generator[any]{}, err
 	}
 	if spec.Gen == bytesGen {
-		return erased(engine.Bytes(sizes)), nil
+		return engine.Erase(engine.Bytes(sizes)), nil
 	}
 	if spec.Alphabet == nil {
-		return erased(engine.String(sizes)), nil
+		return engine.Erase(engine.String(sizes)), nil
 	}
-	return erased(engine.StringOver(*spec.Alphabet, sizes)), nil
+	return engine.Erase(engine.StringOver(*spec.Alphabet, sizes)), nil
 }
 
 // recursiveOf returns the recursive generator of spec. Its base takes no
@@ -368,7 +379,7 @@ func textOf(spec generatorSpec) (engine.Generator[any], error) {
 func recursiveOf(spec generatorSpec) (engine.Generator[any], error) {
 	base, err := build(spec.Base, nil)
 	if err != nil {
-		return engine.Generator[any]{}, err
+		return engine.Generator[any]{}, fault.At(err, fault.Field(baseMember))
 	}
 	maxLeaves := engine.DefaultMaxLeaves
 	if spec.MaxLeaves != nil {
@@ -381,20 +392,21 @@ func recursiveOf(spec generatorSpec) (engine.Generator[any], error) {
 		return extension
 	}, maxLeaves)
 	if extendErr != nil {
-		return engine.Generator[any]{}, extendErr
+		return engine.Generator[any]{}, fault.At(extendErr, fault.Field(extendMember))
 	}
 	return g, nil
 }
 
-// sizesOf returns the lengths that spec states: from min_size, 0 when
-// nil, to max_size, unbounded when nil.
-func sizesOf(spec generatorSpec) (choice.Sizes, error) {
+// sizesOf returns the lengths from minSize, 0 when nil, to maxSize,
+// unbounded when nil, as a generator spec and the bounds of a sequence
+// state them.
+func sizesOf(minSize, maxSize *int) (choice.Sizes, error) {
 	least := 0
-	if spec.MinSize != nil {
-		least = *spec.MinSize
+	if minSize != nil {
+		least = *minSize
 	}
-	if spec.MaxSize == nil {
+	if maxSize == nil {
 		return choice.NewUnboundedSizes(least)
 	}
-	return choice.NewSizes(least, *spec.MaxSize)
+	return choice.NewSizes(least, *maxSize)
 }

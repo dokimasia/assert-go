@@ -4,10 +4,11 @@
 package conformance
 
 import (
+	"context"
+	"strconv"
 	"time"
 
 	"go.dokimi.dev/assert"
-	"go.dokimi.dev/assert/expect"
 )
 
 // SubjectDriver calls one assertion with a built behaviour.
@@ -25,96 +26,81 @@ const (
 )
 
 // SubjectDrivers states how each subject-taking assertion is called, by
-// canonical id and surface.
+// surface and canonical id.
 var SubjectDrivers = map[string]map[string]SubjectDriver{
-	"check": {
-		"throws":               func(tb assert.TB, s *Subject, m string) { assert.Panics(tb, s.Bare, m) },
-		"not-throws":           func(tb assert.TB, s *Subject, m string) { assert.NotPanics(tb, s.Bare, m) },
-		"honours-cancellation": func(tb assert.TB, s *Subject, m string) { assert.HonoursCancellation(tb, s.Ctx, m) },
-		"honours-deadline":     func(tb assert.TB, s *Subject, m string) { assert.HonoursDeadline(tb, s.Ctx, m) },
-		"nil-context-safe":     func(tb assert.TB, s *Subject, m string) { assert.NilContextSafe(tb, s.Ctx, m) },
-		"pure":                 func(tb assert.TB, s *Subject, m string) { assert.Pure(tb, s.Observe, s.Bare, m) },
-		"eventually": func(tb assert.TB, s *Subject, m string) {
-			assert.Eventually(tb, retryTimeout, retryInterval, s.Seated, m)
-		},
-		"eventually-true": func(tb assert.TB, s *Subject, m string) {
-			assert.EventuallyTrue(tb, retryTimeout, flips(s), m)
-		},
-		"idempotent": func(tb assert.TB, s *Subject, m string) {
-			assert.Idempotent(tb, s.Call, s.Input, s.Observe, m)
-		},
-		"accumulates": func(tb assert.TB, s *Subject, m string) {
-			assert.Accumulates(tb, s.Call, s.Input, s.Observe, m)
-		},
-		"deterministic": func(tb assert.TB, s *Subject, m string) { assert.Deterministic(tb, s.Compute, s.Input, m) },
-		"commutative":   func(tb assert.TB, s *Subject, m string) { assert.Commutative(tb, s.Combine, s.A, s.B, m) },
-		"associative": func(tb assert.TB, s *Subject, m string) {
-			assert.Associative(tb, s.Combine, s.A, s.B, s.C, m)
-		},
-		"round-trip": func(tb assert.TB, s *Subject, m string) {
-			assert.RoundTrip(tb, s.Forward, s.Inverse, s.Input, m)
-		},
-		"stable-order":  func(tb assert.TB, s *Subject, m string) { assert.StableOrder(tb, s.Iterate, m) },
-		"no-duplicates": func(tb assert.TB, s *Subject, m string) { assert.NoDuplicates(tb, s.Iterate, m) },
-		"monotonic": func(tb assert.TB, s *Subject, m string) {
-			assert.Monotonic(tb, s.Observe, s.Advance, s.Steps, m)
-		},
-		"total":    func(tb assert.TB, s *Subject, m string) { assert.Total(tb, s.Call, s.Domain, m) },
-		"not-pure": func(tb assert.TB, s *Subject, m string) { assert.NotPure(tb, s.Observe, s.Bare, m) },
-		"after-close": func(tb assert.TB, s *Subject, m string) {
-			assert.FailsAfterClose(tb, s.Closer, s.Use, s.Sentinel, m)
-		},
-		"poisoned": func(tb assert.TB, s *Subject, m string) { assert.Poisoned(tb, s.Induce, s.Read, m) },
-	},
-	"expect": {
-		"throws":               func(tb assert.TB, s *Subject, m string) { expect.Panics(tb, s.Bare, m) },
-		"not-throws":           func(tb assert.TB, s *Subject, m string) { expect.NotPanics(tb, s.Bare, m) },
-		"honours-cancellation": func(tb assert.TB, s *Subject, m string) { expect.HonoursCancellation(tb, s.Ctx, m) },
-		"honours-deadline":     func(tb assert.TB, s *Subject, m string) { expect.HonoursDeadline(tb, s.Ctx, m) },
-		"nil-context-safe":     func(tb assert.TB, s *Subject, m string) { expect.NilContextSafe(tb, s.Ctx, m) },
-		"pure":                 func(tb assert.TB, s *Subject, m string) { expect.Pure(tb, s.Observe, s.Bare, m) },
-		"eventually": func(tb assert.TB, s *Subject, m string) {
-			expect.Eventually(tb, retryTimeout, retryInterval, s.Seated, m)
-		},
-		"eventually-true": func(tb assert.TB, s *Subject, m string) {
-			expect.EventuallyTrue(tb, retryTimeout, flips(s), m)
-		},
-		"idempotent": func(tb assert.TB, s *Subject, m string) {
-			expect.Idempotent(tb, s.Call, s.Input, s.Observe, m)
-		},
-		"accumulates": func(tb assert.TB, s *Subject, m string) {
-			expect.Accumulates(tb, s.Call, s.Input, s.Observe, m)
-		},
-		"deterministic": func(tb assert.TB, s *Subject, m string) { expect.Deterministic(tb, s.Compute, s.Input, m) },
-		"commutative":   func(tb assert.TB, s *Subject, m string) { expect.Commutative(tb, s.Combine, s.A, s.B, m) },
-		"associative": func(tb assert.TB, s *Subject, m string) {
-			expect.Associative(tb, s.Combine, s.A, s.B, s.C, m)
-		},
-		"round-trip": func(tb assert.TB, s *Subject, m string) {
-			expect.RoundTrip(tb, s.Forward, s.Inverse, s.Input, m)
-		},
-		"stable-order":  func(tb assert.TB, s *Subject, m string) { expect.StableOrder(tb, s.Iterate, m) },
-		"no-duplicates": func(tb assert.TB, s *Subject, m string) { expect.NoDuplicates(tb, s.Iterate, m) },
-		"monotonic": func(tb assert.TB, s *Subject, m string) {
-			expect.Monotonic(tb, s.Observe, s.Advance, s.Steps, m)
-		},
-		"total":    func(tb assert.TB, s *Subject, m string) { expect.Total(tb, s.Call, s.Domain, m) },
-		"not-pure": func(tb assert.TB, s *Subject, m string) { expect.NotPure(tb, s.Observe, s.Bare, m) },
-		"after-close": func(tb assert.TB, s *Subject, m string) {
-			expect.FailsAfterClose(tb, s.Closer, s.Use, s.Sentinel, m)
-		},
-		"poisoned": func(tb assert.TB, s *Subject, m string) { expect.Poisoned(tb, s.Induce, s.Read, m) },
-	},
+	"check":  drivers(abortingFunctions),
+	"expect": drivers(recordingFunctions),
 }
 
-// flips returns a predicate that reads the subject's seated shape, so
-// one behaviour serves both retrying assertions.
-func flips(held *Subject) func() bool {
-	return func() bool {
-		trial := assert.NewRecorder()
-		held.Seated(trial)
-		return !trial.Failed()
+// drivers returns the driver of each subject-taking assertion of the
+// surface whose functions are f. Each driver passes the subject's Input
+// and operands to the assertion, and converts each integer that the
+// subject returns to an int.
+func drivers(f functions) map[string]SubjectDriver {
+	return map[string]SubjectDriver{
+		"throws":               func(tb assert.TB, s *Subject, m string) { f.Panics(tb, s.raise, m) },
+		"not-throws":           func(tb assert.TB, s *Subject, m string) { f.NotPanics(tb, s.raise, m) },
+		"honours-cancellation": func(tb assert.TB, s *Subject, m string) { f.HonoursCancellation(tb, s.ctx, m) },
+		"honours-deadline":     func(tb assert.TB, s *Subject, m string) { f.HonoursDeadline(tb, s.ctx, m) },
+		"nil-context-safe":     func(tb assert.TB, s *Subject, m string) { f.NilContextSafe(tb, s.ctx, m) },
+		"pure":                 func(tb assert.TB, s *Subject, m string) { f.Pure(tb, s.Observe, s.call, m) },
+		"not-pure":             func(tb assert.TB, s *Subject, m string) { f.NotPure(tb, s.Observe, s.call, m) },
+		"eventually": func(tb assert.TB, s *Subject, m string) {
+			f.Eventually(tb, retryTimeout, retryInterval, s.Seated, m)
+		},
+		"eventually-true": func(tb assert.TB, s *Subject, m string) { f.EventuallyTrue(tb, retryTimeout, s.settled, m) },
+		"idempotent": func(tb assert.TB, s *Subject, m string) {
+			f.Idempotent(tb, s.Call, s.Input, s.Observe, m)
+		},
+		"accumulates": func(tb assert.TB, s *Subject, m string) {
+			f.Accumulates(tb, s.Call, s.Input, s.Observe, m)
+		},
+		"deterministic": func(tb assert.TB, s *Subject, m string) { f.Deterministic(tb, s.compute, s.Input, m) },
+		"commutative":   func(tb assert.TB, s *Subject, m string) { f.Commutative(tb, s.combine, s.A, s.B, m) },
+		"associative": func(tb assert.TB, s *Subject, m string) {
+			f.Associative(tb, s.combine, s.A, s.B, s.C, m)
+		},
+		"round-trip":    func(tb assert.TB, s *Subject, m string) { f.RoundTrip(tb, s.render, strconv.Atoi, s.Input, m) },
+		"stable-order":  func(tb assert.TB, s *Subject, m string) { f.StableOrder(tb, s.Iterate, m) },
+		"no-duplicates": func(tb assert.TB, s *Subject, m string) { f.NoDuplicates(tb, s.Iterate, m) },
+		"monotonic": func(tb assert.TB, s *Subject, m string) {
+			f.Monotonic(tb, s.Observe, s.Advance, s.Steps, m)
+		},
+		"total": func(tb assert.TB, s *Subject, m string) { f.Total(tb, s.callOf, s.Domain, m) },
+		"after-close": func(tb assert.TB, s *Subject, m string) {
+			f.FailsAfterClose(tb, s.Closer, s.Use, s.Sentinel, m)
+		},
+		"poisoned": func(tb assert.TB, s *Subject, m string) { f.Poisoned(tb, s.Induce, s.Read, m) },
 	}
+}
+
+// raise calls Raise with the subject's input.
+func (s *Subject) raise() { s.Raise(s.Input) }
+
+// ctx calls Ctx with the handle ctx and the subject's input.
+func (s *Subject) ctx(ctx context.Context) error { return s.Ctx(ctx, s.Input) }
+
+// call calls Call with the subject's input, and leaves out its failure.
+func (s *Subject) call() { _ = s.Call(s.Input) }
+
+// callOf calls Call with the integer x.
+func (s *Subject) callOf(x int) error { return s.Call(x) }
+
+// compute returns what Compute returns for the integer x, as an int.
+func (s *Subject) compute(x int) (int, error) { return int(signedOf(s.Compute(x))), nil }
+
+// combine returns what Combine returns for the integers a and b, as an int.
+func (s *Subject) combine(a, b int) int { return int(signedOf(s.Combine(a, b))) }
+
+// render returns what Render returns for the integer x.
+func (s *Subject) render(x int) (string, error) { return s.Render(x), nil }
+
+// settled reports whether an attempt of the subject's seated shape passes,
+// so one behaviour serves both retrying assertions.
+func (s *Subject) settled() bool {
+	trial := assert.NewRecorder()
+	s.Seated(trial)
+	return !trial.Failed()
 }
 
 // RunSubject drives one subject case, and reports whether it ran.

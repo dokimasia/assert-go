@@ -11,23 +11,12 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// invalidVerdict is the first value past the two verdicts.
-const invalidVerdict prop.Verdict = 2
+// nine is the label of the coverage requirement that counts the value 9.
+const nine = "nine"
 
-// The labels of the coverage requirements of the definition's behaviour
+// TestShortfall checks which values are verdicts, and the coverage
+// requirements that a run misses, pinned to the definition's behaviour
 // vectors.
-const (
-	// even counts the even values.
-	even = "even"
-	// nine counts the value 9.
-	nine = "nine"
-	// small counts the values below 5.
-	small = "small"
-)
-
-// TestShortfall checks the coverage requirements that a run misses,
-// pinned to the definition's behaviour vectors, and pins each verdict's
-// spelling.
 func TestShortfall(t *testing.T) {
 	t.Parallel()
 
@@ -51,24 +40,15 @@ func TestShortfall(t *testing.T) {
 		}
 	})
 
-	t.Run("String", func(t *testing.T) {
+	t.Run("MarshalText", func(t *testing.T) {
 		t.Parallel()
 
-		tests := []struct {
-			name string
-			give prop.Verdict
-			want string
-		}{
-			{name: "returns refuted for Refuted", give: prop.Refuted, want: "refuted"},
-			{name: "returns unmet for Unmet", give: prop.Unmet, want: "unmet"},
-			{name: "returns Verdict(2) for a value that is no verdict", give: invalidVerdict, want: "Verdict(2)"},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				assert.Equal(t, tt.give.String(), tt.want, "the verdict's spelling")
-			})
-		}
+		t.Run("returns the spelling of the verdict", func(t *testing.T) {
+			t.Parallel()
+			got, err := prop.Refuted.MarshalText()
+			assert.NoError(t, err, "every verdict has a spelling")
+			assert.Equal(t, string(got), "refuted", "the spelling of the definition")
+		})
 	})
 
 	t.Run("ForAll", func(t *testing.T) {
@@ -122,15 +102,26 @@ func TestShortfall(t *testing.T) {
 	})
 }
 
-// TestShortfallZeroAlloc checks that no method of Verdict allocates.
-func TestShortfallZeroAlloc(t *testing.T) {
+// TestShortfallAllocs checks that Valid allocates nothing, and that
+// MarshalText allocates its text.
+func TestShortfallAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = prop.Unmet.Valid() }, 0, "Valid allocates nothing")
-	assert.MaxAllocs(t, func() { _ = prop.Unmet.String() }, 0, "String allocates nothing")
+	assert.MaxAllocs(t, func() { _, _ = prop.Unmet.MarshalText() }, 1, "MarshalText allocates its text")
 }
 
-// BenchmarkShortfall measures each method of Verdict under a ceiling of no
-// allocation.
+// BenchmarkShortfall measures Valid under a ceiling of no allocation, and
+// MarshalText.
 func BenchmarkShortfall(b *testing.B) {
+	b.Run("MarshalText", func(b *testing.B) {
+		var got []byte
+		c := bench.Start(b).MaxAllocs(1)
+		defer c.End()
+		for c.Loop() {
+			got, _ = prop.Unmet.MarshalText()
+		}
+		assert.Equal(b, string(got), "unmet", "the spelling")
+	})
+
 	b.Run("Valid", func(b *testing.B) {
 		var got bool
 		c := bench.Start(b).MaxAllocs(0)
@@ -140,30 +131,4 @@ func BenchmarkShortfall(b *testing.B) {
 		}
 		assert.True(b, got, "Unmet is a verdict")
 	})
-
-	b.Run("String", func(b *testing.B) {
-		var got string
-		c := bench.Start(b).MaxAllocs(0)
-		defer c.End()
-		for c.Loop() {
-			got = prop.Unmet.String()
-		}
-		assert.Equal(b, got, "unmet", "the verdict's spelling")
-	})
-}
-
-// classifies returns the body that draws an integer in [0, most], and
-// classifies the case under label when holds reports true for the value.
-func classifies(most int, label string, holds func(int) bool) func(*prop.Case) {
-	g := prop.Integer(0, most)
-	return func(c *prop.Case) {
-		if holds(c.Draw(g, drawn)) {
-			c.Classify(label)
-		}
-	}
-}
-
-// isEven reports whether v is even.
-func isEven(v int) bool {
-	return v%2 == 0
 }

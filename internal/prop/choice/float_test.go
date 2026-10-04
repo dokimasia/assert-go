@@ -20,9 +20,6 @@ var (
 	minFloat32 = float64(math.Float32frombits(1))
 )
 
-// negativeZero is -0.
-var negativeZero = math.Copysign(0, -1)
-
 // TestFloat checks the functions over float values: the canonical NaN,
 // which values a width has, the steps between them, the fractional bits,
 // and value identity.
@@ -198,8 +195,8 @@ func TestFloat(t *testing.T) {
 	})
 }
 
-// TestFloatZeroAlloc checks that no function over float values allocates.
-func TestFloatZeroAlloc(t *testing.T) {
+// TestFloatAllocs checks that no function over float values allocates.
+func TestFloatAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = choice.NaN() }, 0, "NaN allocates nothing")
 	assert.MaxAllocs(t, func() { _ = choice.Representable(0.5, choice.Width32) }, 0, "Representable allocates nothing")
 	assert.MaxAllocs(t, func() { _ = choice.NextUp(1, choice.Width32) }, 0, "NextUp allocates nothing")

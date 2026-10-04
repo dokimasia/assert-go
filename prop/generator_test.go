@@ -13,19 +13,20 @@ import (
 
 // The allocations of the combinators, measured. Each is the engine's
 // construction of the generator: the closure of its decode and of its
-// erased decode, and a closure that adapts a function.
+// erased decode, a closure that adapts a function, and for Filter and Just
+// the closure of the inverse.
 const (
 	// mapAllocs are the allocations of Map of an integer, with the mapping
 	// of its values for the explain phase.
 	mapAllocs = 3
 	// filterAllocs are the allocations of Filter.
-	filterAllocs = 3
+	filterAllocs = 4
 	// bindAllocs are the allocations of Bind.
 	bindAllocs = 3
 	// compositeAllocs are the allocations of Composite.
 	compositeAllocs = 3
 	// justAllocs are the allocations of Just.
-	justAllocs = 2
+	justAllocs = 3
 )
 
 // TestGenerator checks the combinators that build a generator from
@@ -138,9 +139,9 @@ func TestGenerator(t *testing.T) {
 	})
 }
 
-// TestGeneratorZeroAlloc checks the allocation ceilings of the
+// TestGeneratorAllocs checks the allocation ceilings of the
 // combinators.
-func TestGeneratorZeroAlloc(t *testing.T) {
+func TestGeneratorAllocs(t *testing.T) {
 	digit := prop.Integer(0, 9)
 	assert.MaxAllocs(t, func() { _ = digit.Map(double) }, mapAllocs, "Map allocates its decode")
 	assert.MaxAllocs(t, func() { _ = digit.Filter(isEven) }, filterAllocs, "Filter allocates its decode")
@@ -202,25 +203,6 @@ func BenchmarkGenerator(b *testing.B) {
 		}
 		assert.Equal(b, first(got), 42, "the value")
 	})
-}
-
-// decoded returns the value that g decodes in a run that replays one
-// integer choice for each value, and the run's outcome.
-func decoded[T any](g prop.Generator[T], values ...uint64) (T, prop.Outcome) {
-	var got T
-	detail := replayed(func(c *prop.Case) { got = c.Draw(g, drawn) }, values...)
-	if detail == nil {
-		return got, prop.Passed
-	}
-	outcome, _ := detail[outcomeField].(prop.Outcome)
-	return got, outcome
-}
-
-// first returns the value that g decodes in a run that replays one integer
-// choice for each value.
-func first[T any](g prop.Generator[T], values ...uint64) T {
-	got, _ := decoded(g, values...)
-	return got
 }
 
 // double returns twice v.

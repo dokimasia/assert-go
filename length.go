@@ -11,6 +11,10 @@ import "go.dokimi.dev/assert/internal/matcher"
 // map, the bytes of a []byte and the Unicode scalar values of a string,
 // so "é" has one. Anything else has no length, nil included, and fails
 // with got nil. It does not panic.
+//
+// # Allocation contract
+//
+// A passing call on a slice allocates nothing.
 func Length(tb TB, got any, want int, msg string) {
 	tb.Helper()
 	matcher.Length(tb, matcher.Fatal, got, want, msg)
@@ -18,6 +22,10 @@ func Length(tb TB, got any, want int, msg string) {
 
 // Empty stops the test when got has any item. A value without a length,
 // nil included, fails. See [Length] for the values that have one.
+//
+// # Allocation contract
+//
+// A passing call on a slice allocates nothing.
 func Empty(tb TB, got any, msg string) {
 	tb.Helper()
 	matcher.Empty(tb, matcher.Fatal, got, msg)
@@ -26,6 +34,10 @@ func Empty(tb TB, got any, msg string) {
 // NotEmpty stops the test when got has no item. A value without a
 // length, nil included, fails. See [Length] for the values that have
 // one.
+//
+// # Allocation contract
+//
+// A passing call on a slice allocates nothing.
 func NotEmpty(tb TB, got any, msg string) {
 	tb.Helper()
 	matcher.NotEmpty(tb, matcher.Fatal, got, msg)

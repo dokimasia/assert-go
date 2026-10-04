@@ -6,34 +6,20 @@ package store_test
 import (
 	"encoding/json"
 	"errors"
-	"maps"
 	"strings"
 	"testing"
 	"time"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/store"
+	"go.dokimi.dev/assert/internal/prop/token"
 )
-
-// invalidVerdict is the first value past the four verdicts.
-const invalidVerdict store.Verdict = 4
 
 // readAllocs are the allocations of Read on the pinned entry, measured.
 const readAllocs = 135
-
-// base are the fields of an entry of the property contract whose choices
-// are the one integer 7, from the store vectors of the corpus.
-var base = map[string]any{
-	"store":          1,
-	"definition":     "1.2.0",
-	"property":       contract,
-	"identity":       map[string]any{"assertion": "equal", "file": "codec_test.go", "line": 18},
-	"choices":        "prop1:AAc",
-	"counterexample": []any{},
-	"found":          "2026-10-01",
-}
 
 // FuzzRead checks that Read returns one of its four verdicts for any
 // bytes, and does not panic. The error wraps ErrLater for Skip and
@@ -71,51 +57,10 @@ func FuzzRead(f *testing.F) {
 }
 
 // TestRead checks the verdict on every kind of file, pinned to the store
-// vectors of the corpus, and each verdict's spelling.
+// vectors of the corpus, and the fault of each file that a run skips or
+// that is damaged.
 func TestRead(t *testing.T) {
 	t.Parallel()
-
-	t.Run("Valid", func(t *testing.T) {
-		t.Parallel()
-
-		tests := []struct {
-			name string
-			give store.Verdict
-			want bool
-		}{
-			{name: "reports true for Replay", give: store.Replay, want: true},
-			{name: "reports true for Damaged", give: store.Damaged, want: true},
-			{name: "reports false past Damaged", give: invalidVerdict, want: false},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				assert.Equal(t, tt.give.Valid(), tt.want, "whether the value is a verdict")
-			})
-		}
-	})
-
-	t.Run("String", func(t *testing.T) {
-		t.Parallel()
-
-		tests := []struct {
-			name string
-			give store.Verdict
-			want string
-		}{
-			{name: "returns replay for Replay", give: store.Replay, want: "replay"},
-			{name: "returns other for Other", give: store.Other, want: "other"},
-			{name: "returns skip for Skip", give: store.Skip, want: "skip"},
-			{name: "returns damaged for Damaged", give: store.Damaged, want: "damaged"},
-			{name: "returns Verdict(4) for a value that is no verdict", give: invalidVerdict, want: "Verdict(4)"},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				assert.Equal(t, tt.give.String(), tt.want, "the verdict's spelling")
-			})
-		}
-	})
 
 	t.Run("Read", func(t *testing.T) {
 		t.Parallel()
@@ -214,25 +159,31 @@ func TestRead(t *testing.T) {
 			assert.True(t, sameChoices(e.Choices, want), "the element saturates")
 		})
 
+		atStore := fault.Path{fault.Field("store")}
+		atChoices := fault.Path{fault.Field("choices")}
 		skipped := []struct {
-			name  string
-			give  string
-			fault string
+			name       string
+			give       string
+			wantPath   fault.Path
+			wantReason string
 		}{
 			{
-				name:  "returns Skip for an entry of a later format",
-				give:  `{"store": 2, "layout": "unknown"}`,
-				fault: "format 2",
+				name:       "returns Skip for an entry of a later format",
+				give:       `{"store": 2, "layout": "unknown"}`,
+				wantPath:   atStore,
+				wantReason: "the entry is of format 2",
 			},
 			{
-				name:  "returns Skip for a format beyond 64 bits",
-				give:  `{"store": 100000000000000000000}`,
-				fault: "format 100000000000000000000",
+				name:       "returns Skip for a format beyond 64 bits",
+				give:       `{"store": 100000000000000000000}`,
+				wantPath:   atStore,
+				wantReason: "the entry is of format 100000000000000000000",
 			},
 			{
-				name:  "returns Skip for a token of a later version",
-				give:  entryText(t, map[string]any{"choices": "prop2:AAc"}),
-				fault: "the token is of version 2",
+				name:       "returns Skip for a token of a later version",
+				give:       entryText(t, map[string]any{"choices": "prop2:AAc"}),
+				wantPath:   atChoices,
+				wantReason: "the token is of version 2",
 			},
 		}
 		for _, tt := range skipped {
@@ -241,7 +192,9 @@ func TestRead(t *testing.T) {
 				e, verdict, err := store.Read([]byte(tt.give), contract)
 				assert.Equal(t, verdict, store.Skip, "the verdict")
 				assert.ErrorIs(t, err, store.ErrLater, "the reason to skip")
-				assert.Contains(t, err.Error(), tt.fault, "the reason")
+				f := assert.ErrorAs[*fault.Error](t, err, "a fault")
+				assert.Equal(t, f.Path, tt.wantPath, "the field that is later")
+				assert.Equal(t, f.Reason, tt.wantReason, "what is later")
 				assert.Equal(t, e.Property, "", "no entry")
 			})
 		}
@@ -249,211 +202,299 @@ func TestRead(t *testing.T) {
 		repeated := strings.Replace(entryText(t, nil), `"choices":"prop1:AAc"`,
 			`"choices":"prop1:AAc","choices":"prop1:AAM"`, 1)
 		huge := json.Number("1" + strings.Repeat("0", 30))
+		atIdentity := fault.Path{fault.Field("identity")}
+		atLine := fault.Path{fault.Field("identity"), fault.Field("line")}
+		atFile := fault.Path{fault.Field("identity"), fault.Field("file")}
+		atCounterexample := fault.Path{fault.Field("counterexample")}
+		atFirstDraw := fault.Path{fault.Field("counterexample"), fault.Index(0)}
+		atFound := fault.Path{fault.Field("found")}
+		const (
+			noShape  = "the keys form none of the four shapes of an identity"
+			noFormat = "the entry states no format"
+		)
 		damaged := []struct {
-			name  string
-			give  string
-			fault string
+			name       string
+			give       string
+			wantPath   fault.Path
+			wantReason string
 		}{
-			{name: "returns Damaged for text that is not JSON", give: "store: 1", fault: "invalid character"},
-			{name: "returns Damaged for an empty file", give: "", fault: "states 0 JSON values"},
-			{name: "returns Damaged for two values", give: "{} {}", fault: "states 2 JSON values"},
-			{name: "returns Damaged for text that is not UTF-8", give: "\xff", fault: "not UTF-8 from byte 0"},
+			{name: "returns Damaged for text that is not JSON", give: "store: 1", wantReason: "the file is no JSON"},
 			{
-				name:  "returns Damaged naming the first byte that is not UTF-8",
-				give:  "{\"store\": \"é\xff\"}",
-				fault: "not UTF-8 from byte 13",
-			},
-			{name: "returns Damaged for a JSON array", give: "[1]", fault: "not one JSON object"},
-			{name: "returns Damaged for JSON null", give: "null", fault: "not one JSON object"},
-			{name: "returns Damaged for NaN", give: `{"store": NaN}`, fault: "invalid character"},
-			{name: "returns Damaged for a repeated name", give: repeated, fault: `repeats the name "choices"`},
-			{
-				name:  "returns Damaged for a name repeated inside a nested object",
-				give:  `{"store": 1, "identity": {"line": 1, "line": 2}}`,
-				fault: `repeats the name "line"`,
+				name:       "returns Damaged for an empty file",
+				give:       "",
+				wantReason: "the file states 0 JSON values, not one",
 			},
 			{
-				name:  "returns Damaged for an entry nested 65 levels",
-				give:  withDraws(t, map[string]any{"label": "v", "value": nested(62)}),
-				fault: "nests past 64 levels",
+				name:       "returns Damaged for two values",
+				give:       "{} {}",
+				wantReason: "the file states 2 JSON values, not one",
 			},
 			{
-				name:  "returns Damaged for nesting far past the bound",
-				give:  strings.Repeat("[", 100000) + strings.Repeat("]", 100000),
-				fault: "nests past 64 levels",
-			},
-			{name: "returns Damaged for no store", give: `{"choices": "prop1:AAc"}`, fault: "no format as store"},
-			{name: "returns Damaged for store 0", give: `{"store": 0}`, fault: "no format as store"},
-			{
-				name:  "returns Damaged for a store that is a bool",
-				give:  `{"store": true}`,
-				fault: "no format as store",
+				name:       "returns Damaged for text that is not UTF-8",
+				give:       "\xff",
+				wantReason: "the file is not UTF-8 from byte 0",
 			},
 			{
-				name:  "returns Damaged for a store with a fraction",
-				give:  `{"store": 1.0}`,
-				fault: "no format as store",
+				name:       "returns Damaged naming the first byte that is not UTF-8",
+				give:       "{\"store\": \"é\xff\"}",
+				wantReason: "the file is not UTF-8 from byte 13",
+			},
+			{name: "returns Damaged for a JSON array", give: "[1]", wantReason: "the file is not one JSON object"},
+			{name: "returns Damaged for JSON null", give: "null", wantReason: "the file is not one JSON object"},
+			{name: "returns Damaged for NaN", give: `{"store": NaN}`, wantReason: "the file is no JSON"},
+			{
+				name:       "returns Damaged for a repeated name",
+				give:       repeated,
+				wantReason: `an object repeats the name "choices"`,
 			},
 			{
-				name:  "returns Damaged for a store that is a string",
-				give:  `{"store": "1"}`,
-				fault: "no format as store",
-			},
-			{name: "returns Damaged for a missing field", give: entryText(t, nil, "found"), fault: "lacks found"},
-			{
-				name:  "returns Damaged for a field the format does not have",
-				give:  entryText(t, map[string]any{"comment": "found in review"}),
-				fault: "states 8 fields",
+				name:       "returns Damaged for a name repeated inside a nested object",
+				give:       `{"store": 1, "identity": {"line": 1, "line": 2}}`,
+				wantReason: `an object repeats the name "line"`,
 			},
 			{
-				name:  "returns Damaged for a definition of two numbers",
-				give:  entryText(t, map[string]any{"definition": "1.2"}),
-				fault: "definition",
+				name:       "returns Damaged for an entry nested 65 levels",
+				give:       withDraws(t, map[string]any{"label": "v", "value": nested(62)}),
+				wantReason: "the file nests past 64 levels",
 			},
 			{
-				name:  "returns Damaged for a definition with a leading zero",
-				give:  entryText(t, map[string]any{"definition": "1.02.0"}),
-				fault: "definition",
+				name:       "returns Damaged for nesting far past the bound",
+				give:       strings.Repeat("[", 100000) + strings.Repeat("]", 100000),
+				wantReason: "the file nests past 64 levels",
 			},
 			{
-				name:  "returns Damaged for a definition that is no string",
-				give:  entryText(t, map[string]any{"definition": 1}),
-				fault: "definition",
+				name:       "returns Damaged for no store",
+				give:       `{"choices": "prop1:AAc"}`,
+				wantPath:   atStore,
+				wantReason: noFormat,
+			},
+			{name: "returns Damaged for store 0", give: `{"store": 0}`, wantPath: atStore, wantReason: noFormat},
+			{
+				name:       "returns Damaged for a store that is a bool",
+				give:       `{"store": true}`,
+				wantPath:   atStore,
+				wantReason: noFormat,
 			},
 			{
-				name:  "returns Damaged for a property that is no string",
-				give:  entryText(t, map[string]any{"property": 5}),
-				fault: "property 5 is no string",
+				name:       "returns Damaged for a store with a fraction",
+				give:       `{"store": 1.0}`,
+				wantPath:   atStore,
+				wantReason: noFormat,
 			},
 			{
-				name:  "returns Damaged for an identity of no shape",
-				give:  withIdentity(t, map[string]any{"assertion": "equal"}),
-				fault: "has no shape",
+				name:       "returns Damaged for a store that is a string",
+				give:       `{"store": "1"}`,
+				wantPath:   atStore,
+				wantReason: noFormat,
 			},
 			{
-				name:  "returns Damaged for an identity with a key of no shape",
-				give:  withIdentity(t, map[string]any{"file": "a.go", "line": 1, "column": 2}),
-				fault: `states the key "column"`,
+				name:       "returns Damaged for a missing field",
+				give:       entryText(t, nil, "found"),
+				wantPath:   atFound,
+				wantReason: "the entry lacks the field",
 			},
 			{
-				name:  "returns Damaged for line 0",
-				give:  withIdentity(t, map[string]any{"file": "a.go", "line": 0}),
-				fault: "line 0 is no line",
+				name:       "returns Damaged for a field the format does not have",
+				give:       entryText(t, map[string]any{"comment": "found in review"}),
+				wantReason: "the entry states 8 fields, not the 7 of format 1",
 			},
 			{
-				name:  "returns Damaged for a line past 2^31 - 1",
-				give:  withIdentity(t, map[string]any{"file": "a.go", "line": 2147483648}),
-				fault: "line 2147483648 is no line",
+				name:       "returns Damaged for a definition of two numbers",
+				give:       entryText(t, map[string]any{"definition": "1.2"}),
+				wantPath:   fault.Path{fault.Field("definition")},
+				wantReason: `"1.2" is no version`,
 			},
 			{
-				name:  "returns Damaged for a line beyond 64 bits",
-				give:  withIdentity(t, map[string]any{"file": "a.go", "line": huge}),
-				fault: "is no line",
+				name:       "returns Damaged for a definition with a leading zero",
+				give:       entryText(t, map[string]any{"definition": "1.02.0"}),
+				wantPath:   fault.Path{fault.Field("definition")},
+				wantReason: `"1.02.0" is no version`,
 			},
 			{
-				name:  "returns Damaged for a line with a fraction",
-				give:  withIdentity(t, map[string]any{"file": "a.go", "line": json.RawMessage("3.0")}),
-				fault: "line 3.0 is no line",
+				name:       "returns Damaged for a definition that is no string",
+				give:       entryText(t, map[string]any{"definition": 1}),
+				wantPath:   fault.Path{fault.Field("definition")},
+				wantReason: "1 is no version",
 			},
 			{
-				name:  "returns Damaged for a line that is a bool",
-				give:  withIdentity(t, map[string]any{"file": "a.go", "line": true}),
-				fault: "line true is no line",
+				name:       "returns Damaged for a property that is no string",
+				give:       entryText(t, map[string]any{"property": 5}),
+				wantPath:   fault.Path{fault.Field("property")},
+				wantReason: "5 is no string",
 			},
 			{
-				name:  "returns Damaged for a file with a slash",
-				give:  withIdentity(t, map[string]any{"file": "pkg/a.go", "line": 1}),
-				fault: "has no shape",
+				name:       "returns Damaged for an identity of no shape",
+				give:       withIdentity(t, map[string]any{"assertion": "equal"}),
+				wantPath:   atIdentity,
+				wantReason: noShape,
 			},
 			{
-				name:  "returns Damaged for an empty file name",
-				give:  withIdentity(t, map[string]any{"file": "", "line": 1}),
-				fault: "no non-empty string",
+				name:       "returns Damaged for an identity with a key of no shape",
+				give:       withIdentity(t, map[string]any{"file": "a.go", "line": 1, "column": 2}),
+				wantPath:   fault.Path{fault.Field("identity"), fault.Field("column")},
+				wantReason: "the key is no key of an identity",
 			},
 			{
-				name:  "returns Damaged for a file that is no string",
-				give:  withIdentity(t, map[string]any{"file": 7, "line": 1}),
-				fault: "no non-empty string",
+				name:       "returns Damaged for line 0",
+				give:       withIdentity(t, map[string]any{"file": "a.go", "line": 0}),
+				wantPath:   atLine,
+				wantReason: "0 is no line",
 			},
 			{
-				name:  "returns Damaged for an identity that is no object",
-				give:  entryText(t, map[string]any{"identity": "equal"}),
-				fault: "is no object",
+				name:       "returns Damaged for a line past 2^31 - 1",
+				give:       withIdentity(t, map[string]any{"file": "a.go", "line": 2147483648}),
+				wantPath:   atLine,
+				wantReason: "2147483648 is no line",
 			},
 			{
-				name:  "returns Damaged for a null identity",
-				give:  entryText(t, map[string]any{"identity": nil}),
-				fault: "identity null is no object",
+				name:       "returns Damaged for a line beyond 64 bits",
+				give:       withIdentity(t, map[string]any{"file": "a.go", "line": huge}),
+				wantPath:   atLine,
+				wantReason: string(huge) + " is no line",
 			},
 			{
-				name:  "returns Damaged for choices that are no string",
-				give:  entryText(t, map[string]any{"choices": 5}),
-				fault: "choices 5 is no string",
+				name:       "returns Damaged for a line with a fraction",
+				give:       withIdentity(t, map[string]any{"file": "a.go", "line": json.RawMessage("3.0")}),
+				wantPath:   atLine,
+				wantReason: "3.0 is no line",
 			},
 			{
-				name:  "returns Damaged for choices without a token version",
-				give:  entryText(t, map[string]any{"choices": "AAc"}),
-				fault: "states no token version",
+				name:       "returns Damaged for a line that is a bool",
+				give:       withIdentity(t, map[string]any{"file": "a.go", "line": true}),
+				wantPath:   atLine,
+				wantReason: "true is no line",
 			},
 			{
-				name:  "returns Damaged for a token version with a leading zero",
-				give:  entryText(t, map[string]any{"choices": "prop01:AAc"}),
-				fault: "states no token version",
+				name:       "returns Damaged for a line that is an object, without its text",
+				give:       withIdentity(t, map[string]any{"file": "a.go", "line": map[string]any{"value": 3}}),
+				wantPath:   atLine,
+				wantReason: "the value is no line",
 			},
 			{
-				name:  "returns Damaged for a token not in canonical form",
-				give:  entryText(t, map[string]any{"choices": "prop1:AAc="}),
-				fault: "not unpadded base64url",
+				name:       "returns Damaged for a file with a slash",
+				give:       withIdentity(t, map[string]any{"file": "pkg/a.go", "line": 1}),
+				wantPath:   atIdentity,
+				wantReason: noShape,
 			},
 			{
-				name:  "returns Damaged for a counterexample that is no array",
-				give:  entryText(t, map[string]any{"counterexample": map[string]any{"label": "x"}}),
-				fault: "is no array",
+				name:       "returns Damaged for an empty file name",
+				give:       withIdentity(t, map[string]any{"file": "", "line": 1}),
+				wantPath:   atFile,
+				wantReason: `"" is no non-empty string`,
 			},
 			{
-				name:  "returns Damaged for a null counterexample",
-				give:  entryText(t, map[string]any{"counterexample": nil}),
-				fault: "counterexample null is no array",
+				name:       "returns Damaged for a file that is no string",
+				give:       withIdentity(t, map[string]any{"file": 7, "line": 1}),
+				wantPath:   atFile,
+				wantReason: "7 is no non-empty string",
 			},
 			{
-				name:  "returns Damaged for a draw that is no object",
-				give:  withDraws(t, "x"),
-				fault: `draw 0 "x" is no object`,
+				name:       "returns Damaged for an identity that is no object",
+				give:       entryText(t, map[string]any{"identity": "equal"}),
+				wantPath:   atIdentity,
+				wantReason: `"equal" is no object`,
 			},
 			{
-				name:  "returns Damaged for a draw without a label",
-				give:  withDraws(t, map[string]any{"value": 1}),
-				fault: "has no string label",
+				name:       "returns Damaged for a null identity",
+				give:       entryText(t, map[string]any{"identity": nil}),
+				wantPath:   atIdentity,
+				wantReason: "null is no object",
 			},
 			{
-				name:  "returns Damaged for a label that is no string",
-				give:  withDraws(t, map[string]any{"label": 5}),
-				fault: "has no string label",
+				name:       "returns Damaged for an identity that is an array, without its text",
+				give:       entryText(t, map[string]any{"identity": []any{"equal"}}),
+				wantPath:   atIdentity,
+				wantReason: "the value is no object",
 			},
 			{
-				name:  "returns Damaged for a draw with another key",
-				give:  withDraws(t, map[string]any{"label": "x", "note": "y"}),
-				fault: "states a key other than label and value",
+				name:       "returns Damaged for choices that are no string",
+				give:       entryText(t, map[string]any{"choices": 5}),
+				wantPath:   atChoices,
+				wantReason: "5 is no string",
 			},
 			{
-				name:  "returns Damaged for a day the calendar does not have",
-				give:  entryText(t, map[string]any{"found": "2026-02-30"}),
-				fault: `found "2026-02-30" is no date`,
+				name:       "returns Damaged for choices without a token version",
+				give:       entryText(t, map[string]any{"choices": "AAc"}),
+				wantPath:   atChoices,
+				wantReason: `"AAc" states no token version`,
 			},
 			{
-				name:  "returns Damaged for a date in words",
-				give:  entryText(t, map[string]any{"found": "1 October 2026"}),
-				fault: `found "1 October 2026" is no date`,
+				name:       "returns Damaged for a token version with a leading zero",
+				give:       entryText(t, map[string]any{"choices": "prop01:AAc"}),
+				wantPath:   atChoices,
+				wantReason: `"prop01:AAc" states no token version`,
 			},
 			{
-				name:  "returns Damaged for a date as a number",
-				give:  entryText(t, map[string]any{"found": 20261001}),
-				fault: "found 20261001 is no date",
+				name:       "returns Damaged for a token not in canonical form",
+				give:       entryText(t, map[string]any{"choices": "prop1:AAc="}),
+				wantPath:   atChoices,
+				wantReason: "the choices are no token",
 			},
 			{
-				name:  "returns Damaged for year 0",
-				give:  entryText(t, map[string]any{"found": "0000-01-01"}),
-				fault: `found "0000-01-01" is no date`,
+				name:       "returns Damaged for a counterexample that is no array, without its text",
+				give:       entryText(t, map[string]any{"counterexample": map[string]any{"label": "x"}}),
+				wantPath:   atCounterexample,
+				wantReason: "the value is no array",
+			},
+			{
+				name:       "returns Damaged for a null counterexample",
+				give:       entryText(t, map[string]any{"counterexample": nil}),
+				wantPath:   atCounterexample,
+				wantReason: "null is no array",
+			},
+			{
+				name:       "returns Damaged for a draw that is no object",
+				give:       withDraws(t, "x"),
+				wantPath:   atFirstDraw,
+				wantReason: `"x" is no object`,
+			},
+			{
+				name:       "returns Damaged for a draw without a label",
+				give:       withDraws(t, map[string]any{"value": 1}),
+				wantPath:   atFirstDraw,
+				wantReason: "the draw states no string label",
+			},
+			{
+				name:       "returns Damaged for a label that is no string",
+				give:       withDraws(t, map[string]any{"label": 5}),
+				wantPath:   atFirstDraw,
+				wantReason: "the draw states no string label",
+			},
+			{
+				name:       "returns Damaged for a draw with another key",
+				give:       withDraws(t, map[string]any{"label": "x", "note": "y"}),
+				wantPath:   atFirstDraw,
+				wantReason: "the draw states a key other than label and value",
+			},
+			{
+				name:       "returns Damaged at index 1 for a second draw that is an array",
+				give:       withDraws(t, map[string]any{"label": "x"}, []any{"y"}),
+				wantPath:   fault.Path{fault.Field("counterexample"), fault.Index(1)},
+				wantReason: "the value is no object",
+			},
+			{
+				name:       "returns Damaged for a day the calendar does not have",
+				give:       entryText(t, map[string]any{"found": "2026-02-30"}),
+				wantPath:   atFound,
+				wantReason: `"2026-02-30" is no date`,
+			},
+			{
+				name:       "returns Damaged for a date in words",
+				give:       entryText(t, map[string]any{"found": "1 October 2026"}),
+				wantPath:   atFound,
+				wantReason: `"1 October 2026" is no date`,
+			},
+			{
+				name:       "returns Damaged for a date as a number",
+				give:       entryText(t, map[string]any{"found": 20261001}),
+				wantPath:   atFound,
+				wantReason: "20261001 is no date",
+			},
+			{
+				name:       "returns Damaged for year 0",
+				give:       entryText(t, map[string]any{"found": "0000-01-01"}),
+				wantPath:   atFound,
+				wantReason: `"0000-01-01" is no date`,
 			},
 		}
 		for _, tt := range damaged {
@@ -462,46 +503,37 @@ func TestRead(t *testing.T) {
 				e, verdict, err := store.Read([]byte(tt.give), contract)
 				assert.Equal(t, verdict, store.Damaged, "the verdict")
 				assert.ErrorIs(t, err, store.ErrDamaged, "the damage")
-				assert.Contains(t, err.Error(), tt.fault, "the fault")
+				f := assert.ErrorAs[*fault.Error](t, err, "a fault")
+				assert.Equal(t, f.Path, tt.wantPath, "the field at fault")
+				assert.Equal(t, f.Reason, tt.wantReason, "what the file misstates")
 				assert.Equal(t, e.Property, "", "no entry")
 			})
 		}
+
+		t.Run("returns Damaged caused by the decoder's error for text that is not JSON", func(t *testing.T) {
+			t.Parallel()
+			_, _, err := store.Read([]byte("store: 1"), contract)
+			cause := assert.ErrorAs[*json.SyntaxError](t, err, "the decoder's error")
+			assert.Equal(t, cause.Offset, int64(1), "the decoder fails after reading the first byte")
+		})
+
+		t.Run("returns Damaged caused by the token's fault for choices that are no token", func(t *testing.T) {
+			t.Parallel()
+			_, _, err := store.Read([]byte(entryText(t, map[string]any{"choices": "prop1:AAc="})), contract)
+			assert.ErrorIs(t, err, token.ErrInvalid, "the token's fault")
+		})
 	})
 }
 
-// TestReadZeroAlloc checks that Valid and String allocate nothing, and the
-// ceiling of Read.
-func TestReadZeroAlloc(t *testing.T) {
+// TestReadAllocs checks the ceiling of Read on the pinned entry.
+func TestReadAllocs(t *testing.T) {
 	text, err := json.Marshal(pinned())
 	assert.NoError(t, err, "the pinned entry is JSON")
-	assert.MaxAllocs(t, func() { _ = store.Damaged.Valid() }, 0, "Valid allocates nothing")
-	assert.MaxAllocs(t, func() { _ = store.Damaged.String() }, 0, "String allocates nothing")
 	assert.MaxAllocs(t, func() { _, _, _ = store.Read(text, contract) }, readAllocs, "Read allocates its JSON")
 }
 
-// BenchmarkRead measures each method of Verdict, and Read on the pinned
-// entry.
+// BenchmarkRead measures Read on the pinned entry.
 func BenchmarkRead(b *testing.B) {
-	b.Run("Valid", func(b *testing.B) {
-		var got bool
-		c := bench.Start(b).MaxAllocs(0)
-		defer c.End()
-		for c.Loop() {
-			got = store.Damaged.Valid()
-		}
-		assert.True(b, got, "Damaged is a verdict")
-	})
-
-	b.Run("String", func(b *testing.B) {
-		var got string
-		c := bench.Start(b).MaxAllocs(0)
-		defer c.End()
-		for c.Loop() {
-			got = store.Damaged.String()
-		}
-		assert.Equal(b, got, "damaged", "the verdict's spelling")
-	})
-
 	b.Run("Read", func(b *testing.B) {
 		text, err := json.Marshal(pinned())
 		assert.NoError(b, err, "the pinned entry is JSON")
@@ -513,20 +545,6 @@ func BenchmarkRead(b *testing.B) {
 		}
 		assert.Equal(b, got, store.Replay, "an entry of the property")
 	})
-}
-
-// entryText returns the JSON of base with changes made and the fields of
-// removed taken out, failing the test when it cannot be written.
-func entryText(tb testing.TB, changes map[string]any, removed ...string) string {
-	tb.Helper()
-	fields := maps.Clone(base)
-	maps.Copy(fields, changes)
-	for _, field := range removed {
-		delete(fields, field)
-	}
-	text, err := json.Marshal(fields)
-	assert.NoError(tb, err, "the fields are JSON")
-	return string(text)
 }
 
 // withIdentity returns the JSON of base with identity as its identity.
@@ -549,17 +567,4 @@ func nested(levels int) any {
 		node = []any{node}
 	}
 	return node
-}
-
-// sameChoices reports whether a and b are the same choices in order.
-func sameChoices(a, b []choice.Choice) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if !a[i].Equal(b[i]) {
-			return false
-		}
-	}
-	return true
 }

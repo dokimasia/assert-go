@@ -18,14 +18,14 @@ import (
 // The allocations of each number generator's constructor, measured.
 const (
 	// integerAllocs are the allocations of Integer and Duration: the
-	// decode, the decode with its type erased, and the conversion of a
-	// choice value to the generator's type.
-	integerAllocs = 3
-	// floatAllocs are the allocations of Float: the decode and the decode
-	// with its type erased.
-	floatAllocs = 2
+	// decode, the decode with its type erased, the conversion of a choice
+	// value to the generator's type, and the inverse.
+	integerAllocs = 4
+	// floatAllocs are the allocations of Float: the decode, the decode with
+	// its type erased, and the inverse.
+	floatAllocs = 3
 	// booleanAllocs are the allocations of Boolean: the decode and the
-	// decode with its type erased.
+	// decode with its type erased. The inverse captures nothing.
 	booleanAllocs = 2
 )
 
@@ -36,9 +36,6 @@ var pinnedReuse = []int64{
 	11, 13, math.MaxInt64, math.MaxInt64, -207, -781715023583996500,
 	math.MinInt64, -43, -12, -2609675888663766267, -2609675888663766267, 229,
 }
-
-// celsius is an integer type defined over int8.
-type celsius int8
 
 // TestNumber checks the integer, duration, float and boolean generators:
 // the values they decode, the choices they record, and their refusals.
@@ -265,9 +262,9 @@ func TestNumber(t *testing.T) {
 	})
 }
 
-// TestNumberZeroAlloc checks the allocation ceilings of the number
+// TestNumberAllocs checks the allocation ceilings of the number
 // generators' constructors, which allocate their decode functions.
-func TestNumberZeroAlloc(t *testing.T) {
+func TestNumberAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = engine.Integer(0, 9) }, integerAllocs, "Integer allocates its decodes")
 	assert.MaxAllocs(t, func() { _ = engine.Duration(0, time.Second) }, integerAllocs, "Duration allocates its decodes")
 	assert.MaxAllocs(t, func() { _ = engine.Float(0.0, 1.0, choice.ExcludeNaN) }, floatAllocs,

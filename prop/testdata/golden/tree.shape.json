@@ -1,0 +1,33 @@
+{
+  "definitions": {
+    "go.dokimi.dev/assert/prop_test.tree": {
+      "fields": [
+        [
+          "value",
+          {
+            "shape": "int",
+            "signed": true,
+            "width": 32
+          }
+        ],
+        [
+          "children",
+          {
+            "of": {
+              "name": "go.dokimi.dev/assert/prop_test.tree",
+              "shape": "ref"
+            },
+            "shape": "list"
+          }
+        ]
+      ],
+      "shape": "record"
+    }
+  },
+  "name": "go.dokimi.dev/assert/prop_test.tree",
+  "shape": "ref",
+  "source": {
+    "language": "go",
+    "type": "go.dokimi.dev/assert/prop_test.tree"
+  }
+}

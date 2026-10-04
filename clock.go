@@ -11,36 +11,39 @@ import (
 
 // Clock is where an assertion reads time.
 //
-// An assertion that waits, retries or measures reads it here rather
-// than calling the runtime, so a test can supply time it controls and
-// a busy machine cannot make the assertion flaky.
+// An assertion that waits, retries or measures reads the time here and
+// not from the runtime, so a test can supply time that it controls, and a
+// busy machine cannot make the assertion flaky.
 type Clock = matcher.Clock
 
-// Clocked is a [TB] that carries a clock.
+// Clocked is a [TB] that supplies a clock.
 //
-// [testing.TB] declares three methods and can never grow a fourth, so
-// a clock reaches an assertion through a second interface a seat may
-// also satisfy. A seat that does not satisfy it reads the runtime
-// clock, which is what every assertion did before this existed.
+// A seat supplies a clock through this second interface, so [TB] keeps the
+// three methods that [testing.T] and [testing.B] implement. An assertion
+// reads [System] when its seat does not satisfy Clocked.
 type Clocked = matcher.Clocked
 
-// System reads the runtime clock, and is what an assertion gets when
-// the seat carries none.
+// System reads the runtime clock. An assertion reads it when the seat
+// supplies no clock.
 type System = matcher.System
 
 // Controlled is a clock that moves only when a test advances it.
 //
-// Now answers what [Controlled.Advance] last left it at, and an
-// assertion that retries advances it rather than waiting, so a body
-// that settles on the third attempt costs three attempts and no real
-// time.
+// Now returns the instant that [Controlled.Advance] last moved it to. An
+// assertion that retries advances this clock between attempts instead of
+// sleeping against it, so a body that settles on the third attempt costs
+// three attempts and no waiting.
 //
-// It reaches an assertion through [Recorder.WithClock]. A controlled
-// clock cannot reach the subject: code under test that calls the
-// runtime directly reads a different now, and nothing here detects
-// that.
+// A test passes the clock to an assertion through [Recorder.WithClock].
+// The subject does not read it: code under test that calls the runtime
+// reads the runtime clock, and no assertion detects the difference.
 type Controlled = matcher.Controlled
 
-// NewControlled returns a [Controlled] reading start until it is
+// NewControlled returns a [Controlled] that reads start until it is
 // advanced.
+//
+// # Allocation contract
+//
+// NewControlled allocates twice: the clock and the condition that wakes
+// its sleepers.
 func NewControlled(start time.Time) *Controlled { return matcher.NewControlled(start) }

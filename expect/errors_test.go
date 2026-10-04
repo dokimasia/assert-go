@@ -4,12 +4,19 @@
 package expect_test
 
 import (
+	"fmt"
 	"testing"
 
+	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/expect"
+	"go.dokimi.dev/assert/internal/alloctest"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
+// typed keeps the error that a call of ErrorAs returns.
+var typed *matchertest.TypedError
+
+// TestErrors runs the shared cases of the error assertions.
 func TestErrors(t *testing.T) {
 	t.Parallel()
 
@@ -51,4 +58,39 @@ func TestErrors(t *testing.T) {
 			return expect.ErrorAs[*matchertest.TypedError](s, err, msg)
 		})
 	})
+}
+
+// TestErrorsAllocs checks the allocation ceiling of a passing call of each
+// error assertion.
+func TestErrorsAllocs(t *testing.T) {
+	alloctest.Check(t, errorsCases())
+}
+
+// BenchmarkErrors measures a passing call of each error assertion.
+func BenchmarkErrors(b *testing.B) {
+	for _, c := range errorsCases() {
+		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
+	}
+}
+
+// errorsCases returns a passing call of each error assertion, with its
+// allocation ceiling, measured: on a sentinel wrapped twice where the
+// assertion reads a chain.
+func errorsCases() []alloctest.Case {
+	wrapped := fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", matchertest.ErrSample))
+	wrappedTyped := matchertest.WrappedTyped()
+	return []alloctest.Case{
+		{Name: "NoError", Call: func(tb assert.TB) { expect.NoError(tb, nil, allocContract) }},
+		{Name: "HasError", Call: func(tb assert.TB) { expect.HasError(tb, wrapped, allocContract) }},
+		{
+			Name: "ErrorIs",
+			Call: func(tb assert.TB) { expect.ErrorIs(tb, wrapped, matchertest.ErrSample, allocContract) },
+		},
+		{Name: "ErrorIsNot", Call: func(tb assert.TB) {
+			expect.ErrorIsNot(tb, wrapped, matchertest.ErrOther, allocContract)
+		}},
+		{Name: "ErrorAs", Allocs: 1, Call: func(tb assert.TB) {
+			typed = expect.ErrorAs[*matchertest.TypedError](tb, wrappedTyped, allocContract)
+		}},
+	}
 }

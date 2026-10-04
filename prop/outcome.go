@@ -34,3 +34,9 @@ const (
 func (o Outcome) Valid() bool {
 	return o <= Vacuous
 }
+
+// MarshalText returns the outcome's spelling, as the record of a run
+// states it.
+func (o Outcome) MarshalText() ([]byte, error) {
+	return []byte(o.String()), nil
+}

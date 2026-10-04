@@ -7,9 +7,11 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/alloctest"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
+// TestText runs the shared cases of the text assertions.
 func TestText(t *testing.T) {
 	t.Parallel()
 
@@ -36,4 +38,37 @@ func TestText(t *testing.T) {
 				assert.Matches(s, got, pattern.(string), msg)
 			})
 	})
+}
+
+// TestTextAllocs checks the allocation ceiling of a passing call of each
+// text assertion.
+func TestTextAllocs(t *testing.T) {
+	alloctest.Check(t, textCases())
+}
+
+// BenchmarkText measures a passing call of each text assertion.
+func BenchmarkText(b *testing.B) {
+	for _, c := range textCases() {
+		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
+	}
+}
+
+// textCases returns a passing call of each text assertion on a string,
+// with its allocation ceiling, measured.
+func textCases() []alloctest.Case {
+	return []alloctest.Case{
+		{
+			Name: "HasPrefix",
+			Call: func(tb assert.TB) { assert.HasPrefix(tb, "store: missing", "store: ", allocContract) },
+		},
+		{
+			Name: "HasSuffix",
+			Call: func(tb assert.TB) { assert.HasSuffix(tb, "store: missing", "missing", allocContract) },
+		},
+		{
+			Name:   "Matches",
+			Call:   func(tb assert.TB) { assert.Matches(tb, "order 42", `^order \d+$`, allocContract) },
+			Allocs: 62,
+		},
+	}
 }

@@ -8,11 +8,18 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"go.dokimi.dev/assert/internal/record"
 )
+
+// calls is the record.Calls that the seat of a body embeds, so that the
+// record package finds the calls of its run there.
+type calls = record.Calls
 
 // probe is a [Seat] that records a trial's failure instead of
 // reporting it, so a retrying assertion can run a body many times and
-// report only the last outcome.
+// report only the last outcome. Its Calls keep the records of the trial's
+// calls, for the call that ran the body.
 //
 // It is not the public recorder, because the package that declares the
 // recorder imports this one. A retry loop needs nothing more than the
@@ -22,6 +29,8 @@ import (
 // Fatalf does, so an aborting assertion stops the trial at its first
 // failure. A trial runs on a goroutine of its own for that reason.
 type probe struct {
+	calls
+
 	mu     sync.Mutex
 	failed bool
 	msg    string
@@ -54,12 +63,14 @@ func (p *probe) outcome() (msg string, failed bool) {
 	return p.msg, p.failed
 }
 
-// trial runs fn once with a probe of its own, on a goroutine of its own,
-// and returns the probe once fn has returned or a fatal failure has ended
-// it. A panic in fn panics again on the calling goroutine with the same
-// value, so it is not taken for a failed attempt.
-func trial(fn func(Seat)) *probe {
+// trial runs fn once with a probe of its own, whose calls are a run of the
+// call that slot started, on a goroutine of its own, and returns the probe
+// once fn has returned or a fatal failure has ended it. A panic in fn
+// panics again on the calling goroutine with the same value, so it is not
+// taken for a failed attempt.
+func trial(fn func(Seat), slot *record.Slot) *probe {
 	p := &probe{}
+	record.Run(&p.calls, slot, nil)
 	ended := make(chan any, 1)
 	go func() {
 		// recover returns nil for a body that returned and for one that a
@@ -81,35 +92,44 @@ func trial(fn func(Seat)) *probe {
 // its own, and an aborting assertion that fails ends that attempt there,
 // as it ends a test. Only the final attempt's failure is reported. A
 // panic in fn is no failed attempt: it panics again on the goroutine that
-// called Eventually.
+// called Eventually. The calls of each attempt are recorded under the
+// call of Eventually, which takes its number before them.
 //
 //	matcher.Eventually(seat, matcher.Fatal, 5*time.Second, 100*time.Millisecond,
 //	    func(s matcher.Seat) {
 //	        matcher.Equal(s, matcher.Fatal, cache.Get(key), want, "the cache caught up")
 //	    }, "the cache converges")
 //
-// This spends real time. It is for a condition that something outside
-// the test makes true. A controlled clock moves only when the test
-// advances it, and the test cannot advance it while this call blocks.
-// Where the subject reads a clock the test controls, drive that clock and
-// read the result instead.
+// Eventually waits on the seat's clock. On the runtime clock it spends
+// real time, up to timeout, so it suits a condition that another goroutine
+// or process makes true. On a [Controlled] clock of the seat, it advances
+// that clock between attempts and spends no real time.
 //
 // Size the timeout for the slowest machine that will run it. fn runs
 // at least once however short the timeout. An interval below a
 // millisecond waits a millisecond, so the attempts on a controlled clock
 // end at the timeout.
+//
+// # Allocation contract
+//
+// A call whose first attempt passes allocates 4 times besides what fn
+// allocates.
 func Eventually(seat Seat, mode Mode, timeout, interval time.Duration, fn func(Seat), msg string) {
 	seat.Helper()
 
+	run := Begin(seat)
 	clock := ClockOf(seat)
 	deadline := clock.Now().Add(timeout)
 	for attempt := 0; ; attempt++ {
-		last, failed := trial(fn).outcome()
+		p := trial(fn, run.Slot())
+		run.Slot().Take(&p.calls, record.NoPhase)
+		last, failed := p.outcome()
 		if !failed {
+			run.Pass(mode, "eventually", msg)
 			return
 		}
 		if clock.Now().After(deadline) {
-			Fail(seat, mode, "eventually", msg, map[string]any{
+			run.Fail(mode, "eventually", msg, map[string]any{
 				"attempts": attempt + 1, "last": last,
 			})
 			return
@@ -131,10 +151,14 @@ const minWait = time.Millisecond
 // 4 ms keeps the backoff at a millisecond.
 //
 // It differs from [Eventually] in what it reports. A predicate does not
-// report a failure of its own, so this states only that the wait ran out. Where
-// the reason matters, write the condition as assertions and use
-// [Eventually]. This spends real time for the same reason [Eventually]
-// does.
+// report a failure of its own, so this states only that the wait ran out.
+// Where the reason matters, write the condition as assertions and use
+// [Eventually]. It waits on the seat's clock as Eventually does.
+//
+// # Allocation contract
+//
+// A call whose first attempt passes allocates nothing besides what pred
+// allocates.
 func EventuallyTrue(seat Seat, mode Mode, timeout time.Duration, pred func() bool, msg string) {
 	seat.Helper()
 
@@ -144,6 +168,7 @@ func EventuallyTrue(seat Seat, mode Mode, timeout time.Duration, pred func() boo
 
 	for attempt := 0; ; attempt++ {
 		if pred() {
+			Pass(seat, mode, "eventually-true", msg)
 			return
 		}
 		if clock.Now().After(deadline) {

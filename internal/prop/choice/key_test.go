@@ -121,8 +121,8 @@ func TestKey(t *testing.T) {
 	})
 }
 
-// TestKeyZeroAlloc checks that no function or method of Key allocates.
-func TestKeyZeroAlloc(t *testing.T) {
+// TestKeyAllocs checks that no function or method of Key allocates.
+func TestKeyAllocs(t *testing.T) {
 	elements := []uint32{1, 2, 3}
 	k, o := choice.FloatKey(0.25), choice.FloatKey(0.5)
 	assert.MaxAllocs(t, func() { _ = choice.FloatKey(0.625) }, 0, "FloatKey allocates nothing")

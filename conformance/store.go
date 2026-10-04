@@ -5,10 +5,10 @@ package conformance
 
 import (
 	"encoding/json"
-	"fmt"
 	"reflect"
 	"time"
 
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/store"
 )
 
@@ -18,7 +18,7 @@ const dateLayout = "2006-01-02"
 // checkStore reads the text of one file of a store vector and compares the
 // verdict and the choices to replay, or writes its entry and compares the
 // entry's name and its JSON.
-func checkStore(raw json.RawMessage) error {
+func checkStore(raw json.RawMessage, _ string) error {
 	var v struct {
 		// Contract is the property's contract.
 		Contract string `json:"contract"`
@@ -41,33 +41,26 @@ func checkStore(raw json.RawMessage) error {
 		// Entry is the entry's JSON.
 		Entry json.RawMessage `json:"entry"`
 	}
-	if err := json.Unmarshal(raw, &v); err != nil {
+	if err := decode(raw, &v); err != nil {
 		return err
 	}
 	if v.Text != nil {
 		entry, verdict, _ := store.Read([]byte(*v.Text), v.Contract)
 		if verdict.String() != v.Verdict {
-			return fmt.Errorf("the verdict is %v, want %s", verdict, v.Verdict)
+			return fault.At(fault.New("the verdict is %v, want %s", verdict, v.Verdict), fault.Field(verdictMember))
 		}
 		if verdict != store.Replay {
 			return nil
 		}
-		same, err := sameChoices(entry.Choices, v.Choices)
-		if err != nil {
-			return err
-		}
-		if !same {
-			return fmt.Errorf("the entry replays %v, want %s", entry.Choices, jsonOf(v.Choices))
-		}
-		return nil
+		return at(compareChoices(entry.Choices, v.Choices), fault.Field(choicesMember))
 	}
 	choices, err := parseChoices(v.Choices)
 	if err != nil {
-		return err
+		return fault.At(err, fault.Field(choicesMember))
 	}
 	found, err := time.Parse(dateLayout, v.Found)
 	if err != nil {
-		return err
+		return fault.At(fault.New("%q is no date", v.Found).Because(err), fault.Field(foundMember))
 	}
 	entry := store.Entry{
 		Definition:     v.Definition,
@@ -78,13 +71,13 @@ func checkStore(raw json.RawMessage) error {
 		Found:          found,
 	}
 	if entry.Name() != v.Name {
-		return fmt.Errorf("the entry's name is %s, want %s", entry.Name(), v.Name)
+		return fault.At(fault.New("the entry's name is %s, want %s", entry.Name(), v.Name), fault.Field(nameMember))
 	}
 	// Each draw's value parsed as JSON with the vector, so the entry
 	// marshals.
 	data, _ := entry.MarshalJSON()
 	if !sameJSON(data, v.Entry) {
-		return fmt.Errorf("the entry is %s, want %s", data, v.Entry)
+		return fault.At(fault.New("the entry is %s, want %s", data, v.Entry), fault.Field(entryMember))
 	}
 	return nil
 }

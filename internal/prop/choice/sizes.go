@@ -3,7 +3,7 @@
 
 package choice
 
-import "fmt"
+import "go.dokimi.dev/assert/internal/fault"
 
 // Sizes are the bounds of a length: an inclusive minimum, and an inclusive
 // maximum or none.
@@ -24,7 +24,7 @@ type Sizes struct {
 // [ErrEmpty] when minSize is negative or maxSize is below it.
 func NewSizes(minSize, maxSize int) (Sizes, error) {
 	if maxSize < minSize {
-		return Sizes{}, fmt.Errorf("%w: sizes [%d, %d]", ErrEmpty, minSize, maxSize)
+		return Sizes{}, fault.Of(ErrEmpty, "the sizes [%d, %d] admit no size", minSize, maxSize)
 	}
 	s, err := NewUnboundedSizes(minSize)
 	if err != nil {
@@ -38,7 +38,7 @@ func NewSizes(minSize, maxSize int) (Sizes, error) {
 // [ErrEmpty] when minSize is negative.
 func NewUnboundedSizes(minSize int) (Sizes, error) {
 	if minSize < 0 {
-		return Sizes{}, fmt.Errorf("%w: minimum size %d", ErrEmpty, minSize)
+		return Sizes{}, fault.Of(ErrEmpty, "the minimum size %d is negative", minSize)
 	}
 	return Sizes{minSize: minSize}, nil
 }

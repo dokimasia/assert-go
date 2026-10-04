@@ -144,6 +144,26 @@ func Explain(enabled bool) Option {
 	}}
 }
 
+// Draws makes the run's first case decode its draws from entries: a JSON
+// array of objects that each state a label and a typed literal, as a store
+// entry records its counterexample.
+//
+//	prop.Draws(`[{"label": "count", "value": {"type": "int", "value": 4}}]`)
+//
+// Each draw takes the next entry, and its choices are the ones that decode
+// to the entry's value under the draw's generator, so a value written by
+// hand runs, and shrinks when it fails, as a generated one does. A draw past
+// the last entry takes its target. A draw whose label differs from its
+// entry's, or whose generator does not produce the entry's value, fails the
+// test before any other case runs, and the failure names the draw's label.
+// Entries that are no such array fail the test without a run.
+func Draws(entries string) Option {
+	return Option{set: func(c config) config {
+		c.draws, c.drawn = entries, true
+		return c
+	}}
+}
+
 // Workers sets the number of cases, shrink candidates and explanation
 // fillings that run at once, 1 by default. A run on more workers reports
 // what a run on one reports, and runs the body concurrently with itself, so
@@ -186,6 +206,10 @@ type config struct {
 	explain bool
 	// workers is the number of workers.
 	workers int
+	// draws are the entries that Draws states, when drawn is set.
+	draws string
+	// drawn reports whether Draws stated entries.
+	drawn bool
 }
 
 // configure returns the defaults with each option of opts applied in

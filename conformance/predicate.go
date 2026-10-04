@@ -6,12 +6,14 @@ package conformance
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"math"
 	"math/big"
 	"reflect"
 	"strings"
 	"unicode/utf8"
+
+	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/literal"
 )
 
 // The predicates that the corpus's bodies and filters state, by kind.
@@ -45,10 +47,14 @@ type predicateSpec struct {
 // predicateOf returns the predicate that a corpus spec states. Equal means
 // the same canonical text, and a number compares exactly whatever its type,
 // as the definition's executable reference compares it.
+//
+// It returns a fault for a spec that names no predicate of the vocabulary
+// or misstates a parameter, whose path leads through the spec to the part
+// at fault.
 func predicateOf(raw json.RawMessage) (func(any) bool, error) {
 	var spec predicateSpec
 	if err := json.Unmarshal(raw, &spec); err != nil {
-		return nil, fmt.Errorf("conformance: parse predicate: %w", err)
+		return nil, fault.New("the predicate does not parse").Because(err)
 	}
 	holds, err := holdsOf(spec)
 	if err != nil {
@@ -76,20 +82,20 @@ func holdsOf(spec predicateSpec) (func(any) bool, error) {
 	case atLeastKind, divisibleByKind, sumAboveKind, lengthAtLeastKind, indexedAboveKind:
 		return numberPredicate(spec)
 	}
-	return nil, fmt.Errorf("conformance: %q names no predicate", spec.Kind)
+	return nil, fault.At(fault.New("%q names no predicate", spec.Kind), fault.Field(kindMember))
 }
 
 // valuePredicate returns equals or contains, of the value that spec
 // states.
 func valuePredicate(spec predicateSpec) (func(any) bool, error) {
 	if spec.Value == nil {
-		return nil, fmt.Errorf("conformance: predicate %s lacks value", spec.Kind)
+		return nil, fault.New("%s states no value", spec.Kind)
 	}
-	wanted, err := Decode(spec.Value)
+	wanted, err := literal.Decode(spec.Value)
 	if err != nil {
-		return nil, err
+		return nil, fault.At(err, fault.Field(valueMember))
 	}
-	key := canonical(wanted)
+	key := literal.Canonical(wanted)
 	if spec.Kind == equalsKind {
 		return func(v any) bool { return same(v, key) }, nil
 	}
@@ -100,11 +106,11 @@ func valuePredicate(spec predicateSpec) (func(any) bool, error) {
 // length-at-least or indexed-above, of the number that spec states.
 func numberPredicate(spec predicateSpec) (func(any) bool, error) {
 	if spec.N == nil {
-		return nil, fmt.Errorf("conformance: predicate %s lacks n", spec.Kind)
+		return nil, fault.New("%s states no n", spec.Kind)
 	}
 	n, err := numberParameter(spec.N)
 	if err != nil {
-		return nil, err
+		return nil, fault.At(err, fault.Field(nMember))
 	}
 	switch spec.Kind {
 	case atLeastKind:
@@ -115,7 +121,7 @@ func numberPredicate(spec predicateSpec) (func(any) bool, error) {
 		return func(v any) bool { return indexedAbove(v, n) }, nil
 	}
 	if !n.IsInt() {
-		return nil, fmt.Errorf("conformance: predicate %s states %v, no integer", spec.Kind, n)
+		return nil, fault.At(fault.New("%v is no integer", n), fault.Field(nMember))
 	}
 	if spec.Kind == divisibleByKind {
 		return func(v any) bool { return divisibleBy(v, n) }, nil
@@ -126,18 +132,18 @@ func numberPredicate(spec predicateSpec) (func(any) bool, error) {
 // numberParameter returns the number of a predicate: an integer, or a
 // float when the JSON states a fraction or an exponent.
 func numberParameter(raw json.RawMessage) (*big.Float, error) {
-	if i, err := decodeInt(raw); err == nil {
+	if i, err := literal.Int(raw); err == nil {
 		f, _ := numeric(reflect.ValueOf(i))
 		return f, nil
 	}
-	f, err := decodeFloat(raw)
+	f, err := literal.Float(raw)
 	if err != nil {
 		return nil, err
 	}
-	if math.IsNaN(f.(float64)) {
-		return nil, fmt.Errorf("conformance: the number of a predicate is %s", floatNaN)
+	if math.IsNaN(f) {
+		return nil, fault.New("NaN is no number of a predicate")
 	}
-	return new(big.Float).SetFloat64(f.(float64)), nil
+	return new(big.Float).SetFloat64(f), nil
 }
 
 // numeric returns v as an exact number, for an integer and a float that is
@@ -160,7 +166,7 @@ func numeric(v reflect.Value) (*big.Float, bool) {
 
 // same reports whether v has the canonical text key.
 func same(v any, key string) bool {
-	return canonical(v) == key
+	return literal.Canonical(v) == key
 }
 
 // atLeast reports whether v is a number of n or more.
@@ -316,7 +322,7 @@ func hasDuplicate(v any) bool {
 	}
 	seen := make(map[string]bool, items.Len())
 	for i := range items.Len() {
-		text := canonical(items.Index(i).Interface())
+		text := literal.Canonical(items.Index(i).Interface())
 		if seen[text] {
 			return true
 		}

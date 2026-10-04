@@ -58,6 +58,6 @@
 //
 // # Dependency position
 //
-// Imports the standard library only. Depends on no other package in this
-// module.
+// Imports the standard library and internal/literal, whose plain JSON
+// values the corpus form of bounds states.
 package choice

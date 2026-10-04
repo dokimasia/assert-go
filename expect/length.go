@@ -14,6 +14,10 @@ import (
 // map, the bytes of a []byte and the Unicode scalar values of a string,
 // so "é" has one. Anything else has no length, nil included, and fails
 // with got nil. It does not panic.
+//
+// # Allocation contract
+//
+// A passing call on a slice allocates nothing.
 func Length(tb assert.TB, got any, want int, msg string) {
 	tb.Helper()
 	matcher.Length(tb, matcher.Soft, got, want, msg)
@@ -22,6 +26,10 @@ func Length(tb assert.TB, got any, want int, msg string) {
 // Empty records a failure when got has any item. A value without a
 // length, nil included, fails. See [Length] for the values that have
 // one.
+//
+// # Allocation contract
+//
+// A passing call on a slice allocates nothing.
 func Empty(tb assert.TB, got any, msg string) {
 	tb.Helper()
 	matcher.Empty(tb, matcher.Soft, got, msg)
@@ -30,6 +38,10 @@ func Empty(tb assert.TB, got any, msg string) {
 // NotEmpty records a failure when got has no item. A value without a
 // length, nil included, fails. See [Length] for the values that have
 // one.
+//
+// # Allocation contract
+//
+// A passing call on a slice allocates nothing.
 func NotEmpty(tb assert.TB, got any, msg string) {
 	tb.Helper()
 	matcher.NotEmpty(tb, matcher.Soft, got, msg)

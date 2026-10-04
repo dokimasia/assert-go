@@ -4,9 +4,11 @@
 package prop_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/bench"
 	"go.dokimi.dev/assert/prop"
 )
 
@@ -44,5 +46,47 @@ func TestOther(t *testing.T) {
 			got := detailOf(failsAtLeast(10000, 1001, big), prop.Seed(7))
 			assert.Equal(t, got[othersField], any([]prop.Other{}), "an empty list, not nil")
 		})
+	})
+
+	t.Run("MarshalJSON", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns the failure record, each draw's label and typed literal, and the token", func(t *testing.T) {
+			t.Parallel()
+			got, err := json.Marshal(other)
+			assert.NoError(t, err, "the failure is JSON")
+			assert.Equal(t, string(got), `{"failure":{"assertion":"big","contract":"","detail":{}},`+
+				`"counterexample":[{"label":"value","value":{"type":"int","value":52}}],"choices":"prop1:ADQ"}`,
+				"the failure as the record of a run states it")
+		})
+	})
+}
+
+// other is the further failure of the definition's vector.
+var other = prop.Other{
+	Counterexample: []prop.Drawn{{Label: drawn, Value: 52}},
+	Failure:        assert.Failure{Assertion: big},
+	Choices:        "prop1:ADQ",
+}
+
+// otherJSONAllocs are the allocations of MarshalJSON on the further failure
+// of the definition's vector, measured.
+const otherJSONAllocs = 17
+
+// TestOtherAllocs checks the ceiling of MarshalJSON.
+func TestOtherAllocs(t *testing.T) {
+	assert.MaxAllocs(t, func() { _, _ = other.MarshalJSON() }, otherJSONAllocs, "MarshalJSON allocates its JSON")
+}
+
+// BenchmarkOther measures MarshalJSON.
+func BenchmarkOther(b *testing.B) {
+	b.Run("MarshalJSON", func(b *testing.B) {
+		got, _ := other.MarshalJSON()
+		c := bench.Start(b).MaxAllocs(otherJSONAllocs)
+		defer c.End()
+		for c.Loop() {
+			got, _ = other.MarshalJSON()
+		}
+		assert.Contains(b, string(got), `"choices":"prop1:ADQ"`, "the token")
 	})
 }

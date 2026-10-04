@@ -127,3 +127,12 @@ func TestDecoder(t *testing.T) {
 		})
 	})
 }
+
+// labels returns the labels of spans, in order.
+func labels(spans []engine.Span) []string {
+	out := make([]string, len(spans))
+	for i, span := range spans {
+		out[i] = span.Label
+	}
+	return out
+}

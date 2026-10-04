@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert/conformance"
+	"go.dokimi.dev/assert/internal/fault"
 )
 
 // The inputs of the definition's vectors integer/passes-when-no-value-fails
@@ -29,93 +30,98 @@ const (
 )
 
 // TestShrinking checks a shrinking vector: the run of a property of one
-// draw, and the minimal case its failure shrinks to.
+// draw, and the minimal case its failure shrinks to. Written with testing
+// rather than with this library, because a verdict is not written with the
+// subject.
 func TestShrinking(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Check", func(t *testing.T) {
 		t.Parallel()
 
+		atToken := inVector(fault.Field("token"))
 		tests := []struct {
-			name string
-			give string
-			want string
+			name       string
+			give       string
+			wantPath   fault.Path
+			wantReason string
 		}{
 			{
 				name: "returns nil for a vector that states the minimal case",
 				give: shrunk(wideGenerator, fromFiveHundred, "7", minimal(fiveHundred, minimalToken)),
 			},
 			{
-				name: "returns an error for a vector that is no JSON object",
-				give: `[]`,
-				want: "cannot unmarshal array",
+				name:       "returns a fault at the generator for a generator of an unknown id",
+				give:       shrunk(unknownGenerator, fromFiveHundred, "7", passedOutputs),
+				wantPath:   inVector(fault.Field(generatorAt), fault.Field(genAt)),
+				wantReason: noGenerator,
 			},
 			{
-				name: "returns an error for a generator of an unknown id",
-				give: shrunk(unknownGenerator, fromFiveHundred, "7", passedOutputs),
-				want: `"widget" names no generator`,
+				name:       "returns a fault at fails-when for a predicate of an unknown kind",
+				give:       shrunk(wideGenerator, `{"kind":"most"}`, "7", passedOutputs),
+				wantPath:   inVector(fault.Field("fails-when"), fault.Field(kindAt)),
+				wantReason: `"most" names no predicate`,
 			},
 			{
-				name: "returns an error for a failure under a predicate of an unknown kind",
-				give: shrunk(wideGenerator, `{"kind":"most"}`, "7", passedOutputs),
-				want: `"most" names no predicate`,
-			},
-			{
-				name: "returns an error for a seed that is no decimal number",
-				give: shrunk(wideGenerator, fromFiveHundred, "seven", passedOutputs),
-				want: "invalid syntax",
-			},
-			{
-				name: "returns an error for a run of another outcome",
+				name: "returns a fault at the outcome for a run of another outcome",
 				give: shrunk(wideGenerator, `{"kind":"never"}`, "7",
 					`"outcome":"counterexample","cases":100,"value":null,"choices":null,"token":null,"runs":0`),
-				want: "the run ends passed after 100 cases and 0 runs, want counterexample after 100 and 0",
+				wantPath:   inVector(fault.Field("outcome")),
+				wantReason: "the run ends as passed, want counterexample",
 			},
 			{
-				name: "returns an error for a run of another number of valid cases",
+				name: "returns a fault at the cases for a run of another number of valid cases",
 				give: shrunk(wideGenerator, `{"kind":"never"}`, "7",
 					`"outcome":"passed","cases":99,"value":null,"choices":null,"token":null,"runs":0`),
-				want: "the run ends passed after 100 cases and 0 runs, want passed after 99 and 0",
+				wantPath:   inVector(fault.Field(casesAt)),
+				wantReason: "the run has 100 valid cases, want 99",
 			},
 			{
-				name: "returns an error for a run of another number of shrink runs",
+				name: "returns a fault at the runs for a run of another number of shrink runs",
 				give: shrunk(wideGenerator, fromFiveHundred, "7",
 					`"outcome":"counterexample","cases":4,"value":`+fiveHundred+`,"choices":[500],`+
 						`"token":`+minimalToken+`,"runs":14`),
-				want: "want counterexample after 4 and 14",
+				wantPath:   inVector(fault.Field("runs")),
+				wantReason: "shrinking and explaining spend 15 runs, want 14",
 			},
 			{
-				name: "returns an error for a passing run that states a minimal value",
+				name: "returns a fault at the value for a passing run that states a minimal value",
 				give: shrunk(wideGenerator, `{"kind":"never"}`, "7",
 					`"outcome":"passed","cases":100,"value":`+fiveHundred+`,"choices":null,"token":null,"runs":0`),
-				want: "the run has no minimal case",
+				wantPath:   inVector(fault.Field(valueAt)),
+				wantReason: "the run has no minimal case, want " + fiveHundred,
 			},
 			{
-				name: "returns an error for a passing run that states a token",
+				name: "returns a fault at the token for a passing run that states a token",
 				give: shrunk(wideGenerator, `{"kind":"never"}`, "7",
 					`"outcome":"passed","cases":100,"value":null,"choices":null,"token":"prop1:","runs":0`),
-				want: "the run has no minimal case",
+				wantPath:   atToken,
+				wantReason: "the run has no minimal case, want the token prop1:",
 			},
 			{
-				name: "returns an error for a minimal case of another token",
-				give: shrunk(wideGenerator, fromFiveHundred, "7", minimal(fiveHundred, `"prop1:AAA"`)),
-				want: "the token is prop1:APQD, want \"prop1:AAA\"",
+				name:       "returns a fault at the token for a minimal case of another token",
+				give:       shrunk(wideGenerator, fromFiveHundred, "7", minimal(fiveHundred, `"prop1:AAA"`)),
+				wantPath:   atToken,
+				wantReason: `the token is prop1:APQD, want "prop1:AAA"`,
 			},
 			{
-				name: "returns an error for a minimal case without a token",
-				give: shrunk(wideGenerator, fromFiveHundred, "7", minimal(fiveHundred, null)),
-				want: "the token is prop1:APQD, want null",
+				name:       "returns a fault at the token for a minimal case without a token",
+				give:       shrunk(wideGenerator, fromFiveHundred, "7", minimal(fiveHundred, null)),
+				wantPath:   atToken,
+				wantReason: "the token is prop1:APQD, want null",
 			},
 			{
-				name: "returns an error for a minimal case of another value",
-				give: shrunk(wideGenerator, fromFiveHundred, "7", minimal(`{"type":"int","value":501}`, minimalToken)),
-				want: "the value is int:500",
+				name: "returns a fault at the value for a minimal case of another value",
+				give: shrunk(wideGenerator, fromFiveHundred, "7",
+					minimal(`{"type":"int","value":501}`, minimalToken)),
+				wantPath:   inVector(fault.Field(valueAt)),
+				wantReason: `the value is int:500, want {"type":"int","value":501}`,
 			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				expectCheck(t, check(t, conformance.Shrinking, tt.give), tt.want)
+				expectFault(t, check(t, conformance.Shrinking, tt.give), tt.wantPath, tt.wantReason)
 			})
 		}
 	})

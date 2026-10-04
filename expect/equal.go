@@ -18,13 +18,17 @@ import (
 //	expect.Equal(t, store.Get(ctx, id), item, "Get returns the stored item")
 //
 // Comparison is structural and includes every field, unexported ones
-// too. A nil map or slice does not equal an empty one; pass
-// [EquateEmpty] where that difference does not matter. Floats compare
-// by IEEE 754 equality, so NaN does not equal itself and negative zero
-// equals zero.
+// too. A nil map or slice does not equal an empty one. Pass [EquateEmpty]
+// where that difference does not matter. Floats compare by IEEE 754
+// equality, so NaN does not equal itself and negative zero equals zero.
 //
 // got and want share a type parameter, so a mismatch is a compile
 // error rather than a failure at run time.
+//
+// # Allocation contract
+//
+// A passing call on two ints allocates 24 times, in go-cmp and in the
+// comparison options that each call builds.
 func Equal[T any](tb assert.TB, got, want T, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.Equal(tb, matcher.Soft, got, want, msg, opts...)
@@ -39,6 +43,10 @@ func Equal[T any](tb assert.TB, got, want T, msg string, opts ...Option) {
 // same rules [Equal] describes.
 //
 //	expect.NotEqual(t, token, previous, "Refresh issues a new token")
+//
+// # Allocation contract
+//
+// A passing call on two ints allocates 24 times, as [Equal] does.
 func NotEqual[T any](tb assert.TB, got, want T, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.NotEqual(tb, matcher.Soft, got, want, msg, opts...)

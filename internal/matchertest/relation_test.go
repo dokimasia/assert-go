@@ -8,8 +8,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
-
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
@@ -31,16 +29,6 @@ func guarded[T any](fn func() (T, error)) (value T, failure any) {
 		return value, err
 	}
 	return value, nil
-}
-
-// report records a failure of assertion with detail on s.
-func report(s *matchertest.Seat, assertion, msg string, detail map[string]any) {
-	s.Report(matcher.Failure{Assertion: assertion, Contract: msg, Detail: detail}, true)
-}
-
-// same reports whether x and y are equal under opts.
-func same(x, y any, opts []matcher.Option) bool {
-	return cmp.Equal(x, y, matcher.Options(opts...)...)
 }
 
 // compared reports the first of two steps that fails, or both values when
@@ -92,29 +80,6 @@ func delta(from, to int) any {
 		return int(d.Int64())
 	}
 	return d
-}
-
-// permutes reports whether got and want contain the same elements, each as
-// often, by removing each element of got from a copy of want.
-func permutes(got, want []any, opts []matcher.Option) bool {
-	if len(got) == 0 && len(want) == 0 {
-		return same(got, want, opts)
-	}
-	pool := append([]any(nil), want...)
-	for _, g := range got {
-		found := -1
-		for j, w := range pool {
-			if same(g, w, opts) {
-				found = j
-				break
-			}
-		}
-		if found < 0 {
-			return false
-		}
-		pool = append(pool[:found], pool[found+1:]...)
-	}
-	return len(pool) == 0
 }
 
 func TestRelation(t *testing.T) {
@@ -366,15 +331,40 @@ func TestRelation(t *testing.T) {
 			}
 		})
 	})
+}
 
-	t.Run("RunPermutation", func(t *testing.T) {
-		t.Parallel()
-		matchertest.RunPermutation(t, func(s *matchertest.Seat, got, want []any, msg string,
-			opts ...matcher.Option,
-		) {
-			if !permutes(got, want, opts) {
-				report(s, "permutation", msg, map[string]any{"want": want, "got": got})
-			}
+// TestRelationTwins runs TestRelationTwinsChild in a child process, and
+// requires the failures of RunPoisoned for twins that end the goroutine of
+// induce in two ways.
+func TestRelationTwins(t *testing.T) {
+	t.Parallel()
+	expectBroken(t, "TestRelationTwinsChild",
+		"the assertion returned after a callable ended its goroutine",
+		"for a callable that ended its goroutine")
+}
+
+// TestRelationTwinsChild runs only in the child process of
+// TestRelationTwins.
+func TestRelationTwinsChild(t *testing.T) {
+	inChild(t)
+
+	t.Run("RunPoisoned of a twin that induces on a goroutine of its own", func(t *testing.T) {
+		matchertest.RunPoisoned(t, func(_ *matchertest.Seat, induce func(), _ func() error, _ string) {
+			ended := make(chan struct{})
+			go func() {
+				defer close(ended)
+				defer func() { _ = recover() }()
+				induce()
+			}()
+			<-ended
+		})
+	})
+
+	t.Run("RunPoisoned of a twin that reports as its goroutine ends", func(t *testing.T) {
+		matchertest.RunPoisoned(t, func(s *matchertest.Seat, induce func(), _ func() error, msg string) {
+			defer func() { _ = recover() }()
+			defer report(s, "poisoned", msg, map[string]any{"index": nil, "got": nil})
+			induce()
 		})
 	})
 }

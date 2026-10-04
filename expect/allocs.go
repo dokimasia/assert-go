@@ -28,13 +28,18 @@ import (
 // In a build with the race detector, msan or asan, and in one whose
 // -gcflags turn off optimisation or inlining, it calls fn as an ordinary
 // build does and checks no ceiling. Those builds allocate differently
-// from the one that ships.
+// from an ordinary build.
 //
 // # Parallel tests
 //
 // It counts through [testing.AllocsPerRun], which panics while a
 // parallel test runs, so the test that calls MaxAllocs does not call
 // t.Parallel.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what the 101 calls of fn
+// allocate.
 func MaxAllocs(tb assert.TB, fn func(), ceiling uint64, msg string) {
 	tb.Helper()
 	matcher.MaxAllocs(tb, matcher.Soft, fn, ceiling, msg)

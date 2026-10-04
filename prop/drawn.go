@@ -3,7 +3,12 @@
 
 package prop
 
-import "go.dokimi.dev/assert/internal/prop/engine"
+import (
+	"encoding/json"
+
+	"go.dokimi.dev/assert/internal/literal"
+	"go.dokimi.dev/assert/internal/prop/engine"
+)
 
 //go:generate go run golang.org/x/tools/cmd/stringer@v0.50.0 -type=Relevance -linecomment -output=drawn.string_gen.go
 
@@ -44,6 +49,31 @@ type Drawn struct {
 	// [Generator.Map] maps from one, of the generator's type. It is nil for
 	// every other draw.
 	NearestPassing any
+}
+
+// drawnJSON is a draw of a counterexample as the record of a run states it.
+type drawnJSON struct {
+	Label          string          `json:"label"`
+	Value          json.RawMessage `json:"value"`
+	AnyValueFails  *bool           `json:"any-value-fails"`
+	NearestPassing json.RawMessage `json:"nearest-passing"`
+}
+
+// MarshalJSON returns the draw as the record of a run states a draw of its
+// counterexample: the label, the typed literal of the value, whether any
+// value fails, which is null for a draw that the explain phase did not
+// test, and the typed literal of the nearest passing value, which is null
+// for none. A value that no typed literal states is an opaque literal.
+func (d Drawn) MarshalJSON() ([]byte, error) {
+	out := drawnJSON{Label: d.Label, Value: literal.Detail(d.Value)}
+	if d.Relevance != Untested {
+		fails := d.Relevance == AnyValueFails
+		out.AnyValueFails = &fails
+	}
+	if d.NearestPassing != nil {
+		out.NearestPassing = literal.Detail(d.NearestPassing)
+	}
+	return json.Marshal(out)
 }
 
 // counterexampleOf returns the draws of e's case in order, each with the

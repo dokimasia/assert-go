@@ -5,15 +5,17 @@ package conformance
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/fs"
 	"maps"
+	"reflect"
 	"slices"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/literal"
 )
 
 // corpusGlob matches every corpus file in the vendored definition.
@@ -68,12 +70,17 @@ func (c Case) SkipReason() (string, bool) {
 }
 
 // Decoded materializes the case's arguments as native values.
+//
+// # Errors
+//
+// It returns the fault of an argument that is no typed literal, at the
+// case's ID, args and the argument's index.
 func (c Case) Decoded() ([]any, error) {
 	out := make([]any, len(c.Args))
 	for i, raw := range c.Args {
-		value, err := Decode(raw)
+		value, err := literal.Decode(raw)
 		if err != nil {
-			return nil, fmt.Errorf("conformance: %s argument %d: %w", c.ID, i, err)
+			return nil, fault.At(err, fault.Field(c.ID), fault.Field(argsMember), fault.Index(i))
 		}
 		out[i] = value
 	}
@@ -81,38 +88,97 @@ func (c Case) Decoded() ([]any, error) {
 }
 
 // Check returns how the seat's outcome differs from the one that the case
-// requires, or nil when they match.
+// requires, or nil when they match. aborting states whether the runner
+// called the assertion on the aborting surface.
 //
 // The runner passes the case's ID as the assertion's message. The first
 // record of a failing case names the case's assertion, states the ID as
 // its contract, contains exactly the case's Fields, and has the case's
 // value for every field that the case states.
 //
+// The recorder keeps the case's one call record. The record is of the
+// definition that [Version] reports, has the seq 1 without a parent, and
+// states the case's assertion, the ID as its contract, the verdict that the
+// case expects, and aborting. A failing case's call record states the
+// case's Fields as typed literals, with the case's value for every field
+// that the case states. A passing case's call record states no detail.
+//
 // It returns an error instead of failing a test, so that a test can drive
 // the rule with cases that it must refuse. The shared suites state their
 // verdict as a value for the same reason.
-func (c Case) Check(r *assert.Recorder) error {
+//
+// # Errors
+//
+// It returns a fault whose path starts at the case's ID, and leads to the
+// part of the case that the outcome differs from: expect, or a field of
+// detail.
+func (c Case) Check(r *assert.Recorder, aborting bool) error {
 	switch c.Expect {
 	case expectPass:
 		if r.Failed() {
-			return fmt.Errorf("conformance: %s expects pass, got failure: %s", c.ID, r.Message())
+			return c.differs(fault.New("the assertion fails: %s", r.Message()), expectMember)
 		}
-		return nil
 
 	case expectFail:
 		if !r.Failed() {
-			return fmt.Errorf("conformance: %s expects fail, got pass", c.ID)
+			return c.differs(fault.New("the assertion passes"), expectMember)
 		}
-
 		records := r.Failures()
 		if len(records) == 0 {
-			return fmt.Errorf("conformance: %s reported a failure without a record", c.ID)
+			return c.differs(fault.New("the assertion fails without a record"))
 		}
-		return c.checkRecord(records[0])
+		if err := c.checkRecord(records[0]); err != nil {
+			return err
+		}
 
 	default:
-		return fmt.Errorf("conformance: %s states an unknown expectation %q", c.ID, c.Expect)
+		return c.differs(fault.New("%q is neither pass nor fail", c.Expect), expectMember)
 	}
+	return c.checkCall(callsOf(r), aborting)
+}
+
+// checkCall returns how the call records that a recorder keeps differ from
+// the case's one call record, or nil when they match. A value of the
+// detail matches when it has the canonical text of the value that the case
+// states, as a decoding vector's value does.
+func (c Case) checkCall(calls []call, aborting bool) error {
+	if len(calls) != 1 {
+		return c.differs(fault.New("the recorder keeps %d call records, want 1", len(calls)))
+	}
+	got, detail := calls[0], calls[0].Detail
+	got.Detail = nil
+	want := call{
+		Definition: Version(), Seq: 1, Assertion: c.Assertion, Contract: c.ID, Verdict: c.Expect, Aborting: aborting,
+	}
+	if !reflect.DeepEqual(got, want) {
+		return c.differs(fault.New("the call record is %s, want %s", jsonOf(got), jsonOf(want)))
+	}
+	if c.Expect == expectPass {
+		if detail != nil {
+			return c.differs(fault.New("the call record of a pass states the detail %s", detail), detailMember)
+		}
+		return nil
+	}
+	var fields map[string]json.RawMessage
+	// A call record states its detail as a JSON object.
+	_ = json.Unmarshal(detail, &fields)
+	stated := slices.Sorted(maps.Keys(fields))
+	declared := slices.Sorted(slices.Values(c.Fields))
+	if !slices.Equal(stated, declared) {
+		return c.differs(fault.New("the call record states the fields %q, want %q", stated, declared), detailMember)
+	}
+	for _, name := range slices.Sorted(maps.Keys(c.Detail)) {
+		path := []fault.Segment{fault.Field(c.ID), fault.Field(detailMember), fault.Key(name)}
+		value, err := literal.Decode(fields[name])
+		if err != nil {
+			return fault.At(fault.New("the call record states no typed literal of the field").Because(err), path...)
+		}
+		// checkRecord has decoded the value that the case states.
+		if same, _ := sameValue(value, c.Detail[name]); !same {
+			return fault.At(fault.New("the call record states %s, want %s", fields[name], c.Detail[name]), path...)
+		}
+	}
+	return nil
 }
 
 // checkRecord returns how a record differs from the one that the case
@@ -123,75 +189,66 @@ func (c Case) Check(r *assert.Recorder) error {
 // the assertion reports a Go value and not a literal.
 func (c Case) checkRecord(f assert.Failure) error {
 	if f.Assertion != c.Assertion {
-		return fmt.Errorf("conformance: %s reported a record of %q, want %q", c.ID, f.Assertion, c.Assertion)
+		return c.differs(fault.New("the record is of the assertion %q, want %q", f.Assertion, c.Assertion))
 	}
 	if f.Contract != c.ID {
-		return fmt.Errorf("conformance: %s reported the contract %q, want the message %q", c.ID, f.Contract, c.ID)
+		return c.differs(fault.New("the record states the contract %q, want the message %q", f.Contract, c.ID))
 	}
 	reported := slices.Sorted(maps.Keys(f.Detail))
 	declared := slices.Sorted(slices.Values(c.Fields))
 	if !slices.Equal(reported, declared) {
-		return fmt.Errorf("conformance: %s reported the detail fields %q, want the declared %q",
-			c.ID, reported, declared)
+		return c.differs(fault.New("the record states the fields %q, want %q", reported, declared), detailMember)
 	}
 
 	for name, raw := range c.Detail {
-		want, err := Decode(raw)
+		want, err := literal.Decode(raw)
 		if err != nil {
-			return fmt.Errorf("conformance: %s detail %q: %w", c.ID, name, err)
+			return fault.At(err, fault.Field(c.ID), fault.Field(detailMember), fault.Key(name))
 		}
 		held, ok := f.Detail[name]
 		if !ok {
-			return fmt.Errorf("conformance: %s record states no detail %q, want %+v",
-				c.ID, name, want)
+			return fault.At(fault.New("the record states no such field, want %+v", want),
+				fault.Field(c.ID), fault.Field(detailMember), fault.Key(name))
 		}
 		if !cmp.Equal(held, want, cmpopts.EquateNaNs()) {
-			return fmt.Errorf("conformance: %s detail %q is %+v, want %+v",
-				c.ID, name, held, want)
+			return fault.At(fault.New("the field is %+v, want %+v", held, want),
+				fault.Field(c.ID), fault.Field(detailMember), fault.Key(name))
 		}
 	}
 	return nil
 }
 
-// Cases returns every corpus case, keyed by the assertion it covers.
-func Cases() (map[ID][]Case, error) { return casesIn(definition, corpusGlob) }
+// differs returns f at the case's ID and at the members of the case that
+// the outcome differs from.
+func (c Case) differs(f *fault.Error, members ...string) error {
+	path := make([]fault.Segment, 0, 1+len(members))
+	path = append(path, fault.Field(c.ID))
+	for _, m := range members {
+		path = append(path, fault.Field(m))
+	}
+	return fault.At(f, path...)
+}
 
-// casesIn returns the cases of the corpus files of fsys that glob
-// matches, keyed by the assertion that each covers.
-func casesIn(fsys fs.FS, glob string) (map[ID][]Case, error) {
-	assertions, err := assertionsIn(fsys)
-	if err != nil {
-		return nil, err
-	}
-	names, err := fs.Glob(fsys, glob)
-	if err != nil {
-		return nil, fmt.Errorf("conformance: glob the corpus: %w", err)
-	}
+// Cases returns every corpus case, keyed by the assertion it covers. Each
+// case states the assertion of its file and the detail fields that the
+// assertion table declares for it.
+func Cases() map[ID][]Case {
+	assertions := Assertions()
+	// The pattern is well formed, so Glob returns no error.
+	names, _ := fs.Glob(definition, corpusGlob)
 
 	out := make(map[ID][]Case, len(names))
 	for _, name := range names {
-		raw, err := fs.ReadFile(fsys, name)
-		if err != nil {
-			return nil, fmt.Errorf("conformance: read %s: %w", name, err)
-		}
-
 		var file struct {
 			Assertion ID     `json:"assertion"`
 			Cases     []Case `json:"cases"`
 		}
-		if err := json.Unmarshal(raw, &file); err != nil {
-			return nil, fmt.Errorf("conformance: parse %s: %w", name, err)
-		}
-		declared, ok := assertions[file.Assertion]
-		if !ok {
-			return nil, fmt.Errorf("conformance: %s covers %q, which the definition does not state",
-				name, file.Assertion)
-		}
+		read(name, &file)
 		for i := range file.Cases {
 			file.Cases[i].Assertion = string(file.Assertion)
-			file.Cases[i].Fields = declared.DetailFields
+			file.Cases[i].Fields = assertions[file.Assertion].DetailFields
 		}
 		out[file.Assertion] = append(out[file.Assertion], file.Cases...)
 	}
-	return out, nil
+	return out
 }

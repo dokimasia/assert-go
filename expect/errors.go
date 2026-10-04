@@ -11,7 +11,11 @@ import (
 // NoError records a failure when err is not nil, naming the error.
 //
 // Use it for an operation that must succeed. Where the failure is the
-// subject, reach for [ErrorIs].
+// subject, use [ErrorIs].
+//
+// # Allocation contract
+//
+// A passing call allocates nothing.
 func NoError(tb assert.TB, err error, msg string) {
 	tb.Helper()
 	matcher.NoError(tb, matcher.Soft, err, msg)
@@ -19,8 +23,12 @@ func NoError(tb assert.TB, err error, msg string) {
 
 // HasError records a failure when err is nil.
 //
-// It asks only that something failed. Where which failure matters, and
-// it usually does, [ErrorIs] says so and this does not.
+// It checks only that something failed. Where the kind of failure
+// matters, use [ErrorIs], which checks the kind.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing.
 func HasError(tb assert.TB, err error, msg string) {
 	tb.Helper()
 	matcher.HasError(tb, matcher.Soft, err, msg)
@@ -31,14 +39,24 @@ func HasError(tb assert.TB, err error, msg string) {
 // matches however deeply it was wrapped on the way up.
 //
 //	expect.ErrorIs(t, err, store.ErrNotFound, "Get reports a missing key")
+//
+// # Allocation contract
+//
+// A passing call on a sentinel wrapped twice allocates nothing.
 func ErrorIs(tb assert.TB, err, target error, msg string) {
 	tb.Helper()
 	matcher.ErrorIs(tb, matcher.Soft, err, target, msg)
 }
 
 // ErrorIsNot records a failure when err matches target under
-// [errors.Is]. Use it to hold two sentinels apart, where one matching
-// the other would leave a caller unable to tell the cases apart.
+// [errors.Is].
+//
+// Use it where two sentinels must not match each other, because a caller
+// cannot tell two cases apart when one sentinel matches the other.
+//
+// # Allocation contract
+//
+// A passing call on a sentinel wrapped twice allocates nothing.
 func ErrorIsNot(tb assert.TB, err, target error, msg string) {
 	tb.Helper()
 	matcher.ErrorIsNot(tb, matcher.Soft, err, target, msg)
@@ -54,6 +72,10 @@ func ErrorIsNot(tb assert.TB, err, target error, msg string) {
 // On failure the test continues and ErrorAs returns the zero T. For a
 // pointer type T that is nil, so check the result before reading
 // through it.
+//
+// # Allocation contract
+//
+// A passing call allocates only the target that [errors.As] fills.
 func ErrorAs[T any](tb assert.TB, err error, msg string) T {
 	tb.Helper()
 	return matcher.ErrorAs[T](tb, matcher.Soft, err, msg)

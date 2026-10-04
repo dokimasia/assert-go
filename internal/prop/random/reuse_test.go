@@ -46,8 +46,8 @@ func TestReuse(t *testing.T) {
 	})
 }
 
-// TestReuseZeroAlloc checks that Reuse allocates nothing.
-func TestReuseZeroAlloc(t *testing.T) {
+// TestReuseAllocs checks that Reuse allocates nothing.
+func TestReuseAllocs(t *testing.T) {
 	s := random.New(pinnedSeed)
 	assert.MaxAllocs(t, func() { _, _ = random.Reuse(&s, 3) }, 0, "Reuse allocates nothing")
 }

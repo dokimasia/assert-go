@@ -8,7 +8,11 @@ import "go.dokimi.dev/assert/internal/matcher"
 // NoError stops the test when err is not nil, naming the error.
 //
 // Use it for an operation that must succeed. Where the failure is the
-// subject, reach for [ErrorIs].
+// subject, use [ErrorIs].
+//
+// # Allocation contract
+//
+// A passing call allocates nothing.
 func NoError(tb TB, err error, msg string) {
 	tb.Helper()
 	matcher.NoError(tb, matcher.Fatal, err, msg)
@@ -16,8 +20,12 @@ func NoError(tb TB, err error, msg string) {
 
 // HasError stops the test when err is nil.
 //
-// It asks only that something failed. Where which failure matters, and
-// it usually does, [ErrorIs] says so and this does not.
+// It checks only that something failed. Where the kind of failure
+// matters, use [ErrorIs], which checks the kind.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing.
 func HasError(tb TB, err error, msg string) {
 	tb.Helper()
 	matcher.HasError(tb, matcher.Fatal, err, msg)
@@ -28,14 +36,23 @@ func HasError(tb TB, err error, msg string) {
 // matches however deeply it was wrapped on the way up.
 //
 //	assert.ErrorIs(t, err, store.ErrNotFound, "Get reports a missing key")
+//
+// # Allocation contract
+//
+// A passing call on a sentinel wrapped twice allocates nothing.
 func ErrorIs(tb TB, err, target error, msg string) {
 	tb.Helper()
 	matcher.ErrorIs(tb, matcher.Fatal, err, target, msg)
 }
 
-// ErrorIsNot stops the test when err matches target under
-// [errors.Is]. Use it to hold two sentinels apart, where one matching
-// the other would leave a caller unable to tell the cases apart.
+// ErrorIsNot stops the test when err matches target under [errors.Is].
+//
+// Use it where two sentinels must not match each other, because a caller
+// cannot tell two cases apart when one sentinel matches the other.
+//
+// # Allocation contract
+//
+// A passing call on a sentinel wrapped twice allocates nothing.
 func ErrorIsNot(tb TB, err, target error, msg string) {
 	tb.Helper()
 	matcher.ErrorIsNot(tb, matcher.Fatal, err, target, msg)
@@ -49,6 +66,10 @@ func ErrorIsNot(tb TB, err, target error, msg string) {
 //
 // On failure the test stops, so a caller reads the returned value only
 // after a match.
+//
+// # Allocation contract
+//
+// A passing call allocates only the target that [errors.As] fills.
 func ErrorAs[T any](tb TB, err error, msg string) T {
 	tb.Helper()
 	return matcher.ErrorAs[T](tb, matcher.Fatal, err, msg)

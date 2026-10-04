@@ -17,8 +17,14 @@ import (
 //     compares, so an int does not match a float.
 //   - A map contains needle as a key of the map's key type.
 //
-// Any other type cannot be asked, and asking fails naming the type.
-// opts relax the element comparison for this call alone.
+// A haystack of any other type fails the assertion. opts relax the element
+// comparison for this call alone.
+//
+// # Allocation contract
+//
+// A passing call on text allocates nothing. A call on a slice or an array
+// compares its elements as [Equal] does: 76 allocations for a slice of
+// three ints whose last element is needle.
 func Contains(tb assert.TB, haystack, needle any, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.Contains(tb, matcher.Soft, haystack, needle, msg, opts...)
@@ -26,6 +32,11 @@ func Contains(tb assert.TB, haystack, needle any, msg string, opts ...Option) {
 
 // NotContains records a failure when haystack contains needle. See
 // [Contains] for what containing means.
+//
+// # Allocation contract
+//
+// A passing call on text allocates nothing. A call on a slice or an array
+// compares its elements as [Contains] does.
 func NotContains(tb assert.TB, haystack, needle any, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.NotContains(tb, matcher.Soft, haystack, needle, msg, opts...)
@@ -45,6 +56,11 @@ func NotContains(tb assert.TB, haystack, needle any, msg string, opts ...Option)
 // got is a string, a []byte, or any type defined over either. The
 // failure names the first needle not found and its index in needles. An
 // empty needle list passes.
+//
+// # Allocation contract
+//
+// A passing call on a string allocates nothing. A call on a []byte
+// allocates twice: the bytes in the interface of got, and their text.
 func ContainsInOrder(tb assert.TB, got any, needles []string, msg string) {
 	tb.Helper()
 	matcher.ContainsInOrder(tb, matcher.Soft, got, needles, msg)
@@ -60,6 +76,11 @@ func ContainsInOrder(tb assert.TB, got any, needles []string, msg string) {
 // float, and a NaN matches nothing unless [EquateNaNs] applies. A nil
 // slice does not match an empty one unless [EquateEmpty] applies. The
 // check makes at most len(got)·len(want) comparisons.
+//
+// # Allocation contract
+//
+// A passing call on two slices of three ints allocates 120 times, in the
+// comparisons of their elements.
 func Permutation[T any](tb assert.TB, got, want []T, msg string, opts ...Option) {
 	tb.Helper()
 	matcher.Permutation(tb, matcher.Soft, got, want, msg, opts...)

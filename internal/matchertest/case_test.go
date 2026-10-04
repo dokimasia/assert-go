@@ -16,50 +16,20 @@ import (
 // case in this file.
 const contractMsg = "the stated contract"
 
-// checkTable fails t for a case table that breaks the shape every runner
-// assumes: a name for each case, no name twice, the arguments of the
-// arity, and at least one passing and one failing case. A suite over a
-// table of another shape checks less than its cases state.
-func checkTable(t *testing.T, name string, cases []matchertest.Case, arity int) {
-	t.Helper()
+// TestCaseTwins runs TestCaseTwinsChild in a child process, and requires
+// the failure of a suite over no cases.
+func TestCaseTwins(t *testing.T) {
+	t.Parallel()
+	expectBroken(t, "TestCaseTwinsChild", "the suite has no cases; it would pass having checked nothing")
+}
 
-	if len(cases) == 0 {
-		t.Fatalf("%s is empty; its suite would pass having checked nothing", name)
-	}
+// TestCaseTwinsChild runs only in the child process of TestCaseTwins.
+func TestCaseTwinsChild(t *testing.T) {
+	inChild(t)
 
-	seen := map[string]bool{}
-	passing, failing := 0, 0
-
-	for _, tc := range cases {
-		switch {
-		case tc.Name == "":
-			t.Errorf("%s has a case with no name", name)
-		case seen[tc.Name]:
-			t.Errorf("%s repeats the case name %q", name, tc.Name)
-		}
-		seen[tc.Name] = true
-
-		if got := len(tc.Args); got < arity {
-			t.Errorf("%s case %q carries %d args, want at least %d", name, tc.Name, got, arity)
-		}
-
-		if tc.Fails {
-			failing++
-			continue
-		}
-
-		passing++
-		if len(tc.Detail) > 0 || tc.Assertion != "" {
-			t.Errorf("%s case %q passes but states the record of a failure", name, tc.Name)
-		}
-	}
-
-	if passing == 0 {
-		t.Errorf("%s has no passing case; it would not notice an assertion that always fails", name)
-	}
-	if failing == 0 {
-		t.Errorf("%s has no failing case; it would not notice an assertion that never fails", name)
-	}
+	t.Run("RunOne over no cases", func(t *testing.T) {
+		matchertest.RunOne(t, nil, func(*matchertest.Seat, any, string) {})
+	})
 }
 
 func TestCase(t *testing.T) {

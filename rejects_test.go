@@ -8,9 +8,14 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/alloctest"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
+// rejection keeps the message that a call of Rejects returns.
+var rejection string
+
+// TestRejects checks the assertion that a check fails.
 func TestRejects(t *testing.T) {
 	t.Parallel()
 
@@ -50,6 +55,42 @@ func TestRejects(t *testing.T) {
 			}
 		})
 
+		t.Run("records the calls of the check under its own call", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			assert.Rejects(r, "the check fails", func(tb assert.TB) {
+				assert.Equal(tb, 2, 1, "the value is one")
+			})
+
+			got := decoded(t, r.Records())
+			if len(got) != 2 || got[0]["assertion"] != "rejects" || got[0]["verdict"] != "pass" ||
+				got[0]["seq"] != 1.0 {
+				t.Fatalf("Records() = %v, want a pass of rejects as 1 and the check's call", got)
+			}
+			if got[1]["assertion"] != "equal" || got[1]["verdict"] != "fail" || got[1]["parent"] != 1.0 ||
+				got[1]["run"] != 1.0 {
+				t.Fatalf("the second record is %v, want the check's failure under 1 in run 1", got[1])
+			}
+		})
+
+		t.Run("records a failure of rejects when the driven check passes", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			assert.Rejects(r, "the check fails", func(tb assert.TB) {
+				assert.Equal(tb, 1, 1, "the value is one")
+			})
+
+			got := decoded(t, r.Records())
+			if len(got) != 2 || got[0]["assertion"] != "rejects" || got[0]["verdict"] != "fail" {
+				t.Fatalf("Records() = %v, want a failure of rejects first", got)
+			}
+			if got[1]["verdict"] != "pass" || got[1]["parent"] != 1.0 {
+				t.Fatalf("the second record is %v, want the check's pass under 1", got[1])
+			}
+		})
+
 		t.Run("stops the body at its first failure", func(t *testing.T) {
 			t.Parallel()
 
@@ -67,9 +108,8 @@ func TestRejects(t *testing.T) {
 		t.Run("leaves no goroutine behind", func(t *testing.T) {
 			t.Parallel()
 
-			// Rejects drives its body on a goroutine so Goexit has one
-			// to end. Returning before that goroutine finishes would
-			// leak it into every test that follows.
+			// Rejects runs its body on a goroutine of its own, which Goexit
+			// ends, and returns after that goroutine has ended.
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
@@ -80,4 +120,26 @@ func TestRejects(t *testing.T) {
 			<-done
 		})
 	})
+}
+
+// TestRejectsAllocs checks the allocation ceiling of a passing call of
+// Rejects.
+func TestRejectsAllocs(t *testing.T) {
+	alloctest.Check(t, rejectsCases())
+}
+
+// BenchmarkRejects measures a passing call of Rejects.
+func BenchmarkRejects(b *testing.B) {
+	for _, c := range rejectsCases() {
+		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
+	}
+}
+
+// rejectsCases returns a passing call of Rejects of a check that fails at
+// a call of True, with its allocation ceiling, measured.
+func rejectsCases() []alloctest.Case {
+	check := func(tb assert.TB) { assert.True(tb, false, "the check fails") }
+	return []alloctest.Case{
+		{Name: "Rejects", Call: func(tb assert.TB) { rejection = assert.Rejects(tb, allocContract, check) }, Allocs: 8},
+	}
 }

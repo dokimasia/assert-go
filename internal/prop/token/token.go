@@ -7,11 +7,11 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"math"
 	"slices"
 	"strings"
 
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/choice"
 )
 
@@ -87,13 +87,8 @@ func Encode(choices []choice.Choice) string {
 	return string(Append(buf[:0], choices))
 }
 
-// Decode returns the choices that tok records. It returns an error that
-// wraps [ErrInvalid] when tok is not the token that [Append] writes for
-// any choices: a token without [Prefix], text outside unpadded base64url,
-// an unknown tag, a payload cut short, a number of 2^64 or more, a
-// negative integer below -2^63, a number with superfluous LEB128 bytes, a
-// negative zero, or a NaN without the canonical bits. It checks each of
-// these on the bytes as it reads them.
+// Decode returns the choices that tok records. It checks tok on the bytes
+// as it reads them.
 //
 // A sequence element of 2^32 or more decodes as 2^32 - 1, because a
 // [choice.Choice] stores each element in 32 bits. Every sequence has fewer
@@ -104,19 +99,28 @@ func Encode(choices []choice.Choice) string {
 // alone, and the elements of each sequence. It decodes the text, the
 // payload and the first 16 choices in buffers on the stack, and allocates
 // for a token past them.
+//
+// # Errors
+//
+// Decode returns a fault of the kind [ErrInvalid] when tok is not the token
+// that [Append] writes for any choices: a token without [Prefix], text
+// outside unpadded base64url, an unknown tag, a payload cut short, a number
+// of 2^64 or more, a negative integer below -2^63, a number with
+// superfluous LEB128 bytes, a negative zero, or a NaN without the canonical
+// bits. A fault in the payload has the index of its choice as its path.
 func Decode(tok string) ([]choice.Choice, error) {
 	text, ok := strings.CutPrefix(tok, Prefix)
 	if !ok {
-		return nil, fmt.Errorf("%w: %q does not start with %s", ErrInvalid, tok, Prefix)
+		return nil, fault.Of(ErrInvalid, "%q does not start with %s", tok, Prefix)
 	}
 	if strings.ContainsAny(text, lineBreaks) {
-		return nil, fmt.Errorf("%w: %q is not unpadded base64url: it contains a line break", ErrInvalid, tok)
+		return nil, fault.Of(ErrInvalid, "%q contains a line break, which unpadded base64url excludes", tok)
 	}
 	var src [stackText]byte
 	var dst [stackBytes]byte
 	data, err := encoding.AppendDecode(dst[:0], append(src[:0], text...))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %q is not unpadded base64url: %w", ErrInvalid, tok, err)
+		return nil, fault.Of(ErrInvalid, "%q is not unpadded base64url", tok).Because(err)
 	}
 	var stack [stackChoices]choice.Choice
 	choices := stack[:0]
@@ -124,7 +128,7 @@ func Decode(tok string) ([]choice.Choice, error) {
 		var c choice.Choice
 		c, data, err = readChoice(data)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %q %w", ErrInvalid, tok, err)
+			return nil, fault.At(err, fault.Index(len(choices)))
 		}
 		choices = append(choices, c)
 	}
@@ -172,25 +176,26 @@ func readChoice(data []byte) (choice.Choice, []byte, error) {
 			return choice.Choice{Kind: choice.Integer, Integer: choice.UintOf(magnitude)}, rest, nil
 		}
 		if magnitude == 0 || magnitude > maxNegative {
-			return choice.Choice{}, nil, fmt.Errorf("states the negative of %d", magnitude)
+			return choice.Choice{}, nil, fault.Of(ErrInvalid, "the integer states the negative of %d", magnitude)
 		}
 		return choice.Choice{Kind: choice.Integer, Integer: choice.Int{}.Sub(magnitude)}, rest, nil
 	}
 	if tag == tagFloat {
 		if len(data) < floatBytes {
-			return choice.Choice{}, nil, fmt.Errorf("ends inside a float, %d bytes short", floatBytes-len(data))
+			return choice.Choice{}, nil, fault.Of(ErrInvalid, "the payload ends inside a float, %d bytes short",
+				floatBytes-len(data))
 		}
 		bits := binary.LittleEndian.Uint64(data)
 		value := math.Float64frombits(bits)
 		if math.IsNaN(value) && bits != choice.NaNBits {
-			return choice.Choice{}, nil, fmt.Errorf("states a NaN with the bits %#x", bits)
+			return choice.Choice{}, nil, fault.Of(ErrInvalid, "the float states a NaN with the bits %#x", bits)
 		}
 		return choice.Choice{Kind: choice.Float, Float: value}, data[floatBytes:], nil
 	}
 	if tag == tagSequence {
 		return readSequence(data)
 	}
-	return choice.Choice{}, nil, fmt.Errorf("states tag %d", tag)
+	return choice.Choice{}, nil, fault.Of(ErrInvalid, "the choice states the tag %d", tag)
 }
 
 // readSequence reads the length and the elements of a sequence from the
@@ -221,13 +226,13 @@ func readSequence(data []byte) (choice.Choice, []byte, error) {
 func readNumber(data []byte) (uint64, []byte, error) {
 	number, n := binary.Uvarint(data)
 	if n < 0 {
-		return 0, nil, fmt.Errorf("states a number of 2^64 or more in %d bytes", -n)
+		return 0, nil, fault.Of(ErrInvalid, "a number states 2^64 or more in %d bytes", -n)
 	}
 	if n == 0 {
-		return 0, nil, fmt.Errorf("ends inside a number after %d bytes", len(data))
+		return 0, nil, fault.Of(ErrInvalid, "the payload ends inside a number after %d bytes", len(data))
 	}
 	if n > 1 && data[n-1] == 0 {
-		return 0, nil, fmt.Errorf("states %d in %d bytes, more than it needs", number, n)
+		return 0, nil, fault.Of(ErrInvalid, "the number %d takes %d bytes, more than it needs", number, n)
 	}
 	return number, data[n:], nil
 }

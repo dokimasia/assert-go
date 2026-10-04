@@ -10,11 +10,9 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/pattern"
 )
-
-// outside is the text that every error of Parse starts with.
-const outside = "pattern: outside the portable subset: "
 
 // accepted are patterns that together contain every construct of the
 // portable subset, from the definition's executable reference, with a
@@ -358,7 +356,8 @@ func TestParse(t *testing.T) {
 				t.Parallel()
 				_, err := pattern.Parse(tt.give)
 				assert.ErrorIs(t, err, pattern.ErrOutside, "the pattern is outside the subset")
-				assert.Equal(t, err.Error(), outside+tt.want, "the position and the fault")
+				f := assert.ErrorAs[*fault.Error](t, err, "a fault")
+				assert.Equal(t, f.Reason, tt.want, "the position and what is outside the subset")
 			})
 		}
 	})

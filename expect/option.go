@@ -14,9 +14,13 @@ type Option = matcher.Option
 // EquateEmpty makes a nil map or slice equal an empty one of the same
 // type, for the call it is passed to.
 //
-// The default keeps them distinct, because a value that is absent and
-// a value that is present but empty are different answers, and a test
-// may need to tell them apart.
+// The default keeps them distinct, because an absent value and a present
+// but empty value are different results, and a test may need to tell
+// them apart.
+//
+// # Allocation contract
+//
+// EquateEmpty allocates nothing.
 func EquateEmpty() Option { return matcher.EquateEmpty() }
 
 // EquateNaNs makes a NaN float equal another NaN of the same type, for
@@ -24,4 +28,8 @@ func EquateEmpty() Option { return matcher.EquateEmpty() }
 //
 // The default keeps them unequal, following IEEE 754, where NaN
 // compares unequal to every value including itself.
+//
+// # Allocation contract
+//
+// EquateNaNs allocates nothing.
 func EquateNaNs() Option { return matcher.EquateNaNs() }

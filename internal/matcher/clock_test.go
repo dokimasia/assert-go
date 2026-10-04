@@ -4,30 +4,32 @@
 package matcher_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"go.dokimi.dev/assert/internal/matcher"
-	"go.dokimi.dev/assert/internal/matchertest"
 )
 
-// clockEpoch is the instant a controlled clock starts at, chosen so a
-// reading cannot pass by accident against a real clock.
-var clockEpoch = time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
-
-// bareSeat carries neither a clock nor a record, which is what a seat
-// supplied by a framework looks like.
+// bareSeat implements neither Clocked nor Reporter, like a seat that a test
+// framework supplies.
 type bareSeat struct{}
 
 func (bareSeat) Helper()               {}
 func (bareSeat) Fatalf(string, ...any) {}
 func (bareSeat) Errorf(string, ...any) {}
 
+// The results of the allocation cases, which keep each call.
+var (
+	clockOf    matcher.Clock
+	controlled *matcher.Controlled
+	instant    time.Time
+)
+
+// TestClockOf checks the clock that a seat supplies.
 func TestClockOf(t *testing.T) {
 	t.Parallel()
 
-	t.Run("answers the runtime clock for a seat that carries none", func(t *testing.T) {
+	t.Run("returns the runtime clock for a seat without a clock", func(t *testing.T) {
 		t.Parallel()
 
 		if got := matcher.ClockOf(&bareSeat{}); got == nil {
@@ -36,13 +38,14 @@ func TestClockOf(t *testing.T) {
 	})
 }
 
+// TestSystem checks the runtime clock.
 func TestSystem(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Now", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("moves on its own", func(t *testing.T) {
+		t.Run("returns a later instant after a wait", func(t *testing.T) {
 			t.Parallel()
 
 			runtime := matcher.System{}
@@ -55,6 +58,7 @@ func TestSystem(t *testing.T) {
 	})
 }
 
+// TestControlledClock checks a clock that a test advances.
 func TestControlledClock(t *testing.T) {
 	t.Parallel()
 
@@ -116,46 +120,29 @@ func TestControlledClock(t *testing.T) {
 	})
 }
 
-// clockedSeat is a seat with a clock, which records what was reported.
-type clockedSeat struct {
-	matchertest.Seat
-
-	clock matcher.Clock
+// TestClockAllocs checks the allocation ceiling of each function and
+// method of clock.go.
+func TestClockAllocs(t *testing.T) {
+	checkAllocs(t, clockCases())
 }
 
-// Clock returns the seat's clock.
-func (s *clockedSeat) Clock() matcher.Clock { return s.clock }
+// BenchmarkClock measures each function and method of clock.go.
+func BenchmarkClock(b *testing.B) {
+	benchAllocs(b, clockCases())
+}
 
-// TestHonoursDeadlineAgainstASuppliedClock pins that the assertion does
-// not read the deadline off the seat's clock.
-//
-// A context decides expiry against the runtime clock and takes no
-// other. Building the deadline from a seat clock reading ahead of the
-// runtime hands the subject a deadline that has not passed, and a
-// subject that correctly reports nothing is then reported as wrong.
-func TestHonoursDeadlineAgainstASuppliedClock(t *testing.T) {
-	t.Parallel()
-
-	// Honours its deadline: it answers whatever the context says.
-	honours := func(ctx context.Context) error { return ctx.Err() }
-
-	for _, tc := range []struct {
-		name  string
-		start time.Time
-	}{
-		{name: "a clock behind the runtime's", start: clockEpoch},
-		{name: "a clock ahead of the runtime's", start: time.Now().Add(time.Hour)},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			seat := &clockedSeat{clock: matcher.NewControlled(tc.start)}
-			matcher.HonoursDeadline(seat, matcher.Fatal, honours,
-				"the subject reports why it stopped")
-
-			if seat.Failed() {
-				t.Error("reported a subject that honoured its deadline")
-			}
-		})
+// clockCases returns a call of each function and method of clock.go, with
+// its allocation ceiling, measured. Sleep sleeps for no time, so it
+// returns at once.
+func clockCases() []allocCase {
+	c := matcher.NewControlled(clockEpoch)
+	return []allocCase{
+		{name: "ClockOf", call: func(seat matcher.Seat) { clockOf = matcher.ClockOf(seat) }},
+		{name: "NewControlled", call: func(matcher.Seat) { controlled = matcher.NewControlled(clockEpoch) }, allocs: 2},
+		{name: "Controlled.Now", call: func(matcher.Seat) { instant = c.Now() }},
+		{name: "Controlled.Advance", call: func(matcher.Seat) { c.Advance(time.Second) }},
+		{name: "Controlled.Sleep", call: func(matcher.Seat) { c.Sleep(0) }},
+		{name: "System.Now", call: func(matcher.Seat) { instant = matcher.System{}.Now() }},
+		{name: "System.Sleep", call: func(matcher.Seat) { matcher.System{}.Sleep(0) }},
 	}
 }

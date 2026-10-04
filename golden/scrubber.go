@@ -10,8 +10,8 @@ import (
 )
 
 // What a scrubber writes in place of what it removed. The text is
-// visible in the golden file, so a reader can see that a value was
-// replaced rather than wondering why it looks wrong.
+// visible in the golden file, so a reader sees that a value was
+// replaced.
 const (
 	scrubbedTimestamp = "SCRUBBED_TIMESTAMP"
 	scrubbedHash      = "SCRUBBED_HASH"
@@ -41,6 +41,10 @@ var (
 )
 
 // ScrubTimestamps replaces ISO-8601 and RFC-3339 timestamps.
+//
+// # Allocation contract
+//
+// ScrubTimestamps allocates nothing: the scrubber has no state.
 func ScrubTimestamps() Scrubber {
 	return func(s string) string {
 		return timestampPattern.ReplaceAllString(s, scrubbedTimestamp)
@@ -49,6 +53,10 @@ func ScrubTimestamps() Scrubber {
 
 // ScrubHashes replaces hex digests between 32 and 128 characters,
 // which covers MD5 through SHA-512.
+//
+// # Allocation contract
+//
+// ScrubHashes allocates nothing: the scrubber has no state.
 func ScrubHashes() Scrubber {
 	return func(s string) string {
 		return hashPattern.ReplaceAllString(s, scrubbedHash)
@@ -57,6 +65,10 @@ func ScrubHashes() Scrubber {
 
 // ScrubRunIDs replaces identifiers of the form run_ followed by
 // sixteen lowercase alphanumerics.
+//
+// # Allocation contract
+//
+// ScrubRunIDs allocates nothing: the scrubber has no state.
 func ScrubRunIDs() Scrubber {
 	return func(s string) string {
 		return runIDPattern.ReplaceAllString(s, scrubbedRunID)
@@ -67,10 +79,14 @@ func ScrubRunIDs() Scrubber {
 //
 //	golden.ScrubJSONFields("created_at", "token")
 //
-// It matches the field's text rather than parsing the document, so it
-// works on output that is nearly JSON as well as output that is. The
-// cost is that a field name appearing inside a string value is
-// replaced too; name fields that will not collide.
+// It matches the text of a field and does not parse the document, so it
+// works on output that is nearly JSON. A field name inside a string value
+// is replaced too, so name fields that no string value contains.
+//
+// # Allocation contract
+//
+// ScrubJSONFields compiles a regular expression of the fields: 46
+// allocations for one field. It allocates nothing for no field.
 func ScrubJSONFields(fields ...string) Scrubber {
 	if len(fields) == 0 {
 		return func(s string) string { return s }

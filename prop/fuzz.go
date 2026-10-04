@@ -7,8 +7,13 @@ import (
 	"fmt"
 	"testing"
 
+	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/prop/engine"
+	"go.dokimi.dev/assert/internal/record"
 )
+
+// fuzzOp is the operation of Fuzz, which names its faults.
+const fuzzOp = "prop.Fuzz"
 
 // Fuzz registers body as the fuzz target of f. Each input's bytes decode
 // into the choices of one case by the definition's bridge rules, so every
@@ -18,49 +23,110 @@ import (
 // Before it registers the target, Fuzz replays the property's stored cases,
 // oldest first, from the store of the fuzz test, and fails f with the
 // record of the first that fails, as found. go test without -fuzz then runs
-// the stored cases and the seed corpus that f.Add states.
+// the stored cases and the seed corpus that f.Add states. The record of the
+// call on f counts the stored cases, and its record states the calls of
+// each under the phase stored.
 //
 // A failing input's case is replayed, shrunk and explained as [ForAll]
-// does with a failing case, written to the store, and reported through the
-// input's *testing.T with its replay token. The report and the notes on the
-// store are written to the test's output without a source location: the
-// fuzzing machinery calls the target through reflect, so no frame of the
-// caller's code is on the stack. The record states no valid case. Fuzz
-// runs no replay token, and no coverage requirement: [Replay],
-// DOKIMI_ASSERT_PROP_REPLAY, [Cases] and [Require] apply to ForAll alone.
+// does with a failing case. Fuzz writes the counterexample to the store,
+// and reports it through the input's *testing.T with its replay token.
 //
-// Fuzz fails f at once, without registering the target, for each fault for
-// which ForAll fails without a run.
+// Each input is a call of its own, whose record states the calls of the
+// input's case under the phase fuzz. The record of a passing input counts
+// one valid or one rejected case, and the record of a failing input counts
+// none. The report, the notes of the failing case and the faults of the
+// store are written to the test's output without a source location. The
+// fuzzing machinery calls the target through reflect, so no frame of the
+// caller's code is on the stack.
+//
+// [Replay], DOKIMI_ASSERT_PROP_REPLAY, [Draws], [Cases] and [Require] apply
+// to ForAll and the property forms alone.
+//
+// Fuzz ends the call on f with a fault, without registering the target, for
+// each fault for which ForAll ends its call without a run.
 func Fuzz(f *testing.F, contract string, body func(*Case), opts ...Option) {
 	f.Helper()
-	p, err := newProperty(f, contract, caller(), configure(opts))
+	run := matcher.Begin(f)
+	p, err := newProperty(f, fuzzOp, contract, caller(), configure(opts))
 	if err != nil {
-		f.Fatalf("%v", err)
+		run.Fault(matcher.Fatal, forAllID, contract, err)
+		return
 	}
 	if !claim(f, p.dir, contract) {
-		f.Fatalf(duplicate, contract)
+		p.fault(f, run, duplicate(p.op, p.dir, contract))
+		return
 	}
 	stored, err := p.load()
 	if err != nil {
-		f.Fatalf("%v", err)
+		p.fault(f, run, err)
+		return
 	}
-	note(f, stored.Skipped)
+	for _, err := range p.skipped(stored) {
+		matcher.NoteFault(f, err)
+	}
+	s := p.settings
+	s.Slot = run.Slot()
 	replayed := bodyOf(f.Context(), body)
+	total := engine.Result{Outcome: engine.Passed, Seed: s.Seed}
 	for _, entry := range stored.Entries {
-		p.report(f, engine.RunReplay(replayed, p.settings, entry.Choices))
-	}
-	f.Fuzz(func(t *testing.T, data []byte) {
-		run := bodyOf(t.Context(), body)
-		e := engine.Bridge(run, data, p.settings.Clock)
-		if e.Status != engine.CaseFailed {
+		r := engine.RunReplay(replayed, s, entry.Choices, record.Stored)
+		if r.Outcome != engine.Passed {
+			p.report(f, run, r)
 			return
 		}
-		r := engine.Conclude(run, p.settings, e)
-		if r.Outcome == engine.Counterexample {
-			for _, n := range p.save(r) {
-				fmt.Fprintln(t.Output(), n)
-			}
-		}
-		p.reportInput(t, r)
+		total.Cases, total.Rejected = total.Cases+r.Cases, total.Rejected+r.Rejected
+	}
+	p.report(f, run, total)
+	f.Fuzz(func(t *testing.T, data []byte) {
+		p.input(inputSeat{T: t}, bodyOf(t.Context(), body), data)
 	})
+}
+
+// input runs the case that data decodes to as a call of the property on
+// seat, the seat of the input's test, and reports the call's verdict. A
+// failing case is concluded as ForAll concludes one, and the failures of a
+// counterexample are written to the store.
+func (p property) input(seat inputSeat, cases engine.Body, data []byte) {
+	seat.Helper()
+	run := matcher.Begin(seat)
+	s := p.settings
+	s.Slot = run.Slot()
+	e := engine.Bridge(cases, data, s)
+	if e.Status != engine.CaseFailed {
+		r := engine.Result{Outcome: engine.Passed, Seed: s.Seed}
+		if e.Status == engine.CaseRejected {
+			r.Rejected = 1
+		} else {
+			r.Cases = 1
+		}
+		p.report(seat, run, r)
+		return
+	}
+	r := engine.Conclude(cases, s, e)
+	if r.Outcome == engine.Counterexample {
+		for _, err := range p.save(r) {
+			matcher.NoteFault(seat, err)
+		}
+	}
+	p.report(seat, run, r)
+}
+
+// inputSeat is the seat of the test of one fuzz input. It writes the
+// failure and each note and fault of the input's call to the test's
+// output, which states no source location, and writes call records through
+// the test's Attr.
+type inputSeat struct {
+	*testing.T
+}
+
+// Fatalf writes the formatted text to the test's output and stops the
+// test.
+func (s inputSeat) Fatalf(format string, args ...any) {
+	s.Logf(format, args...)
+	s.FailNow()
+}
+
+// Logf writes the formatted text to the test's output.
+func (s inputSeat) Logf(format string, args ...any) {
+	fmt.Fprintf(s.Output(), format+"\n", args...)
 }

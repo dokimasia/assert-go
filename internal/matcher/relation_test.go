@@ -4,12 +4,18 @@
 package matcher_test
 
 import (
+	"errors"
+	"strconv"
 	"testing"
 
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
+// errClosed is the error of a subject's call after it closed.
+var errClosed = errors.New("the subject is closed")
+
+// TestRelation runs the shared cases of the relation assertions.
 func TestRelation(t *testing.T) {
 	t.Parallel()
 
@@ -125,4 +131,74 @@ func TestRelation(t *testing.T) {
 			matcher.Poisoned(s, matcher.Fatal, induce, observe, msg)
 		})
 	})
+}
+
+// TestRelationAllocs checks the allocation ceiling of a passing call of
+// each relation assertion.
+func TestRelationAllocs(t *testing.T) {
+	checkAllocs(t, relationCases())
+}
+
+// BenchmarkRelation measures a passing call of each relation assertion.
+func BenchmarkRelation(b *testing.B) {
+	benchAllocs(b, relationCases())
+}
+
+// relationCases returns a passing call of each relation assertion over
+// ints, with its allocation ceiling, measured.
+func relationCases() []allocCase {
+	var state int
+	set := func(x int) error { state = x; return nil }   //nolint:unparam // the assertion's signature
+	increment := func(int) error { state++; return nil } //nolint:unparam // the assertion's signature
+	read := func() int { return state }
+	advance := func() error { state++; return nil } //nolint:unparam // the assertion's signature
+	double := func(x int) (int, error) { return 2 * x, nil }
+	add := func(a, b int) int { return a + b }
+	format := func(x int) (string, error) { return strconv.Itoa(x), nil }
+	items := []int{1, 2, 3}
+	listed := func() ([]int, error) { return items, nil } //nolint:unparam // the assertion's signature
+	accepts := func(int) error { return nil }
+	closes := func() error { return nil }
+	refuses := func() error { return errClosed }
+	return []allocCase{
+		{name: "Idempotent", allocs: 24, call: func(seat matcher.Seat) {
+			matcher.Idempotent(seat, matcher.Fatal, set, 1, read, allocContract)
+		}},
+		{name: "Accumulates", call: func(seat matcher.Seat) {
+			matcher.Accumulates(seat, matcher.Fatal, increment, 1, read, allocContract)
+		}},
+		{name: "Deterministic", allocs: 744, call: func(seat matcher.Seat) {
+			matcher.Deterministic(seat, matcher.Fatal, double, 3, allocContract)
+		}},
+		{name: "Commutative", allocs: 24, call: func(seat matcher.Seat) {
+			matcher.Commutative(seat, matcher.Fatal, add, 2, 3, allocContract)
+		}},
+		{name: "Associative", allocs: 24, call: func(seat matcher.Seat) {
+			matcher.Associative(seat, matcher.Fatal, add, 1, 2, 3, allocContract)
+		}},
+		{name: "RoundTrip", allocs: 24, call: func(seat matcher.Seat) {
+			matcher.RoundTrip(seat, matcher.Fatal, format, strconv.Atoi, 42, allocContract)
+		}},
+		{name: "StableOrder", allocs: 2852, call: func(seat matcher.Seat) {
+			matcher.StableOrder(seat, matcher.Fatal, listed, allocContract)
+		}},
+		{name: "NoDuplicates", allocs: 72, call: func(seat matcher.Seat) {
+			matcher.NoDuplicates(seat, matcher.Fatal, listed, allocContract)
+		}},
+		{name: "Monotonic", call: func(seat matcher.Seat) {
+			matcher.Monotonic(seat, matcher.Fatal, read, advance, 3, allocContract)
+		}},
+		{name: "Total", call: func(seat matcher.Seat) {
+			matcher.Total(seat, matcher.Fatal, accepts, items, allocContract)
+		}},
+		{name: "NotPure", allocs: 26, call: func(seat matcher.Seat) {
+			matcher.NotPure(seat, matcher.Fatal, read, func() { state++ }, allocContract)
+		}},
+		{name: "FailsAfterClose", call: func(seat matcher.Seat) {
+			matcher.FailsAfterClose(seat, matcher.Fatal, closes, refuses, errClosed, allocContract)
+		}},
+		{name: "Poisoned", call: func(seat matcher.Seat) {
+			matcher.Poisoned(seat, matcher.Fatal, func() {}, refuses, allocContract)
+		}},
+	}
 }

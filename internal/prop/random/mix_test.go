@@ -47,8 +47,8 @@ func TestMix(t *testing.T) {
 	})
 }
 
-// TestMixZeroAlloc checks that Mix allocates nothing.
-func TestMixZeroAlloc(t *testing.T) {
+// TestMixAllocs checks that Mix allocates nothing.
+func TestMixAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = random.Mix(pinnedContract) }, 0, "Mix allocates nothing")
 }
 

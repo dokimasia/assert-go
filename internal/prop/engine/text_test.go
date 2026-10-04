@@ -14,12 +14,13 @@ import (
 
 // The allocations of each text generator's constructor, measured.
 const (
-	// stringAllocs are the allocations of String and Bytes: the decode and
-	// the decode with its type erased.
-	stringAllocs = 2
+	// stringAllocs are the allocations of String and Bytes: the decode, the
+	// decode with its type erased, and the inverse.
+	stringAllocs = 3
 	// stringOverAllocs are the allocations of StringOver: its characters,
-	// their sorted copy, the decode and the decode with its type erased.
-	stringOverAllocs = 4
+	// their sorted copy, the decode, the decode with its type erased, and
+	// the inverse.
+	stringOverAllocs = 5
 )
 
 // TestText checks the string and byte string generators: the values they
@@ -202,9 +203,9 @@ func TestText(t *testing.T) {
 	})
 }
 
-// TestTextZeroAlloc checks the allocation ceilings of the text generators'
+// TestTextAllocs checks the allocation ceilings of the text generators'
 // constructors.
-func TestTextZeroAlloc(t *testing.T) {
+func TestTextAllocs(t *testing.T) {
 	upTo := sizes(t, 0, 8)
 	assert.MaxAllocs(t, func() { _ = engine.String(upTo) }, stringAllocs, "String allocates its decodes")
 	assert.MaxAllocs(t, func() { _ = engine.StringOver("ACGT", upTo) }, stringOverAllocs,

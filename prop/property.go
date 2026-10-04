@@ -4,11 +4,12 @@
 package prop
 
 import (
-	"fmt"
+	"encoding/json"
 	"runtime"
-	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/literal"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/engine"
@@ -16,23 +17,31 @@ import (
 	"go.dokimi.dev/assert/internal/prop/token"
 )
 
-// callerSkip is the number of frames that [caller] skips to reach the call
-// of the exported function that calls it: runtime.Callers, caller, and that
-// function.
+// callerSkip is the number of frames that [caller] skips: runtime.Callers,
+// caller, and the exported function that calls it. The next frame is the
+// call of that function.
 const callerSkip = 3
 
-// logger is a seat with a log, as testing.TB has one.
-type logger interface {
-	// Logf formats its arguments as fmt.Sprintf does and adds the text to
-	// the test's log.
-	Logf(format string, args ...any)
-}
+// The names at the front of the path of a fault in what an option or an
+// entry states.
+const (
+	// drawsOption is the option that states the entries of a case.
+	drawsOption = "Draws"
+	// valueMember is the member of an entry of Draws that states its value.
+	valueMember = "value"
+)
 
-// property is one call of [ForAll] or [Fuzz]: the contract it checks, the
-// call's program counter, the settings of its runs, the token it replays
-// and the directory of its store. A property is a value that its runs do
-// not change.
+// property is one call of [ForAll], [Fuzz] or a property form: the
+// operation that names its faults, the assertion of its record, the
+// contract it checks, the call's program counter, the settings of its runs,
+// the token it replays and the directory of its store. A property is a
+// value that its runs do not change.
 type property struct {
+	// op is the operation of the call: prop.ForAll, prop.Fuzz, or a form's.
+	op string
+	// assertion is the assertion of the call's record: prop-for-all, or a
+	// form's id.
+	assertion string
 	// contract is the property's contract.
 	contract string
 	// pc is the program counter of the call, which a failing run resolves
@@ -50,20 +59,31 @@ type property struct {
 	dir string
 }
 
-// newProperty returns the property of a call at pc on tb of contract under
-// c. Its runs read the clock of tb.
+// newProperty returns the property of the operation op of a call at pc on
+// tb of contract under c, whose record states prop-for-all, and closes the
+// registry. Its runs read the clock of tb.
 //
-// It returns an error for a profile other than default and ci, for a seed
-// variable that is no decimal number below 2^64, and for a token to replay
-// that no encoder writes.
-func newProperty(tb assert.TB, contract string, pc uintptr, c config) (property, error) {
+// It returns a fault of op for a profile other than default and ci, for a
+// seed variable that is no decimal number below 2^64, for a token to replay
+// that no encoder writes, and for entries of Draws that are no array of
+// labels and typed literals.
+func newProperty(tb assert.TB, op, contract string, pc uintptr, c config) (property, error) {
+	registrations.close()
 	seed, err := seedOf(c, contract)
 	if err != nil {
-		return property{}, err
+		return property{}, fault.In(op, err)
+	}
+	var entries []engine.Entry
+	if c.drawn {
+		if entries, err = drawEntries(c.draws); err != nil {
+			return property{}, fault.In(op, err)
+		}
 	}
 	p := property{
-		contract: contract,
-		pc:       pc,
+		op:        op,
+		assertion: forAllID,
+		contract:  contract,
+		pc:        pc,
 		settings: engine.Settings{
 			Seed:         seed,
 			Cases:        c.cases,
@@ -74,99 +94,117 @@ func newProperty(tb assert.TB, contract string, pc uintptr, c config) (property,
 			Explain:      c.explain,
 			Clock:        matcher.ClockOf(tb),
 			Workers:      c.workers,
+			Draws:        entries,
 		},
 		dir: directoryOf(tb, c),
 	}
-	if tok, ok := tokenOf(c); ok {
+	if tok, source, ok := tokenOf(c); ok {
 		if p.replay, err = token.Decode(tok); err != nil {
-			return property{}, fmt.Errorf("prop: replay %q: %w", tok, err)
+			return property{}, fault.In(op, fault.At(err, fault.Field(source)))
 		}
 		p.replaying = true
 	}
 	return p, nil
 }
 
+// drawEntries returns the entries of Draws that text states: a JSON array
+// of objects, each with a label and a typed literal. It returns a fault at
+// Draws for other text, and at the entry for an entry without a label or a
+// value, and for a value that is no typed literal.
+func drawEntries(text string) ([]engine.Entry, error) {
+	var stated []struct {
+		Label *string         `json:"label"`
+		Value json.RawMessage `json:"value"`
+	}
+	if err := json.Unmarshal([]byte(text), &stated); err != nil {
+		return nil, fault.At(fault.New("the entries are no JSON array of objects").Because(err),
+			fault.Field(drawsOption))
+	}
+	entries := make([]engine.Entry, len(stated))
+	for i, s := range stated {
+		if s.Label == nil || s.Value == nil {
+			return nil, fault.At(fault.New("the entry states no label or no value"), fault.Field(drawsOption),
+				fault.Index(i))
+		}
+		value, err := literal.Decode(s.Value)
+		if err != nil {
+			return nil, fault.At(err, fault.Field(drawsOption), fault.Index(i), fault.Field(valueMember))
+		}
+		entries[i] = engine.Entry{Label: *s.Label, Value: value}
+	}
+	return entries, nil
+}
+
 // load returns the entries of the property in its store, oldest first, with
-// a note on each file that the run skips. A property without a store has no
-// entries.
+// the fault of each file that the run skips. A property without a store has
+// no entries.
 //
-// It returns an error that states the name of each damaged file of the
-// store, and the error of the file system for a store that cannot be read.
+// It returns a fault of the property's operation at the store's directory,
+// whose cause states each damaged file of the store, or the error of the
+// file system for a store that cannot be read.
 func (p property) load() (store.Stored, error) {
 	if p.dir == "" {
 		return store.Stored{}, nil
 	}
 	stored, err := store.Load(p.dir, p.contract)
 	if err != nil {
-		return store.Stored{}, fmt.Errorf("prop: the store %s of %q: %w", p.dir, p.contract, err)
+		return store.Stored{}, fault.In(p.op, fault.At(err, fault.Field(p.dir)))
 	}
 	return stored, nil
 }
 
 // save writes an entry for the failing case of r, a counterexample, and one
 // for each of its other failures, found at the time of the property's
-// clock. It returns a note on each entry that the store cannot keep. A
-// property without a store saves nothing.
-func (p property) save(r engine.Result) []string {
+// clock. It returns a fault of the property's operation at the store's
+// directory for each entry that the store cannot keep. A property without a
+// store saves nothing.
+func (p property) save(r engine.Result) []error {
 	if p.dir == "" {
 		return nil
 	}
 	found := p.settings.Clock.Now()
-	var notes []string
+	var faults []error
 	for _, e := range append([]engine.Execution{*r.Failing}, r.Others...) {
 		if _, err := store.Save(p.dir, entryOf(p.contract, e, found)); err != nil {
-			notes = append(notes, fmt.Sprintf("prop: the store %s keeps no case of %q: %v", p.dir, p.contract, err))
+			faults = append(faults, fault.In(p.op, fault.At(
+				fault.New("the store keeps no case of %q", p.contract).Because(err), fault.Field(p.dir))))
 		}
 	}
-	return notes
+	return faults
 }
 
-// report fails tb with the record of r when r did not pass. An
-// [assert.Reporter] seat receives the record as an aborting failure. Any
-// other seat receives its sentence through Fatalf, with the notes of the
-// failing case.
-func (p property) report(tb assert.TB, r engine.Result) {
+// report reports the verdict of the property's call run on tb, from r, the
+// result of its run. A run that passed passes, and its record states the
+// detail of the run. A run that did not pass writes the notes of its
+// failing case into the log of tb, and then fails with its record: an
+// [assert.Reporter] seat receives the record as an aborting failure, and any
+// other seat its sentence through Fatalf.
+func (p property) report(tb assert.TB, run matcher.Running, r engine.Result) {
 	tb.Helper()
 	if r.Outcome == engine.Passed {
+		var where assert.Where
+		var detail json.Marshaler
+		if run.Slot() != nil {
+			where, detail = whereOf(p.pc), detailOf(r)
+		}
+		run.PassRun(matcher.Fatal, p.assertion, p.contract, where, detail)
 		return
 	}
-	f := p.failure(r)
-	if reporter, ok := tb.(assert.Reporter); ok {
-		reporter.Report(f, true)
-		return
+	for _, n := range notesOf(r) {
+		matcher.Note(tb, n)
 	}
-	tb.Fatalf("%s", render(f, notesOf(r)))
+	d := detailOf(r)
+	run.FailRun(matcher.Fatal, assert.Failure{
+		Assertion: p.assertion, Contract: p.contract, Detail: d.fields(),
+		Where: whereOf(p.pc),
+	}, d)
 }
 
-// reportInput fails t, the test of one fuzz input, with the record of r, the
-// conclusion of the input's failing case, which never passes. It writes the
-// record's sentence, with the notes of the failing case, to t's output,
-// which states no source location, and stops t. The fuzzing machinery calls
-// the fuzz target through reflect, so testing would locate a log line in
-// reflect's source.
-func (p property) reportInput(t *testing.T, r engine.Result) {
-	t.Helper()
-	fmt.Fprintln(t.Output(), render(p.failure(r), notesOf(r)))
-	t.FailNow()
-}
-
-// failure returns the record of r, a run that did not pass: the assertion
-// prop-for-all, the property's contract, the detail of r and the location
-// of the property's call.
-func (p property) failure(r engine.Result) assert.Failure {
-	return assert.Failure{Assertion: forAllID, Contract: p.contract, Detail: detailOf(r), Where: whereOf(p.pc)}
-}
-
-// note adds each note to the log of tb, when tb has a log.
-func note(tb assert.TB, notes []string) {
+// fault ends the property's call run on tb with err, a fault that refused
+// an argument or the environment.
+func (p property) fault(tb assert.TB, run matcher.Running, err error) {
 	tb.Helper()
-	l, ok := tb.(logger)
-	if !ok {
-		return
-	}
-	for _, n := range notes {
-		l.Logf("%s", n)
-	}
+	run.Fault(matcher.Fatal, p.assertion, p.contract, err)
 }
 
 // notesOf returns the notes of the failing case of r, and none for a run

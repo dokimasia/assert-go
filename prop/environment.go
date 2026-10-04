@@ -4,11 +4,11 @@
 package prop
 
 import (
-	"fmt"
 	"math/rand/v2"
 	"os"
 	"strconv"
 
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/random"
 )
 
@@ -25,6 +25,10 @@ const (
 	replayVariable = "DOKIMI_ASSERT_PROP_REPLAY"
 )
 
+// replayOption is the name of the option that states a token to replay, at
+// the front of the path of the token's fault.
+const replayOption = "Replay"
+
 // profile is a set of defaults for a whole test run, which the variable
 // DOKIMI_ASSERT_PROP_PROFILE names.
 type profile string
@@ -38,8 +42,8 @@ const (
 	ciProfile profile = "ci"
 )
 
-// profileOf returns the profile that the environment names. It returns an
-// error for a name other than default and ci.
+// profileOf returns the profile that the environment names. It returns a
+// fault at the variable for a name other than default and ci.
 func profileOf() (profile, error) {
 	name := profile(os.Getenv(profileVariable))
 	if name == "" || name == defaultProfile {
@@ -48,7 +52,8 @@ func profileOf() (profile, error) {
 	if name == ciProfile {
 		return ciProfile, nil
 	}
-	return "", fmt.Errorf("prop: %s %q names neither the default nor the ci profile", profileVariable, string(name))
+	return "", fault.At(fault.New("%q names neither the default nor the ci profile", string(name)),
+		fault.Field(profileVariable))
 }
 
 // seedOf returns the seed of a run of contract under c: the seed that Seed
@@ -56,8 +61,8 @@ func profileOf() (profile, error) {
 // ci profile [random.Mix] of the contract, and otherwise a random seed. It
 // checks the profile first, so a misspelled profile fails every run.
 //
-// It returns an error for a profile other than default and ci, and for a
-// seed variable that is no decimal number below 2^64.
+// It returns a fault at the variable for a profile other than default and
+// ci, and for a seed variable that is no decimal number below 2^64.
 func seedOf(c config, contract string) (uint64, error) {
 	p, err := profileOf()
 	if err != nil {
@@ -69,7 +74,7 @@ func seedOf(c config, contract string) (uint64, error) {
 	if text := os.Getenv(seedVariable); text != "" {
 		seed, err := strconv.ParseUint(text, 10, 64)
 		if err != nil {
-			return 0, fmt.Errorf("prop: %s %q is no decimal number below 2^64", seedVariable, text)
+			return 0, fault.At(fault.New("%q is no decimal number below 2^64", text), fault.Field(seedVariable))
 		}
 		return seed, nil
 	}
@@ -79,13 +84,14 @@ func seedOf(c config, contract string) (uint64, error) {
 	return rand.Uint64(), nil
 }
 
-// tokenOf returns the token that a run replays: the one that Replay states,
-// then the one that DOKIMI_ASSERT_PROP_REPLAY states. It reports false for
-// a run that replays none.
-func tokenOf(c config) (string, bool) {
+// tokenOf returns the token that a run replays and the name of where it is
+// stated: the one that Replay states, then the one that
+// DOKIMI_ASSERT_PROP_REPLAY states. It reports false for a run that replays
+// none.
+func tokenOf(c config) (tok, source string, ok bool) {
 	if c.replaying {
-		return c.replay, true
+		return c.replay, replayOption, true
 	}
-	tok := os.Getenv(replayVariable)
-	return tok, tok != ""
+	tok = os.Getenv(replayVariable)
+	return tok, replayVariable, tok != ""
 }

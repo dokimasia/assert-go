@@ -197,9 +197,9 @@ func TestFloat(t *testing.T) {
 	})
 }
 
-// TestFloatZeroAlloc checks that a float draw allocates nothing, and that
+// TestFloatAllocs checks that a float draw allocates nothing, and that
 // AppendFloatEdges allocates nothing into a slice with the capacity.
-func TestFloatZeroAlloc(t *testing.T) {
+func TestFloatAllocs(t *testing.T) {
 	s := random.New(pinnedSeed)
 	b := floatBounds(t, math.Inf(-1), math.Inf(1), choice.AdmitNaN, choice.Width64)
 	edges := make([]float64, 0, 6)

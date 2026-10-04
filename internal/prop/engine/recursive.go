@@ -32,24 +32,26 @@ type recursion[T any] struct {
 // Each position decides between the base, 0, and the extension, 1, with
 // an integer choice that decides structure. Once one value has drawn
 // maxLeaves values from the base, every further position takes the base,
-// with bounds [0, 0]. Its simplest value is the base's simplest. It panics
-// when maxLeaves is below 1.
+// with bounds [0, 0]. Its simplest value is the base's simplest. Each
+// position runs backwards through the base, and through the extension when
+// the base does not produce the value. It panics when maxLeaves is below 1.
 func Recursive[T any](base Generator[T], extend func(self Generator[T]) Generator[T], maxLeaves int) Generator[T] {
 	if maxLeaves < 1 {
 		panic(fmt.Sprintf("prop: %s with %d leaves draws no base value", recursiveID, maxLeaves))
 	}
 	r := &recursion[T]{base: base, maxLeaves: maxLeaves}
-	r.extend = extend(NewGenerator(recursiveID, r.position))
-	return NewGenerator(recursiveID, func(c *Case) T {
-		defer c.enter(r)()
+	r.extend = extend(NewInvertible(recursiveID, r.position, r.invert))
+	decode := func(c *Case) T {
+		defer c.Enter(r)()
 		return r.position(c)
-	})
+	}
+	return NewInvertible(recursiveID, decode, r.invert)
 }
 
 // position decodes one position of the value being decoded in c.
 func (r *recursion[T]) position(c *Case) T {
 	choices := bitBounds
-	if c.leaves(r) >= r.maxLeaves {
+	if c.Count(r) >= r.maxLeaves {
 		choices = indices(1)
 	}
 	span := c.openSpan(recursiveID)
@@ -57,6 +59,20 @@ func (r *recursion[T]) position(c *Case) T {
 	if c.Structure(choices, 0).Magnitude() == 1 {
 		return r.extend.decode(c)
 	}
-	c.addLeaf(r)
+	c.Add(r)
 	return r.base.decode(c)
+}
+
+// invert returns the steps of one position that decode to v: the base's
+// choice and steps, or, when the base does not produce v, the extension's.
+// A value past the bound on its leaves fails the replay that [Invert]
+// checks the steps with.
+func (r *recursion[T]) invert(v any) ([]Step, T, error) {
+	for index, branch := range [...]Generator[T]{r.base, r.extend} {
+		if steps, t, err := branch.inverse(v); err == nil {
+			return append([]Step{bitStep(index == 1)}, steps...), t, nil
+		}
+	}
+	var zero T
+	return nil, zero, uninvertible("neither the base nor the extension produces %v", v)
 }

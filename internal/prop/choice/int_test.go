@@ -12,9 +12,6 @@ import (
 	"go.dokimi.dev/assert/internal/prop/choice"
 )
 
-// minIntMagnitude is the magnitude of the most negative Int, 2^63.
-const minIntMagnitude = 1 << 63
-
 // TestInt checks the conversions into and out of Int, its order, its
 // arithmetic and its text, at the ends of both 64-bit ranges.
 func TestInt(t *testing.T) {
@@ -319,10 +316,12 @@ func TestInt(t *testing.T) {
 	})
 }
 
-// TestIntZeroAlloc checks that every function and method of Int but String
-// allocates nothing.
-func TestIntZeroAlloc(t *testing.T) {
+// TestIntAllocs checks that every function and method of Int allocates
+// nothing, but String, which allocates its text.
+func TestIntAllocs(t *testing.T) {
 	negative, large := choice.IntOf(-5), choice.UintOf(math.MaxUint64)
+	assert.MaxAllocs(t, func() { _ = large.String() }, 1, "String allocates the text it returns")
+	assert.MaxAllocs(t, func() { _ = choice.IntOf(7).String() }, 0, "String of a single digit allocates nothing")
 	assert.MaxAllocs(t, func() { _ = choice.IntOf(-5) }, 0, "IntOf allocates nothing")
 	assert.MaxAllocs(t, func() { _ = choice.UintOf(5) }, 0, "UintOf allocates nothing")
 	assert.MaxAllocs(t, func() { _, _ = negative.Int64() }, 0, "Int64 allocates nothing")
@@ -337,7 +336,7 @@ func TestIntZeroAlloc(t *testing.T) {
 }
 
 // BenchmarkInt measures each function and method of Int. String allocates
-// its digits and, for a negative value, the text with its sign.
+// the text it returns.
 func BenchmarkInt(b *testing.B) {
 	b.Run("IntOf", func(b *testing.B) {
 		var got choice.Int
@@ -461,7 +460,7 @@ func BenchmarkInt(b *testing.B) {
 	b.Run("String", func(b *testing.B) {
 		var got string
 		i := choice.IntOf(math.MinInt64)
-		c := bench.Start(b).MaxAllocs(2)
+		c := bench.Start(b).MaxAllocs(1)
 		defer c.End()
 		for c.Loop() {
 			got = i.String()

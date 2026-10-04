@@ -4,7 +4,6 @@
 package conformance
 
 import (
-	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -12,6 +11,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"go.dokimi.dev/assert/internal/fault"
 )
 
 // Surface is a surface of the library, named by its directory relative
@@ -184,13 +185,16 @@ func receiver(typ ast.Expr) string {
 }
 
 // declarations returns the top-level declarations of a surface's source
-// files, its test files left out.
+// files, its test files left out. It returns a fault whose cause is the
+// error of the file system for a directory that does not read, and one at
+// the file's name whose cause is the error of the parser for a file that
+// does not parse.
 func declarations(s Surface) ([]ast.Decl, error) {
 	dir := string(s)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("conformance: read %s: %w", dir, err)
+		return nil, fault.New("the surface does not read").Because(err)
 	}
 
 	fset := token.NewFileSet()
@@ -203,7 +207,7 @@ func declarations(s Surface) ([]ast.Decl, error) {
 
 		file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
 		if err != nil {
-			return nil, fmt.Errorf("conformance: parse %s: %w", name, err)
+			return nil, fault.At(fault.New("the file does not parse").Because(err), fault.Field(name))
 		}
 		out = append(out, file.Decls...)
 	}

@@ -9,12 +9,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/store"
 )
 
@@ -63,14 +63,18 @@ func TestDirectory(t *testing.T) {
 			assert.Equal(t, firstChoices(got.Entries), []int64{1, 3, 7}, "c, then a, then b")
 		})
 
-		t.Run("returns a note for each skipped file", func(t *testing.T) {
+		t.Run("returns the fault of each skipped file at the file's name", func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
 			write(t, dir, "later.json", `{"store": 2}`)
 			got, err := store.Load(dir, contract)
 			assert.NoError(t, err, "a later format is no damage")
-			want := []string{"later.json: store: later than this reader: the entry is of format 2"}
-			assert.Equal(t, got.Skipped, want, "the file and the reason")
+			assert.Length(t, got.Skipped, 1, "one skipped file")
+			assert.ErrorIs(t, got.Skipped[0], store.ErrLater, "a later format")
+			f := assert.ErrorAs[*fault.Error](t, got.Skipped[0], "a fault")
+			assert.Equal(t, f.Path, fault.Path{fault.Field("later.json"), fault.Field("store")},
+				"the file and the field")
+			assert.Equal(t, f.Reason, "the entry is of format 2", "the reason to skip")
 		})
 
 		t.Run("leaves out the entries of another property", func(t *testing.T) {
@@ -92,7 +96,7 @@ func TestDirectory(t *testing.T) {
 			assert.Equal(t, got, store.Stored{}, "nothing found")
 		})
 
-		t.Run("returns ErrDamaged naming each damaged file after reading the others", func(t *testing.T) {
+		t.Run("returns ErrDamaged at the name of each damaged file after reading the others", func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
 			write(t, dir, "broken.json", "{")
@@ -100,19 +104,28 @@ func TestDirectory(t *testing.T) {
 			write(t, dir, "good.json", entryText(t, nil))
 			got, err := store.Load(dir, contract)
 			assert.ErrorIs(t, err, store.ErrDamaged, "the damage")
-			assert.Contains(t, err.Error(), "store: read broken.json: store: not an entry", "the first file")
-			assert.Contains(t, err.Error(), "store: read empty.json: store: not an entry", "the second file")
+			var joined interface{ Unwrap() []error }
+			assert.True(t, errors.As(err, &joined), "a fault for each damaged file")
+			var paths []fault.Path
+			for _, err := range joined.Unwrap() {
+				paths = append(paths, assert.ErrorAs[*fault.Error](t, err, "a fault").Path)
+			}
+			wantPaths := []fault.Path{{fault.Field("broken.json")}, {fault.Field("empty.json")}}
+			assert.Equal(t, paths, wantPaths, "the name of each damaged file, in the order of the names")
 			assert.Equal(t, firstChoices(got.Entries), []int64{7}, "the entry that is not damaged")
 		})
 
-		t.Run("returns the error of a file that cannot be read", func(t *testing.T) {
+		t.Run("returns the error of a file that cannot be read at its name", func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
 			assert.NoError(t, os.Symlink(filepath.Join(dir, "missing"), filepath.Join(dir, "gone.json")),
 				"a link to nothing")
 			_, err := store.Load(dir, contract)
 			assert.ErrorIs(t, err, fs.ErrNotExist, "the link's target is missing")
-			assert.False(t, errors.Is(err, store.ErrDamaged), "no damage")
+			assert.ErrorIsNot(t, err, store.ErrDamaged, "no damage")
+			f := assert.ErrorAs[*fault.Error](t, err, "a fault")
+			assert.Equal(t, f.Path, fault.Path{fault.Field("gone.json")}, "the file's name")
+			assert.Equal(t, f.Reason, "the file cannot be read", "the reason")
 		})
 
 		t.Run("returns the error of a directory that cannot be read", func(t *testing.T) {
@@ -120,8 +133,10 @@ func TestDirectory(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "file")
 			write(t, filepath.Dir(path), "file", "")
 			_, err := store.Load(path, contract)
-			assert.HasError(t, err, "a file is no directory")
-			assert.True(t, strings.HasPrefix(err.Error(), "store: "), "the package's prefix")
+			cause := assert.ErrorAs[*fs.PathError](t, err, "the file system's error")
+			assert.Equal(t, cause.Path, path, "the file that is no directory")
+			assert.Equal(t, assert.ErrorAs[*fault.Error](t, err, "a fault").Reason, "the store cannot be listed",
+				"the reason")
 		})
 	})
 
@@ -140,8 +155,8 @@ func TestDirectory(t *testing.T) {
 			assert.NoError(t, json.Unmarshal([]byte(pinnedJSON), &want), "the pinned entry is JSON")
 			assert.NoError(t, json.Unmarshal(data, &got), "the file is JSON")
 			assert.Equal(t, got, want, "the pinned entry")
-			assert.True(t, strings.HasPrefix(string(data), "{\n  \"store\": 1,\n"), "indented by two spaces")
-			assert.True(t, strings.HasSuffix(string(data), "}\n"), "a final newline")
+			assert.HasPrefix(t, string(data), "{\n  \"store\": 1,\n", "indented by two spaces")
+			assert.HasSuffix(t, string(data), "}\n", "a final newline")
 		})
 
 		t.Run("writes a file that the next run replays", func(t *testing.T) {
@@ -188,7 +203,11 @@ func TestDirectory(t *testing.T) {
 			invalid.Identity = store.Identity{Assertion: "equal"}
 			wrote, err := store.Save(dir, invalid)
 			assert.ErrorIs(t, err, store.ErrInvalid, "the refusal")
-			assert.Contains(t, err.Error(), "has no shape", "the fault")
+			f := assert.ErrorAs[*fault.Error](t, err, "a fault")
+			assert.Equal(t, f.Reason, "a reader would not replay the entry", "the refusal's reason")
+			damage := assert.ErrorAs[*fault.Error](t, f.Err, "the reader's fault")
+			assert.ErrorIs(t, damage, store.ErrDamaged, "the reader's verdict")
+			assert.Equal(t, damage.Path, fault.Path{fault.Field("identity")}, "the field that the reader refuses")
 			assert.False(t, wrote, "no file written")
 			entries, err := os.ReadDir(dir)
 			assert.NoError(t, err, "the directory is read")
@@ -201,6 +220,9 @@ func TestDirectory(t *testing.T) {
 			broken.Counterexample = []store.Draw{{Label: "broken", Value: json.RawMessage("{")}}
 			wrote, err := store.Save(t.TempDir(), broken)
 			assert.ErrorIs(t, err, store.ErrInvalid, "the refusal")
+			f := assert.ErrorAs[*fault.Error](t, err, "a fault")
+			assert.Equal(t, f.Reason, "the entry does not encode as JSON", "the refusal's reason")
+			assert.HasError(t, f.Err, "the encoder's error is the cause")
 			assert.False(t, wrote, "no file written")
 		})
 
@@ -209,8 +231,10 @@ func TestDirectory(t *testing.T) {
 			parent := t.TempDir()
 			write(t, parent, "file", "")
 			wrote, err := store.Save(filepath.Join(parent, "file", "prop"), pinned())
-			assert.HasError(t, err, "a file is no directory")
-			assert.True(t, strings.HasPrefix(err.Error(), "store: "), "the package's prefix")
+			cause := assert.ErrorAs[*fs.PathError](t, err, "the file system's error")
+			assert.Equal(t, cause.Path, filepath.Join(parent, "file"), "the file in the place of a directory")
+			assert.Equal(t, assert.ErrorAs[*fault.Error](t, err, "a fault").Reason, "the store cannot be created",
+				"the reason")
 			assert.False(t, wrote, "no file written")
 		})
 
@@ -224,15 +248,16 @@ func TestDirectory(t *testing.T) {
 			t.Cleanup(func() { _ = os.Chmod(dir, writable) })
 			wrote, err := store.Save(dir, pinned())
 			assert.ErrorIs(t, err, fs.ErrPermission, "no file can be created")
-			assert.True(t, strings.HasPrefix(err.Error(), "store: "), "the package's prefix")
+			assert.Equal(t, assert.ErrorAs[*fault.Error](t, err, "a fault").Reason, "the entry cannot be written",
+				"the reason")
 			assert.False(t, wrote, "no file written")
 		})
 	})
 }
 
-// TestDirectoryZeroAlloc checks the ceilings of Load on a directory of one
+// TestDirectoryAllocs checks the ceilings of Load on a directory of one
 // entry and of Save of an entry whose file exists.
-func TestDirectoryZeroAlloc(t *testing.T) {
+func TestDirectoryAllocs(t *testing.T) {
 	dir := t.TempDir()
 	e := pinned()
 	_, err := store.Save(dir, e)

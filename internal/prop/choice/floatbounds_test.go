@@ -400,9 +400,9 @@ func TestFloatBounds(t *testing.T) {
 	})
 }
 
-// TestFloatBoundsZeroAlloc checks that no method of FloatBounds allocates,
+// TestFloatBoundsAllocs checks that no method of FloatBounds allocates,
 // and that a constructor that succeeds allocates nothing.
-func TestFloatBoundsZeroAlloc(t *testing.T) {
+func TestFloatBoundsAllocs(t *testing.T) {
 	b := floatBounds(t, 0.6, 0.7, choice.AdmitNaN, choice.Width64)
 	recorded := choice.Choice{Kind: choice.Float, Float: math.NaN()}
 	assert.MaxAllocs(t, func() { _, _ = choice.NewFloatBounds(0.6, 0.7, choice.ExcludeNaN, choice.Width64) }, 0,
@@ -514,13 +514,4 @@ func BenchmarkFloatBounds(b *testing.B) {
 		}
 		assert.Equal(b, got.Hi(), choice.IntOf(1<<53-1), "the largest exact integer")
 	})
-}
-
-// floatBounds returns the float bounds [lo, hi] of width w under the NaN
-// policy, failing the test when they are invalid.
-func floatBounds(tb testing.TB, lo, hi float64, nan choice.NaNPolicy, w choice.Width) choice.FloatBounds {
-	tb.Helper()
-	b, err := choice.NewFloatBounds(lo, hi, nan, w)
-	assert.NoError(tb, err, "the bounds are valid")
-	return b
 }

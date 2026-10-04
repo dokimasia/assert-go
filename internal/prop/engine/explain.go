@@ -8,6 +8,7 @@ import (
 
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/random"
+	"go.dokimi.dev/assert/internal/record"
 )
 
 //go:generate go run golang.org/x/tools/cmd/stringer@v0.50.0 -type=Relevance -linecomment -output=explain.string_gen.go
@@ -21,7 +22,7 @@ type Relevance uint8
 
 const (
 	// Untested is a draw that made no choice, none of whose fillings
-	// decoded a value, or whose fillings the budget did not reach.
+	// decoded a value, or whose fillings did not all run within the budget.
 	Untested Relevance = 0 // untested
 	// AnyValueFails is a draw for which every filling fails the same way.
 	AnyValueFails Relevance = 1 // any-value-fails
@@ -78,7 +79,7 @@ func explain(sh *shrinker, f *failure, seed uint64) []Explained {
 // fill runs the fillings of one draw, the n-th from the stream of base + n,
 // up to Workers of them at once, and takes their runs in order, each
 // charged to the budget. A filling whose decode returns no value is not a
-// value of the draw, and is skipped at no cost. It returns [ValueMatters]
+// value of the draw, and is skipped without a charge to the budget. It returns [ValueMatters]
 // at the first filling that passes or fails another way, [AnyValueFails]
 // when every filling that decoded fails the same way, and [Untested] when
 // none decoded or the budget or the time runs out first.
@@ -101,6 +102,7 @@ func fill(sh *shrinker, f *failure, span Span, g erased, base uint64) Relevance 
 		runs := sh.runAll(sh.batch[:count])
 		for i, e := range runs {
 			sh.runs++
+			sh.s.Slot.Take(&e.Case.calls, record.Explain)
 			if e.Status != CaseFailed || e.Identity != f.identity {
 				sh.release(runs[i:]...)
 				return ValueMatters
@@ -122,7 +124,7 @@ func fill(sh *shrinker, f *failure, span Span, g erased, base uint64) Relevance 
 func filled(sh *shrinker, nodes []node, span Span, g erased, source random.Source) ([]choice.Choice, bool) {
 	sh.generating.reset(source)
 	c := sh.spareCase()
-	c.recycle(sh.generating, MaxChoices, nil, sh.s.Clock)
+	c.recycle(sh.generating, Settings{MaxChoices: MaxChoices, Clock: sh.s.Clock}, nil)
 	fresh := finish(c, func(c *Case) { g.decode(c) })
 	defer sh.release(fresh)
 	if fresh.Status != CasePassed {
@@ -144,7 +146,7 @@ func nearest(sh *shrinker, nodes []node, span Span, g erased) (any, Relevance) {
 		return nil, ValueMatters
 	}
 	stepped := towards(value, target, 1)
-	e, ok := sh.run(choicesOf(replaced(nodes, span.Start, integerChoice(stepped))))
+	e, ok := sh.run(choicesOf(replaced(nodes, span.Start, integerChoice(stepped))), record.Explain)
 	if !ok {
 		return nil, Untested
 	}

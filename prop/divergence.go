@@ -45,6 +45,12 @@ func (d Difference) Valid() bool {
 	return d <= VerdictDifference
 }
 
+// MarshalText returns the difference's spelling, as the record of a run
+// states it.
+func (d Difference) MarshalText() ([]byte, error) {
+	return []byte(d.String()), nil
+}
+
 // Divergence is what differed first in a flaky run, with the recorded and
 // the replayed side of the difference. Each side has the form that What
 // states:
@@ -91,30 +97,11 @@ func divergenceOf(d engine.Divergence) *Divergence {
 func versionOf(v any) any {
 	switch v := v.(type) {
 	case choice.Bounds:
-		return boundsText(v)
+		return v.String()
 	case engine.Identity:
 		return identityText(v)
 	}
 	return v
-}
-
-// boundsText returns the text of a request's bounds.
-func boundsText(b choice.Bounds) string {
-	switch b.Kind() {
-	case choice.Integer:
-		return fmt.Sprintf("integer in [%s, %s]", b.Integer().Lo(), b.Integer().Hi())
-	case choice.Float:
-		f := b.Float()
-		if f.NaNPolicy() == choice.AdmitNaN {
-			return fmt.Sprintf("float in [%v, %v] of width %d or NaN", f.Lo(), f.Hi(), f.Width())
-		}
-		return fmt.Sprintf("float in [%v, %v] of width %d", f.Lo(), f.Hi(), f.Width())
-	}
-	s := b.Sequence()
-	if most, bounded := s.Sizes().Max(); bounded {
-		return fmt.Sprintf("sequence of %d to %d values below %d", s.Sizes().Min(), most, s.K())
-	}
-	return fmt.Sprintf("sequence of %d or more values below %d", s.Sizes().Min(), s.K())
 }
 
 // identityText returns the text of a failure identity: what failed, then

@@ -76,8 +76,8 @@ func TestLength(t *testing.T) {
 	})
 }
 
-// TestLengthZeroAlloc checks that Average and Flag allocate nothing.
-func TestLengthZeroAlloc(t *testing.T) {
+// TestLengthAllocs checks that Average and Flag allocate nothing.
+func TestLengthAllocs(t *testing.T) {
 	s := random.New(pinnedSeed)
 	free := sizes(t, 0, 16)
 	assert.MaxAllocs(t, func() { _ = random.Average(free) }, 0, "Average allocates nothing")
@@ -112,15 +112,6 @@ func BenchmarkLength(b *testing.B) {
 		twin := start
 		assert.Equal(b, got, twin.Coin(5, 6), "the first decision of the seed")
 	})
-}
-
-// sizes returns the lengths from minSize to maxSize, failing the test when
-// they are invalid.
-func sizes(tb testing.TB, minSize, maxSize int) choice.Sizes {
-	tb.Helper()
-	s, err := choice.NewSizes(minSize, maxSize)
-	assert.NoError(tb, err, "the sizes are valid")
-	return s
 }
 
 // unboundedSizes returns the lengths of minSize or more, failing the test

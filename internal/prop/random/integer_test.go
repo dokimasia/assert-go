@@ -14,15 +14,6 @@ import (
 	"go.dokimi.dev/assert/internal/prop/random"
 )
 
-// pinnedSeed is the seed of every pinned draw. The pinned draws come from
-// the definition's executable reference, so that a change to a draw fails
-// here before a vector moves.
-const pinnedSeed = 42
-
-// draws is the number of draws that a property of a draw checks: enough
-// to reach every branch of every draw.
-const draws = 2000
-
 // offsetLimits pins the largest offsets from the target that an integer
 // draw allows, one chosen with Below(4).
 var offsetLimits = [...]uint64{0xF, 0xFF, 0xFFFF, math.MaxUint64}
@@ -169,9 +160,9 @@ func TestInteger(t *testing.T) {
 	})
 }
 
-// TestIntegerZeroAlloc checks that an integer draw allocates nothing, and
+// TestIntegerAllocs checks that an integer draw allocates nothing, and
 // that AppendIntegerEdges allocates nothing into a slice with the capacity.
-func TestIntegerZeroAlloc(t *testing.T) {
+func TestIntegerAllocs(t *testing.T) {
 	s := random.New(pinnedSeed)
 	b := signedBounds(t, math.MinInt64, math.MaxInt64)
 	edges := make([]choice.Int, 0, 5)

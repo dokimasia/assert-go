@@ -30,3 +30,22 @@ func TestOverCeiling(t *testing.T) {
 		}
 	})
 }
+
+// TestAllocsTwins runs TestAllocsTwinsChild in a child process, and
+// requires the failures of RunMaxAllocs for a twin that never calls the
+// callable.
+func TestAllocsTwins(t *testing.T) {
+	t.Parallel()
+	expectBroken(t, "TestAllocsTwinsChild",
+		"the fixture allocated nothing, so the case checked no ceiling",
+		"called the callable 0 times, want 101")
+}
+
+// TestAllocsTwinsChild runs only in the child process of TestAllocsTwins.
+func TestAllocsTwinsChild(t *testing.T) {
+	inChild(t)
+
+	t.Run("RunMaxAllocs of a twin that never calls the callable", func(t *testing.T) {
+		matchertest.RunMaxAllocs(t, func(*matchertest.Seat, func(), uint64, string) {})
+	})
+}

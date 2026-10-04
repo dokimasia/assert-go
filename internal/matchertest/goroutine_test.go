@@ -5,6 +5,7 @@ package matchertest_test
 
 import (
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -25,31 +26,60 @@ const (
 // whole process. See [matchertest.RunNoGoroutineLeaks].
 func TestGoroutine(t *testing.T) {
 	t.Run("RunNoGoroutineLeaks", func(t *testing.T) {
-		matchertest.RunNoGoroutineLeaks(t, func(s *matchertest.Seat, msg string) func() {
-			before := ids()
+		matchertest.RunNoGoroutineLeaks(t, leakCheck(slices.Sort))
+	})
+}
 
-			return func() {
-				var leaked []uint64
-				for deadline := time.Now().Add(grace); ; time.Sleep(poll) {
-					leaked = leaked[:0]
-					for id := range ids() {
-						if !before[id] {
-							leaked = append(leaked, id)
-						}
-					}
-					if len(leaked) == 0 || time.Now().After(deadline) {
-						break
+// TestGoroutineTwins runs TestGoroutineTwinsChild in a child process, and
+// requires the failure of RunNoGoroutineLeaks for a twin that reports the
+// goroutines in descending order of id.
+func TestGoroutineTwins(t *testing.T) {
+	t.Parallel()
+	expectBroken(t, "TestGoroutineTwinsChild", "want the 8 goroutines in ascending order of id")
+}
+
+// TestGoroutineTwinsChild runs only in the child process of
+// TestGoroutineTwins.
+func TestGoroutineTwinsChild(t *testing.T) {
+	inChild(t)
+
+	t.Run("RunNoGoroutineLeaks of a twin that reports in descending order", func(t *testing.T) {
+		matchertest.RunNoGoroutineLeaks(t, leakCheck(func(leaked []uint64) {
+			slices.Sort(leaked)
+			slices.Reverse(leaked)
+		}))
+	})
+}
+
+// leakCheck returns a leak assertion that reports the goroutines that
+// started after it and still run after the grace, in the order that order
+// puts their ids in.
+func leakCheck(order func(leaked []uint64)) matchertest.LeakInvoke {
+	return func(s *matchertest.Seat, msg string) func() {
+		before := ids()
+
+		return func() {
+			var leaked []uint64
+			for deadline := time.Now().Add(grace); ; time.Sleep(poll) {
+				leaked = leaked[:0]
+				for id := range ids() {
+					if !before[id] {
+						leaked = append(leaked, id)
 					}
 				}
-				if len(leaked) > 0 {
-					s.Report(matcher.Failure{
-						Assertion: "no-task-leaks", Contract: msg,
-						Detail: map[string]any{"leaked": leaked},
-					}, true)
+				if len(leaked) == 0 || time.Now().After(deadline) {
+					break
 				}
 			}
-		})
-	})
+			if len(leaked) > 0 {
+				order(leaked)
+				s.Report(matcher.Failure{
+					Assertion: "no-task-leaks", Contract: msg,
+					Detail: map[string]any{"leaked": leaked},
+				}, true)
+			}
+		}
+	}
 }
 
 // ids returns every live goroutine's id, which is what a leak check

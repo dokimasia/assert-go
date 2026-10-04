@@ -10,9 +10,8 @@ import (
 	"go.dokimi.dev/assert/internal/matcher"
 )
 
-// Seat records what a matcher reported. It satisfies the seat
-// interface every matcher takes, without depending on the package that
-// declares it: the method set is the contract, not the name.
+// Seat records what a matcher reported. It satisfies matcher.Seat and
+// assert.TB by its method set alone, without importing assert or expect.
 //
 // The zero value is usable. Every method is safe for concurrent use,
 // so a matcher that reports from a goroutine can be tested.
@@ -21,6 +20,7 @@ type Seat struct {
 	fatals  []string
 	errs    []string
 	records []matcher.Failure
+	faults  []error
 	helpers int
 }
 
@@ -29,7 +29,7 @@ type Seat struct {
 // what a real seat would.
 //
 // Satisfying this interface is what lets a case state the fields an
-// assertion reports rather than words its sentence happens to hold.
+// assertion reports rather than words that its sentence contains.
 func (s *Seat) Report(f matcher.Failure, aborting bool) {
 	s.mu.Lock()
 	s.records = append(s.records, f)
@@ -50,6 +50,27 @@ func (s *Seat) Records() []matcher.Failure {
 	return append([]matcher.Failure(nil), s.records...)
 }
 
+// ReportFault records one fault as the error it is. It also calls Fatalf
+// with the writer's text of a fault that ends its call, so the seat fails
+// as a seat that takes text does. It records a noted fault alone.
+func (s *Seat) ReportFault(err error, ending bool) {
+	s.mu.Lock()
+	s.faults = append(s.faults, err)
+	s.mu.Unlock()
+
+	if ending {
+		s.Fatalf("%s", matcher.RenderFault(err))
+	}
+}
+
+// Faults returns a copy of every fault reported, in call order.
+func (s *Seat) Faults() []error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return append([]error(nil), s.faults...)
+}
+
 // Helper counts one helper-frame mark.
 func (s *Seat) Helper() {
 	s.mu.Lock()
@@ -60,7 +81,7 @@ func (s *Seat) Helper() {
 
 // Fatalf records a failure reported through the aborting path. It
 // returns, unlike a real seat, so a test can assert on what a matcher
-// reported and then carry on.
+// reported and then run on.
 func (s *Seat) Fatalf(format string, args ...any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -113,9 +134,9 @@ func (s *Seat) Failed() bool {
 // First returns the first message recorded through either path,
 // preferring the aborting one. It is empty when nothing was recorded.
 //
-// Most matcher tests assert on one failure, and reaching for this
-// instead of indexing a slice keeps them from panicking when the
-// matcher under test wrongly reported nothing.
+// Most matcher tests assert on one failure. Calling this instead of
+// indexing a slice keeps them from panicking when the matcher under test
+// wrongly reported nothing.
 func (s *Seat) First() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()

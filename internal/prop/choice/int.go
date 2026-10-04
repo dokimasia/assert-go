@@ -123,11 +123,26 @@ func (i Int) Distance(j Int) uint64 {
 	return max(i.magnitude, j.magnitude) - min(i.magnitude, j.magnitude)
 }
 
+// intText is the length of the longest text of an Int: the 20 digits of the
+// largest uint64, or a minus sign and the 19 digits of 2^63.
+const intText = 20
+
 // String returns i in decimal, with a leading minus sign when i is
 // negative.
+//
+// # Allocation contract
+//
+// String allocates the text it returns: one allocation, and none for a
+// single digit.
 func (i Int) String() string {
+	var buf [intText]byte
+	return string(i.appendText(buf[:0]))
+}
+
+// appendText appends to dst the text that String returns for i.
+func (i Int) appendText(dst []byte) []byte {
 	if i.negative {
-		return "-" + strconv.FormatUint(i.magnitude, 10)
+		dst = append(dst, '-')
 	}
-	return strconv.FormatUint(i.magnitude, 10)
+	return strconv.AppendUint(dst, i.magnitude, 10)
 }

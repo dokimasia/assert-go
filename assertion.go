@@ -12,15 +12,14 @@ import "go.dokimi.dev/assert/internal/matcher"
 // chain never run. Where every property is worth reporting at once,
 // use the recording surface instead.
 //
-// The zero value is not usable; call [That]. An Assertion is not safe
-// for concurrent use, and a chain is a single expression in practice,
-// so this costs nothing.
+// The zero value is not usable. Call [That]. An Assertion is not safe for
+// concurrent use. Call its methods from one goroutine.
 type Assertion[T any] struct {
 	// tb is where a failing method reports.
 	tb TB
-	// got is the value every method compares against. It is held
-	// rather than copied, so a method sees later mutations of a
-	// reference type.
+	// got is the value every method compares against. For a reference
+	// type, the chain keeps the reference, so a method sees a later change
+	// of the referenced value.
 	got T
 }
 
@@ -34,14 +33,28 @@ type Assertion[T any] struct {
 // together. For a single property the function form reads better:
 //
 //	assert.Equal(t, resp.StatusCode, 200, "the request succeeded")
+//
+// # Allocation contract
+//
+// That allocates nothing for a chain that does not escape the caller's
+// frame, such as a chain of one expression or one in a local variable. A
+// chain that escapes to the heap, such as one in a package variable,
+// allocates once.
 func That[T any](tb TB, got T) *Assertion[T] {
-	tb.Helper()
+	// That marks no helper frame, because it reports nothing. Its body is
+	// small enough for the compiler to inline in a coverage build too, so a
+	// chain that does not escape is allocated on the stack.
 	return &Assertion[T]{tb: tb, got: got}
 }
 
 // Equal compares the chained value against want and stops the test
 // when they differ. See [Equal] for the comparison rules and the
 // failure shape.
+//
+// # Allocation contract
+//
+// A passing call on a chain of an int allocates 24 times, as [Equal]
+// does.
 func (a *Assertion[T]) Equal(want T, msg string, opts ...Option) *Assertion[T] {
 	a.tb.Helper()
 	matcher.Equal(a.tb, matcher.Fatal, a.got, want, msg, opts...)
@@ -51,6 +64,11 @@ func (a *Assertion[T]) Equal(want T, msg string, opts ...Option) *Assertion[T] {
 // NotEqual compares the chained value against want and stops the test
 // when they are equal. See [NotEqual] for the comparison rules and the
 // failure shape.
+//
+// # Allocation contract
+//
+// A passing call on a chain of an int allocates 24 times, as [NotEqual]
+// does.
 func (a *Assertion[T]) NotEqual(want T, msg string, opts ...Option) *Assertion[T] {
 	a.tb.Helper()
 	matcher.NotEqual(a.tb, matcher.Fatal, a.got, want, msg, opts...)
@@ -58,6 +76,10 @@ func (a *Assertion[T]) NotEqual(want T, msg string, opts ...Option) *Assertion[T
 }
 
 // Nil stops the test when the chained value is not nil. See [Nil].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a nil pointer allocates nothing.
 func (a *Assertion[T]) Nil(msg string) *Assertion[T] {
 	a.tb.Helper()
 	matcher.Nil(a.tb, matcher.Fatal, a.got, msg)
@@ -65,54 +87,84 @@ func (a *Assertion[T]) Nil(msg string) *Assertion[T] {
 }
 
 // NotNil stops the test when the chained value is nil. See [NotNil].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a pointer allocates nothing.
 func (a *Assertion[T]) NotNil(msg string) *Assertion[T] {
 	a.tb.Helper()
 	matcher.NotNil(a.tb, matcher.Fatal, a.got, msg)
 	return a
 }
 
-// Length stops the test when the chained value does not hold want
-// items. See [Length].
+// Length stops the test when the chained value does not have want items.
+// See [Length].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a slice allocates nothing.
 func (a *Assertion[T]) Length(want int, msg string) *Assertion[T] {
 	a.tb.Helper()
 	matcher.Length(a.tb, matcher.Fatal, a.got, want, msg)
 	return a
 }
 
-// Empty stops the test when the chained value holds anything. See
-// [Empty].
+// Empty stops the test when the chained value has any item. See [Empty].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a slice allocates nothing.
 func (a *Assertion[T]) Empty(msg string) *Assertion[T] {
 	a.tb.Helper()
 	matcher.Empty(a.tb, matcher.Fatal, a.got, msg)
 	return a
 }
 
-// NotEmpty stops the test when the chained value holds nothing. See
+// NotEmpty stops the test when the chained value has no item. See
 // [NotEmpty].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a slice allocates nothing.
 func (a *Assertion[T]) NotEmpty(msg string) *Assertion[T] {
 	a.tb.Helper()
 	matcher.NotEmpty(a.tb, matcher.Fatal, a.got, msg)
 	return a
 }
 
-// Contains stops the test when the chained value does not hold needle.
-// See [Contains].
+// Contains stops the test when the chained value does not contain
+// needle. See [Contains].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a string allocates once: the chained
+// string in an interface.
 func (a *Assertion[T]) Contains(needle any, msg string, opts ...Option) *Assertion[T] {
 	a.tb.Helper()
 	matcher.Contains(a.tb, matcher.Fatal, a.got, needle, msg, opts...)
 	return a
 }
 
-// NotContains stops the test when the chained value holds needle. See
+// NotContains stops the test when the chained value contains needle. See
 // [NotContains].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a string allocates once: the chained
+// string in an interface.
 func (a *Assertion[T]) NotContains(needle any, msg string, opts ...Option) *Assertion[T] {
 	a.tb.Helper()
 	matcher.NotContains(a.tb, matcher.Fatal, a.got, needle, msg, opts...)
 	return a
 }
 
-// ContainsInOrder stops the test when the chained value does not hold
+// ContainsInOrder stops the test when the chained value does not contain
 // every needle in order. See [ContainsInOrder].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a string allocates once: the chained
+// string in an interface.
 func (a *Assertion[T]) ContainsInOrder(needles []string, msg string) *Assertion[T] {
 	a.tb.Helper()
 	matcher.ContainsInOrder(a.tb, matcher.Fatal, a.got, needles, msg)
@@ -121,6 +173,11 @@ func (a *Assertion[T]) ContainsInOrder(needles []string, msg string) *Assertion[
 
 // HasPrefix stops the test when the chained value does not start with
 // prefix. See [HasPrefix].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a string allocates once: the chained
+// string in an interface.
 func (a *Assertion[T]) HasPrefix(prefix, msg string) *Assertion[T] {
 	a.tb.Helper()
 	matcher.HasPrefix(a.tb, matcher.Fatal, a.got, prefix, msg)
@@ -129,6 +186,11 @@ func (a *Assertion[T]) HasPrefix(prefix, msg string) *Assertion[T] {
 
 // HasSuffix stops the test when the chained value does not end with
 // suffix. See [HasSuffix].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a string allocates once: the chained
+// string in an interface.
 func (a *Assertion[T]) HasSuffix(suffix, msg string) *Assertion[T] {
 	a.tb.Helper()
 	matcher.HasSuffix(a.tb, matcher.Fatal, a.got, suffix, msg)
@@ -137,6 +199,12 @@ func (a *Assertion[T]) HasSuffix(suffix, msg string) *Assertion[T] {
 
 // Matches stops the test when the chained value does not match
 // pattern. See [Matches].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a string allocates 63 times: the chained
+// string in an interface, and the compilation of pattern that [Matches]
+// makes.
 func (a *Assertion[T]) Matches(pattern, msg string) *Assertion[T] {
 	a.tb.Helper()
 	matcher.Matches(a.tb, matcher.Fatal, a.got, pattern, msg)
@@ -145,14 +213,24 @@ func (a *Assertion[T]) Matches(pattern, msg string) *Assertion[T] {
 
 // CloseTo stops the test when the chained value is further than
 // tolerance from want. See [CloseTo].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a float64 allocates once: the chained
+// value in an interface.
 func (a *Assertion[T]) CloseTo(want, tolerance float64, msg string) *Assertion[T] {
 	a.tb.Helper()
 	matcher.CloseTo(a.tb, matcher.Fatal, a.got, want, tolerance, msg)
 	return a
 }
 
-// InRange stops the test when the chained value falls outside the
-// closed interval [low, high]. See [InRange].
+// InRange stops the test when the chained value is outside the closed
+// interval [low, high]. See [InRange].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a float64 allocates once: the chained
+// value in an interface.
 func (a *Assertion[T]) InRange(low, high float64, msg string) *Assertion[T] {
 	a.tb.Helper()
 	matcher.InRange(a.tb, matcher.Fatal, a.got, low, high, msg)

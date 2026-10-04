@@ -5,15 +5,18 @@ package conformance
 
 import (
 	"encoding/json"
-	"fmt"
 
+	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/literal"
 	"go.dokimi.dev/assert/internal/prop/choice"
+	"go.dokimi.dev/assert/internal/prop/token"
 )
 
-// A choice in the corpus form of a vector: a JSON integer, or a decimal
-// string beyond 2^53 - 1 in magnitude, for an integer; an object with the
-// one key float, of a number or a float's name, for a float; and an object
-// with the one key sequence, of a list of integers, for a sequence.
+// choiceForm is a choice in the corpus form of a vector: a JSON integer, or
+// a decimal string beyond 2^53 - 1 in magnitude, for an integer; an object
+// with the one key float, of a number or a float's name, for a float; and
+// an object with the one key sequence, of a list of integers, for a
+// sequence.
 type choiceForm struct {
 	// Float is the float of a float choice, and nil for another kind.
 	Float json.RawMessage `json:"float"`
@@ -22,13 +25,14 @@ type choiceForm struct {
 	Sequence []uint32 `json:"sequence"`
 }
 
-// parseChoices returns the choices that a list of corpus forms states.
+// parseChoices returns the choices that a list of corpus forms states. It
+// returns the fault of a form that states no choice, at the form's index.
 func parseChoices(forms []json.RawMessage) ([]choice.Choice, error) {
 	out := make([]choice.Choice, len(forms))
 	for i, form := range forms {
 		c, err := parseChoice(form)
 		if err != nil {
-			return nil, fmt.Errorf("conformance: choice %d: %w", i, err)
+			return nil, fault.At(err, fault.Index(i))
 		}
 		out[i] = c
 	}
@@ -40,16 +44,16 @@ func parseChoice(form json.RawMessage) (choice.Choice, error) {
 	var object choiceForm
 	if json.Unmarshal(form, &object) == nil {
 		if object.Float != nil {
-			f, err := decodeFloat(object.Float)
+			f, err := literal.Float(object.Float)
 			if err != nil {
-				return choice.Choice{}, err
+				return choice.Choice{}, fault.At(err, fault.Field(floatMember))
 			}
-			return choice.Choice{Kind: choice.Float, Float: f.(float64)}, nil
+			return choice.Choice{Kind: choice.Float, Float: f}, nil
 		}
 		if object.Sequence != nil {
 			return choice.Choice{Kind: choice.Sequence, Sequence: object.Sequence}, nil
 		}
-		return choice.Choice{}, fmt.Errorf("conformance: %s is no choice", form)
+		return choice.Choice{}, fault.New("%s is no choice", form)
 	}
 	i, err := parseInt(form)
 	if err != nil {
@@ -61,7 +65,7 @@ func parseChoice(form json.RawMessage) (choice.Choice, error) {
 // parseInt returns the integer that a JSON integer states, or a decimal
 // string beyond 2^53 - 1 in magnitude.
 func parseInt(raw json.RawMessage) (choice.Int, error) {
-	v, err := decodeInt(raw)
+	v, err := literal.Int(raw)
 	if err != nil {
 		return choice.Int{}, err
 	}
@@ -75,7 +79,8 @@ func parseInt(raw json.RawMessage) (choice.Int, error) {
 }
 
 // sameChoices reports whether got are the choices that the corpus forms of
-// want state, in order, with floats compared by their bits.
+// want state, in order, with floats compared by their bits. It returns the
+// fault of a form that states no choice.
 func sameChoices(got []choice.Choice, want []json.RawMessage) (bool, error) {
 	parsed, err := parseChoices(want)
 	if err != nil {
@@ -90,4 +95,19 @@ func sameChoices(got []choice.Choice, want []json.RawMessage) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+// compareChoices returns a fault of how got differs from the choices that
+// the corpus forms of want state, or nil when they match. The fault states
+// got as its replay token. It returns the fault of a form that states no
+// choice.
+func compareChoices(got []choice.Choice, want []json.RawMessage) error {
+	same, err := sameChoices(got, want)
+	if err != nil {
+		return err
+	}
+	if !same {
+		return fault.New("the choices are %s, want %s", token.Encode(got), jsonOf(want))
+	}
+	return nil
 }

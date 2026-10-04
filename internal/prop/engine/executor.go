@@ -86,9 +86,9 @@ func (o *inOrder) edge(at boundary) Execution {
 func (o *inOrder) execute(p provider) Execution {
 	o.walker.Restart()
 	if o.last == nil {
-		o.last = newCase(p, o.s.MaxChoices, o.walker, o.s.Clock)
+		o.last = newCase(p, o.s, o.walker)
 	} else {
-		o.last.recycle(p, o.s.MaxChoices, o.walker, o.s.Clock)
+		o.last.recycle(p, o.s, o.walker)
 	}
 	return finish(o.last, o.body)
 }

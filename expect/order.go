@@ -19,8 +19,13 @@ import (
 //	    return earlier.Before(later)
 //	}, "the events are in chronological order")
 //
-// A slice of nought or one item passes, having no pair to break. The
-// failure names the index and both values of the first break.
+// A slice of zero items or one item passes, because it has no pair. The
+// failure names the index and both values of the first pair that fails
+// pred.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what pred allocates.
 func Pairwise[T any](tb assert.TB, items []T, pred func(earlier, later T) bool, msg string) {
 	tb.Helper()
 	matcher.Pairwise(tb, matcher.Soft, items, pred, msg)

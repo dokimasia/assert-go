@@ -3,12 +3,13 @@
 
 package assert
 
-// TB is the failure surface an assertion reports through.
+// TB is the seat that an assertion reports through.
 // [testing.T], [testing.B] and [Recorder] satisfy it.
 //
-// [testing.TB] carries an unexported method, so nothing outside the
-// standard library implements it. This interface is declared here so a
-// generated check body can hold one seat and satisfy it.
+// [testing.TB] declares an unexported method, so no type outside the
+// standard library implements it. This package declares TB so that any
+// type with these three methods is a seat, such as the seat of a
+// generated check body.
 type TB interface {
 	// Helper marks the calling function as a test helper, so a
 	// failure reports its caller's line.

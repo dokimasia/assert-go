@@ -19,12 +19,11 @@
 //	go test ./... -update
 //
 // Read the diff before updating. A golden file updated without reading
-// it records whatever the code now does, which is the opposite of an
-// assertion.
+// it records whatever the code does now, and then asserts nothing.
 //
 // # Scrubbing
 //
-// Output holding a timestamp, a digest or a generated identifier
+// Output that contains a timestamp, a digest or a generated identifier
 // differs on every run and can never match. A [Scrubber] replaces
 // those before the comparison, so the parts that should be stable are
 // the parts compared. See [ScrubTimestamps], [ScrubHashes],
@@ -32,7 +31,7 @@
 //
 // # Failure semantics
 //
-// Every assertion here stops the test. A test that carried on past a
+// Every assertion here stops the test. A test that continued past a
 // golden mismatch would report failures about data it already knows is
 // wrong.
 //
@@ -43,9 +42,20 @@
 // shows, so a golden failure reads like every other failure in this
 // module: the contract first, then what differed.
 //
+// A golden file that cannot be read or written, a golden JSON file that
+// is no object, and a value that is no JSON end the call with a fault,
+// whose call record states the verdict error.
+//
+// # Allocation contracts
+//
+// The allocation contract of each function counts one call on a seat that
+// writes no call record, such as a test's seat while recording is off. A
+// failing call allocates its record and its text as well, and a recorded
+// call allocates its call record.
+//
 // # Dependency position
 //
-// Imports go.dokimi.dev/assert, its internal matcher, and the standard
-// library's encoding/json, flag, fmt, os, path/filepath, regexp and
-// strings.
+// Imports go.dokimi.dev/assert, its internal fault and matcher, and the
+// standard library's encoding/json, flag, fmt, os, path/filepath, regexp
+// and strings.
 package golden

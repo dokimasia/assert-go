@@ -11,6 +11,7 @@ import (
 	"go.dokimi.dev/assert/internal/prop/coverage"
 	"go.dokimi.dev/assert/internal/prop/token"
 	"go.dokimi.dev/assert/internal/prop/tree"
+	"go.dokimi.dev/assert/internal/record"
 )
 
 //go:generate go run golang.org/x/tools/cmd/stringer@v0.50.0 -type=Outcome -linecomment -output=runner.string_gen.go
@@ -94,6 +95,13 @@ type Settings struct {
 	MaxChoices int
 	// Requirements are the coverage requirements.
 	Requirements []Requirement
+	// Draws are the entries of the run's first case, whose draws take them
+	// in order: each draw decodes its entry's value. A refused entry ends
+	// the run before any other case.
+	Draws []Entry
+	// Examples are the choice sequences of the cases that the run tries
+	// after the case of Draws and before the stored cases, in order.
+	Examples [][]choice.Choice
 	// Stored are the choice sequences of stored cases, oldest first.
 	Stored [][]choice.Choice
 	// Shrink is the budget of runs that shrinking and explaining every
@@ -117,6 +125,11 @@ type Settings struct {
 	// more workers reports what a run on one reports, and its body must be
 	// safe to run concurrently with itself.
 	Workers int
+	// Slot is the slot of the property's call record, which takes the
+	// calls of every case that a run on one worker runs, in that order and
+	// with the phase of each case. It is nil for a property that is not
+	// recorded.
+	Slot *record.Slot
 }
 
 // Result is the end of a run.
@@ -148,13 +161,20 @@ type Result struct {
 	// Stored are the runs of the stored cases, in order, up to the one that
 	// ended the run.
 	Stored []Execution
+	// Refused is the refusal of the case of Settings.Draws, which ended the
+	// run before any other case, and nil for any other run. It is a fault
+	// whose path starts at the index of the refused entry and leads through
+	// its label or its value. A refused run states nothing else: every other
+	// field is zero.
+	Refused error
 }
 
 // Run runs the phases of a property and returns how the run ended.
 //
 // The runner calls body once per case, and stops at the first failing
-// case. The stored cases run first, outside the case tree, then the case
-// whose every choice is its target. Then random case i of the seed runs,
+// case. The case of the Draws entries runs first, then the examples and the
+// stored cases, all outside the case tree, then the case whose every choice
+// is its target. Then random case i of the seed runs,
 // for i = 0, 1, 2 and on, until Cases valid cases have run, the domain is
 // exhausted, or ten times Cases random cases have run, repeats included.
 // Each random case is followed by its prefix case and the next edge case.
@@ -164,7 +184,15 @@ type Result struct {
 // A failing case is replayed, shrunk and explained. A run that found no
 // failing case fails when it rejected more than ten cases for every valid
 // one, when no case requested an input, or when it refuted or left unmet
-// a coverage requirement, checked in that order.
+// a coverage requirement, checked in that order. A run whose case of the
+// Draws entries refuses an entry ends at once with [Result.Refused].
+//
+// The slot of s takes the calls of every case that a run on one worker
+// runs, in that order, each under the phase of its case: the case of the
+// Draws entries and the examples under example, then stored, simplest,
+// random before the first coverage check and coverage after it, prefix,
+// edge, and replay, shrink and explain for the runs that conclude a
+// failing case.
 func Run(body Body, s Settings) Result {
 	s = withClocks(s)
 	return conclude(body, s, explore(body, s))
@@ -181,11 +209,13 @@ func Conclude(body Body, s Settings, failing Execution) Result {
 }
 
 // RunReplay runs the one case that choices record, and reports a failure
-// as found, without shrinking or explaining it.
-func RunReplay(body Body, s Settings, choices []choice.Choice) Result {
+// as found, without shrinking or explaining it. The calls of the case are
+// recorded under phase: [record.Token] for the case of a replay token, and
+// [record.Stored] for a stored case.
+func RunReplay(body Body, s Settings, choices []choice.Choice, phase record.Phase) Result {
 	s = withClocks(s)
-	t := &tally{seed: s.Seed, labels: make(map[string]int)}
-	r, ended := t.take(execute(body, replaying{choices: choices}, s.MaxChoices, s.Clock))
+	t := newTally(s)
+	r, ended := t.take(execute(body, replaying{choices: choices}, s), phase)
 	if !ended {
 		if r, ended = t.missing(); !ended {
 			r = t.result(Passed)
@@ -208,10 +238,23 @@ type tally struct {
 	requested bool
 	// labels count the valid cases under each label.
 	labels map[string]int
+	// slot is the slot of the property's call record, and nil for a
+	// property that is not recorded.
+	slot *record.Slot
 }
 
-// take counts one case, and returns the result it ends the run with.
-func (t *tally) take(e Execution) (Result, bool) {
+// newTally returns the tally of a run of s.
+func newTally(s Settings) *tally {
+	return &tally{seed: s.Seed, labels: make(map[string]int), slot: s.Slot}
+}
+
+// take counts one case, whose calls the property's record takes under
+// phase, and returns the result it ends the run with.
+func (t *tally) take(e Execution, phase record.Phase) (Result, bool) {
+	t.slot.Take(&e.Case.calls, phase)
+	if e.Status == CaseRefused {
+		return Result{Refused: e.Refusal}, true
+	}
 	t.requested = t.requested || e.Case.requested()
 	if e.Status == CaseFailed {
 		failing := e
@@ -268,6 +311,9 @@ type phases struct {
 	edges []boundary
 	// index is the index of the next random case.
 	index uint64
+	// phase is the phase of the random cases: random before the first
+	// coverage check, and coverage after it.
+	phase record.Phase
 }
 
 // random runs the next random case, then its prefix case and the next
@@ -281,13 +327,13 @@ type phases struct {
 func (p *phases) random() (Result, bool) {
 	e, choices, source := p.cases.random(p.index)
 	p.index++
-	if r, ended := p.t.take(e); ended {
+	if r, ended := p.t.take(e, p.phase); ended {
 		return r, true
 	}
 	prefixed := p.t.valid <= prefixCases(p.s.Cases) && len(choices) >= minPrefixedChoices && !p.tree.Exhausted()
 	if prefixed {
 		cut := 1 + source.Below(uint64(len(choices)-1))
-		if r, ended := p.t.take(p.cases.replay(choices[:cut])); ended {
+		if r, ended := p.t.take(p.cases.replay(choices[:cut]), record.Prefix); ended {
 			return r, true
 		}
 	}
@@ -302,7 +348,7 @@ func (p *phases) nextEdge() (Result, bool) {
 	}
 	at := p.edges[0]
 	p.edges = p.edges[1:]
-	return p.t.take(p.cases.edge(at))
+	return p.t.take(p.cases.edge(at), record.Edge)
 }
 
 // runTo runs random cases until target cases are valid, the domain is
@@ -325,12 +371,15 @@ func (p *phases) runTo(target int) (Result, bool) {
 // explore runs the phases until the run ends, without concluding a
 // counterexample, and returns the result with the runs of the stored cases.
 func explore(body Body, s Settings) Result {
-	t := &tally{seed: s.Seed, labels: make(map[string]int)}
+	t := newTally(s)
+	if r, ended := known(body, s, t); ended {
+		return r
+	}
 	stored := make([]Execution, 0, len(s.Stored))
 	for _, choices := range s.Stored {
-		e := execute(body, replaying{choices: choices}, s.MaxChoices, s.Clock)
+		e := execute(body, replaying{choices: choices}, s)
 		stored = append(stored, e)
-		if r, ended := t.take(e); ended {
+		if r, ended := t.take(e, record.Stored); ended {
 			r.Stored = stored
 			return r
 		}
@@ -340,13 +389,30 @@ func explore(body Body, s Settings) Result {
 	return r
 }
 
+// known runs the cases whose values the caller states, outside the case
+// tree: the case of the Draws entries, when there are entries, and then
+// the examples. It returns the result that ends the run.
+func known(body Body, s Settings, t *tally) (Result, bool) {
+	if len(s.Draws) > 0 {
+		if r, ended := t.take(executeDraws(body, s), record.Example); ended {
+			return r, true
+		}
+	}
+	for _, choices := range s.Examples {
+		if r, ended := t.take(execute(body, replaying{choices: choices}, s), record.Example); ended {
+			return r, true
+		}
+	}
+	return Result{}, false
+}
+
 // generated runs the simplest case and the random and edge cases into the
 // case tree, after the stored cases that t counted, until the run ends.
 func generated(body Body, s Settings, t *tally) Result {
 	caseTree := tree.New(tree.NodeLimit)
 	p := &phases{s: s, t: t, tree: caseTree, cases: newExecutor(body, s, caseTree), edges: boundaries[:]}
 	defer p.cases.close()
-	if r, ended := t.take(p.cases.replay(nil)); ended {
+	if r, ended := t.take(p.cases.replay(nil), record.Simplest); ended {
 		return r
 	}
 	if r, ended := checks(p); ended {
@@ -363,6 +429,10 @@ func checks(p *phases) (Result, bool) {
 	multiples := coverage.Checks()
 	last := len(multiples) - 1
 	for position := 0; ; position++ {
+		p.phase = record.Coverage
+		if position == 0 {
+			p.phase = record.Random
+		}
 		r, ended := p.runTo(multiples[position] * p.s.Cases)
 		if !ended {
 			r, ended = p.t.missing()

@@ -8,11 +8,13 @@ import (
 	"encoding/hex"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/token"
 )
@@ -221,116 +223,145 @@ func TestToken(t *testing.T) {
 			assert.Equal(t, accepted, acceptedShortPayloads, "the canonical payloads of three bytes or fewer")
 		})
 
+		standard := strings.ReplaceAll(token.Encode([]choice.Choice{lowest}), "_", "/")
+		first := fault.Path{fault.Index(0)}
 		malformed := []struct {
-			name  string
-			give  string
-			fault string
+			name       string
+			give       string
+			wantPath   fault.Path
+			wantReason string
 		}{
-			{name: "returns ErrInvalid for another version", give: "prop2:AAA", fault: "does not start with"},
-			{name: "returns ErrInvalid for no prefix", give: "AAA", fault: "does not start with"},
 			{
-				name:  "returns ErrInvalid for padding",
-				give:  token.Prefix + "AAA=",
-				fault: "not unpadded base64url",
+				name:       "returns ErrInvalid for another version",
+				give:       "prop2:AAA",
+				wantReason: `"prop2:AAA" does not start with prop1:`,
 			},
 			{
-				name:  "returns ErrInvalid for a lone character",
-				give:  token.Prefix + "A",
-				fault: "not unpadded base64url",
+				name:       "returns ErrInvalid for no prefix",
+				give:       "AAA",
+				wantReason: `"AAA" does not start with prop1:`,
 			},
 			{
-				name:  "returns ErrInvalid for a character outside base64url",
-				give:  token.Prefix + "AAA*",
-				fault: "not unpadded base64url",
+				name:       "returns ErrInvalid for padding",
+				give:       token.Prefix + "AAA=",
+				wantReason: `"prop1:AAA=" is not unpadded base64url`,
 			},
 			{
-				name:  "returns ErrInvalid for a character outside ASCII",
-				give:  token.Prefix + "AAAé",
-				fault: "not unpadded base64url",
+				name:       "returns ErrInvalid for a lone character",
+				give:       token.Prefix + "A",
+				wantReason: `"prop1:A" is not unpadded base64url`,
 			},
 			{
-				name:  "returns ErrInvalid for trailing bits",
-				give:  token.Prefix + "AAB",
-				fault: "not unpadded base64url",
+				name:       "returns ErrInvalid for a character outside base64url",
+				give:       token.Prefix + "AAA*",
+				wantReason: `"prop1:AAA*" is not unpadded base64url`,
 			},
 			{
-				name:  "returns ErrInvalid for the standard base64 alphabet",
-				give:  strings.ReplaceAll(token.Encode([]choice.Choice{lowest}), "_", "/"),
-				fault: "not unpadded base64url",
+				name:       "returns ErrInvalid for a character outside ASCII",
+				give:       token.Prefix + "AAAé",
+				wantReason: `"prop1:AAAé" is not unpadded base64url`,
 			},
 			{
-				name:  "returns ErrInvalid for a line feed",
-				give:  token.Prefix + "AA\nA",
-				fault: "it contains a line break",
+				name:       "returns ErrInvalid for trailing bits",
+				give:       token.Prefix + "AAB",
+				wantReason: `"prop1:AAB" is not unpadded base64url`,
 			},
 			{
-				name:  "returns ErrInvalid for a carriage return",
-				give:  token.Prefix + "AA\rA",
-				fault: "it contains a line break",
+				name:       "returns ErrInvalid for the standard base64 alphabet",
+				give:       standard,
+				wantReason: strconv.Quote(standard) + " is not unpadded base64url",
 			},
 			{
-				name:  "returns ErrInvalid for a superfluous LEB128 byte",
-				give:  tokenOf(t, "008000"),
-				fault: "states 0 in 2 bytes, more than it needs",
+				name:       "returns ErrInvalid for a line feed",
+				give:       token.Prefix + "AA\nA",
+				wantReason: `"prop1:AA\nA" contains a line break, which unpadded base64url excludes`,
 			},
 			{
-				name:  "returns ErrInvalid for a superfluous byte in an element that saturates",
-				give:  tokenOf(t, "03018080808090"+"00"),
-				fault: "in 6 bytes, more than it needs",
+				name:       "returns ErrInvalid for a carriage return",
+				give:       token.Prefix + "AA\rA",
+				wantReason: `"prop1:AA\rA" contains a line break, which unpadded base64url excludes`,
 			},
 			{
-				name:  "returns ErrInvalid for a negative zero",
-				give:  tokenOf(t, "0100"),
-				fault: "states the negative of 0",
+				name:       "returns ErrInvalid at the choice for a superfluous LEB128 byte",
+				give:       tokenOf(t, "008000"),
+				wantPath:   first,
+				wantReason: "the number 0 takes 2 bytes, more than it needs",
 			},
 			{
-				name:  "returns ErrInvalid for a NaN without the canonical bits",
-				give:  tokenOf(t, "02010000000000f87f"),
-				fault: "states a NaN with the bits 0x7ff8000000000001",
+				name:       "returns ErrInvalid at the choice for a superfluous byte in an element that saturates",
+				give:       tokenOf(t, "03018080808090"+"00"),
+				wantPath:   first,
+				wantReason: "the number 4294967296 takes 6 bytes, more than it needs",
 			},
 			{
-				name:  "returns ErrInvalid for a magnitude past 2^63",
-				give:  tokenOf(t, "0181808080808080808001"),
-				fault: "states the negative of 9223372036854775809",
+				name:       "returns ErrInvalid at the choice for a negative zero",
+				give:       tokenOf(t, "0100"),
+				wantPath:   first,
+				wantReason: "the integer states the negative of 0",
 			},
 			{
-				name:  "returns ErrInvalid for the number 2^64",
-				give:  tokenOf(t, "0080808080808080808002"),
-				fault: "states a number of 2^64 or more in 10 bytes",
+				name:       "returns ErrInvalid at the choice for a NaN without the canonical bits",
+				give:       tokenOf(t, "02010000000000f87f"),
+				wantPath:   first,
+				wantReason: "the float states a NaN with the bits 0x7ff8000000000001",
 			},
 			{
-				name:  "returns ErrInvalid for a number cut short",
-				give:  tokenOf(t, "0080"),
-				fault: "ends inside a number",
+				name:       "returns ErrInvalid at the choice for a magnitude past 2^63",
+				give:       tokenOf(t, "0181808080808080808001"),
+				wantPath:   first,
+				wantReason: "the integer states the negative of 9223372036854775809",
 			},
 			{
-				name:  "returns ErrInvalid for a float cut short",
-				give:  tokenOf(t, "020000"),
-				fault: "ends inside a float, 6 bytes short",
+				name:       "returns ErrInvalid at the choice for the number 2^64",
+				give:       tokenOf(t, "0080808080808080808002"),
+				wantPath:   first,
+				wantReason: "a number states 2^64 or more in 10 bytes",
 			},
 			{
-				name:  "returns ErrInvalid for a sequence cut short",
-				give:  tokenOf(t, "030201"),
-				fault: "ends inside a number",
+				name:       "returns ErrInvalid at the choice for a number cut short",
+				give:       tokenOf(t, "0080"),
+				wantPath:   first,
+				wantReason: "the payload ends inside a number after 1 bytes",
 			},
 			{
-				name:  "returns ErrInvalid for a sequence length cut short",
-				give:  tokenOf(t, "0380"),
-				fault: "ends inside a number after 1 bytes",
+				name:       "returns ErrInvalid at the choice for a float cut short",
+				give:       tokenOf(t, "020000"),
+				wantPath:   first,
+				wantReason: "the payload ends inside a float, 6 bytes short",
 			},
 			{
-				name:  "returns ErrInvalid for a sequence length past the payload",
-				give:  tokenOf(t, "0380808080808080804001"),
-				fault: "ends inside a number",
+				name:       "returns ErrInvalid at the choice for a sequence cut short",
+				give:       tokenOf(t, "030201"),
+				wantPath:   first,
+				wantReason: "the payload ends inside a number after 0 bytes",
 			},
-			{name: "returns ErrInvalid for an unknown tag", give: tokenOf(t, "04"), fault: "states tag 4"},
+			{
+				name:       "returns ErrInvalid at the choice for a sequence length cut short",
+				give:       tokenOf(t, "0380"),
+				wantPath:   first,
+				wantReason: "the payload ends inside a number after 1 bytes",
+			},
+			{
+				name:       "returns ErrInvalid at the choice for a sequence length past the payload",
+				give:       tokenOf(t, "0380808080808080804001"),
+				wantPath:   first,
+				wantReason: "the payload ends inside a number after 0 bytes",
+			},
+			{
+				name:       "returns ErrInvalid at the second choice for an unknown tag after a choice",
+				give:       tokenOf(t, "000004"),
+				wantPath:   fault.Path{fault.Index(1)},
+				wantReason: "the choice states the tag 4",
+			},
 		}
 		for _, tt := range malformed {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				_, err := token.Decode(tt.give)
 				assert.ErrorIs(t, err, token.ErrInvalid, "the refusal")
-				assert.Contains(t, err.Error(), tt.fault, "the fault")
+				f := assert.ErrorAs[*fault.Error](t, err, "a fault")
+				assert.Equal(t, f.Path, tt.wantPath, "the choice that the fault is in")
+				assert.Equal(t, f.Reason, tt.wantReason, "what the token misstates")
 			})
 		}
 	})
@@ -346,10 +377,10 @@ const (
 	decodeAllocs = 2
 )
 
-// TestTokenZeroAlloc checks that Append allocates nothing into a slice
+// TestTokenAllocs checks that Append allocates nothing into a slice
 // with the capacity for the token and its payload, and the ceilings of
 // Encode and Decode.
-func TestTokenZeroAlloc(t *testing.T) {
+func TestTokenAllocs(t *testing.T) {
 	dst := make([]byte, 0, 128)
 	tok := token.Encode(pinnedChoices)
 	assert.MaxAllocs(t, func() { _ = token.Append(dst[:0], pinnedChoices) }, 0,

@@ -4,11 +4,12 @@
 package conformance
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 
 	"go.dokimi.dev/assert"
@@ -21,41 +22,48 @@ var ErrOwn = errors.New("conformance: the subject failed for its own reason")
 // ErrClosed is what a closed subject of after-close fails with.
 var ErrClosed = errors.New("conformance: the subject is closed")
 
-// Subject is one built behaviour, in every shape that an assertion takes.
+// Subject is one built behaviour of the definition's subjects table, as a
+// function of each signature that an assertion or a property form calls.
+// The field of a signature that the behaviour does not have is nil.
 //
-// A corpus case names a behaviour instead of stating a callable, and the
-// assertions that take one differ in shape: one takes a context, one takes
-// nothing, one takes a seat. One Subject with every shape means that the
-// per-assertion drivers do not each rebuild the behaviour.
+// A subject takes its input as any, so one subject serves an assertion,
+// which hands it an int, and a property form, which hands it the generated
+// input. An integer that a subject returns is an int64, and its caller
+// converts it to the Go type of the integers that it compares.
 type Subject struct {
-	// Ctx is the shape honours-cancellation, honours-deadline and
-	// nil-context-safe take.
-	Ctx func(ctx context.Context) error
-	// Bare is the shape panics, does-not-panic, pure and not-pure take.
-	Bare func()
-	// Seated is the shape eventually takes.
+	// Ctx is the call of an input x that takes a cancellation handle, as
+	// honours-cancellation, honours-deadline and nil-context-safe call it.
+	Ctx func(ctx context.Context, x any) error
+	// Raise is the call of an input x that raises or returns, as throws
+	// and not-throws call it.
+	Raise func(x any)
+	// Seated is the function that the assertion eventually calls.
 	Seated func(tb assert.TB)
-	// Observe reads the integer that pure, not-pure, idempotent,
-	// accumulates and monotonic compare.
+	// Call is the operation of an input x: it changes the integer that
+	// Observe reads, or returns a failure of its own. Idempotent,
+	// accumulates, total, pure and not-pure call it, and so do the
+	// property forms of errors.
+	Call func(x any) error
+	// Observe reads the integer that Call and Advance change.
 	Observe func() int
-	// Call is the operation that idempotent and accumulates call with
-	// Input, and total calls with each element of Domain.
-	Call func(int) error
-	// Input is what idempotent, accumulates, deterministic and round-trip
-	// hand their subject.
+	// Input is the value that an assertion passes to the subject.
 	Input int
-	// Compute is the computation that deterministic calls with Input.
-	Compute func(int) (int, error)
+	// Function returns a value of the input x, as the property form of a
+	// function of its input calls it.
+	Function func(x any) any
+	// Ordered reports whether two adjacent items are in order, as pairwise
+	// calls it.
+	Ordered func(first, second any) bool
+	// Compute is the computation that deterministic calls.
+	Compute func(x any) any
 	// Combine is the operation that commutative applies to A and B, and
 	// associative to A, B and C.
-	Combine func(a, b int) int
-	// A, B and C are the operands of Combine.
+	Combine func(a, b any) any
+	// A, B and C are the operands that an assertion passes to Combine.
 	A, B, C int
-	// Forward renders Input as text, and Inverse parses the text back, for
-	// round-trip.
-	Forward func(int) (string, error)
-	// Inverse parses what Forward renders.
-	Inverse func(string) (int, error)
+	// Render renders x as decimal text, which round-trip parses back as
+	// decimal text.
+	Render func(x any) string
 	// Iterate yields the sequence that stable-order and no-duplicates read.
 	Iterate func() ([]int, error)
 	// Advance moves the integer that monotonic reads through Observe, Steps
@@ -78,14 +86,18 @@ type Subject struct {
 	Read func() error
 }
 
-// Subjects builds each named behaviour. A kind absent here is one this
-// language cannot make, and the corpus runner fails its cases.
+// Subjects builds each behaviour of the definition's subjects table, by
+// its kind. Each call builds a subject with state of its own. A kind
+// absent here is one this language cannot make, and the corpus runner and
+// the forms runner fail its cases.
 var Subjects = map[string]func() *Subject{
 	"returns-ok":          returnsOK,
 	"reads-handle":        readsHandle,
-	"ignores-handle":      returnsOK,
+	"ignores-handle":      ignoresHandle,
 	"raises":              raises,
+	"raises-on-negative":  raisesOnNegative,
 	"fails-otherwise":     failsOtherwise,
+	"fails-on-negative":   failsOnNegative,
 	"dereferences-handle": dereferencesHandle,
 	"never-settles":       neverSettles,
 	"settles-after":       settlesAfter,
@@ -93,8 +105,8 @@ var Subjects = map[string]func() *Subject{
 	"leaves-state-alone":  func() *Subject { return counter(0) },
 	"sets-value":          setsValue,
 	"counts-calls":        countsCalls,
-	"adds":                func() *Subject { return combines(func(a, b int) int { return a + b }) },
-	"subtracts":           func() *Subject { return combines(func(a, b int) int { return a - b }) },
+	"adds":                func() *Subject { return combines(func(a, b int64) int64 { return a + b }) },
+	"subtracts":           func() *Subject { return combines(func(a, b int64) int64 { return a - b }) },
 	"renders-decimal":     func() *Subject { return renders(false) },
 	"drops-the-sign":      func() *Subject { return renders(true) },
 	"yields-in-order":     func() *Subject { return yields(1, 2, 3, 4, 5) },
@@ -103,51 +115,88 @@ var Subjects = map[string]func() *Subject{
 	"wraps-around":        wrapsAround,
 	"refuses-after-close": func() *Subject { return closes(true) },
 	"serves-after-close":  func() *Subject { return closes(false) },
+	"identity":            function(func(x any) any { return x }),
+	"is-non-negative":     function(func(x any) any { return signedOf(x) >= 0 }),
+	"returns-null":        function(func(any) any { return nil }),
+	"drops-the-first":     function(dropsTheFirst),
+	"prepends-zero":       function(func(x any) any { return slices.Concat([]any{int64(0)}, x.([]any)) }),
+	"sorts":               function(sorted),
+	"wraps-in-a-and-b":    function(func(x any) any { return "a" + x.(string) + "b" }),
+	"ascending":           ascending,
 }
+
+// signedOf returns x, a value of a signed integer type, as an int64.
+func signedOf(x any) int64 { return reflect.ValueOf(x).Int() }
 
 // returnsOK returns success, whatever it was handed. Its computation
 // returns its input, 1, and its domain is 1, 2 and 3.
 func returnsOK() *Subject {
 	return &Subject{
-		Ctx:     func(context.Context) error { return nil },
-		Bare:    func() {},
-		Call:    func(int) error { return nil },
+		Ctx:     func(context.Context, any) error { return nil },
+		Raise:   func(any) {},
+		Call:    func(any) error { return nil },
 		Input:   1,
-		Compute: func(input int) (int, error) { return input, nil },
+		Compute: func(x any) any { return x },
 		Domain:  []int{1, 2, 3},
 	}
 }
 
-// readsHandle returns the reason the handle gives, and success when it
-// is still running.
+// readsHandle returns the reason that the handle gives, and success for an
+// absent handle or one still running.
 func readsHandle() *Subject {
-	return &Subject{
-		Ctx: func(ctx context.Context) error { return ctx.Err() },
-	}
+	return &Subject{Ctx: func(ctx context.Context, _ any) error {
+		if ctx == nil {
+			return nil
+		}
+		return ctx.Err()
+	}}
 }
 
-// raises panics rather than answering.
+// ignoresHandle returns success without reading the handle.
+func ignoresHandle() *Subject {
+	return &Subject{Ctx: func(context.Context, any) error { return nil }}
+}
+
+// raises panics on every call.
 func raises() *Subject {
-	return &Subject{
-		Bare: func() { panic("the subject raised") },
-		Ctx:  func(context.Context) error { panic("the subject raised") },
-	}
+	return &Subject{Raise: func(any) { panic("the subject raised") }}
+}
+
+// raisesOnNegative panics for a negative integer input, and returns
+// otherwise.
+func raisesOnNegative() *Subject {
+	return &Subject{Raise: func(x any) {
+		if signedOf(x) < 0 {
+			panic("the subject raised")
+		}
+	}}
 }
 
 // failsOtherwise returns a failure of its own, which is not the reason a
 // handle would give, for every call. Its domain is 1, 2 and 3.
 func failsOtherwise() *Subject {
 	return &Subject{
-		Ctx:    func(context.Context) error { return ErrOwn },
-		Call:   func(int) error { return ErrOwn },
+		Ctx:    func(context.Context, any) error { return ErrOwn },
+		Call:   func(any) error { return ErrOwn },
 		Domain: []int{1, 2, 3},
 	}
+}
+
+// failsOnNegative returns a failure of its own for a negative integer
+// input, and success otherwise.
+func failsOnNegative() *Subject {
+	return &Subject{Call: func(x any) error {
+		if signedOf(x) < 0 {
+			return ErrOwn
+		}
+		return nil
+	}}
 }
 
 // dereferencesHandle reads a handle without checking it is there.
 func dereferencesHandle() *Subject {
 	return &Subject{
-		Ctx: func(ctx context.Context) error {
+		Ctx: func(ctx context.Context, _ any) error {
 			// A nil context panics here, which is the behaviour under
 			// test: the assertion checks whether a subject handed one panics.
 			return ctx.Err()
@@ -194,18 +243,17 @@ func settlesAfter() *Subject {
 }
 
 // counter returns a subject whose state is an integer that starts at 0 and
-// rises by step on each call and each advance. It advances 5 steps.
+// rises by step on each call and each advance, whatever the input. It
+// advances 5 steps.
 func counter(step int) *Subject {
 	count := 0
-	rise := func() { count += step }
 	return &Subject{
-		Bare: rise,
-		Call: func(int) error {
-			rise()
+		Call: func(any) error {
+			count += step
 			return nil
 		},
 		Advance: func() error {
-			rise()
+			count += step
 			return nil
 		},
 		Steps:   5,
@@ -214,12 +262,12 @@ func counter(step int) *Subject {
 }
 
 // setsValue returns a cell that starts at 0, which a call sets to its
-// input, 7.
+// integer input. An assertion's input is 7.
 func setsValue() *Subject {
 	cell := 0
 	return &Subject{
-		Call: func(v int) error {
-			cell = v
+		Call: func(x any) error {
+			cell = int(signedOf(x))
 			return nil
 		},
 		Input:   7,
@@ -228,38 +276,42 @@ func setsValue() *Subject {
 }
 
 // countsCalls returns how many times it has been called, starting at 1,
-// whatever its input, 1.
+// whatever its input. An assertion's input is 1.
 func countsCalls() *Subject {
-	calls := 0
+	var calls int64
 	return &Subject{
-		Compute: func(int) (int, error) {
+		Compute: func(any) any {
 			calls++
-			return calls, nil
+			return calls
 		},
 		Input: 1,
 	}
 }
 
-// combines returns a subject that combines integers with op, over the
-// operands 2, 3 and 5.
-func combines(op func(a, b int) int) *Subject {
-	return &Subject{Combine: op, A: 2, B: 3, C: 5}
+// combines returns a subject that combines two integers with op. An
+// assertion's operands are 2, 3 and 5.
+func combines(op func(a, b int64) int64) *Subject {
+	return &Subject{
+		Combine: func(a, b any) any { return op(signedOf(a), signedOf(b)) },
+		A:       2,
+		B:       3,
+		C:       5,
+	}
 }
 
-// renders returns a subject that renders an integer as decimal text and
-// parses the text back, over the input -42. One that drops the sign
-// renders the integer's absolute value.
+// renders returns a subject that renders an integer as decimal text, and
+// one that drops the sign renders the integer's absolute value. An
+// assertion's input is -42.
 func renders(dropSign bool) *Subject {
 	return &Subject{
-		Forward: func(v int) (string, error) {
-			text := strconv.Itoa(v)
+		Render: func(x any) string {
+			n := signedOf(x)
 			if dropSign {
-				text = strings.TrimPrefix(text, "-")
+				n = max(n, -n)
 			}
-			return text, nil
+			return strconv.FormatInt(n, 10)
 		},
-		Inverse: strconv.Atoi,
-		Input:   -42,
+		Input: -42,
 	}
 }
 
@@ -311,4 +363,30 @@ func closes(refuses bool) *Subject {
 		},
 		Sentinel: ErrClosed,
 	}
+}
+
+// function returns the builder of a subject that is the function f of its
+// input.
+func function(f func(x any) any) func() *Subject {
+	return func() *Subject { return &Subject{Function: f} }
+}
+
+// dropsTheFirst returns x, a list, without its first item, and the empty
+// list as it is.
+func dropsTheFirst(x any) any {
+	items := x.([]any)
+	return items[min(1, len(items)):]
+}
+
+// sorted returns x, a list of integers, in ascending order.
+func sorted(x any) any {
+	items := slices.Clone(x.([]any))
+	slices.SortStableFunc(items, func(a, b any) int { return cmp.Compare(signedOf(a), signedOf(b)) })
+	return items
+}
+
+// ascending returns the predicate over two integers that is true when the
+// first is not greater than the second.
+func ascending() *Subject {
+	return &Subject{Ordered: func(first, second any) bool { return signedOf(first) <= signedOf(second) }}
 }

@@ -100,8 +100,9 @@ release: ## Bump versions and tag (MESSAGE="..." FLAGS=--major)
 
 .DEFAULT_GOAL := help
 
-spec-sync: ## Refresh the vendored definition from assert-spec
+spec-sync: ## Refresh the vendored definition from assert-spec, and the zone table that prop embeds
 	@./tools/spec-sync.sh conformance/spec go
+	@cp conformance/spec/zones.json internal/prop/zone/zones.json
 
 .PHONY: spec-check
 spec-check: ## Check the vendored definition is intact and say if it is behind

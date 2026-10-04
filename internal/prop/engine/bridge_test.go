@@ -127,7 +127,7 @@ func TestBridge(t *testing.T) {
 				data, err := hex.DecodeString(tt.data)
 				assert.NoError(t, err, "the bytes are hexadecimal")
 				var got any
-				e := engine.Bridge(func(c *engine.Case) { got = engine.Draw(c, tt.g, drawn) }, data, nil)
+				e := engine.Bridge(func(c *engine.Case) { got = engine.Draw(c, tt.g, drawn) }, data, engine.Settings{})
 				assert.Equal(t, got, tt.want, "the decoded value", assert.EquateNaNs())
 				assert.True(t, sameChoices(e.Case.Choices(), tt.recorded), "the recorded choices")
 			})
@@ -137,7 +137,7 @@ func TestBridge(t *testing.T) {
 			g, b := engine.Float(lo, hi, choice.ExcludeNaN), engine.Integer(0, 255)
 			var got [2]any
 			body := func(c *engine.Case) { got = [2]any{engine.Draw(c, g, "float"), engine.Draw(c, b, "byte")} }
-			engine.Bridge(body, data, nil)
+			engine.Bridge(body, data, engine.Settings{})
 			return got
 		}
 

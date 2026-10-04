@@ -37,6 +37,7 @@ linters:
     - modernize
     - unparam
     # Style
+    - dupl
     - dupword
     - gocritic
     - misspell
@@ -47,6 +48,7 @@ linters:
     - contextcheck
     - errname
     # Test hygiene
+    - testpackage
     - thelper
     - tparallel
     - usetesting
@@ -56,6 +58,13 @@ linters:
       enabled-tags: [diagnostic]
       disabled-checks:
         - ifElseChain
+
+    # Every test file declares the package x_test, export_test.go and
+    # internal_test.go included: a test calls only what its package
+    # exports. The pattern matches no file name, and an empty pattern
+    # would match every one.
+    testpackage:
+      skip-regexp: "^$"
 
     revive:
       severity: warning
@@ -85,6 +94,18 @@ linters:
       # fieldalignment is noise outside hot-path structs.
       - linters: [govet]
         text: "fieldalignment:"
+      # A spec mirrors the exports of its source file. The testing
+      # standard fixes the shape of its Test, Allocs and Benchmark
+      # functions, so the specs of two similar source files repeat each
+      # other, and so do the drivers of the twin surfaces.
+      - linters: [dupl]
+        path: _test\.go
+      # The surfaces assert and expect are twins. go doc lists no method of
+      # a type declared in an internal package, so each surface declares
+      # its own functions, and the table of one surface's functions repeats
+      # the other's names, one entry each.
+      - linters: [dupl]
+        path: ^conformance/functions\.go$
 
 formatters:
   enable:

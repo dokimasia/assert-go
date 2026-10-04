@@ -3,13 +3,12 @@
 
 package matcher
 
-// Seat is where a matcher sends a failure.
+// Seat is where a matcher sends a failure or a fault.
 //
-// A matcher never calls a test framework directly. It reports through
-// a Seat, so one comparison serves a real test, a benchmark and a
-// recorder without knowing which it has. The public TB interface
-// declares the same three methods and satisfies this one structurally,
-// so neither package imports the other for its seam.
+// A matcher calls no test framework directly. It reports through a Seat,
+// so one comparison works on a test, a benchmark and a recorder alike. The
+// public TB interface declares the same three methods and satisfies this
+// one structurally, so neither package imports the other.
 type Seat interface {
 	// Helper marks the calling frame as a helper, so a failure is
 	// attributed to the caller's line rather than to the matcher.
@@ -18,6 +17,18 @@ type Seat interface {
 	Fatalf(format string, args ...any)
 	// Errorf records a failure and returns.
 	Errorf(format string, args ...any)
+}
+
+// FaultReporter is a [Seat] that takes a fault as the error it is, rather
+// than as the writer's text of it, as a [Reporter] takes a failure's record.
+//
+// A FaultReporter receives the fault of a call that ends without a verdict,
+// such as one of [Fault], with ending true, and a fault that [NoteFault]
+// notes for a call that runs on, with ending false. Any other seat receives
+// the writer's text of the first through Fatalf, and of the second through
+// its log.
+type FaultReporter interface {
+	ReportFault(err error, ending bool)
 }
 
 // Mode selects which of a [Seat]'s two failure methods a matcher uses.
@@ -32,45 +43,3 @@ const (
 	// later failures are reported too.
 	Soft
 )
-
-// Report marks the calling frame as a helper and sends one failure to
-// seat, through [Seat.Fatalf] under [Fatal] and [Seat.Errorf] under
-// [Soft].
-//
-// Report does not decide whether anything failed. A matcher calls it
-// only once its own comparison has failed, so every call produces
-// exactly one reported failure. Under [Fatal] it may not return.
-func Report(seat Seat, mode Mode, format string, args ...any) {
-	seat.Helper()
-	if mode == Soft {
-		seat.Errorf(format, args...)
-		return
-	}
-	seat.Fatalf(format, args...)
-}
-
-// Fail sends one record to seat.
-//
-// A seat satisfying [Reporter] receives the record; any other seat
-// receives the sentence [Render] makes of it. The record's location is
-// the innermost frame of the caller's code, which [CallerWhere] states,
-// so an assertion reports the caller's line however many frames of this
-// module are between them.
-//
-// Fail does not decide whether anything failed. A matcher calls it
-// only once its own comparison has failed. Under [Fatal] it may not
-// return.
-func Fail(seat Seat, mode Mode, assertion, contract string, detail map[string]any) {
-	seat.Helper()
-	f := Failure{
-		Assertion: assertion,
-		Contract:  contract,
-		Detail:    detail,
-		Where:     site(),
-	}
-	if r, ok := seat.(Reporter); ok {
-		r.Report(f, mode == Fatal)
-		return
-	}
-	Report(seat, mode, "%s", Render(f))
-}

@@ -12,8 +12,7 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
-	"go.dokimi.dev/assert/internal/prop/choice"
-	"go.dokimi.dev/assert/internal/prop/token"
+	"go.dokimi.dev/assert/internal/matchertest"
 	"go.dokimi.dev/assert/prop"
 )
 
@@ -27,10 +26,10 @@ const (
 	// the recorder formats from it.
 	errorfAllocs = 5
 	// fatalfRunAllocs are the allocations of a run that replays one case
-	// whose body calls Fatalf: those of a replay, the message and its frames,
-	// the run's record with the sentence the recorder formats from it, and
-	// the two closures that adapt the body and give its case a context.
-	fatalfRunAllocs = 47
+	// whose body calls Fatalf, on a seat that keeps the run's record: those
+	// of a replay, the message and its frames, the run's record, and the two
+	// closures that adapt the body and give its case a context.
+	fatalfRunAllocs = 44
 	// drawRunAllocs are the allocations of a run that replays one case whose
 	// body draws one integer: the engine's 9 for the replay, one for the
 	// token's choices, and two for the closures that adapt the body and give
@@ -54,8 +53,9 @@ var recorded = assert.Failure{
 	Where:     assert.Where{File: "ledger_test.go", Line: 12},
 }
 
-// ledgerKey is the key of the value that a seat's context carries to the
-// contexts of its cases.
+// ledgerKey is the key of a value in the context of a seat. The context of
+// each case that a property of the seat runs derives from that context and
+// returns the value.
 type ledgerKey struct{}
 
 // contextSeat is a recorder seat with a context of its own, as a
@@ -255,7 +255,7 @@ func TestCase(t *testing.T) {
 			assert.Empty(t, seat.all(), "no sentence")
 		})
 
-		t.Run("reports the formatted messages of a failing case in order", func(t *testing.T) {
+		t.Run("logs the formatted messages of a failing case in order before its failure", func(t *testing.T) {
 			t.Parallel()
 			seat := &sentences{}
 			prop.ForAll(seat, contract, func(c *prop.Case) {
@@ -263,9 +263,10 @@ func TestCase(t *testing.T) {
 				c.Logf("appended %d entries", 2)
 				c.Fatalf("stop")
 			}, prop.Replay(tokenOf(7)))
-			assert.Length(t, seat.all(), 1, "one sentence")
-			assert.ContainsInOrder(t, seat.all()[0], []string{"opened the ledger", "appended 2 entries"},
-				"the messages in the order the body attached them")
+			got := seat.all()
+			assert.Length(t, got, 3, "the two messages and the sentence")
+			assert.Equal(t, got[:2], []string{"opened the ledger", "appended 2 entries"},
+				"the messages in the order the body attached them, before the sentence")
 		})
 	})
 
@@ -430,12 +431,12 @@ func TestCase(t *testing.T) {
 	})
 }
 
-// TestCaseZeroAlloc checks the allocation ceilings of the case's methods. A
+// TestCaseAllocs checks the allocation ceilings of the case's methods. A
 // method that ends the calling goroutine, and a draw, are measured on a
 // whole run that replays one case.
-func TestCaseZeroAlloc(t *testing.T) {
+func TestCaseAllocs(t *testing.T) {
 	c := leaked()
-	rec := assert.NewRecorder()
+	rec := &matchertest.Seat{}
 	seven := tokenOf(7)
 	stop := func(c *prop.Case) { c.Fatalf("stop") }
 	draw := draws(prop.Integer(0, 9))
@@ -477,14 +478,14 @@ func BenchmarkCase(b *testing.B) {
 	})
 
 	b.Run("Fatalf", func(b *testing.B) {
-		rec, seven := assert.NewRecorder(), tokenOf(7)
+		rec, seven := &matchertest.Seat{}, tokenOf(7)
 		stop := func(c *prop.Case) { c.Fatalf("stop") }
 		c := bench.Start(b).MaxAllocs(fatalfRunAllocs)
 		defer c.End()
 		for c.Loop() {
 			prop.ForAll(rec, contract, stop, prop.Replay(seven))
 		}
-		assert.Equal(b, rec.Failures()[0].Detail[outcomeField], any(prop.Counterexample), "the case fails")
+		assert.Equal(b, rec.Records()[0].Detail[outcomeField], any(prop.Counterexample), "the case fails")
 	})
 
 	b.Run("Errorf", func(b *testing.B) {
@@ -580,7 +581,7 @@ func BenchmarkCase(b *testing.B) {
 	})
 
 	b.Run("Context", func(b *testing.B) {
-		rec, seven, digit := assert.NewRecorder(), tokenOf(7), prop.Integer(0, 9)
+		rec, seven, digit := &matchertest.Seat{}, tokenOf(7), prop.Integer(0, 9)
 		contextual := func(c *prop.Case) {
 			c.Draw(digit, drawn)
 			_ = c.Context()
@@ -594,7 +595,7 @@ func BenchmarkCase(b *testing.B) {
 	})
 
 	b.Run("Draw", func(b *testing.B) {
-		rec, seven := assert.NewRecorder(), tokenOf(7)
+		rec, seven := &matchertest.Seat{}, tokenOf(7)
 		draw := draws(prop.Integer(0, 9))
 		c := bench.Start(b).MaxAllocs(drawRunAllocs)
 		defer c.End()
@@ -625,20 +626,4 @@ func leaked() *prop.Case {
 // one integer choice for each value.
 func replays(rec *assert.Recorder, body func(*prop.Case), values ...uint64) {
 	prop.ForAll(rec, contract, body, prop.Replay(tokenOf(values...)))
-}
-
-// replayed runs body on a recorder, replaying the case of one integer
-// choice for each value, and returns the detail of the run's record, or
-// nil for a run that passed.
-func replayed(body func(*prop.Case), values ...uint64) map[string]any {
-	return detailOf(body, prop.Replay(tokenOf(values...)))
-}
-
-// tokenOf returns the replay token of one integer choice for each value.
-func tokenOf(values ...uint64) string {
-	choices := make([]choice.Choice, len(values))
-	for i, v := range values {
-		choices[i] = choice.Choice{Kind: choice.Integer, Integer: choice.UintOf(v)}
-	}
-	return token.Encode(choices)
 }

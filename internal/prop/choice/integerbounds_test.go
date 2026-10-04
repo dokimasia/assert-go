@@ -348,9 +348,9 @@ func TestIntegerBounds(t *testing.T) {
 	})
 }
 
-// TestIntegerBoundsZeroAlloc checks that no method of IntegerBounds
+// TestIntegerBoundsAllocs checks that no method of IntegerBounds
 // allocates, and that a constructor that succeeds allocates nothing.
-func TestIntegerBoundsZeroAlloc(t *testing.T) {
+func TestIntegerBoundsAllocs(t *testing.T) {
 	lo, hi := choice.IntOf(-9), choice.IntOf(9)
 	b := signedBounds(t, -9, 9)
 	recorded := choice.Choice{Kind: choice.Integer, Integer: choice.IntOf(4)}
@@ -494,15 +494,6 @@ func BenchmarkIntegerBounds(b *testing.B) {
 		}
 		assert.Equal(b, got, lo, "the value at the last rank")
 	})
-}
-
-// signedBounds returns the bounds [lo, hi] of two int64 values, failing
-// the test when they are invalid.
-func signedBounds(tb testing.TB, lo, hi int64) choice.IntegerBounds {
-	tb.Helper()
-	b, err := choice.NewIntegerBounds(choice.IntOf(lo), choice.IntOf(hi))
-	assert.NoError(tb, err, "the bounds are valid")
-	return b
 }
 
 // signedRange returns the bounds of the whole signed 64-bit range.

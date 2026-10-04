@@ -97,7 +97,7 @@ func Bytes(opts ...SizeOption) Generator[[]byte] {
 func StringMatching(expr string) Generator[string] {
 	g, err := matching.StringMatching(expr)
 	if err != nil {
-		panic("prop: " + err.Error())
+		panic("prop: string-matching: " + err.Error())
 	}
 	return Generator[string](g)
 }

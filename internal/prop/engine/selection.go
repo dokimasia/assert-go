@@ -4,8 +4,10 @@
 package engine
 
 import (
+	"reflect"
 	"slices"
 
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/choice"
 )
 
@@ -23,34 +25,55 @@ const (
 )
 
 // SampledFrom returns a generator of one of values: an integer index that
-// decides structure. Its simplest value is the first. It panics when
-// values is empty.
+// decides structure. Its simplest value is the first. It runs backwards
+// through the index of the first value equal to the given one. It panics
+// when values is empty.
 func SampledFrom[T any](values ...T) Generator[T] {
 	if len(values) == 0 {
 		panic("prop: " + sampledFromID + " of no value")
 	}
 	stated := slices.Clone(values)
 	bounds := indices(len(stated))
-	return NewGenerator(sampledFromID, func(c *Case) T {
+	decode := func(c *Case) T {
 		span := c.openSpan(sampledFromID)
 		defer c.closeSpan(span)
 		return stated[c.Structure(bounds, 0).Magnitude()]
+	}
+	return NewInvertible(sampledFromID, decode, func(v any) ([]Step, T, error) {
+		for i, s := range stated {
+			if sameValue(v, s) {
+				return []Step{indexStep(bounds, i)}, s, nil
+			}
+		}
+		var zero T
+		return nil, zero, uninvertible("%v is none of the %d values", v, len(stated))
 	})
 }
 
 // OneOf returns a generator of a value of one of gens: an integer index
 // that decides structure, then that generator's choices. Its simplest
-// value is the first generator's simplest. It panics when gens is empty.
+// value is the first generator's simplest. It runs backwards through the
+// first generator whose inverse produces the value. It panics when gens is
+// empty.
 func OneOf[T any](gens ...Generator[T]) Generator[T] {
 	if len(gens) == 0 {
 		panic("prop: " + oneOfID + " of no generator")
 	}
 	stated := slices.Clone(gens)
 	bounds := indices(len(stated))
-	return NewGenerator(oneOfID, func(c *Case) T {
+	decode := func(c *Case) T {
 		span := c.openSpan(oneOfID)
 		defer c.closeSpan(span)
 		return stated[c.Structure(bounds, 0).Magnitude()].decode(c)
+	}
+	return NewInvertible(oneOfID, decode, func(v any) ([]Step, T, error) {
+		for i, g := range stated {
+			if steps, t, err := g.inverse(v); err == nil {
+				return append([]Step{indexStep(bounds, i)}, steps...), t, nil
+			}
+		}
+		var zero T
+		return nil, zero, uninvertible("none of the %d alternatives produces %v", len(stated), v)
 	})
 }
 
@@ -58,8 +81,13 @@ func OneOf[T any](gens ...Generator[T]) Generator[T] {
 // presence choice in [0, 1] that decides structure, then the value's
 // choices when present. Its simplest value is nil, and the edge phase
 // makes the value present.
+//
+// It runs backwards from nil, a nil pointer, a nil slice or a nil map as
+// absent, from a *T through the value it points to, and from any other
+// value, such as one that a typed literal decodes to, as the present value
+// itself.
 func Optional[T any](of Generator[T]) Generator[*T] {
-	return NewGenerator(optionalID, func(c *Case) *T {
+	decode := func(c *Case) *T {
 		span := c.openSpan(optionalID)
 		defer c.closeSpan(span)
 		if c.Structure(bitBounds, 1).Magnitude() == 0 {
@@ -67,16 +95,46 @@ func Optional[T any](of Generator[T]) Generator[*T] {
 		}
 		v := of.decode(c)
 		return &v
+	}
+	return NewInvertible(optionalID, decode, func(v any) ([]Step, *T, error) {
+		if Absent(v) {
+			return []Step{bitStep(false)}, nil, nil
+		}
+		if p, ok := v.(*T); ok {
+			v = *p
+		}
+		steps, present, err := of.inverse(v)
+		if err != nil {
+			return nil, nil, err
+		}
+		return append([]Step{bitStep(true)}, steps...), &present, nil
 	})
+}
+
+// Absent reports whether v is the value of an absent optional: nil, or a
+// nil pointer, slice, map or interface. A typed literal of null decodes to
+// nil, and a list or a map literal of null to a nil slice or map.
+func Absent(v any) bool {
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Invalid:
+		return true
+	case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Interface:
+		return rv.IsNil()
+	}
+	return false
 }
 
 // Permutation returns a generator of the orderings of values: one swap
 // choice per position. Position i, from 0 to len(values) - 2, swaps with
 // the index the case chooses in [i, len(values) - 1]. The target of that
-// choice is i, so the simplest value is values in their stated order.
+// choice is i, so the simplest value is values in their stated order. It
+// runs backwards through the smallest index at each swap that orders the
+// values as the given list does, and the fault of an element that no swap
+// puts in its place is at the element's index.
 func Permutation[T any](values ...T) Generator[[]T] {
 	stated := slices.Clone(values)
-	return NewGenerator(permutationID, func(c *Case) []T {
+	decode := func(c *Case) []T {
 		ordered := slices.Clone(stated)
 		last := len(ordered) - 1
 		span := c.openSpan(permutationID)
@@ -87,6 +145,29 @@ func Permutation[T any](values ...T) Generator[[]T] {
 			ordered[i], ordered[j] = ordered[j], ordered[i]
 		}
 		return ordered
+	}
+	return NewInvertible(permutationID, decode, func(v any) ([]Step, []T, error) {
+		items, ok := ListItems(v)
+		if !ok || len(items) != len(stated) {
+			return nil, nil, uninvertible("%v is no list of %d values", v, len(stated))
+		}
+		ordered := slices.Clone(stated)
+		last := len(ordered) - 1
+		var steps []Step
+		for i := range last {
+			j := slices.IndexFunc(ordered[i:], func(s T) bool { return sameValue(items[i], s) })
+			if j < 0 {
+				return nil, nil, fault.At(uninvertible("the element is none of the values left to order"),
+					fault.Index(i))
+			}
+			swap := choice.MustIntegerBounds(choice.UintOf(uint64(i)), choice.UintOf(uint64(last)))
+			steps = append(steps, stepOf(swap, choice.UintOf(uint64(i+j))))
+			ordered[i], ordered[i+j] = ordered[i+j], ordered[i]
+		}
+		if last >= 0 && !sameValue(items[last], ordered[last]) {
+			return nil, nil, fault.At(uninvertible("the element is not the value left to order"), fault.Index(last))
+		}
+		return steps, ordered, nil
 	})
 }
 
