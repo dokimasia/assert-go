@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/google/go-cmp/cmp"
+
+	"go.dokimi.dev/assert/internal/text"
 )
 
 // Writer turns the records and the faults of this module into the text that
@@ -23,7 +25,7 @@ type Writer interface {
 }
 
 // writer is the writer of this module: the text writer.
-var writer Writer = text{}
+var writer Writer = textWriter{}
 
 // sentences are the sentences of the records of the assertions whose
 // package writes its own, by assertion. [RegisterSentence] writes the table
@@ -51,9 +53,9 @@ func RegisterSentence(sentence func(Failure) string, assertions ...string) {
 	}
 }
 
-// text is the writer of the sentence that a Go reader expects: the
+// textWriter is the writer of the sentence that a Go reader expects: the
 // contract, then the detail, and a diff labelled -want +got for a mismatch.
-type text struct{}
+type textWriter struct{}
 
 // Failure returns the registered sentence of the record's assertion, when
 // [RegisterSentence] registered one. For any other record without detail,
@@ -61,8 +63,10 @@ type text struct{}
 // comparison, it returns the contract and a diff labelled -want +got.
 // Otherwise it returns the contract and each field of the detail with its
 // value, want before got and the rest in a fixed reading order, with a
-// field that the order does not name after them, alphabetically.
-func (text) Failure(f Failure) string {
+// field that the order does not name after them, alphabetically. A value
+// that contains itself, or that has more than 65,536 parts, states its
+// bounded text as the package text writes it.
+func (textWriter) Failure(f Failure) string {
 	if sentence, ok := sentences[f.Assertion]; ok {
 		return sentence(f)
 	}
@@ -94,7 +98,7 @@ func (text) Failure(f Failure) string {
 			b.WriteString(", ")
 		}
 		first = false
-		fmt.Fprintf(&b, "%s %+v", name, value)
+		text.Fprintf(&b, "%s %+v", name, value)
 	}
 	for _, name := range order {
 		write(name)
@@ -106,7 +110,7 @@ func (text) Failure(f Failure) string {
 }
 
 // Fault returns the text of err that its Error method writes.
-func (text) Fault(err error) string {
+func (textWriter) Fault(err error) string {
 	return err.Error()
 }
 

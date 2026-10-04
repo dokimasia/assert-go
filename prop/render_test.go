@@ -120,6 +120,23 @@ func TestRender(t *testing.T) {
 			})
 		}
 
+		t.Run("states a drawn value that contains itself with the cycle marked", func(t *testing.T) {
+			t.Parallel()
+			selfContaining := prop.Just(0).Map(func(int) map[string]any {
+				m := map[string]any{}
+				m["self"] = m
+				return m
+			})
+			seat := &sentences{}
+			prop.ForAll(seat, contract, func(c *prop.Case) {
+				c.Draw(selfContaining, drawn)
+				fail(c, always)
+			}, prop.Seed(7))
+			all := seat.all()
+			assert.Length(t, all, 1, "one sentence")
+			assert.Contains(t, all[0], "\n  value: map[self:<cycle>]", "the draw, with its cycle marked")
+		})
+
 		t.Run("states the assertion and the location of a failure with its sentence", func(t *testing.T) {
 			t.Parallel()
 			var at assert.Where

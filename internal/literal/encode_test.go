@@ -479,6 +479,11 @@ func TestEncode(t *testing.T) {
 				give: complex(1, 2),
 				want: `{"type":"opaque","text":"(1+2i)"}`,
 			},
+			{
+				name: "returns a value that contains itself as opaque with the cycle marked",
+				give: selfContaining(),
+				want: string(literal.Opaque("map[self:<cycle>]")),
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -561,6 +566,13 @@ func wrapped(count int, inner any) any {
 		node = []any{node}
 	}
 	return node
+}
+
+// selfContaining returns a map whose one entry is the map itself.
+func selfContaining() map[string]any {
+	m := map[string]any{}
+	m["self"] = m
+	return m
 }
 
 // deepKey returns a map with one entry, whose key is an integer inside

@@ -4,8 +4,9 @@
 package fault
 
 import (
-	"fmt"
 	"strings"
+
+	"go.dokimi.dev/assert/internal/text"
 )
 
 // separator joins the parts of a fault's text.
@@ -34,24 +35,25 @@ type Error struct {
 }
 
 // New returns a fault whose reason is format with args, as fmt.Sprintf
-// formats them.
+// formats them. A value that contains itself, or that has more than 65,536
+// parts, states its bounded text as the package text writes it.
 //
 // # Allocation contract
 //
 // New allocates the fault and its reason, and what fmt.Sprintf allocates
 // for args: two allocations for a reason without arguments.
 func New(format string, args ...any) *Error {
-	return &Error{Reason: fmt.Sprintf(format, args...)}
+	return &Error{Reason: text.Sprintf(format, args...)}
 }
 
-// Of returns a fault of kind whose reason is format with args, as
-// fmt.Sprintf formats them.
+// Of returns a fault of kind whose reason is format with args, as [New]
+// formats them.
 //
 // # Allocation contract
 //
 // Of allocates what [New] allocates.
 func Of(kind error, format string, args ...any) *Error {
-	return &Error{Kind: kind, Reason: fmt.Sprintf(format, args...)}
+	return &Error{Kind: kind, Reason: text.Sprintf(format, args...)}
 }
 
 // Because makes err the cause of f, and returns f, so that a fault with a

@@ -13,6 +13,7 @@
 //
 // # Dependency position
 //
-// Imports the standard library alone. Every other package of this module
+// Imports internal/text, which formats the values of a reason, and the
+// standard library. Every other package of this module but internal/text
 // may import it.
 package fault

@@ -10,6 +10,7 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/matcher"
+	"go.dokimi.dev/assert/internal/text"
 )
 
 // absent are the words for a side of a divergence that states nothing, by
@@ -67,12 +68,12 @@ func sentence(f assert.Failure) string {
 // literal, and what the explain phase found.
 func writeDraws(b *strings.Builder, drawn []Drawn) {
 	for _, d := range drawn {
-		fmt.Fprintf(b, "\n  %s: %#v", d.Label, d.Value)
+		text.Fprintf(b, "\n  %s: %#v", d.Label, d.Value)
 		if d.Relevance == AnyValueFails {
 			b.WriteString(", any value fails")
 		}
 		if d.NearestPassing != nil {
-			fmt.Fprintf(b, ", %#v passes", d.NearestPassing)
+			text.Fprintf(b, ", %#v passes", d.NearestPassing)
 		}
 	}
 }
@@ -103,5 +104,5 @@ func sideText(what Difference, side any) string {
 	if side == nil {
 		return absent[what]
 	}
-	return fmt.Sprint(side)
+	return text.Sprintf("%v", side)
 }

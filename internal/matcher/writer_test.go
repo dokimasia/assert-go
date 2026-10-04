@@ -23,6 +23,13 @@ type explodes struct{}
 // Equal panics, as the method of a value that cmp cannot compare does.
 func (explodes) Equal(explodes) bool { panic("this type cannot be compared") }
 
+// selfContaining returns a map whose one entry is the map itself.
+func selfContaining() map[string]any {
+	m := map[string]any{}
+	m["self"] = m
+	return m
+}
+
 // sentenceID is the assertion whose sentence this test binary registers.
 const sentenceID = "matcher-test-sentence"
 
@@ -75,6 +82,15 @@ func TestWriter(t *testing.T) {
 					Detail:    map[string]any{"want": 2},
 				},
 				want: "the count is right: want 2",
+			},
+			{
+				name: "writes a value that contains itself with the cycle marked",
+				give: matcher.Failure{
+					Assertion: "contains",
+					Contract:  "the graph has the node",
+					Detail:    map[string]any{"haystack": selfContaining(), "needle": 1},
+				},
+				want: "the graph has the node: haystack map[self:<cycle>], needle 1",
 			},
 		}
 		for _, tt := range tests {

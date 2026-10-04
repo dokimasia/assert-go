@@ -14,6 +14,7 @@
 //
 // # Dependency position
 //
-// Imports fault and the standard library. The packages of the property
-// engine, prop and conformance import it.
+// Imports fault, text for the text of an opaque value, and the standard
+// library. The packages of the property engine, prop and conformance import
+// it.
 package literal

@@ -48,6 +48,14 @@ func TestFault(t *testing.T) {
 			f := fault.New("the key %s states no value", "min")
 			assert.Equal(t, *f, fault.Error{Reason: "the key min states no value"}, "a fault of the reason alone")
 		})
+
+		t.Run("states a value that contains itself with the cycle marked", func(t *testing.T) {
+			t.Parallel()
+			m := map[string]any{}
+			m["self"] = m
+			f := fault.New("%v is no list", m)
+			assert.Equal(t, f.Reason, "map[self:<cycle>] is no list", "the reason")
+		})
 	})
 
 	t.Run("Of", func(t *testing.T) {

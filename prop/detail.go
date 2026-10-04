@@ -5,12 +5,12 @@ package prop
 
 import (
 	"encoding/json"
-	"fmt"
 	"strconv"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/engine"
+	"go.dokimi.dev/assert/internal/text"
 )
 
 // The assertion of a run's record, and the names of its detail fields in
@@ -198,7 +198,7 @@ func failureOf(e engine.Execution) assert.Failure {
 		return e.Case.Failures()[0]
 	}
 	return assert.Failure{
-		Contract: fmt.Sprint(e.Panic),
+		Contract: text.Sprintf("%v", e.Panic),
 		Detail:   map[string]any{panicField: e.Identity.Panic, stackField: string(e.Stack)},
 		Where:    e.Identity.Where,
 	}

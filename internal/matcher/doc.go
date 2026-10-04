@@ -50,9 +50,10 @@
 // # Dependency position
 //
 // Imports github.com/google/go-cmp/cmp, its cmpopts subpackage, the
-// standard library, testing included, and four packages of this module:
+// standard library, testing included, and five packages of this module:
 // internal/fault for the faults it reports, internal/literal for the typed
 // literals of a recorded failure's detail, internal/record for the call
-// records, and internal/prop/pattern, whose parser decides which patterns
-// [Matches] accepts.
+// records, internal/text for the text of a detail's values, and
+// internal/prop/pattern, whose parser decides which patterns [Matches]
+// accepts.
 package matcher

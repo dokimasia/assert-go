@@ -9,13 +9,14 @@ import (
 	"encoding"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"math"
 	"math/big"
 	"reflect"
 	"slices"
 	"strconv"
 	"unicode/utf8"
+
+	"go.dokimi.dev/assert/internal/text"
 )
 
 // The bounds of a literal that [Encode] writes.
@@ -499,8 +500,9 @@ func Opaque(text string) json.RawMessage {
 
 // Detail returns the literal of v as the detail of a call record states it:
 // the literal that [Encode] returns, or the [Opaque] literal of the text
-// that fmt's %+v verb writes for v. An error and a context.Context are
-// opaque, as is a value that Encode states no literal of.
+// that fmt's %+v verb writes for v, bounded as the package text bounds it.
+// An error and a context.Context are opaque, as is a value that Encode
+// states no literal of.
 //
 // # Allocation contract
 //
@@ -509,12 +511,12 @@ func Opaque(text string) json.RawMessage {
 func Detail(v any) json.RawMessage {
 	switch v.(type) {
 	case error, context.Context:
-		return Opaque(fmt.Sprintf("%+v", v))
+		return Opaque(text.Sprintf("%+v", v))
 	}
 	if raw, ok := Encode(v); ok {
 		return raw
 	}
-	return Opaque(fmt.Sprintf("%+v", v))
+	return Opaque(text.Sprintf("%+v", v))
 }
 
 // commonScalar returns the scalar type that every one of items has, and
