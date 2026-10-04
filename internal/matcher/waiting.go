@@ -107,8 +107,9 @@ func trial(fn func(Seat), slot *record.Slot) *probe {
 //
 // Size the timeout for the slowest machine that will run it. fn runs
 // at least once however short the timeout. An interval below a
-// millisecond waits a millisecond, so the attempts on a controlled clock
-// end at the timeout.
+// millisecond waits a millisecond. No attempt starts after the timeout:
+// the last wait is cut to the time that is left, so on a controlled clock
+// the last attempt runs at the deadline.
 //
 // # Allocation contract
 //
@@ -120,7 +121,7 @@ func Eventually(seat Seat, mode Mode, timeout, interval time.Duration, fn func(S
 	run := Begin(seat)
 	clock := ClockOf(seat)
 	deadline := clock.Now().Add(timeout)
-	for attempt := 0; ; attempt++ {
+	for attempt := 1; ; attempt++ {
 		p := trial(fn, run.Slot())
 		run.Slot().Take(&p.calls, record.NoPhase)
 		last, failed := p.outcome()
@@ -128,13 +129,12 @@ func Eventually(seat Seat, mode Mode, timeout, interval time.Duration, fn func(S
 			run.Pass(mode, "eventually", msg)
 			return
 		}
-		if clock.Now().After(deadline) {
+		if !waitWithin(clock, deadline, max(interval, minWait)) {
 			run.Fail(mode, "eventually", msg, map[string]any{
-				"attempts": attempt + 1, "last": last,
+				"attempts": attempt, "last": last,
 			})
 			return
 		}
-		wait(clock, max(interval, minWait))
 	}
 }
 
@@ -143,12 +143,26 @@ func Eventually(seat Seat, mode Mode, timeout, interval time.Duration, fn func(S
 // end at the timeout.
 const minWait = time.Millisecond
 
+// waitWithin waits d on clock, or the time left before deadline when that
+// is less, and reports whether another attempt may start: whether the
+// clock read before the deadline, and after the wait reads no later than
+// it. It waits nothing once the deadline has come.
+func waitWithin(clock Clock, deadline time.Time, d time.Duration) bool {
+	now := clock.Now()
+	if !now.Before(deadline) {
+		return false
+	}
+	wait(clock, min(d, deadline.Sub(now)))
+	return !clock.Now().After(deadline)
+}
+
 // EventuallyTrue calls pred with exponential backoff until it returns
 // true or timeout expires, reporting a timeout when it never does.
 //
 // The backoff starts at a millisecond and doubles up to a quarter of the
 // timeout, so the last attempts are not one long sleep. A timeout below
-// 4 ms keeps the backoff at a millisecond.
+// 4 ms keeps the backoff at a millisecond. No attempt starts after the
+// timeout, as for Eventually.
 //
 // It differs from [Eventually] in what it reports. A predicate does not
 // report a failure of its own, so this states only that the wait ran out.
@@ -166,18 +180,16 @@ func EventuallyTrue(seat Seat, mode Mode, timeout time.Duration, pred func() boo
 	deadline := clock.Now().Add(timeout)
 	backoff, maxBackoff := minWait, max(timeout/4, minWait)
 
-	for attempt := 0; ; attempt++ {
+	for attempt := 1; ; attempt++ {
 		if pred() {
 			Pass(seat, mode, "eventually-true", msg)
 			return
 		}
-		if clock.Now().After(deadline) {
+		if !waitWithin(clock, deadline, backoff) {
 			Fail(seat, mode, "eventually-true", msg,
-				map[string]any{"attempts": attempt + 1})
+				map[string]any{"attempts": attempt})
 			return
 		}
-
-		wait(clock, backoff)
 		backoff = min(max(2*backoff, minWait), maxBackoff)
 	}
 }

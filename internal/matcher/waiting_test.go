@@ -5,6 +5,7 @@ package matcher_test
 
 import (
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -12,6 +13,27 @@ import (
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
+
+// lateClock is a clock whose Sleep returns a nanosecond after the duration
+// has passed, as a sleep on the runtime clock returns after it.
+type lateClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+// Now returns the current instant.
+func (c *lateClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+// Sleep moves the clock a nanosecond past d.
+func (c *lateClock) Sleep(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d + time.Nanosecond)
+}
 
 // TestWaiting runs the shared cases of the retrying assertions, and their
 // cases under a seat's clock.
@@ -99,8 +121,8 @@ func TestWaiting(t *testing.T) {
 	})
 
 	// A controlled clock moves only when the retry loop waits on it, so the
-	// attempts are fixed: at 0, 1, 2 and 3 seconds the deadline has not
-	// passed, and at 4 seconds it has.
+	// attempts are fixed: at 0, 1, 2 and 3 seconds, the last at the
+	// deadline.
 	t.Run("Eventually reports its attempts on the seat's clock", func(t *testing.T) {
 		t.Parallel()
 
@@ -113,13 +135,70 @@ func TestWaiting(t *testing.T) {
 		if len(records) != 1 {
 			t.Fatalf("reported %d records, want 1", len(records))
 		}
-		if got := records[0].Detail; got["attempts"] != 5 || got["last"] != matchertest.InnerReason {
-			t.Fatalf("the record states %v, want 5 attempts and the last attempt's reason", got)
+		if got := records[0].Detail; got["attempts"] != 4 || got["last"] != matchertest.InnerReason {
+			t.Fatalf("the record states %v, want 4 attempts and the last attempt's reason", got)
+		}
+	})
+
+	// The wait after the first attempt is cut from an hour to the
+	// millisecond that is left, so the second attempt runs at the deadline
+	// and the third would run after it.
+	t.Run("Eventually runs no attempt after its timeout", func(t *testing.T) {
+		t.Parallel()
+
+		clock := matcher.NewControlled(clockEpoch)
+		seat := &clockedSeat{clock: clock}
+		matcher.Eventually(seat, matcher.Fatal, time.Millisecond, time.Hour, func(trial matcher.Seat) {
+			matcher.True(trial, matcher.Fatal, !clock.Now().Before(clockEpoch.Add(time.Hour)),
+				matchertest.InnerReason)
+		}, "the body settles within a millisecond")
+
+		records := seat.Records()
+		if len(records) != 1 || records[0].Detail["attempts"] != 2 {
+			t.Fatalf("reported %v, want one record of 2 attempts", records)
+		}
+		if got := clock.Now(); !got.Equal(clockEpoch.Add(time.Millisecond)) {
+			t.Fatalf("the clock reads %v, want the deadline, a millisecond after the start", got)
+		}
+	})
+
+	// The wait after the first attempt is cut to the millisecond that is
+	// left, and ends a nanosecond past the deadline, where the body would
+	// pass.
+	t.Run("Eventually runs no attempt after a wait that ends past its timeout", func(t *testing.T) {
+		t.Parallel()
+
+		clock := &lateClock{now: clockEpoch}
+		seat := &clockedSeat{clock: clock}
+		matcher.Eventually(seat, matcher.Fatal, time.Millisecond, time.Hour, func(trial matcher.Seat) {
+			matcher.True(trial, matcher.Fatal, clock.Now().After(clockEpoch.Add(time.Millisecond)),
+				matchertest.InnerReason)
+		}, "the body settles within a millisecond")
+
+		if records := seat.Records(); len(records) != 1 || records[0].Detail["attempts"] != 1 {
+			t.Fatalf("reported %v, want one record of 1 attempt", records)
+		}
+	})
+
+	// The wait after the attempt at 2 s is cut to the second that is left,
+	// so the last attempt runs at the deadline, where the body passes.
+	t.Run("Eventually runs its last attempt at the deadline", func(t *testing.T) {
+		t.Parallel()
+
+		clock := matcher.NewControlled(clockEpoch)
+		seat := &clockedSeat{clock: clock}
+		matcher.Eventually(seat, matcher.Fatal, 3*time.Second, 2*time.Second, func(trial matcher.Seat) {
+			matcher.True(trial, matcher.Fatal, !clock.Now().Before(clockEpoch.Add(3*time.Second)),
+				matchertest.InnerReason)
+		}, "the body settles at the deadline")
+
+		if records := seat.Records(); len(records) != 0 {
+			t.Fatalf("reported %v, want a pass", records)
 		}
 	})
 
 	// An interval of zero waits a millisecond, so the attempts run at 0, 1,
-	// 2, 3 and 4 ms, and the deadline has passed at the last.
+	// 2 and 3 ms, the last at the deadline.
 	t.Run("Eventually waits a millisecond for an interval of zero on the seat's clock", func(t *testing.T) {
 		t.Parallel()
 
@@ -132,14 +211,14 @@ func TestWaiting(t *testing.T) {
 		if len(records) != 1 {
 			t.Fatalf("reported %d records, want 1", len(records))
 		}
-		if got := records[0].Detail["attempts"]; got != 5 {
-			t.Fatalf("the record states %v attempts, want 5", got)
+		if got := records[0].Detail["attempts"]; got != 4 {
+			t.Fatalf("the record states %v attempts, want 4", got)
 		}
 	})
 
 	// A quarter of a timeout of 2 ms is below a millisecond, so every
-	// backoff is a millisecond: the predicate runs at 0, 1, 2 and 3 ms,
-	// and the deadline has passed at the last.
+	// backoff is a millisecond: the predicate runs at 0, 1 and 2 ms, the
+	// last at the deadline.
 	t.Run("EventuallyTrue keeps a backoff of a millisecond for a timeout below 4 ms", func(t *testing.T) {
 		t.Parallel()
 
@@ -151,14 +230,46 @@ func TestWaiting(t *testing.T) {
 		if len(records) != 1 {
 			t.Fatalf("reported %d records, want 1", len(records))
 		}
-		if got := records[0].Detail["attempts"]; got != 4 {
-			t.Fatalf("the record states %v attempts, want 4", got)
+		if got := records[0].Detail["attempts"]; got != 3 {
+			t.Fatalf("the record states %v attempts, want 3", got)
+		}
+	})
+
+	// The predicate runs at 0, 1 and 2 ms, and would be true from 3 ms.
+	t.Run("EventuallyTrue runs no attempt after its timeout", func(t *testing.T) {
+		t.Parallel()
+
+		clock := matcher.NewControlled(clockEpoch)
+		seat := &clockedSeat{clock: clock}
+		matcher.EventuallyTrue(seat, matcher.Fatal, 2*time.Millisecond, func() bool {
+			return !clock.Now().Before(clockEpoch.Add(3 * time.Millisecond))
+		}, "the predicate becomes true within 2 ms")
+
+		if records := seat.Records(); len(records) != 1 || records[0].Detail["attempts"] != 3 {
+			t.Fatalf("reported %v, want one record of 3 attempts", records)
+		}
+	})
+
+	// The predicate runs at 0 and at 1 ms and 1 ns. The next wait is cut to
+	// the time that is left, and ends a nanosecond past the deadline, where
+	// the predicate would be true.
+	t.Run("EventuallyTrue runs no attempt after a wait that ends past its timeout", func(t *testing.T) {
+		t.Parallel()
+
+		clock := &lateClock{now: clockEpoch}
+		seat := &clockedSeat{clock: clock}
+		matcher.EventuallyTrue(seat, matcher.Fatal, 2*time.Millisecond, func() bool {
+			return clock.Now().After(clockEpoch.Add(2 * time.Millisecond))
+		}, "the predicate becomes true within 2 ms")
+
+		if records := seat.Records(); len(records) != 1 || records[0].Detail["attempts"] != 2 {
+			t.Fatalf("reported %v, want one record of 2 attempts", records)
 		}
 	})
 
 	// The backoff doubles from a millisecond to a quarter of the timeout,
-	// 250 ms, so the predicate runs at 0, 1, 3, 7, 15, 31, 63, 127, 255, 505,
-	// 755 and 1,005 ms, and the deadline has passed at the last.
+	// 250 ms, so the predicate runs at 0, 1, 3, 7, 15, 31, 63, 127, 255, 505
+	// and 755 ms, and at the deadline, 1,000 ms, after a wait cut to 245 ms.
 	t.Run("EventuallyTrue reports its attempts under a capped backoff on the seat's clock", func(t *testing.T) {
 		t.Parallel()
 
