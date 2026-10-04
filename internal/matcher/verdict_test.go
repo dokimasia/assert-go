@@ -185,6 +185,20 @@ func TestVerdict(t *testing.T) {
 				t.Fatalf("wrote %v, want a failing call with the detail %v", got, want)
 			}
 		})
+		t.Run("writes an absent list apart from an empty one", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newKeepingSeat()
+			matcher.Equal(seat, matcher.Soft, []int(nil), []int{}, "the list is empty")
+			got := seat.lines(t)[0]
+			want := map[string]any{
+				"want": map[string]any{"type": "list", "items": []any{}},
+				"got":  map[string]any{"type": "list", "of": "int", "value": nil},
+			}
+			if got["verdict"] != "fail" || fmt.Sprint(got["detail"]) != fmt.Sprint(want) {
+				t.Fatalf("wrote %v, want a failing call with the detail %v", got, want)
+			}
+		})
 		t.Run("writes an empty detail for an assertion that declares no field", func(t *testing.T) {
 			t.Parallel()
 

@@ -140,7 +140,7 @@ func TestEncode(t *testing.T) {
 			{name: "returns a string", give: "x", want: `{"type":"string","value":"x"}`},
 			{name: "returns bytes in hexadecimal", give: []byte("hi"), want: `{"type":"bytes","value":"6869"}`},
 			{name: "returns an array of bytes", give: [2]byte{1, 2}, want: `{"type":"bytes","value":"0102"}`},
-			{name: "returns no bytes for nil bytes", give: []byte(nil), want: `{"type":"bytes","value":""}`},
+			{name: "returns null for nil bytes", give: []byte(nil), want: `{"type":"null"}`},
 			{
 				name: "returns a list of one scalar type",
 				give: []int{1, 2},
@@ -157,7 +157,46 @@ func TestEncode(t *testing.T) {
 				want: `{"type":"list","of":"int","value":["18446744073709551615"]}`,
 			},
 			{name: "returns items for an empty list", give: []int{}, want: `{"type":"list","items":[]}`},
-			{name: "returns items for a nil list", give: []string(nil), want: `{"type":"list","items":[]}`},
+			{
+				name: "returns the absent list of its scalar type for a nil list",
+				give: []string(nil),
+				want: `{"type":"list","of":"string","value":null}`,
+			},
+			{
+				name: "returns the absent list of strings for a nil list of a TextMarshaler",
+				give: []time.Time(nil),
+				want: `{"type":"list","of":"string","value":null}`,
+			},
+			{
+				name: "returns the absent list of ints for a nil list of big.Int",
+				give: []big.Int(nil),
+				want: `{"type":"list","of":"int","value":null}`,
+			},
+			{
+				name: "returns the absent list of floats for a nil list of float32",
+				give: []float32(nil),
+				want: `{"type":"list","of":"float","value":null}`,
+			},
+			{
+				name: "returns null for a nil list of a type that is no scalar",
+				give: []point(nil),
+				want: `{"type":"null"}`,
+			},
+			{
+				name: "returns null for a nil list of pointers, whose elements can be null",
+				give: []*big.Int(nil),
+				want: `{"type":"null"}`,
+			},
+			{
+				name: "returns the absent map of its scalar type for a nil map from strings",
+				give: map[string]int(nil),
+				want: `{"type":"map","key":"string","of":"int","value":null}`,
+			},
+			{
+				name: "returns null for a nil map whose keys are no strings",
+				give: map[int]bool(nil),
+				want: `{"type":"null"}`,
+			},
 			{
 				name: "returns items for a list of two scalar types",
 				give: []any{true, 1},

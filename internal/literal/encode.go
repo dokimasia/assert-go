@@ -82,6 +82,19 @@ type itemList struct {
 	Items []any `json:"items"`
 }
 
+// absentMap is the literal of an absent map from strings to a scalar type:
+// a map with key and of, and a null value.
+type absentMap struct {
+	// Type is typeMap.
+	Type string `json:"type"`
+	// Key is typeString.
+	Key string `json:"key"`
+	// Of is the type of every value.
+	Of string `json:"of"`
+	// Value is nil, which encodes as null.
+	Value map[string]any `json:"value"`
+}
+
 // entryMap is the literal of a map, as pairs of a key's and a value's
 // literal.
 type entryMap struct {
@@ -186,6 +199,9 @@ func (w *walk) literalOf(v reflect.Value) (written, bool) {
 	if kind == reflect.Struct {
 		return w.structOf(v)
 	}
+	if (kind == reflect.Map || kind == reflect.Slice) && v.IsNil() {
+		return absentOf(v.Type()), true
+	}
 	if kind == reflect.Map {
 		return w.mapOf(v)
 	}
@@ -193,6 +209,47 @@ func (w *walk) literalOf(v reflect.Value) (written, bool) {
 		return w.listOf(v)
 	}
 	return w.scalarOf(v)
+}
+
+// absentOf returns the literal of a nil slice or map of type t: the absent
+// list of a scalar type, the absent map from strings to a scalar type, and
+// null for any other, such as nil bytes, which no absent literal states.
+func absentOf(t reflect.Type) written {
+	of := scalarOf(t.Elem())
+	if t.Kind() == reflect.Slice && of != "" && t.Elem().Kind() != reflect.Uint8 {
+		return written{form: scalarList{Type: typeList, Of: of}, depth: 1}
+	}
+	if t.Kind() == reflect.Map && of != "" && scalarOf(t.Key()) == typeString {
+		return written{form: absentMap{Type: typeMap, Key: typeString, Of: of}, depth: 1}
+	}
+	return written{form: nullLiteral{Type: typeNull}, depth: 1}
+}
+
+// scalarOf returns the scalar type whose literal every value of t states,
+// and empty for a type whose values state another literal, or none. A nil
+// pointer and a nil interface state null, so neither kind has one.
+func scalarOf(t reflect.Type) string {
+	if t.Kind() == reflect.Pointer || t.Kind() == reflect.Interface {
+		return ""
+	}
+	if t == bigValue {
+		return typeInt
+	}
+	if t.Implements(textMarshaler) {
+		return typeString
+	}
+	switch t.Kind() {
+	case reflect.Bool:
+		return typeBool
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return typeInt
+	case reflect.Float32, reflect.Float64:
+		return typeFloat
+	case reflect.String:
+		return typeString
+	}
+	return ""
 }
 
 // bigOf returns the integer of a *big.Int or a big.Int, and false for a
