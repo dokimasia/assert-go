@@ -40,10 +40,13 @@ func Check(tb assert.TB, cases []Case) {
 
 // Measure measures c in the benchmark b, under a contract whose allocation
 // ceiling is the ceiling of c, and checks that each call passes. It calls c
-// on a seat of internal/matchertest.
+// on a seat of internal/matchertest, once before the contract starts, so the
+// allocations of the setup of a first call count in no iteration, as they
+// count in no call that Check counts.
 func Measure(b bench.B, c Case) {
 	b.Helper()
 	seat := &matchertest.Seat{}
+	c.Call(seat)
 	contract := bench.Start(b).MaxAllocs(c.Allocs)
 	defer contract.End()
 	for contract.Loop() {

@@ -4,6 +4,7 @@
 package alloctest_test
 
 import (
+	"sync"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -82,13 +83,28 @@ func TestCeiling(t *testing.T) {
 	})
 
 	t.Run("Measure", func(t *testing.T) {
-		t.Run("calls the case in each iteration, and passes a call within its ceiling", func(t *testing.T) {
-			var calls int
-			counted := alloctest.Case{Name: "counted", Call: func(assert.TB) { calls++ }}
+		t.Run("calls the case once before the iterations and in each iteration, and passes a call within its ceiling",
+			func(t *testing.T) {
+				var calls int
+				counted := alloctest.Case{Name: "counted", Call: func(assert.TB) { calls++ }}
+				b := &fakeB{Recorder: assert.NewRecorder(), remaining: iterations}
+				alloctest.Measure(b, counted)
+				assert.Equal(t, calls, iterations+1, "one call before the iterations and one in each")
+				assert.False(t, b.Failed(), "a call that allocates nothing meets a ceiling of 0")
+			})
+
+		t.Run("counts no allocation of the setup of a first call", func(t *testing.T) {
+			var once sync.Once
+			lazy := alloctest.Case{Name: "lazy", Call: func(assert.TB) {
+				once.Do(func() {
+					for range 2 * iterations {
+						sink = make([]byte, 64)
+					}
+				})
+			}}
 			b := &fakeB{Recorder: assert.NewRecorder(), remaining: iterations}
-			alloctest.Measure(b, counted)
-			assert.Equal(t, calls, iterations, "one call in each iteration")
-			assert.False(t, b.Failed(), "a call that allocates nothing meets a ceiling of 0")
+			alloctest.Measure(b, lazy)
+			assert.False(t, b.Failed(), "the first call's two allocations per iteration fall before the contract")
 		})
 
 		t.Run("fails a call past its ceiling in a build that counts allocations", func(t *testing.T) {
