@@ -383,6 +383,42 @@ func TestContractCounting(t *testing.T) {
 			assert.Equal(t, seat.First(), "", "a loop left early is counted up to the iteration it left")
 		})
 
+		t.Run("measures and checks the one iteration that the body leaves with break", func(t *testing.T) {
+			seat := newBenchSeat(iterations)
+
+			c := nothing(bench.Start(seat))
+			for c.Loop() {
+				sink = make([][]int, 128)
+				break
+			}
+			c.End()
+
+			assert.Equal(t, seat.verdicts(t), []string{
+				"bench-max-allocs " + verdictOf(matcher.AllocationsCounted()),
+				"bench-max-bytes " + verdictOf(matcher.AllocationsCounted()),
+			}, "the allocation of the iteration exceeds both ceilings of zero")
+			bytes, published := seat.metric("bytes/op")
+			assert.True(t, published, "the contract publishes the bytes of the iteration")
+			assert.InRange(t, bytes, 3072.0, 4096.0, "the 3 KiB of the iteration")
+		})
+
+		t.Run("counts the time of the iteration that the body leaves", func(t *testing.T) {
+			seat := newBenchSeat(iterations)
+
+			c := bench.Start(seat)
+			for calls := 1; c.Loop(); calls++ {
+				if calls == 2 {
+					time.Sleep(10 * time.Millisecond)
+					break
+				}
+			}
+			c.End()
+
+			mean, _ := seat.metric("mean-ns/op")
+			assert.InRange(t, mean, float64(5*time.Millisecond), float64(time.Second),
+				"the mean of a quick iteration and one of 10 ms")
+		})
+
 		t.Run("publishes each count per iteration before rounding", func(t *testing.T) {
 			seat := run(longRun, func(c *bench.Contract) *bench.Contract { return c }, sparse())
 

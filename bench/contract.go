@@ -224,13 +224,17 @@ func (c *Contract) Loop() bool {
 // End publishes what the contract measured and fails the benchmark for
 // every ceiling it exceeded.
 //
-// Call it deferred, so that it runs whatever the benchmark body does. It
-// reports each exceeded ceiling as a record of its assertion, such as
+// Call it deferred, so that it runs whatever the benchmark body does. A
+// body that leaves the loop before [Contract.Loop] reports false, as a
+// break or a return does, ends its iteration there: End counts the
+// iteration's time and the allocations up to that point. End reports each
+// exceeded ceiling as a record of its assertion, such as
 // bench-max-latency, with the ceiling as want and the measurement as got,
 // through Errorf, which records a failure and continues. The output of
 // one run lists every ceiling that the benchmark exceeded. Each other
 // stated ceiling passes, an allocation ceiling that the build does not
-// check included.
+// check included. A run of no iteration publishes nothing and checks no
+// ceiling.
 //
 // # Allocation contract
 //
@@ -240,6 +244,12 @@ func (c *Contract) Loop() bool {
 func (c *Contract) End() {
 	c.b.Helper()
 
+	if c.measuring {
+		elapsed := time.Since(c.started) - c.excluded
+		c.heapAtEnd, c.bytesAtEnd = heap()
+		c.measuring = false
+		c.each = append(c.each, elapsed)
+	}
 	if len(c.each) == 0 {
 		return
 	}
@@ -288,13 +298,9 @@ func (c *Contract) check(assertion, contract string, exceeded bool, detail map[s
 	matcher.Pass(c.b, matcher.Soft, assertion, contract)
 }
 
-// perIteration returns the allocations and the bytes per iteration.
-// When the body left the loop before [Contract.Loop] reported false, it
-// reads the end counters itself.
+// perIteration returns the allocations and the bytes per iteration, over
+// the counters that the loop's end read.
 func (c *Contract) perIteration() (allocs, bytes float64) {
-	if c.measuring {
-		c.heapAtEnd, c.bytesAtEnd = heap()
-	}
 	n := float64(len(c.each))
 
 	// The excluded allocations are subtracted, so the result covers the
