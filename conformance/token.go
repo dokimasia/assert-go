@@ -37,12 +37,13 @@ func checkToken(raw json.RawMessage, _ string) error {
 		return nil
 	}
 	choices, err := token.Decode(v.Token)
-	switch {
-	case v.Error && err == nil:
-		return fault.At(fault.New("the token decodes, want a refusal"), fault.Field(errorMember))
-	case v.Error:
+	if v.Error {
+		if err == nil {
+			return fault.At(fault.New("the token decodes, want a refusal"), fault.Field(errorMember))
+		}
 		return nil
-	case err != nil:
+	}
+	if err != nil {
 		return fault.At(fault.New("the decoder refuses the token, want %s", jsonOf(v.Decoded)).Because(err),
 			fault.Field(tokenMember))
 	}

@@ -251,10 +251,9 @@ func (r Running) write(c record.Call, detail map[string]any, run json.Marshaler)
 	if c.Where == (record.Where{}) {
 		c.Where = record.Where(site())
 	}
-	switch {
-	case run != nil:
+	if run != nil {
 		c.Detail = runDetail(run)
-	case c.Verdict == record.Fail:
+	} else if c.Verdict == record.Fail {
 		c.Detail = detailOf(detail)
 	}
 	if r.body {

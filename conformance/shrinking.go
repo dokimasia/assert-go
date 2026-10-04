@@ -73,12 +73,13 @@ func checkShrinking(raw json.RawMessage, _ string) error {
 			fail(c, failsWhen)
 		}
 	}), s)
-	switch {
-	case r.Outcome.String() != v.Outcome:
+	if r.Outcome.String() != v.Outcome {
 		return fault.At(fault.New("the run ends as %v, want %s", r.Outcome, v.Outcome), fault.Field(outcomeMember))
-	case r.Cases != v.Cases:
+	}
+	if r.Cases != v.Cases {
 		return fault.At(fault.New("the run has %d valid cases, want %d", r.Cases, v.Cases), fault.Field(casesMember))
-	case r.Runs != v.Runs:
+	}
+	if r.Runs != v.Runs {
 		return fault.At(fault.New("shrinking and explaining spend %d runs, want %d", r.Runs, v.Runs),
 			fault.Field(runsMember))
 	}

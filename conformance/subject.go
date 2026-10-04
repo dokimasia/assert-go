@@ -304,6 +304,7 @@ func combines(op func(a, b int64) int64) *Subject {
 // assertion's input is -42.
 func renders(dropSign bool) *Subject {
 	return &Subject{
+		Input: -42,
 		Render: func(x any) string {
 			n := signedOf(x)
 			if dropSign {
@@ -311,7 +312,6 @@ func renders(dropSign bool) *Subject {
 			}
 			return strconv.FormatInt(n, 10)
 		},
-		Input: -42,
 	}
 }
 

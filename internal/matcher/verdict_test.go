@@ -194,6 +194,15 @@ func TestVerdict(t *testing.T) {
 				t.Fatalf("wrote the detail %v, want an empty object", got)
 			}
 		})
+		t.Run("writes a failure of the recording surface as not aborting", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newKeepingSeat()
+			matcher.Fail(seat, matcher.Soft, "true", "the flag is set", nil)
+			if got := seat.lines(t)[0]["aborting"]; got != false {
+				t.Fatalf("the record states aborting %v, want false", got)
+			}
+		})
 	})
 
 	t.Run("Fault", func(t *testing.T) {
@@ -233,6 +242,15 @@ func TestVerdict(t *testing.T) {
 			got := seat.lines(t)[0]
 			if want := matcher.RenderFault(err); got["verdict"] != "error" || got["error"] != want {
 				t.Fatalf("wrote %v, want an error with the writer's text %q", got, want)
+			}
+		})
+		t.Run("writes an error of the aborting surface as aborting", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newKeepingSeat()
+			matcher.Fault(seat, matcher.Fatal, "prop-for-all", "the claim is true", fault.New("the seed is no number"))
+			if got := seat.lines(t)[0]["aborting"]; got != true {
+				t.Fatalf("the record states aborting %v, want true", got)
 			}
 		})
 	})
@@ -332,6 +350,16 @@ func TestVerdict(t *testing.T) {
 				t.Fatalf("wrote the detail %v, want the opaque literal of the error", got)
 			}
 		})
+		t.Run("writes the pass of a run on the aborting surface as aborting", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newKeepingSeat()
+			matcher.Begin(seat).PassRun(matcher.Fatal, "prop-for-all", "the claim is true", matcher.Where{},
+				json.RawMessage(`{"outcome":"passed"}`))
+			if got := seat.lines(t)[0]["aborting"]; got != true {
+				t.Fatalf("the record states aborting %v, want true", got)
+			}
+		})
 	})
 
 	t.Run("FailRun", func(t *testing.T) {
@@ -352,6 +380,16 @@ func TestVerdict(t *testing.T) {
 			got := seat.lines(t)[0]
 			if got["verdict"] != "fail" || fmt.Sprint(got["detail"]) != "map[outcome:flaky]" {
 				t.Fatalf("wrote %v, want a failure that states the detail of the run as it is", got)
+			}
+		})
+		t.Run("writes the failure of a run on the recording surface as not aborting", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newKeepingSeat()
+			f := matcher.Failure{Assertion: "prop-for-all", Contract: "the claim is true"}
+			matcher.Begin(seat).FailRun(matcher.Soft, f, json.RawMessage(`{"outcome":"falsified"}`))
+			if got := seat.lines(t)[0]["aborting"]; got != false {
+				t.Fatalf("the record states aborting %v, want false", got)
 			}
 		})
 	})
