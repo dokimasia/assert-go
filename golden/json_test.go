@@ -5,9 +5,13 @@ package golden_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -148,6 +152,98 @@ func TestJSON(t *testing.T) {
 				"the record states no golden value, the value, and the field")
 		})
 
+		t.Run("fails a field whose number differs past the precision of a float64", func(t *testing.T) {
+			t.Parallel()
+
+			path := writtenJSON(t, `{"n":9007199254740992}`)
+			s := &matchertest.Seat{}
+			golden.MatchJSONField(s, path, "n", []byte(`9007199254740993`), checking)
+
+			assert.True(t, s.Failed(), "2^53 + 1 does not match 2^53")
+			assert.Equal(t, s.Records()[0].Detail,
+				map[string]any{"want": "9007199254740992", "got": "9007199254740993", "field": "n"},
+				"the record states both numbers exactly")
+		})
+
+		t.Run("passes a field whose numbers differ in their text alone", func(t *testing.T) {
+			t.Parallel()
+
+			path := writtenJSON(t, `{"n":[1.0,1e2,-0,0.50,1.5E-3]}`)
+			s := &matchertest.Seat{}
+			golden.MatchJSONField(s, path, "n", []byte(`[1,100,0,0.5,0.0015]`), checking)
+
+			assert.False(t, s.Failed(), "each number compares by the value its text states")
+		})
+
+		t.Run("passes an object field whose negative numbers differ in their text alone", func(t *testing.T) {
+			t.Parallel()
+
+			path := writtenJSON(t, `{"o":{"a":-1.50,"b":[-2e0]}}`)
+			s := &matchertest.Seat{}
+			golden.MatchJSONField(s, path, "o", []byte(`{"b":[-2],"a":-1.5}`), checking)
+
+			assert.False(t, s.Failed(), "each number of the object compares by the value its text states")
+		})
+
+		t.Run("states a number from 10^1000 or below 10^-1001 with an exponent", func(t *testing.T) {
+			t.Parallel()
+
+			path := writtenJSON(t, `{"n":[10e1000,15e-1003,1e999,1e-1001]}`)
+			s := &matchertest.Seat{}
+			golden.MatchJSONField(s, path, "n", []byte(`[2e1001,1.5e-1002,1e999,1e-1001]`), checking)
+
+			assert.True(t, s.Failed(), "2e1001 does not match 1e1001")
+			between := "1" + strings.Repeat("0", 999) + ",\n  0." + strings.Repeat("0", 1000) + "1"
+			assert.Equal(t, s.Records()[0].Detail, map[string]any{
+				"want":  "[\n  1e1001,\n  1.5e-1002,\n  " + between + "\n]",
+				"got":   "[\n  2e1001,\n  1.5e-1002,\n  " + between + "\n]",
+				"field": "n",
+			}, "the record states an exponent from 10^1000 and below 10^-1001, and every digit between")
+		})
+
+		t.Run("compares a number whose exponent does not fit 32 bits by its text", func(t *testing.T) {
+			t.Parallel()
+
+			path := writtenJSON(t, `{"n":[1e2147483649,1.50]}`)
+			s := &matchertest.Seat{}
+			golden.MatchJSONField(s, path, "n", []byte(`[10e2147483648,1.5]`), checking)
+
+			assert.True(t, s.Failed(), "two texts of one value differ beyond 32 bits of exponent")
+			assert.Equal(t, s.Records()[0].Detail, map[string]any{
+				"want":  "[\n  1e2147483649,\n  1.5\n]",
+				"got":   "[\n  10e2147483648,\n  1.5\n]",
+				"field": "n",
+			}, "the record states the text of each number beyond 32 bits, and the exact text of every other")
+		})
+
+		t.Run("keeps the text of every other field while updating", func(t *testing.T) {
+			t.Parallel()
+
+			path := writtenJSON(t, `{"big":9007199254740993,"one":[1]}`)
+			r := assert.NewRecorder()
+			golden.MatchJSONField(r, path, "one", []byte(`[2]`), updating)
+
+			assert.Equal(t, verdicts(t, r), []string{"pass"}, "updating a differing field passes")
+			assert.Equal(t, read(t, path), "{\n  \"big\": 9007199254740993,\n  \"one\": [\n    2\n  ]\n}\n",
+				"the file states the other field's number as it was")
+		})
+
+		t.Run("keeps every field that parallel calls add while updating", func(t *testing.T) {
+			t.Parallel()
+
+			path := writtenJSON(t, `{}`)
+			const writers = 32
+			var wg sync.WaitGroup
+			for i := range writers {
+				wg.Go(func() {
+					golden.MatchJSONField(assert.NewRecorder(), path, fmt.Sprintf("f%02d", i), []byte(strconv.Itoa(i)),
+						updating)
+				})
+			}
+			wg.Wait()
+			assert.Length(t, parse(t, path), writers, "the file contains the field of every call")
+		})
+
 		tests := []struct {
 			name       string
 			givePath   func(t *testing.T) string
@@ -163,6 +259,17 @@ func TestJSON(t *testing.T) {
 				name:      "ends with a fault for a golden file that is no JSON object",
 				givePath:  func(t *testing.T) string { t.Helper(); return writtenJSON(t, `[1,2,3]`) },
 				giveValue: `[1]`,
+			},
+			{
+				name:       "ends with a fault for a golden file that is null while updating",
+				givePath:   func(t *testing.T) string { t.Helper(); return writtenJSON(t, `null`) },
+				giveValue:  `[1]`,
+				giveUpdate: updating,
+			},
+			{
+				name:      "ends with a fault for a value followed by more data",
+				givePath:  func(t *testing.T) string { t.Helper(); return writtenJSON(t, `{"one":[1]}`) },
+				giveValue: `[1] [2]`,
 			},
 			{
 				name:      "ends with a fault for a golden file that cannot be read",
@@ -214,7 +321,7 @@ func jsonCases(tb testing.TB, dir string) []alloctest.Case {
 	return []alloctest.Case{{
 		Name:   "MatchJSONField",
 		Call:   func(tb assert.TB) { golden.MatchJSONField(tb, path, "count", got, checking) },
-		Allocs: 24,
+		Allocs: 41,
 	}}
 }
 

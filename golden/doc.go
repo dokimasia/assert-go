@@ -56,6 +56,6 @@
 // # Dependency position
 //
 // Imports go.dokimi.dev/assert, its internal fault and matcher, and the
-// standard library's encoding/json, flag, fmt, os, path/filepath, regexp
-// and strings.
+// standard library's bytes, encoding/json, errors, flag, fmt, io, os,
+// path/filepath, regexp, strconv, strings and sync.
 package golden
