@@ -22,6 +22,7 @@ import (
 	"go.dokimi.dev/assert/conformance"
 	"go.dokimi.dev/assert/expect"
 	"go.dokimi.dev/assert/golden"
+	"go.dokimi.dev/assert/history"
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
@@ -436,6 +437,29 @@ var pinned = map[conformance.ID]any{
 	"prop.using":             prop.Using[int],
 	"prop.example":           prop.Example[int],
 	"prop.draws":             prop.Draws,
+
+	"history":                (*history.History)(nil),
+	"call":                   history.Call{},
+	"event":                  history.Event{},
+	"outcome":                history.Outcome{},
+	"model":                  history.Model[int]{},
+	"op":                     history.Op{},
+	"history.new":            history.New,
+	"history.invoke":         (*history.History).Invoke,
+	"history.events":         (*history.History).Events,
+	"call.ok":                history.Call.OK,
+	"call.fail":              history.Call.Fail,
+	"call.unknown":           history.Call.Unknown,
+	"model.init":             history.Model[int]{}.Init,
+	"model.step":             history.Model[int]{}.Step,
+	"model.equal":            history.Model[int]{}.Equal,
+	"history.from-intervals": history.FromIntervals,
+	"history.concurrently":   history.Concurrently,
+	"history.model-from":     history.ModelFrom,
+	"history.budget":         history.Budget,
+	"history.memo-limit":     history.MemoLimit,
+	"history.time-limit":     history.TimeLimit,
+	"history.workers":        history.Workers,
 }
 
 // TestSurfaceTable compares the pin map with the naming table: the map

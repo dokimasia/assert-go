@@ -112,6 +112,7 @@ never ran.
 | `go.dokimi.dev/assert/golden` | comparison against a recorded file, with scrubbers for content that changes each run |
 | `go.dokimi.dev/assert/bench` | ceilings on latency, allocations and bytes per benchmark iteration |
 | `go.dokimi.dev/assert/prop` | property checks over generated inputs, the generators, and the bridge to `go test -fuzz` |
+| `go.dokimi.dev/assert/history` | the record of concurrent calls, the driver of the clients, and the check that a record is linearizable |
 | `go.dokimi.dev/assert/conformance` | this library checked against the standard |
 
 ## Golden files
@@ -199,6 +200,55 @@ The run also writes the smallest failing case of each failure to
 `testdata/prop/<test name>/` beside `testdata/golden`. The next run tries
 that case first. Review the store as you review golden files. `prop.Fuzz`
 runs the same body under `go test -fuzz`.
+
+## Histories
+
+A store, a queue or a cache that two or more clients use at once is
+correct when every call appears to take effect at one instant inside its
+own interval. A test records each call in a `history.History`, and checks the
+history against a sequential model of the subject:
+
+```go
+func TestRegisterIsLinearizable(t *testing.T) {
+    h := history.New()
+    reg := NewRegister()
+    history.Concurrently(2, time.Minute, func(client int) (any, error) {
+        for i := range 50 {
+            c := h.Invoke(client, "write", []any{client*1000 + i}, "x")
+            reg.Write(client*1000 + i)
+            c.OK(nil)
+            c = h.Invoke(client, "read", nil, "x")
+            c.OK(reg.Read())
+        }
+        return nil, nil
+    })
+    history.Linearizable(t, h, history.Model[int]{
+        Init: func() int { return 0 },
+        Step: func(s int, op history.Op) []int {
+            if op.Operation == "write" {
+                return []int{op.Args[0].(int)}
+            }
+            if !op.Known || op.Output == s {
+                return []int{s}
+            }
+            return nil
+        },
+    }, "the register is linearizable")
+}
+```
+
+The keys after the arguments of `Invoke` name what a call touches, and
+the check searches the calls of each key on their own. A call whose
+outcome is unknown, such as a timeout, completes with `Unknown`, and the
+check lets it take effect at any later point, or never. The standard
+fixes the search and its budget of 10,000,000 model steps per partition,
+so one history gets one verdict in each implementation. A search that
+uses up its budget fails as undecided, and the record states the limit
+that stopped it.
+
+`history.ModelFrom` builds the model from the subject itself, and then
+the check finds a call that was not atomic. `history.FromIntervals`
+builds a history from calls that a log recorded with a start and an end.
 
 ## Call records
 
@@ -347,6 +397,12 @@ the relation, except where the relation requires a failure.
 | `prop.ForAll` | A body passes for every input a run generates. A failure states the smallest counterexample that the shrink passes find. |
 | `prop.Fuzz` | A body passes for every input a fuzzer finds, decoded into a case by the bridge rules. |
 
+### Histories
+
+| Name | What it states |
+|---|---|
+| `history.Linearizable` | Every partition of a recorded history has an order of its calls that keeps the history's precedence and that the model accepts. A search that uses up its budget or its memo limit is undecided, and fails. |
+
 ### Proof
 
 | Name | What it states |
@@ -378,14 +434,19 @@ holds itself to it on every run:
   generates and shrinks inputs, decides coverage, encodes replay tokens,
   stores failures, reports a run and records its calls, shared with
   every other implementation.
+- **Histories.** 42 vectors state the events that a history records, the
+  history that `FromIntervals` builds from a log, and the verdict, the
+  steps and the record of each check of a history against a named model,
+  shared with every other implementation.
 
 A corpus case states its arguments as data, or names a behaviour that
 each implementation builds, such as a callable that panics. The cases
-cover 39 of the 56 assertions outside `prop`. No case can state an error
-value, a golden file, a benchmark or a predicate, so those assertions are
-checked for presence and tested here. The vectors cover 38 of the 39
-property assertions: `prop-for-all` and every property form but
-`prop-max-allocs`, whose allocation count no vector can state.
+cover 39 of the 57 assertions outside `prop`. No case can state an error
+value, a golden file, a benchmark, a predicate or a history, so those
+assertions are checked for presence and tested here, and the history
+vectors cover `linearizable`. The vectors cover 38 of the 39 property
+assertions: `prop-for-all` and every property form but `prop-max-allocs`,
+whose allocation count no vector can state.
 
 ## Development
 

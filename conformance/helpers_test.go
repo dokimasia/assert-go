@@ -95,6 +95,7 @@ func TestHelpers(t *testing.T) {
 			conformance.Decoding, conformance.Generation, conformance.Shrinking, conformance.Coverage,
 			conformance.Bridge, conformance.Token, conformance.Behaviour, conformance.Store, conformance.Shapes,
 			conformance.Inverse, conformance.Draws, conformance.Fixtures, conformance.Forms, conformance.CallRecords,
+			conformance.Seam, conformance.Linearizable,
 		}
 		for _, kind := range kinds {
 			t.Run("returns a fault at the id for a "+string(kind)+" vector that is no JSON object", func(t *testing.T) {

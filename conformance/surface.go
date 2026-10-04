@@ -30,15 +30,19 @@ const (
 	Bench Surface = "../bench"
 	// Prop checks a property over generated inputs.
 	Prop Surface = "../prop"
+	// History records the calls of concurrent clients and checks that the
+	// history is linearizable.
+	History Surface = "../history"
 )
 
 // subpackages maps the name that the definition gives a subpackage to
 // the surface that contains it, so that a qualified name resolves to a
 // directory.
 var subpackages = map[string]Surface{
-	"golden": Golden,
-	"bench":  Bench,
-	"prop":   Prop,
+	"golden":  Golden,
+	"bench":   Bench,
+	"prop":    Prop,
+	"history": History,
 }
 
 // Subpackage returns the surface of the subpackage that an assertion's

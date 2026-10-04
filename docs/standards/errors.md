@@ -131,9 +131,20 @@ type Error struct {
   every caller in the module meets, such as an index of `alphabet.Rune`
   past the end of the alphabet. No input from outside the module can
   trigger such a panic.
+- The history panics when a caller breaks its contract: an invocation by
+  a client whose call is open, a second completion of one call, a key
+  that no typed literal states, and `Concurrently` with fewer than one
+  client or a negative time. Its message starts with the package and
+  names the call. `Concurrently` raises a body's panic again on the
+  caller's goroutine.
+- A named model of `conformance` panics on an operation that it does not
+  define, and the check reports the panic as a fault of its model.
 - No other code panics on purpose.
 - A `recover` exists only where a panic is what the code observes: an
-  assertion about panics, or the end of a property's case.
+  assertion about panics, the end of a property's case, a body of
+  `Concurrently`, a function of the model in `Linearizable`, and a call
+  of the history that the seam runner of `conformance` makes to read the
+  entry that a script refuses.
 
 ## Writing
 
@@ -160,8 +171,9 @@ type Writer interface {
   replay token.
 - `prop` registers the sentence of its 39 property assertions with
   `matcher.RegisterSentence` in its `init` function, because `matcher`
-  does not import `prop`. The table of sentences is complete before any
-  test starts, so the writer reads it without a lock.
+  does not import `prop`. `history` registers the sentence of
+  `linearizable` the same way. The table of sentences is complete before
+  any test starts, so the writer reads it without a lock.
 - `matcher.Note` writes a note's text into the log of a seat that has
   `Logf`. `matcher.NoteFault` passes a fault that does not end the call
   to a `matcher.FaultReporter`, and writes the writer's text of the fault

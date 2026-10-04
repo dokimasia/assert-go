@@ -56,6 +56,21 @@
 // A vector states its generators, predicates and bodies in a closed
 // vocabulary, and each value as a typed literal.
 //
+// # Histories
+//
+// [Vectors] returns the vectors of the history and its checker as well:
+//
+//   - [Seam] records a script through [go.dokimi.dev/assert/history.New], or
+//     intervals through [go.dokimi.dev/assert/history.FromIntervals], and
+//     compares the events in the history's JSON form, or the entry that the
+//     history refuses.
+//   - [Linearizable] checks a recorded script through
+//     [go.dokimi.dev/assert/history.Linearizable] against a model of
+//     [Models], which builds the six named models of the definition, and
+//     compares the detail of the record. A passing check reports no record,
+//     so the runner checks the steps of a pass through two more checks
+//     under a budget of the steps and of one step less.
+//
 // # Errors
 //
 // [Vector.Check], [Case.Check] and [Case.Decoded] return a fault whose path
@@ -73,10 +88,9 @@
 //
 // # Dependency position
 //
-// Imports the standard library, this module's assert, expect and prop
-// packages, the fault and literal packages, and the
-// internal packages of the property engine: choice, coverage, engine,
-// matching, shape, store and token. Only tests import it. Besides its own
-// tests, the store tests of prop import it to compare the version of a
-// stored case with [Version].
+// Imports the standard library, this module's assert, expect, history and
+// prop packages, the fault and literal packages, and the internal packages
+// of the property engine: choice, coverage, engine, matching, shape, store
+// and token. Only tests import it. Besides its own tests, the store tests of
+// prop import it to compare the version of a stored case with [Version].
 package conformance

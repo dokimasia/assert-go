@@ -13,8 +13,8 @@ how a concept is implemented once, and how code is documented.
 - Packages import in one direction. The compiler's cycle check enforces
   the order, and each package's dependency position states its place in
   it.
-- The public packages are `assert`, `expect`, `golden`, `bench` and
-  `prop`. Everything else is under `internal/`.
+- The public packages are `assert`, `expect`, `golden`, `bench`, `prop`
+  and `history`. Everything else is under `internal/`.
 - A public name either is the name that the definition's naming table
   gives Go, or states in Go a part of the definition that the table
   does not name, such as a generator's parameter as an option or the

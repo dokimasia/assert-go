@@ -6,13 +6,17 @@ package conformance
 import (
 	"encoding/json"
 	"io/fs"
+	"path"
+	"slices"
+	"strings"
 
 	"go.dokimi.dev/assert/internal/fault"
 )
 
-// propGlob matches the vector files of the property engine in the vendored
-// definition. The corpus glob of the assertions does not match them.
-const propGlob = "spec/corpus/prop/*.json"
+// vectorGlobs match the vector files of the vendored definition: those of
+// the history and those of the property engine. The corpus glob of the
+// assertions matches neither.
+var vectorGlobs = [...]string{"spec/corpus/history/*.json", "spec/corpus/prop/*.json"}
 
 // The members of a corpus case, of a vector and of the specs inside one,
 // that the path of a fault names.
@@ -78,8 +82,9 @@ const (
 	floatMember       = "float"
 )
 
-// VectorKind is the kind of a vector of the definition's property engine.
-// Its spelling is the name of the file that states the vectors of the kind.
+// VectorKind is the kind of a vector of the definition: of the property
+// engine, or of the history and its checker. Its spelling is the name of the
+// file that states the vectors of the kind.
 type VectorKind string
 
 const (
@@ -112,6 +117,12 @@ const (
 	// CallRecords runs a body under settings and states the call records of
 	// the run.
 	CallRecords VectorKind = "recording"
+	// Seam records a script or intervals through the history, and states the
+	// events or the entry that the history refuses.
+	Seam VectorKind = "seam"
+	// Linearizable checks a history against a named model, and states the
+	// verdict and the detail of its record.
+	Linearizable VectorKind = "linearizable"
 )
 
 // runner runs the JSON of one vector against this implementation, and
@@ -120,25 +131,27 @@ const (
 // recording vector write their stored cases to dir.
 type runner func(raw json.RawMessage, dir string) error
 
-// runners maps each of the fourteen kinds to its runner.
+// runners maps each of the sixteen kinds to its runner.
 var runners = map[VectorKind]runner{
-	Decoding:    checkDecoding,
-	Generation:  checkGeneration,
-	Shrinking:   checkShrinking,
-	Coverage:    checkCoverage,
-	Bridge:      checkBridge,
-	Token:       checkToken,
-	Behaviour:   checkBehaviour,
-	Store:       checkStore,
-	Shapes:      checkShapes,
-	Inverse:     checkInverse,
-	Draws:       checkDraws,
-	Fixtures:    checkFixtures,
-	Forms:       checkForms,
-	CallRecords: checkRecording,
+	Decoding:     checkDecoding,
+	Generation:   checkGeneration,
+	Shrinking:    checkShrinking,
+	Coverage:     checkCoverage,
+	Bridge:       checkBridge,
+	Token:        checkToken,
+	Behaviour:    checkBehaviour,
+	Store:        checkStore,
+	Shapes:       checkShapes,
+	Inverse:      checkInverse,
+	Draws:        checkDraws,
+	Fixtures:     checkFixtures,
+	Forms:        checkForms,
+	CallRecords:  checkRecording,
+	Seam:         checkSeam,
+	Linearizable: checkLinearizable,
 }
 
-// Valid reports whether k is one of the fourteen kinds. It allocates
+// Valid reports whether k is one of the sixteen kinds. It allocates
 // nothing.
 func (k VectorKind) Valid() bool {
 	_, ok := runners[k]
@@ -166,20 +179,25 @@ type Vector struct {
 // Vectors returns every vector of the vendored definition, the files in
 // the order of their names and each file's cases in order. A vector takes
 // the kind that its file states, and [Vector.Check] refuses a kind outside
-// the fourteen.
+// the sixteen.
 //
 // # Allocation contract
 //
-// Vectors allocates 1,024 times on the vendored definition: the names that
-// the glob returns, the open file and the copy of each of the fourteen
+// Vectors allocates 1,149 times on the vendored definition: the names that
+// the two globs return, the open file and the copy of each of the sixteen
 // files, the two structs that each file decodes into with their lists of
 // cases, a copy of each case's JSON, each case's id, and the growth of the
 // list that it returns. The JSON decoder's pooled state, which a garbage
 // collection or a move of the goroutine to another processor leaves empty,
 // adds up to two.
 func Vectors() []Vector {
-	// The pattern is well formed, so Glob returns no error.
-	names, _ := fs.Glob(definition, propGlob)
+	var names []string
+	for _, pattern := range vectorGlobs {
+		// The pattern is well formed, so Glob returns no error.
+		matches, _ := fs.Glob(definition, pattern)
+		names = append(names, matches...)
+	}
+	slices.SortFunc(names, func(a, b string) int { return strings.Compare(path.Base(a), path.Base(b)) })
 	var out []Vector
 	for _, name := range names {
 		var file struct {
@@ -209,7 +227,7 @@ func Vectors() []Vector {
 // It returns a fault whose path starts at the vector's ID and leads through
 // the vector's JSON to the part at fault. That part is an input that does
 // not parse or that the vocabulary does not state, or an output that
-// differs from the run. A vector of a kind outside the fourteen has a fault
+// differs from the run. A vector of a kind outside the sixteen has a fault
 // at its ID alone.
 //
 // # Allocation contract

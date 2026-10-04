@@ -1,0 +1,189 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: MIT
+
+package history
+
+import (
+	"errors"
+	"runtime"
+	"sync"
+	"time"
+
+	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/matcher"
+)
+
+// linearizableOp is the operation of Linearizable, which names its faults.
+const linearizableOp = "history.Linearizable"
+
+// callerFrames is the most frames that the call site of a failing check is
+// searched in.
+const callerFrames = 64
+
+// ErrModel is the kind of the fault of a check whose model's function
+// panics, or ends the goroutine that runs it.
+var ErrModel = errors.New("history: a function of a model panics or ends its goroutine")
+
+// Linearizable checks that every partition of the history h has an order of
+// its calls that keeps the history's precedence and that the model m
+// accepts, and fails tb with one record of the assertion linearizable when
+// the check does not pass. The record's contract is contract, and its
+// location is the call of Linearizable.
+//
+// The check removes the calls that failed. A call that completed as [OK] is
+// known, and takes effect between its invocation and its completion. A call
+// whose outcome is unknown, and a pending call, takes effect at some point
+// after its invocation, or never. Two calls that share a key are in one
+// partition, and a call without keys puts every call into one partition.
+// The check searches the partitions in the order of their first invocation,
+// each from the model's initial state, with the search that the definition
+// fixes. It reports the first violated partition, and otherwise the first
+// undecided one. The options state its limits and its workers.
+//
+// The record's detail states the ten fields of the definition:
+//
+//   - outcome, a [Verdict]: [Violated] or [Undecided].
+//   - partitions, steps, calls and concurrency, as int.
+//   - partition, a []any of the keys of the reported partition, and empty
+//     for a partition of every key.
+//   - linearized and candidates, a []Span each, and states, a []S: the
+//     frontier's order of calls, its states, and the calls that the model
+//     rejected there.
+//   - limit, a [Limit] for an undecided check, and nil for a violated one.
+//
+// An [assert.Reporter] seat receives the record. Any other seat receives the
+// record's sentence through Fatalf. The call record of a recorded run states
+// the detail in the history's JSON form.
+//
+// # Errors
+//
+// The check ends the call with a fault for a nil history, and for a model
+// without Init or without Step. It ends the call with a fault of the kind
+// [ErrModel] when a function of the model panics or ends the goroutine, and
+// the fault names the call that the search stepped. A panic in a partition
+// that one worker would not search ends nothing.
+//
+// # Allocation contract
+//
+// A check allocates its calls, its partitions and the memo of each search,
+// and the states that the model returns. A passing check of a register over
+// two sequential calls allocates 38 times.
+func Linearizable[S any](tb assert.TB, h *History, m Model[S], contract string, opts ...Option) {
+	tb.Helper()
+	run := matcher.Begin(tb)
+	c := configure(opts)
+	if h == nil {
+		run.Fault(matcher.Fatal, linearizableID, contract, fault.In(linearizableOp, fault.New("the history is nil")))
+		return
+	}
+	if m.Init == nil || m.Step == nil {
+		run.Fault(matcher.Fatal, linearizableID, contract,
+			fault.In(linearizableOp, fault.New("the model states no Init or no Step")))
+		return
+	}
+	d, err := check(h, m.operations(), c)
+	if err != nil {
+		run.Fault(matcher.Fatal, linearizableID, contract, err)
+		return
+	}
+	if d.outcome == Passed {
+		run.Pass(matcher.Fatal, linearizableID, contract)
+		return
+	}
+	var pcs [callerFrames]uintptr
+	where := matcher.CallerWhere(pcs[:runtime.Callers(1, pcs[:])])
+	run.FailRun(matcher.Fatal, assert.Failure{
+		Assertion: linearizableID, Contract: contract, Detail: d.fields(), Where: where,
+	}, d)
+}
+
+// check returns the detail of the check of h through the model's functions
+// ops under c: the first violated partition, else the first undecided one,
+// else a pass. It returns the fault of a model's function that panicked in a
+// partition that one worker would search.
+func check[S any](h *History, ops operations[S], c config) (detail[S], error) {
+	d := &deadline{}
+	if c.timeLimit > 0 {
+		d.end = time.Now().Add(c.timeLimit)
+	}
+	events, ids := h.recorded()
+	parts := partitionsOf(callsOf(events, ids))
+	endingOf, stop := searches(ops, parts, c, d)
+	defer stop()
+	steps := 0
+	var undecided *detail[S]
+	for i, p := range parts {
+		e := endingOf(i)
+		if e.err != nil {
+			return detail[S]{}, e.err
+		}
+		steps += e.steps
+		if e.verdict == Passed {
+			continue
+		}
+		r := reported(p, e, len(parts), steps)
+		if e.verdict == Violated {
+			return r, nil
+		}
+		if undecided == nil {
+			undecided = &r
+		}
+	}
+	if undecided != nil {
+		return *undecided, nil
+	}
+	return detail[S]{outcome: Passed, partitions: len(parts), steps: steps}, nil
+}
+
+// searches starts the searches of parts on c.workers goroutines, in
+// partition order, and returns endingOf, which returns how the search of the
+// partition i ended once it has, and stop, which cancels the searches still
+// running, takes the partitions that no worker started, and waits for the
+// workers. On one worker, endingOf runs the search on the caller's
+// goroutine.
+func searches[S any](ops operations[S], parts []partition, c config, d *deadline) (func(int) ending[S], func()) {
+	if c.workers == 1 {
+		return func(i int) ending[S] {
+			var e ending[S]
+			newSearch(ops, parts[i], c, d).run(func(end ending[S]) { e = end })
+			return e
+		}, func() {}
+	}
+	type finished struct {
+		// i is the index of the partition.
+		i int
+		// e is how its search ended.
+		e ending[S]
+	}
+	work := make(chan int, len(parts))
+	for i := range parts {
+		work <- i
+	}
+	close(work)
+	done := make(chan finished, len(parts))
+	var workers sync.WaitGroup
+	for range min(c.workers, len(parts)) {
+		workers.Go(func() {
+			for i := range work {
+				newSearch(ops, parts[i], c, d).run(func(e ending[S]) { done <- finished{i: i, e: e} })
+			}
+		})
+	}
+	endings := make([]ending[S], len(parts))
+	ended := make([]bool, len(parts))
+	endingOf := func(i int) ending[S] {
+		for !ended[i] {
+			f := <-done
+			endings[f.i], ended[f.i] = f.e, true
+		}
+		return endings[i]
+	}
+	stop := func() {
+		d.cancelled.Store(true)
+		for range work {
+		}
+		workers.Wait()
+	}
+	return endingOf, stop
+}

@@ -73,13 +73,9 @@ func (c Case) SkipReason() (string, bool) {
 // It returns the fault of an argument that is no typed literal, at the
 // case's ID, args and the argument's index.
 func (c Case) Decoded() ([]any, error) {
-	out := make([]any, len(c.Args))
-	for i, raw := range c.Args {
-		value, err := literal.Decode(raw)
-		if err != nil {
-			return nil, fault.At(err, fault.Field(c.ID), fault.Field(argsMember), fault.Index(i))
-		}
-		out[i] = value
+	out, err := decodeValues(c.Args)
+	if err != nil {
+		return nil, fault.At(err, fault.Field(c.ID), fault.Field(argsMember))
 	}
 	return out, nil
 }

@@ -10,7 +10,6 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/fault"
-	"go.dokimi.dev/assert/internal/literal"
 	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/prop"
 )
@@ -393,11 +392,9 @@ func checkForms(raw json.RawMessage, _ string) error {
 	if err != nil {
 		return err
 	}
-	args := make([]any, len(v.Args))
-	for i, a := range v.Args {
-		if args[i], err = literal.Decode(a); err != nil {
-			return fault.At(err, fault.Field(argsMember), fault.Index(i))
-		}
+	args, err := decodeValues(v.Args)
+	if err != nil {
+		return fault.At(err, fault.Field(argsMember))
 	}
 	if err := d.check(args); err != nil {
 		return err

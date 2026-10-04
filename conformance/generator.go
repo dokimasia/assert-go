@@ -265,13 +265,9 @@ func valuesOf(spec generatorSpec) (engine.Generator[any], error) {
 			fault.Field(valuesMember),
 		)
 	}
-	values := make([]any, len(literals))
-	for i, raw := range literals {
-		v, err := literal.Decode(raw)
-		if err != nil {
-			return engine.Generator[any]{}, fault.At(err, fault.Field(valuesMember), fault.Index(i))
-		}
-		values[i] = v
+	values, err := decodeValues(literals)
+	if err != nil {
+		return engine.Generator[any]{}, fault.At(err, fault.Field(valuesMember))
 	}
 	if spec.Gen == sampledFromGen {
 		return engine.SampledFrom(values...), nil

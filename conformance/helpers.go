@@ -85,6 +85,20 @@ func sameValue(got any, want json.RawMessage) (bool, error) {
 	return literal.Canonical(got) == literal.Canonical(w), nil
 }
 
+// decodeValues returns the values that the typed literals of raw state, in
+// order, and the fault at the index of the first literal that states none.
+func decodeValues(raw []json.RawMessage) ([]any, error) {
+	out := make([]any, len(raw))
+	for i, r := range raw {
+		value, err := literal.Decode(r)
+		if err != nil {
+			return nil, fault.At(err, fault.Index(i))
+		}
+		out[i] = value
+	}
+	return out, nil
+}
+
 // compareDetail returns how reported, the detail of a failure, differs
 // from stated, the fields that a vector states as typed literals, or nil
 // when each stated field has the stated value. whose names what reported

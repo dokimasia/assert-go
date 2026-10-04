@@ -25,11 +25,14 @@
 // call. No method of a value runs, so a type's Equal or String method
 // cannot change a verdict, or panic inside one. [Diff] walks two unequal
 // values under the same rules, and descends only into the parts that
-// [Equal] reports unequal.
+// [Equal] reports unequal. [Hash] returns a hash that two values share when
+// Equal reports them equal under no relaxation.
 //
 // # Dependency position
 //
 // Imports the standard library and internal/align, which aligns the
 // elements of two slices. internal/matcher imports it for every assertion
-// that compares values, and for the text of a failure of one.
+// that compares values, and for the text of a failure of one. The package
+// history imports it for the states of a model, which the memo of its
+// search compares and hashes.
 package equality
