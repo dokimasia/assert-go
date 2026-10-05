@@ -16,6 +16,15 @@ import (
 // The functions of a machine and of its actions receive a state of the
 // model: the first of the states that the last check of the history left.
 // A machine without a model receives the zero S.
+//
+// Those states follow what the subject returned, and a replay of a case
+// requests the same choices only when its steps list the same actions and
+// its requests state the same bounds. When a subject can return other
+// results on a replay, as one that refuses a call for room or commits a
+// batch in the background does, Enabled and Input read a state of the
+// machine's own in place of the model's: one that only the inputs of its
+// steps change. Otherwise a replay can take other steps than the case took,
+// and the run ends as flaky.
 type Machine[S any] struct {
 	// Model is the sequential model that the history of the steps is checked
 	// against after every step, with every call in one partition. A Model
@@ -45,12 +54,16 @@ type Action[S any] struct {
 	// Enabled reports whether a sequential or a drain step may take the
 	// action in state. A nil Enabled enables the action in every state. Only
 	// an action without Enabled takes the steps of a concurrent section.
+	// What it reports must not depend on results that the subject can return
+	// differently on a replay of the case.
 	Enabled func(state S) bool
 	// Drain marks an action that takes the steps of the drain, whether the
 	// swarm kept it or not.
 	Drain bool
 	// Input requests the input of a step from the case, such as a draw. A nil
-	// Input gives every step the input nil.
+	// Input gives every step the input nil. The bounds of its requests must
+	// not depend on results that the subject can return differently on a
+	// replay of the case.
 	Input func(c *prop.Case, state S) any
 	// Run calls the subject on client with input, and records each call in
 	// the case's history. It is required.
