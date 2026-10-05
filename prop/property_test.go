@@ -8,11 +8,12 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/childtest"
 	"go.dokimi.dev/assert/prop"
 )
 
 // TestProperty checks how a call of ForAll delivers the faults of its store
-// and its record to its seat.
+// and its record to its seat, and what it stores.
 func TestProperty(t *testing.T) {
 	t.Parallel()
 
@@ -49,6 +50,18 @@ func TestProperty(t *testing.T) {
 			prop.ForAll(seat, contract, failsFrom(1001), prop.Seed(7), prop.Store(dir))
 			expectOnlyFault(t, seat.Faults(), laterFault(forAllOp, dir, "later.json", "2"))
 			assert.Length(t, seat.Records(), 1, "the record")
+		})
+
+		t.Run("stores no counterexample in a test binary that a mutation run instrumented", func(t *testing.T) {
+			t.Parallel()
+			if childtest.InChild(t) {
+				dir := t.TempDir()
+				got := detailOf(failsAtLeast(10000, 1001, big), prop.Seed(7), prop.Store(dir))
+				assert.Equal(t, got[choicesField], any("prop1:AOkH"), "the counterexample of seed 7")
+				assert.Empty(t, loaded(t, dir).Entries, "no entry of the counterexample")
+				return
+			}
+			inMutationRun(t)
 		})
 	})
 }

@@ -85,6 +85,10 @@ func TestFuzz(t *testing.T) {
 			failure := map[string]any{"assertion": big, "contract": fits, "detail": map[string]any{}}
 			assert.Equal(t, detail[failureField], any(failure), "the failure of the shrunk case")
 			assert.HasPrefix(t, detail[choicesField], "prop1:", "the token that replays the shrunk case")
+			if matcher.Mutated() {
+				assert.Empty(t, loaded(t, dir).Entries, unwritten)
+				return
+			}
 			assert.Length(t, loaded(t, dir).Entries, 1, "the entry of the shrunk case")
 		})
 
@@ -103,6 +107,10 @@ func TestFuzz(t *testing.T) {
 				Op:     fuzzOp,
 				Path:   fault.Path{fault.Field(dir)},
 				Reason: fmt.Sprintf("the store keeps no case of %q", contract),
+			}
+			if matcher.Mutated() {
+				assert.NotContains(t, out, matcher.RenderFault(unkept), "no fault of the store, because "+unwritten)
+				return
 			}
 			assert.Contains(t, out, matcher.RenderFault(unkept), "the fault at the store, before its cause")
 		})

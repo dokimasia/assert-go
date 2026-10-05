@@ -77,7 +77,7 @@ func newProperty(tb assert.TB, op, contract string, pc uintptr, c config) (prope
 	if err != nil {
 		return property{}, fault.In(op, err)
 	}
-	budget, err := budgetOf(op)
+	budget, err := budgetOf(c, op)
 	if err != nil {
 		return property{}, fault.In(op, err)
 	}
@@ -184,9 +184,11 @@ func (p property) load() (store.Stored, error) {
 // for each of its other failures, found at the time of the property's
 // clock. It returns a fault of the property's operation at the store's
 // directory for each entry that the store cannot keep. A property without a
-// store saves nothing.
+// store saves nothing, and so does a property in a test binary that a
+// mutation run instrumented: a counterexample of one mutant would enter the
+// module under test, and every later mutant's run would try it first.
 func (p property) save(r engine.Result) []error {
-	if p.dir == "" {
+	if p.dir == "" || matcher.Mutated() {
 		return nil
 	}
 	found := p.settings.Clock.Now()

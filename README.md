@@ -95,13 +95,14 @@ reject, and fails when the check passes:
 got := assert.Rejects(t, "a store that overwrites fails the check",
     func(tb assert.TB) { refusesADuplicate(tb, overwritingStore{}) })
 
-assert.Contains(t, got, "the key was already present",
+assert.Length(t, got, 1, "the check fails once")
+assert.Equal(t, got[0].Contract, "the key was already present",
     "and fails for the reason the check is about")
 ```
 
-Assert on the returned message. A subject that panics before reaching
-the assertion satisfies a bare call while the check's own assertion
-never ran.
+Assert on the returned failure records, which `Rejects` returns in call
+order. A subject that panics before the check's own assertion runs
+satisfies a bare call.
 
 ## Packages
 
@@ -221,6 +222,14 @@ counts a new label, records a new fingerprint or records a better score
 with `Case.Target` joins the campaign's pool, and most later cases mutate
 a member of the pool. The campaign stores each failure that it finds, and
 reports every one when the budget has passed.
+
+`prop.Hermetic()` makes a run read none of the `DOKIMI_ASSERT_PROP_*`
+variables, for a test that runs a property to check something other than
+a subject: a pin that compares a seeded run with a golden file, or a test
+of a property harness that expects the property to fail. In a test binary
+that a mutation run instrumented, which runs with `DOKIMI_MUTATE_MUTANT`
+in its environment, every property derives its seed from its contract
+and runs as an ordinary run, without writing to the store.
 
 ## Histories
 
@@ -505,7 +514,7 @@ the relation, except where the relation requires a failure.
 
 | Name | What it states |
 |---|---|
-| `Rejects` | A check fails against an implementation it is meant to reject. Yields the failure message. |
+| `Rejects` | A check fails against an implementation it is meant to reject. Yields the failure records of the check, in call order. |
 
 ## The standard
 

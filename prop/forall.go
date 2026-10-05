@@ -50,7 +50,9 @@ func duplicate(op, dir, contract string) error {
 // cases in four mutate a member of the pool. Each failure of an identity of
 // its own is shrunk, explained and stored as the campaign finds it. The
 // record states the first failure, with every later one among its others,
-// or the outcome that a run's last check decides over every valid case.
+// or the outcome that a run's last check decides over every valid case. A
+// [Hermetic] run and a run in a test binary that a mutation run
+// instrumented run no campaign.
 //
 // The record's detail states the ten fields of the definition:
 //
@@ -80,8 +82,9 @@ func duplicate(op, dir, contract string) error {
 // call with a fault before any other case for a draw or a machine of the
 // case of Draws that refuses its entry, and the fault is at the entry's
 // label, value or step. It writes an entry for each failure of a
-// counterexample to the store, unless a file of the entry's name exists,
-// and logs the fault of a store that cannot keep it.
+// counterexample to the store, unless a file of the entry's name exists or
+// a mutation run instrumented the test binary, and logs the fault of a
+// store that cannot keep it.
 //
 // # Allocation contract
 //

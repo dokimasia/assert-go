@@ -4,16 +4,16 @@
 package assert_test
 
 import (
-	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/expect"
 	"go.dokimi.dev/assert/internal/alloctest"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
-// rejection keeps the message that a call of Rejects returns.
-var rejection string
+// rejection keeps the records that a call of Rejects returns.
+var rejection []assert.Failure
 
 // TestRejects checks the assertion that a check fails.
 func TestRejects(t *testing.T) {
@@ -22,15 +22,32 @@ func TestRejects(t *testing.T) {
 	t.Run("Rejects", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("returns the driven check's own message", func(t *testing.T) {
+		t.Run("returns the check's failure records in call order", func(t *testing.T) {
 			t.Parallel()
 
-			got := assert.Rejects(t, "rejects 2", func(tb assert.TB) {
-				assert.Equal(tb, 2, 1, "the value is one")
+			got := assert.Rejects(t, "rejects 2 and 3", func(tb assert.TB) {
+				expect.Equal(tb, 2, 1, "the first value is one")
+				assert.Equal(tb, 3, 1, "the second value is one")
 			})
 
-			if !strings.Contains(got, "the value is one") {
-				t.Fatalf("returned %q, want the check's own message", got)
+			if len(got) != 2 || got[0].Assertion != "equal" || got[0].Contract != "the first value is one" ||
+				got[1].Contract != "the second value is one" {
+				t.Fatalf("returned %+v, want the records of both failures in call order", got)
+			}
+			if got[1].Detail["got"] != 3 || got[1].Detail["want"] != 1 {
+				t.Fatalf("the second record states %v, want got 3 and want 1", got[1].Detail)
+			}
+		})
+
+		t.Run("returns no record for a check that fails through its seat's Fatalf alone", func(t *testing.T) {
+			t.Parallel()
+
+			got := assert.Rejects(t, "rejects a bare failure", func(tb assert.TB) {
+				tb.Fatalf("the check fails")
+			})
+
+			if len(got) != 0 {
+				t.Fatalf("returned %+v, want no record", got)
 			}
 		})
 
@@ -38,10 +55,13 @@ func TestRejects(t *testing.T) {
 			t.Parallel()
 
 			outer := &matchertest.Seat{}
-			assert.Rejects(outer, "rejects 1", func(tb assert.TB) {
+			got := assert.Rejects(outer, "rejects 1", func(tb assert.TB) {
 				assert.Equal(tb, 1, 1, "the value is one")
 			})
 
+			if len(got) != 0 {
+				t.Fatalf("returned %+v, want no record of a check that passed", got)
+			}
 			if len(outer.Fatals()) != 1 || len(outer.Errs()) != 0 {
 				t.Fatalf("reported %q through Fatalf and %q through Errorf, want one failure that stops the test",
 					outer.Fatals(), outer.Errs())
@@ -140,6 +160,6 @@ func BenchmarkRejects(b *testing.B) {
 func rejectsCases() []alloctest.Case {
 	check := func(tb assert.TB) { assert.True(tb, false, "the check fails") }
 	return []alloctest.Case{
-		{Name: "Rejects", Call: func(tb assert.TB) { rejection = assert.Rejects(tb, allocContract, check) }, Allocs: 8},
+		{Name: "Rejects", Call: func(tb assert.TB) { rejection = assert.Rejects(tb, allocContract, check) }, Allocs: 9},
 	}
 }

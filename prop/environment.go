@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/prop/random"
 )
 
 // The environment variables that set the defaults of every property of a
-// test run. An unset variable and an empty one state nothing.
+// test run, which a [Hermetic] run does not read. An unset variable and an
+// empty one state nothing.
 const (
 	// seedVariable states the seed, in decimal, of every run that [Seed]
 	// does not seed.
@@ -68,15 +70,19 @@ func profileOf() (profile, error) {
 		fault.Field(profileVariable))
 }
 
-// budgetOf returns how long each campaign of the operation op runs: the
-// whole seconds that DOKIMI_ASSERT_PROP_BUDGET states under the campaign
-// profile, and 0 for a run that is no campaign. Fuzz runs no campaign, and
-// reads no budget. The caller has checked the profile.
+// budgetOf returns how long each campaign of the operation op under c runs:
+// the whole seconds that DOKIMI_ASSERT_PROP_BUDGET states under the campaign
+// profile, and 0 for a run that is no campaign. Fuzz, a hermetic run and a
+// run in a test binary that a mutation run instrumented run no campaign, and
+// read no budget. The caller has checked the profile.
 //
 // It returns a fault at the variable for a budget that is no decimal number
 // of seconds from 1 to 2^33 - 1.
-func budgetOf(op string) (time.Duration, error) {
-	if p, _ := profileOf(); p != campaignProfile || op == fuzzOp {
+func budgetOf(c config, op string) (time.Duration, error) {
+	if c.hermetic || matcher.Mutated() || op == fuzzOp {
+		return 0, nil
+	}
+	if p, _ := profileOf(); p != campaignProfile {
 		return 0, nil
 	}
 	text := os.Getenv(budgetVariable)
@@ -87,42 +93,52 @@ func budgetOf(op string) (time.Duration, error) {
 	return time.Duration(seconds) * time.Second, nil
 }
 
-// seedOf returns the seed of a run of contract under c: the seed that Seed
-// states, then the one that DOKIMI_ASSERT_PROP_SEED states, then under the
-// ci profile [random.Mix] of the contract, and otherwise a random seed. It
-// checks the profile first, so a misspelled profile fails every run.
+// seedOf returns the seed of a run of contract under c, the first of these:
+// the seed that Seed states; the one that DOKIMI_ASSERT_PROP_SEED states,
+// unless the run is hermetic; [random.Mix] of the contract in a test binary
+// that a mutation run instrumented, and under the ci profile unless the run
+// is hermetic; and otherwise a random seed. A run that is not hermetic
+// checks the profile first, so a misspelled profile fails every such run.
 //
 // It returns a fault at the variable for a profile other than default, ci
 // and campaign, and for a seed variable that is no decimal number below
 // 2^64.
 func seedOf(c config, contract string) (uint64, error) {
-	p, err := profileOf()
-	if err != nil {
-		return 0, err
+	p := defaultProfile
+	if !c.hermetic {
+		var err error
+		if p, err = profileOf(); err != nil {
+			return 0, err
+		}
 	}
 	if c.seeded {
 		return c.seed, nil
 	}
-	if text := os.Getenv(seedVariable); text != "" {
-		seed, err := strconv.ParseUint(text, 10, 64)
-		if err != nil {
-			return 0, fault.At(fault.New("%q is no decimal number below 2^64", text), fault.Field(seedVariable))
+	if !c.hermetic {
+		if text := os.Getenv(seedVariable); text != "" {
+			seed, err := strconv.ParseUint(text, 10, 64)
+			if err != nil {
+				return 0, fault.At(fault.New("%q is no decimal number below 2^64", text), fault.Field(seedVariable))
+			}
+			return seed, nil
 		}
-		return seed, nil
 	}
-	if p == ciProfile {
+	if matcher.Mutated() || p == ciProfile {
 		return random.Mix(contract), nil
 	}
 	return rand.Uint64(), nil
 }
 
 // tokenOf returns the token that a run replays and the name of where it is
-// stated: the one that Replay states, then the one that
-// DOKIMI_ASSERT_PROP_REPLAY states. It reports false for a run that replays
-// none.
+// stated: the one that Replay states, then, unless the run is hermetic, the
+// one that DOKIMI_ASSERT_PROP_REPLAY states. It reports false for a run that
+// replays none.
 func tokenOf(c config) (tok, source string, ok bool) {
 	if c.replaying {
 		return c.replay, replayOption, true
+	}
+	if c.hermetic {
+		return "", "", false
 	}
 	tok = os.Getenv(replayVariable)
 	return tok, replayVariable, tok != ""

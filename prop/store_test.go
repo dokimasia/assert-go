@@ -17,6 +17,7 @@ import (
 	"go.dokimi.dev/assert/conformance"
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/literal"
+	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/store"
 	"go.dokimi.dev/assert/prop"
@@ -27,7 +28,9 @@ import (
 const decodedReason = "the stored case decodes to other values than it records, and the run tested those"
 
 // TestStore checks what a run reads from its store and writes to it, and
-// the claim that keeps two properties of a test from sharing one store.
+// the claim that keeps two properties of a test from sharing one store. A
+// run in a test binary that a mutation run instrumented writes no entry, so
+// a case of what a run writes checks that the store is empty there.
 func TestStore(t *testing.T) {
 	t.Parallel()
 
@@ -39,6 +42,10 @@ func TestStore(t *testing.T) {
 			dir := t.TempDir()
 			prop.ForAll(newTestSeat(t.Name()), contract, failsFrom(1001), prop.Seed(7), prop.Store(dir))
 			entries := loaded(t, dir).Entries
+			if matcher.Mutated() {
+				assert.Empty(t, entries, unwritten)
+				return
+			}
 			assert.Length(t, entries, 1, "one entry")
 			got, want := entries[0], entry(1001)
 			assert.Equal(t, got.Name(), want.Name(), "the name of the contract and the minimal case's token")
@@ -56,6 +63,10 @@ func TestStore(t *testing.T) {
 				assert.True(c, c.Draw(prop.Integer(0, 10000), drawn) < 1001, "it fits"+here(&at))
 			}
 			prop.ForAll(newTestSeat(t.Name()), contract, body, prop.Seed(7), prop.Store(dir))
+			if matcher.Mutated() {
+				assert.Empty(t, loaded(t, dir).Entries, unwritten)
+				return
+			}
 			want := store.Identity{Assertion: "true", File: "store_test.go", Line: at.Line}
 			assert.Equal(t, identities(loaded(t, dir).Entries), []store.Identity{want}, "the assertion and its frame")
 		})
@@ -70,6 +81,10 @@ func TestStore(t *testing.T) {
 				}
 			}
 			prop.ForAll(newTestSeat(t.Name()), contract, body, prop.Seed(7), prop.Store(dir))
+			if matcher.Mutated() {
+				assert.Empty(t, loaded(t, dir).Entries, unwritten)
+				return
+			}
 			want := store.Identity{Error: "*errors.errorString", File: "store_test.go", Line: at.Line}
 			assert.Equal(t, identities(loaded(t, dir).Entries), []store.Identity{want}, "the panic's type and frame")
 		})
@@ -88,6 +103,10 @@ func TestStore(t *testing.T) {
 				prop.ForAll(seat, contract, body, prop.Seed(7), prop.Store(dir))
 				assert.Empty(t, seat.Faults(), "the store keeps the entry")
 				entries := loaded(t, dir).Entries
+				if matcher.Mutated() {
+					assert.Empty(t, entries, unwritten)
+					return
+				}
 				assert.Length(t, entries, 1, "one entry")
 				stated := entries[0].Counterexample[0].Value
 				assert.Equal(t, jsonTree(t, string(stated)), jsonTree(t, `{"type": "record", "fields": [`+
@@ -114,6 +133,10 @@ func TestStore(t *testing.T) {
 				}
 			}
 			prop.ForAll(newTestSeat(t.Name()), contract, body, prop.Seed(7), prop.Store(dir))
+			if matcher.Mutated() {
+				assert.Empty(t, loaded(t, dir).Entries, unwritten)
+				return
+			}
 			assert.Length(t, loaded(t, dir).Entries, 2, "the odd and the big failure")
 		})
 
@@ -124,6 +147,10 @@ func TestStore(t *testing.T) {
 			got := detailOfOn(newTestSeat(t.Name()), failsFrom(900), prop.Seed(7), prop.Store(dir))
 			assert.Equal(t, got[casesField], any(0), "no valid case before the stored one")
 			assert.Equal(t, got[choicesField], any("prop1:AIQH"), "900, the minimal case of the vector")
+			if matcher.Mutated() {
+				assert.Length(t, loaded(t, dir).Entries, 1, "the stored case alone, because "+unwritten)
+				return
+			}
 			assert.Length(t, loaded(t, dir).Entries, 2, "the stored case and the minimal one")
 		})
 
@@ -248,6 +275,11 @@ func TestStore(t *testing.T) {
 			seat := newTestSeat(t.Name())
 			prop.ForAll(seat, contract, detached, prop.Seed(7), prop.Store(dir))
 			faults := seat.Faults()
+			if matcher.Mutated() {
+				assert.Empty(t, faults, "no fault of the store, because "+unwritten)
+				assert.Length(t, seat.Records(), 1, "the run still fails")
+				return
+			}
 			expectOnlyFault(t, faults, fault.Error{
 				Op:     forAllOp,
 				Path:   fault.Path{fault.Field(dir)},
@@ -362,6 +394,10 @@ func TestStoreEnv(t *testing.T) {
 			seat := newTestSeat("TestRoundTrip/one case")
 			defer seat.end()
 			prop.ForAll(seat, contract, failsFrom(1001), prop.Seed(7))
+			if matcher.Mutated() {
+				assert.False(t, exists("testdata"), "no directory, because "+unwritten)
+				return
+			}
 			got := loaded(t, filepath.Join("testdata", "prop", "TestRoundTrip", "one case"))
 			assert.Length(t, got.Entries, 1, "the entry of the minimal case")
 		})

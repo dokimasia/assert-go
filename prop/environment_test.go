@@ -8,16 +8,26 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/childtest"
 	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 	"go.dokimi.dev/assert/internal/prop/random"
 	"go.dokimi.dev/assert/internal/prop/token"
 	"go.dokimi.dev/assert/prop"
 )
 
+// contractSeed is the seed that the contract derives, as a run's record
+// states it.
+var contractSeed = any(strconv.FormatUint(random.Mix(contract), 10))
+
 // TestEnvironment checks the environment variables that set the seed, the
-// profile and the token to replay of every run. Each case sets the
-// process's environment, so the cases run one at a time.
+// profile and the token to replay of every run, a hermetic run, which reads
+// none of them, and a run in a test binary that a mutation run
+// instrumented. Each case sets the process's environment, so the cases run
+// one at a time. In a test binary that a mutation run instrumented, every
+// run seeds from its contract and runs no campaign, so a case of a random
+// seed or of a campaign checks that instead.
 func TestEnvironment(t *testing.T) {
 	t.Run("ForAll", func(t *testing.T) {
 		t.Run("takes the seed of a run that Seed does not seed from DOKIMI_ASSERT_PROP_SEED", func(t *testing.T) {
@@ -60,7 +70,7 @@ func TestEnvironment(t *testing.T) {
 			clean(t)
 			t.Setenv(profileVariable, "ci")
 			got := detailOf(failsAtLeast(10000, 1001, big))
-			assert.Equal(t, got[seedField], any(strconv.FormatUint(random.Mix(contract), 10)), "the contract's seed")
+			assert.Equal(t, got[seedField], contractSeed, "the contract's seed")
 		})
 
 		t.Run("takes the seed variable over the ci profile", func(t *testing.T) {
@@ -83,6 +93,11 @@ func TestEnvironment(t *testing.T) {
 				t.Setenv(profileVariable, tt.give)
 				one := detailOf(failsAtLeast(10000, 1001, big))[seedField]
 				other := detailOf(failsAtLeast(10000, 1001, big))[seedField]
+				if matcher.Mutated() {
+					assert.Equal(t, []any{one, other}, []any{contractSeed, contractSeed},
+						"the contract's seed in each run of a mutation run")
+					return
+				}
 				assert.NotEqual(t, one, other, "two seeds, equal once in 2^64 runs")
 			})
 		}
@@ -103,6 +118,11 @@ func TestEnvironment(t *testing.T) {
 			got := detailOf(failsFrom(1001), prop.Seed(7), prop.Store(dir))
 			assert.Equal(t, got[failureField], any(assert.Failure{Assertion: big, Contract: fits}),
 				"the campaign's failure")
+			if matcher.Mutated() {
+				assert.Equal(t, got[choicesField], any("prop1:AOkH"), "the minimal case of an ordinary run of seed 7")
+				assert.Empty(t, loaded(t, dir).Entries, unwritten)
+				return
+			}
 			assert.True(t, got[casesField].(int) > 100, "the valid cases of a second of exploration")
 			assert.Length(t, loaded(t, dir).Entries, 1, "the failure, stored as the campaign concluded it")
 		})
@@ -123,6 +143,10 @@ func TestEnvironment(t *testing.T) {
 				t.Setenv(budgetVariable, tt.give)
 				seat := &matchertest.Seat{}
 				prop.ForAll(seat, contract, failsAtLeast(10000, 1001, big), prop.Seed(7))
+				if matcher.Mutated() {
+					assert.Empty(t, seat.Faults(), "no fault, because a mutation run runs no campaign")
+					return
+				}
 				expectOnlyFault(t, seat.Faults(), fault.Error{
 					Op:     forAllOp,
 					Path:   fault.Path{fault.Field(budgetVariable)},
@@ -157,6 +181,77 @@ func TestEnvironment(t *testing.T) {
 				Kind:   token.ErrInvalid,
 				Reason: `"token" does not start with prop1:`,
 			})
+		})
+
+		t.Run("takes the seed that Seed states in a hermetic run", func(t *testing.T) {
+			clean(t)
+			t.Setenv(seedVariable, "8")
+			got := detailOf(failsAtLeast(10000, 1001, big), prop.Seed(7), prop.Hermetic())
+			assert.Equal(t, got[seedField], any("7"), "Seed's seed")
+		})
+
+		hermetic := []struct {
+			name     string
+			variable string
+			give     string
+		}{
+			{name: "reads no seed variable in a hermetic run", variable: seedVariable, give: "seven"},
+			{name: "reads no profile in a hermetic run", variable: profileVariable, give: "nightly"},
+			{name: "runs no campaign in a hermetic run", variable: profileVariable, give: "campaign"},
+			{name: "reads no token to replay in a hermetic run", variable: replayVariable, give: "token"},
+		}
+		for _, tt := range hermetic {
+			t.Run(tt.name, func(t *testing.T) {
+				clean(t)
+				t.Setenv(tt.variable, tt.give)
+				got := detailOf(failsAtLeast(10000, 1001, big), prop.Hermetic())
+				assert.Equal(t, got[choicesField], any("prop1:AOkH"), "the minimal case of an ordinary run")
+			})
+		}
+
+		t.Run("draws a random seed in a hermetic run under the ci profile", func(t *testing.T) {
+			clean(t)
+			t.Setenv(profileVariable, "ci")
+			got := detailOf(failsAtLeast(10000, 1001, big), prop.Hermetic())[seedField]
+			if matcher.Mutated() {
+				assert.Equal(t, got, contractSeed, "the contract's seed in a mutation run")
+				return
+			}
+			assert.NotEqual(t, got, contractSeed, "a random seed, which is the contract's once in 2^64 runs")
+		})
+
+		t.Run("derives the seed from the contract in a test binary that a mutation run instrumented",
+			func(t *testing.T) {
+				if childtest.InChild(t) {
+					assert.Equal(t, detailOf(failsAtLeast(10000, 1001, big))[seedField], contractSeed,
+						"the contract's seed")
+					assert.Equal(t, detailOf(failsAtLeast(10000, 1001, big), prop.Hermetic())[seedField], contractSeed,
+						"the contract's seed in a hermetic run")
+					return
+				}
+				clean(t)
+				inMutationRun(t)
+			})
+
+		t.Run("takes the seed variable over the contract's seed in a mutation run", func(t *testing.T) {
+			if childtest.InChild(t) {
+				assert.Equal(t, detailOf(failsAtLeast(10000, 1001, big))[seedField], any("7"), "the variable's seed")
+				return
+			}
+			clean(t)
+			t.Setenv(seedVariable, "7")
+			inMutationRun(t)
+		})
+
+		t.Run("runs no campaign in a mutation run, and reads no budget", func(t *testing.T) {
+			if childtest.InChild(t) {
+				got := detailOf(failsAtLeast(10000, 1001, big), prop.Seed(7))
+				assert.Equal(t, got[choicesField], any("prop1:AOkH"), "the minimal case of an ordinary run")
+				return
+			}
+			clean(t)
+			t.Setenv(profileVariable, "campaign")
+			inMutationRun(t)
 		})
 	})
 }

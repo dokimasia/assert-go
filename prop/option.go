@@ -43,9 +43,10 @@ func Cases(n int) Option {
 }
 
 // Seed sets the seed of the run. Without it, the variable
-// DOKIMI_ASSERT_PROP_SEED states the seed in decimal, then the ci profile
-// derives it from the contract, and otherwise each run draws one. A failing
-// run reports its seed.
+// DOKIMI_ASSERT_PROP_SEED states the seed in decimal, then a run in a test
+// binary that a mutation run instrumented and a run under the ci profile
+// derive it from the contract, and otherwise each run draws one. A
+// [Hermetic] run reads neither variable. A failing run reports its seed.
 func Seed(s uint64) Option {
 	return Option{set: func(c config) config {
 		c.seed, c.seeded = s, true
@@ -56,7 +57,7 @@ func Seed(s uint64) Option {
 // Replay makes [ForAll] run the one case that token records, and nothing
 // else. The case is not shrunk. A token that no encoder writes fails the
 // test. Without it, the variable DOKIMI_ASSERT_PROP_REPLAY states the token
-// to replay.
+// to replay, which a [Hermetic] run does not read.
 func Replay(token string) Option {
 	return Option{set: func(c config) config {
 		c.replay, c.replaying = token, true
@@ -188,6 +189,28 @@ func Workers(n int) Option {
 	}}
 }
 
+// Hermetic makes the run read none of the engine's four variables:
+// DOKIMI_ASSERT_PROP_SEED, DOKIMI_ASSERT_PROP_PROFILE,
+// DOKIMI_ASSERT_PROP_BUDGET and DOKIMI_ASSERT_PROP_REPLAY. The run's seed is
+// the one that [Seed] states, or a random one, it runs as the default
+// profile runs, and it replays only a token that [Replay] states.
+//
+// A test states it when it runs a property to check something other than a
+// subject: a pin that compares the values of a seeded run with a golden
+// file, or a test of a property harness that expects the property to fail
+// against a wrong implementation. Under the campaign profile such a test
+// would run for the whole budget, and under the replay variable it would run
+// a case that another property recorded.
+//
+// In a test binary that a mutation run instrumented, a hermetic run without
+// Seed derives its seed from the contract, as every run there does.
+func Hermetic() Option {
+	return Option{set: func(c config) config {
+		c.hermetic = true
+		return c
+	}}
+}
+
 // config is what the options of one run state.
 type config struct {
 	// cases is the number of valid cases the run aims for.
@@ -220,6 +243,9 @@ type config struct {
 	draws string
 	// drawn reports whether Draws stated entries.
 	drawn bool
+	// hermetic reports whether Hermetic made the run read none of the
+	// engine's variables.
+	hermetic bool
 }
 
 // configure returns the defaults with each option of opts applied in

@@ -9,9 +9,10 @@ import (
 )
 
 // Rejects runs fn against an implementation that fn is meant to reject,
-// and stops the test when fn passes. It returns fn's failure message,
-// empty when there was none. Its failure is a record of rejects whose
-// contract is msg, which states the rejection that did not happen.
+// and stops the test when fn passes. It returns the failure records of fn,
+// in call order, and none when fn reported none. Its failure is a record of
+// rejects whose contract is msg, which states the rejection that did not
+// happen.
 //
 // Rejects is the assertion that an assertion can fail. A check whose
 // every statement is [NoError] passes against a subject whose methods do
@@ -22,15 +23,21 @@ import (
 //	assert.Rejects(t, "a store that overwrites fails the check",
 //	    func(tb assert.TB) { refusesADuplicate(tb, overwritingStore{}) })
 //
-// Assert on the returned message. A check can fail for a reason other
+// Assert on the returned records. A check can fail for a reason other
 // than the one it is about, such as a subject that panics inside
 // [NotPanics] before the check's own assertion runs. A bare call of
-// Rejects passes then, and the message states which assertion failed:
+// Rejects passes then, and a record names the assertion that failed, with
+// its contract and its detail:
 //
 //	got := assert.Rejects(t, "an unbounded pool fails the check",
 //	    func(tb assert.TB) { handsOutEveryItem(tb, unboundedPool{}) })
-//	assert.Contains(t, got, "the pool is then empty",
+//	assert.Length(t, got, 1, "the check fails once")
+//	assert.Equal(t, got[0].Contract, "the pool is then empty",
 //	    "and fails for the reason the check is about")
+//
+// A message that fn passes to Fatalf or Errorf of its seat, and a fault of
+// this module, fail fn without a record. Rejects passes then, and returns
+// the records of fn's assertions alone.
 //
 // The call records of the assertions that fn calls are recorded under
 // the call of Rejects, as its run 1.
@@ -50,9 +57,10 @@ import (
 //
 // # Allocation contract
 //
-// A passing call of a check that fails at a call of [True] allocates 8
-// times, the check's failure included.
-func Rejects(tb TB, msg string, fn func(tb TB)) string {
+// A passing call of a check that fails at a call of [True] allocates 9
+// times, the check's failure and the returned copy of its records
+// included.
+func Rejects(tb TB, msg string, fn func(tb TB)) []Failure {
 	tb.Helper()
 
 	run := matcher.Begin(tb)
@@ -68,8 +76,8 @@ func Rejects(tb TB, msg string, fn func(tb TB)) string {
 
 	if !r.Failed() {
 		run.Fail(matcher.Fatal, "rejects", msg, nil)
-		return r.Message()
+		return r.Failures()
 	}
 	run.Pass(matcher.Fatal, "rejects", msg)
-	return r.Message()
+	return r.Failures()
 }

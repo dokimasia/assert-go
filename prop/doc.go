@@ -133,7 +133,14 @@
 // DOKIMI_ASSERT_PROP_PROFILE names the ci profile, which derives the seed
 // from the property's contract. The profile default keeps the random seed.
 // [Replay], or the variable DOKIMI_ASSERT_PROP_REPLAY, runs the one case of
-// a replay token.
+// a replay token. A [Hermetic] run reads none of the variables of this
+// package.
+//
+// A mutation run sets DOKIMI_MUTATE_MUTANT in every run of a test binary
+// that it instrumented. A run in such a binary derives its seed from the
+// contract, unless [Seed] or DOKIMI_ASSERT_PROP_SEED states one, runs no
+// campaign, and stores no case. The control runs and every mutant's run
+// then try the same cases, and the run leaves the module's store unchanged.
 //
 // # Campaigns
 //
@@ -146,7 +153,9 @@
 // failure of an identity of its own as it finds it, and reports every one
 // when the budget has passed. Its mutations are this library's own, so a
 // campaign's search reproduces in no other implementation, and every
-// failure that it stores replays in all of them. [Fuzz] runs no campaign.
+// failure that it stores replays in all of them. [Fuzz], a [Hermetic] run
+// and a run in a test binary that a mutation run instrumented run no
+// campaign.
 //
 // # Machines
 //
@@ -166,7 +175,8 @@
 // testdata/prop/<test name> beside testdata/golden, for a seat with a Name
 // method, or the directory that [Store] states. A run never overwrites or
 // removes an entry: deleting one is a person's decision, as updating a
-// golden file is. A damaged file fails the test, and a store that cannot be
+// golden file is. A run in a test binary that a mutation run instrumented
+// adds no entry. A damaged file fails the test, and a store that cannot be
 // written is a note in the test's log.
 //
 // # Errors

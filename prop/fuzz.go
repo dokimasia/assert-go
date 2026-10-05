@@ -34,7 +34,8 @@ const fuzzOp = "prop.Fuzz"
 //
 // A failing input's case is replayed, shrunk and explained as [ForAll]
 // does with a failing case. Fuzz writes the counterexample to the store,
-// and reports it through the input's *testing.T with its replay token.
+// unless a mutation run instrumented the test binary, and reports it
+// through the input's *testing.T with its replay token.
 //
 // Each input is a call of its own, whose record states the calls of the
 // input's case under the phase fuzz. The record of a passing input counts

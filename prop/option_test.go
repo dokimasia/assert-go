@@ -460,6 +460,8 @@ func TestOptionAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { kept = prop.Workers(2) }, optionAllocs, "Workers allocates its setting")
 	assert.MaxAllocs(t, func() { kept = prop.Draws("[]") }, optionAllocs, "Draws allocates its setting")
 	assert.NotEqual(t, kept, prop.Option{}, "the kept option states a setting")
+	assert.MaxAllocs(t, func() { kept = prop.Hermetic() }, 0, "Hermetic's setting captures nothing")
+	assert.NotEqual(t, kept, prop.Option{}, "Hermetic states a setting")
 }
 
 // BenchmarkOption measures each option that a caller keeps.
@@ -467,23 +469,25 @@ func BenchmarkOption(b *testing.B) {
 	tests := []struct {
 		name   string
 		option func() prop.Option
+		allocs uint64
 	}{
-		{name: "Cases", option: func() prop.Option { return prop.Cases(10) }},
-		{name: "Seed", option: func() prop.Option { return prop.Seed(7) }},
-		{name: "Replay", option: func() prop.Option { return prop.Replay("prop1:AAc") }},
-		{name: "Require", option: func() prop.Option { return prop.Require(even, 0.5) }},
-		{name: "Shrink", option: func() prop.Option { return prop.Shrink(10) }},
-		{name: "ShrinkTime", option: func() prop.Option { return prop.ShrinkTime(time.Second) }},
-		{name: "MaxChoices", option: func() prop.Option { return prop.MaxChoices(10) }},
-		{name: "Store", option: func() prop.Option { return prop.Store("") }},
-		{name: "Explain", option: func() prop.Option { return prop.Explain(false) }},
-		{name: "Workers", option: func() prop.Option { return prop.Workers(2) }},
-		{name: "Draws", option: func() prop.Option { return prop.Draws("[]") }},
+		{name: "Cases", option: func() prop.Option { return prop.Cases(10) }, allocs: optionAllocs},
+		{name: "Seed", option: func() prop.Option { return prop.Seed(7) }, allocs: optionAllocs},
+		{name: "Replay", option: func() prop.Option { return prop.Replay("prop1:AAc") }, allocs: optionAllocs},
+		{name: "Require", option: func() prop.Option { return prop.Require(even, 0.5) }, allocs: optionAllocs},
+		{name: "Shrink", option: func() prop.Option { return prop.Shrink(10) }, allocs: optionAllocs},
+		{name: "ShrinkTime", option: func() prop.Option { return prop.ShrinkTime(time.Second) }, allocs: optionAllocs},
+		{name: "MaxChoices", option: func() prop.Option { return prop.MaxChoices(10) }, allocs: optionAllocs},
+		{name: "Store", option: func() prop.Option { return prop.Store("") }, allocs: optionAllocs},
+		{name: "Explain", option: func() prop.Option { return prop.Explain(false) }, allocs: optionAllocs},
+		{name: "Workers", option: func() prop.Option { return prop.Workers(2) }, allocs: optionAllocs},
+		{name: "Draws", option: func() prop.Option { return prop.Draws("[]") }, allocs: optionAllocs},
+		{name: "Hermetic", option: prop.Hermetic},
 	}
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {
 			var got prop.Option
-			c := bench.Start(b).MaxAllocs(optionAllocs)
+			c := bench.Start(b).MaxAllocs(tt.allocs)
 			defer c.End()
 			for c.Loop() {
 				got = tt.option()

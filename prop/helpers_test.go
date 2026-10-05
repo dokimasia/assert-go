@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/childtest"
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/matchertest"
 	"go.dokimi.dev/assert/internal/prop/choice"
@@ -72,6 +73,24 @@ const (
 	replayVariable  = "DOKIMI_ASSERT_PROP_REPLAY"
 	budgetVariable  = "DOKIMI_ASSERT_PROP_BUDGET"
 )
+
+// mutantVariable is the variable that a mutation run sets in every run of a
+// test binary that it instrumented, its control runs included.
+const mutantVariable = "DOKIMI_MUTATE_MUTANT"
+
+// unwritten is the contract of the store in a test binary that a mutation
+// run instrumented, whose runs write no entry. A case of what a run writes
+// checks that the store is empty there.
+const unwritten = "a mutation run writes no entry"
+
+// inMutationRun runs the test t in a child process whose environment states
+// the variable of a mutation run, and fails t unless the child passes it.
+func inMutationRun(t *testing.T) {
+	t.Helper()
+	out, err := childtest.Run(t, t.Name(), mutantVariable+"=12")
+	assert.NoError(t, err, "the child exits with status 0:\n"+out)
+	assert.Contains(t, out, "--- PASS: "+t.Name()+" ", "the child passes the test")
+}
 
 // contractOfForm is the contract of every test form.
 const contractOfForm = "the form holds"
