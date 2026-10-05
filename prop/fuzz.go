@@ -16,14 +16,18 @@ const fuzzOp = "prop.Fuzz"
 
 // Fuzz registers body as the fuzz target of f. Each input's bytes decode
 // into the choices of one case by the definition's bridge rules, so every
-// input is a valid case, and a property over one byte string sees the
-// fuzzer's bytes almost unchanged.
+// input is a valid case. A body that draws one byte string without a
+// maximum size reads its length from the first two bytes, little-endian,
+// and the string from the bytes after them, up to the last.
 //
 // Before it registers the target, Fuzz replays the property's stored cases,
 // oldest first, from the store of the fuzz test, as [ForAll] replays them,
 // and fails f with the record of the first that fails, as found. go test
-// without -fuzz then runs the stored cases and the seed corpus that f.Add
-// states. The record of the call on f counts the stored cases that ran, the
+// without -fuzz then runs the stored cases and the seed corpus: the entries
+// that f.Add states and the files under testdata/fuzz/<FuzzName>. The
+// bridge decodes each entry of the seed corpus as it decodes a fuzzer's
+// input, so an entry states the bytes of a case's choices and not a value.
+// The record of the call on f counts the stored cases that ran, the
 // failing one's predecessors included, and its record states the calls of
 // each under the phase stored. Fuzz logs the fault of each stored case that
 // decodes to other values than its entry records, as ForAll does.
