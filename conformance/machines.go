@@ -378,11 +378,12 @@ func counterOverflows(c *prop.Case, o machineOptions) {
 	}, o.steps...)
 }
 
-// refusingCounter runs the counter machine over a counter that refuses each
-// increment whose number in increments, the increments of the run, is a
-// multiple of refusal: increment, enabled while the model's count is below
-// limit, and read, over the model of a counter. A refused increment fails
-// with errRefused and leaves the count.
+// refusingCounter runs the counter machine over a counter that refuses
+// every refusal-th increment of a run: increment, enabled while the model's
+// count is below limit, and read, over the model of a counter. increments
+// counts the increments of the run since the last refusal. A refused
+// increment fails with errRefused, leaves the count, and sets increments
+// to 0.
 func refusingCounter(c *prop.Case, o machineOptions, increments *int) {
 	count := 0
 	stateful.Steps(c, stateful.Machine[int]{
@@ -393,7 +394,8 @@ func refusingCounter(c *prop.Case, o machineOptions, increments *int) {
 			Run: func(c *prop.Case, client int, _ any) {
 				call := c.History().Invoke(client, "increment", nil)
 				*increments++
-				if *increments%refusal == 0 {
+				if *increments == refusal {
+					*increments = 0
 					call.Fail(errRefused)
 					return
 				}
