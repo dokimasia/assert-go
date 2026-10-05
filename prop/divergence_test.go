@@ -130,7 +130,7 @@ func TestDivergence(t *testing.T) {
 				casesField:          1,
 				rejectedField:       0,
 				seedField:           "7",
-				counterexampleField: []prop.Drawn{{Label: drawn, Value: 558560502}},
+				counterexampleField: []prop.Entry{prop.Drawn{Label: drawn, Value: 558560502}},
 				failureField:        assert.Failure{Assertion: "once"},
 				choicesField:        nil,
 				othersField:         nil,

@@ -76,7 +76,7 @@ func TestOption(t *testing.T) {
 				casesField:          0,
 				rejectedField:       0,
 				seedField:           "7",
-				counterexampleField: []prop.Drawn{{Label: drawn, Value: 7}},
+				counterexampleField: []prop.Entry{prop.Drawn{Label: drawn, Value: 7}},
 				failureField:        assert.Failure{Assertion: big},
 				choicesField:        "prop1:AAc",
 				othersField:         []prop.Other{},
@@ -160,7 +160,8 @@ func TestOption(t *testing.T) {
 		t.Run("reports the first failing case as found for a budget of 0", func(t *testing.T) {
 			t.Parallel()
 			got := detailOf(failsAtLeast(10000, 1001, big), prop.Seed(7), prop.Shrink(0))
-			assert.Equal(t, got[counterexampleField], any([]prop.Drawn{{Label: drawn, Value: 8522}}), "the found value")
+			assert.Equal(t, got[counterexampleField], any([]prop.Entry{prop.Drawn{Label: drawn, Value: 8522}}),
+				"the found value")
 			assert.Equal(t, got[choicesField], any("prop1:AMpC"), "the token of the definition's vector")
 		})
 
@@ -179,7 +180,7 @@ func TestOption(t *testing.T) {
 			rec := assert.NewRecorder().WithClock(assert.NewControlled(today))
 			prop.ForAll(rec, contract, failsAtLeast(10000, 1001, big), prop.Seed(7), prop.ShrinkTime(time.Nanosecond))
 			got := rec.Failures()[0].Detail[counterexampleField]
-			assert.Equal(t, got, any([]prop.Drawn{{Label: drawn, Value: 8522}}), "the found value, unshrunk")
+			assert.Equal(t, got, any([]prop.Entry{prop.Drawn{Label: drawn, Value: 8522}}), "the found value, unshrunk")
 		})
 
 		t.Run("sets no limit for a time of 0", func(t *testing.T) {
@@ -227,7 +228,9 @@ func TestOption(t *testing.T) {
 		t.Run("explains the counterexample when enabled", func(t *testing.T) {
 			t.Parallel()
 			got := detailOf(failsAtLeast(10000, 1001, big), prop.Seed(7), prop.Explain(false), prop.Explain(true))
-			want := []prop.Drawn{{Label: drawn, Value: 1001, Relevance: prop.ValueMatters, NearestPassing: 1000}}
+			want := []prop.Entry{
+				prop.Drawn{Label: drawn, Value: 1001, Relevance: prop.ValueMatters, NearestPassing: 1000},
+			}
 			assert.Equal(t, got[counterexampleField], any(want), "the later option")
 		})
 	})
@@ -239,7 +242,9 @@ func TestOption(t *testing.T) {
 			t.Parallel()
 			got := detailOf(failsAtLeast(10000, 9999, big), prop.Seed(7),
 				prop.Draws(`[{"label": "value", "value": {"type": "int", "value": 9999}}]`))
-			want := []prop.Drawn{{Label: drawn, Value: 9999, Relevance: prop.ValueMatters, NearestPassing: 9998}}
+			want := []prop.Entry{
+				prop.Drawn{Label: drawn, Value: 9999, Relevance: prop.ValueMatters, NearestPassing: 9998},
+			}
 			assert.Equal(t, got[casesField], any(0), "no valid case ran before the failing one")
 			assert.Equal(t, got[counterexampleField], any(want), "the entry's value, which shrinks no further")
 		})
@@ -254,7 +259,7 @@ func TestOption(t *testing.T) {
 			}
 			got := detailOf(body, prop.Seed(7), prop.Explain(false),
 				prop.Draws(`[{"label": "first", "value": {"type": "int", "value": 4}}]`))
-			want := []prop.Drawn{{Label: "first", Value: 4}, {Label: "second", Value: 5}}
+			want := []prop.Entry{prop.Drawn{Label: "first", Value: 4}, prop.Drawn{Label: "second", Value: 5}}
 			assert.Equal(t, got[counterexampleField], any(want), "the entry's value, then the target")
 			assert.Equal(t, got[casesField], any(0), "the case of the entries fails first")
 		})
@@ -274,7 +279,7 @@ func TestOption(t *testing.T) {
 				`["note", {"type": "null"}]]}}]`
 			got := detailOf(body, prop.Seed(7), prop.Shrink(0), prop.Draws(entries))
 			want := order{ID: 7, Lines: []line{{SKU: "a", Qty: 1}, {SKU: "b", Qty: 2}}}
-			assert.Equal(t, got[counterexampleField], any([]prop.Drawn{{Label: drawn, Value: want}}),
+			assert.Equal(t, got[counterexampleField], any([]prop.Entry{prop.Drawn{Label: drawn, Value: want}}),
 				"the order of the entry, found by the case of the entries")
 		})
 
@@ -312,12 +317,12 @@ func TestOption(t *testing.T) {
 				},
 			},
 			{
-				name: "fails the run at once for an entry without a label",
+				name: "fails the run at once for an entry without a step and without a label",
 				give: `[{"value": {"type": "int", "value": 4}}]`,
 				want: fault.Error{
 					Op:     forAllOp,
 					Path:   fault.Path{fault.Field("Draws"), fault.Index(0)},
-					Reason: "the entry states no label or no value",
+					Reason: "the entry states no step, and no label or no value",
 				},
 			},
 			{
@@ -326,7 +331,25 @@ func TestOption(t *testing.T) {
 				want: fault.Error{
 					Op:     forAllOp,
 					Path:   fault.Path{fault.Field("Draws"), fault.Index(1)},
-					Reason: "the entry states no label or no value",
+					Reason: "the entry states no step, and no label or no value",
+				},
+			},
+			{
+				name: "fails the run at once at the client of a step entry below 0",
+				give: `[{"step": "put"}, {"step": "put", "client": -1}]`,
+				want: fault.Error{
+					Op:     forAllOp,
+					Path:   fault.Path{fault.Field("Draws"), fault.Index(1), fault.Field("client")},
+					Reason: "the client -1 is below 0",
+				},
+			},
+			{
+				name: "fails the test at a draw that takes a step entry",
+				give: `[{"step": "put", "client": 1, "drain": true}]`,
+				want: fault.Error{
+					Op:     forAllOp,
+					Path:   fault.Path{fault.Field("Draws"), fault.Index(0), fault.Field("label")},
+					Reason: `the draw labelled "value" takes the step entry of "put"`,
 				},
 			},
 			{

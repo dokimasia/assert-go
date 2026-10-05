@@ -9,7 +9,6 @@ import (
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/random"
 	"go.dokimi.dev/assert/internal/prop/tree"
-	"go.dokimi.dev/assert/internal/record"
 )
 
 // flight is one case that a worker of a run on more than one worker runs.
@@ -24,17 +23,11 @@ type flight struct {
 	e Execution
 }
 
-// newFlight returns a case whose values come from p, not yet started. The
-// case keeps its walk, which the runner enters into the case tree once the
-// case has ended. Each call record that the case keeps states the steps
-// that its walk had made, so the runner keeps only the calls that a run on
-// one worker makes.
+// newFlight returns a case whose values come from p, not yet started, which
+// keeps its walk.
 func newFlight(p provider, s Settings) *flight {
 	c := newCase(p, s, nil)
-	c.keepsWalk = true
-	if s.Slot != nil {
-		record.Run(&c.calls, s.Slot, c.steps)
-	}
+	c.keepWalk()
 	return &flight{c: c, done: make(chan struct{})}
 }
 

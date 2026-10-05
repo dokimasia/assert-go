@@ -30,13 +30,16 @@ const (
 	coverageField       = "coverage"
 )
 
-// The field names of a draw, a divergence and a coverage requirement in a
-// record's detail.
+// The field names of a draw, a step, a divergence and a coverage
+// requirement in a record's detail.
 const (
 	labelField          = "label"
 	valueField          = "value"
 	anyValueFailsField  = "any-value-fails"
 	nearestPassingField = "nearest-passing"
+	stepField           = "step"
+	clientField         = "client"
+	drainField          = "drain"
 	whatField           = "what"
 	indexField          = "index"
 	recordedField       = "recorded"
@@ -54,7 +57,7 @@ type runDetail struct {
 	Cases          int             `json:"cases"`
 	Rejected       int             `json:"rejected"`
 	Seed           string          `json:"seed"`
-	Counterexample []drawnSpec     `json:"counterexample"`
+	Counterexample []entrySpec     `json:"counterexample"`
 	Failure        *string         `json:"failure"`
 	Choices        *string         `json:"choices"`
 	Others         []otherSpec     `json:"others"`
@@ -62,18 +65,24 @@ type runDetail struct {
 	Coverage       *shortfallSpec  `json:"coverage"`
 }
 
-// drawnSpec is one draw of a counterexample, as a vector states it.
-type drawnSpec struct {
+// entrySpec is one entry of a counterexample, as a vector states it: a step
+// entry, which states the action of a step, its client in a concurrent
+// section and the drain mark in the drain, or a draw with its label, its
+// value and what the explain phase found.
+type entrySpec struct {
 	Label          string          `json:"label"`
 	Value          json.RawMessage `json:"value"`
 	AnyValueFails  *bool           `json:"any-value-fails"`
 	NearestPassing json.RawMessage `json:"nearest-passing"`
+	Step           *string         `json:"step"`
+	Client         *int            `json:"client"`
+	Drain          bool            `json:"drain"`
 }
 
 // otherSpec is another failure of a run, as a vector states it.
 type otherSpec struct {
 	Failure        string      `json:"failure"`
-	Counterexample []drawnSpec `json:"counterexample"`
+	Counterexample []entrySpec `json:"counterexample"`
 	Choices        string      `json:"choices"`
 }
 
@@ -171,11 +180,11 @@ func (d runDetail) normal() (map[string]any, error) {
 		coverageField:       nil,
 	}
 	if d.Counterexample != nil {
-		draws, err := normalDraws(d.Counterexample, true)
+		entries, err := normalEntries(d.Counterexample, true)
 		if err != nil {
 			return nil, fault.At(err, fault.Field(counterexampleField))
 		}
-		out[counterexampleField] = draws
+		out[counterexampleField] = entries
 	}
 	if d.Failure != nil {
 		out[failureField] = *d.Failure
@@ -186,11 +195,11 @@ func (d runDetail) normal() (map[string]any, error) {
 	if d.Others != nil {
 		others := make([]any, len(d.Others))
 		for i, o := range d.Others {
-			draws, err := normalDraws(o.Counterexample, false)
+			entries, err := normalEntries(o.Counterexample, false)
 			if err != nil {
 				return nil, fault.At(err, fault.Field(othersField), fault.Index(i), fault.Field(counterexampleField))
 			}
-			others[i] = map[string]any{failureField: o.Failure, counterexampleField: draws, choicesField: o.Choices}
+			others[i] = map[string]any{failureField: o.Failure, counterexampleField: entries, choicesField: o.Choices}
 		}
 		out[othersField] = others
 	}
@@ -216,11 +225,20 @@ func (d runDetail) normal() (map[string]any, error) {
 	return out, nil
 }
 
-// normalDraws returns the draws of a vector's counterexample in normal
-// form, with what the explain phase found where explained is set.
-func normalDraws(draws []drawnSpec, explained bool) ([]any, error) {
-	out := make([]any, len(draws))
-	for i, d := range draws {
+// normalEntries returns the entries of a vector's counterexample in normal
+// form: each step as normalStep returns it, and each draw with what the
+// explain phase found where explained is set.
+func normalEntries(entries []entrySpec, explained bool) ([]any, error) {
+	out := make([]any, len(entries))
+	for i, d := range entries {
+		if d.Step != nil {
+			client := -1
+			if d.Client != nil {
+				client = *d.Client
+			}
+			out[i] = normalStep(*d.Step, client, d.Drain)
+			continue
+		}
 		value, err := literal.Decode(d.Value)
 		if err != nil {
 			return nil, fault.At(err, fault.Index(i), fault.Field(valueField))
@@ -335,8 +353,8 @@ func normalRecord(detail map[string]any) map[string]any {
 		divergenceField:     nil,
 		coverageField:       nil,
 	}
-	if drawn, ok := detail[counterexampleField].([]prop.Drawn); ok {
-		out[counterexampleField] = normalDrawn(drawn, true)
+	if entries, ok := detail[counterexampleField].([]prop.Entry); ok {
+		out[counterexampleField] = normalRecorded(entries, true)
 	}
 	if f, ok := detail[failureField].(assert.Failure); ok {
 		out[failureField] = f.Assertion
@@ -346,7 +364,7 @@ func normalRecord(detail map[string]any) map[string]any {
 		for i, o := range others {
 			normal[i] = map[string]any{
 				failureField:        o.Failure.Assertion,
-				counterexampleField: normalDrawn(o.Counterexample, false),
+				counterexampleField: normalRecorded(o.Counterexample, false),
 				choicesField:        o.Choices,
 			}
 		}
@@ -366,24 +384,42 @@ func normalRecord(detail map[string]any) map[string]any {
 	return out
 }
 
-// normalDrawn returns the draws of a record in normal form, with what the
+// normalRecorded returns the entries of a record's counterexample in normal
+// form: each step as normalStep returns it, and each draw with what the
 // explain phase found where explained is set.
-func normalDrawn(drawn []prop.Drawn, explained bool) []any {
-	out := make([]any, len(drawn))
-	for i, d := range drawn {
-		draw := map[string]any{labelField: d.Label, valueField: literal.Canonical(d.Value)}
-		if explained {
-			draw[anyValueFailsField], draw[nearestPassingField] = nil, nil
-			if d.Relevance != prop.Untested {
-				draw[anyValueFailsField] = d.Relevance == prop.AnyValueFails
-			}
-			if d.NearestPassing != nil {
-				draw[nearestPassingField] = literal.Canonical(d.NearestPassing)
-			}
+func normalRecorded(entries []prop.Entry, explained bool) []any {
+	out := make([]any, len(entries))
+	for i, e := range entries {
+		switch e := e.(type) {
+		case prop.Step:
+			out[i] = normalStep(e.Action, e.Client, e.Drain)
+		case prop.Drawn:
+			out[i] = normalDrawn(e, explained)
 		}
-		out[i] = draw
 	}
 	return out
+}
+
+// normalDrawn returns a draw of a record in normal form, with what the
+// explain phase found where explained is set.
+func normalDrawn(d prop.Drawn, explained bool) map[string]any {
+	draw := map[string]any{labelField: d.Label, valueField: literal.Canonical(d.Value)}
+	if explained {
+		draw[anyValueFailsField], draw[nearestPassingField] = nil, nil
+		if d.Relevance != prop.Untested {
+			draw[anyValueFailsField] = d.Relevance == prop.AnyValueFails
+		}
+		if d.NearestPassing != nil {
+			draw[nearestPassingField] = literal.Canonical(d.NearestPassing)
+		}
+	}
+	return draw
+}
+
+// normalStep returns a step of a counterexample in normal form: its action,
+// its client, which is -1 outside a concurrent section, and its drain mark.
+func normalStep(action string, client int, drain bool) map[string]any {
+	return map[string]any{stepField: action, clientField: client, drainField: drain}
 }
 
 // normalShortfall returns a coverage requirement in normal form.

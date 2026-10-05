@@ -17,9 +17,10 @@ import (
 
 // vectorCount is the number of vectors of the vendored definition: 26
 // behaviour, 11 bridge, 12 coverage, 49 decoding, 4 draws, 34 fixtures, 74
-// forms, 32 generation, 43 inverse, 30 linearizable, 6 recording, 12 seam, 54
-// shapes, 36 shrinking, 21 store and 17 token vectors.
-const vectorCount = 461
+// forms, 32 generation, 43 inverse, 30 linearizable, 13 machines, 6
+// recording, 12 seam, 19 serializable, 54 shapes, 36 shrinking, 19
+// snapshot-isolation, 21 store and 17 token vectors.
+const vectorCount = 512
 
 // firstVector is the id of the first case of behaviour.json, the file whose
 // name sorts first.
@@ -34,9 +35,10 @@ const emptyToken = `{"choices":[],"token":"prop1:"}`
 const (
 	// validAllocs are the allocations of Valid.
 	validAllocs = 0
-	// vectorsAllocs are the allocations of Vectors: the 1,149 of its
-	// contract, and the two that the JSON decoder's pooled state adds.
-	vectorsAllocs = 1151
+	// vectorsAllocs are the allocations of Vectors: the 1,313 of its
+	// contract, the two that the JSON decoder's pooled state adds, and one
+	// that a collection during the count adds when it empties the pool.
+	vectorsAllocs = 1316
 	// checkAllocs are the allocations of Check on emptyToken: the struct
 	// that the vector decodes into, and the token that Encode returns.
 	checkAllocs = 2
@@ -54,13 +56,14 @@ func TestVector(t *testing.T) {
 	t.Run("Valid", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("reports true for each of the sixteen kinds", func(t *testing.T) {
+		t.Run("reports true for each of the nineteen kinds", func(t *testing.T) {
 			t.Parallel()
 			kinds := []conformance.VectorKind{
 				conformance.Decoding, conformance.Generation, conformance.Shrinking, conformance.Coverage,
 				conformance.Bridge, conformance.Token, conformance.Behaviour, conformance.Store,
 				conformance.Shapes, conformance.Inverse, conformance.Draws, conformance.Fixtures,
 				conformance.Forms, conformance.CallRecords, conformance.Seam, conformance.Linearizable,
+				conformance.Serializable, conformance.SnapshotIsolation, conformance.Machines,
 			}
 			for _, k := range kinds {
 				if !k.Valid() {
@@ -124,7 +127,7 @@ func TestVector(t *testing.T) {
 			})
 		}
 
-		t.Run("returns a fault at the vector's id for a vector of a kind outside the sixteen", func(t *testing.T) {
+		t.Run("returns a fault at the vector's id for a vector of a kind outside the nineteen", func(t *testing.T) {
 			t.Parallel()
 			expectFault(t, check(t, "fuzzing", emptyToken), inVector(), `"fuzzing" is no vector kind`)
 		})
@@ -158,7 +161,7 @@ func BenchmarkVector(b *testing.B) {
 		for c.Loop() {
 			got = conformance.Token.Valid()
 		}
-		assert.True(b, got, "token is one of the sixteen kinds")
+		assert.True(b, got, "token is one of the nineteen kinds")
 	})
 
 	b.Run("Vectors", func(b *testing.B) {

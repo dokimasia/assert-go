@@ -80,11 +80,5 @@ func recordedDetail(tb testing.TB, h *history.History, opts ...history.Option) s
 	tb.Helper()
 	rec := assert.NewRecorder()
 	history.Linearizable(rec, h, register, contract, opts...)
-	records := rec.Records()
-	assert.Length(tb, records, 1, "the call record of the check")
-	var record struct {
-		Detail json.RawMessage `json:"detail"`
-	}
-	assert.NoError(tb, json.Unmarshal([]byte(records[0]), &record), "the call record is a JSON object")
-	return string(record.Detail)
+	return string(recordOf(tb, rec).Detail)
 }

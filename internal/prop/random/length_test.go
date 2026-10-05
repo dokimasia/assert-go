@@ -47,14 +47,14 @@ func TestLength(t *testing.T) {
 		t.Run("returns true below the minimum without consuming the stream", func(t *testing.T) {
 			t.Parallel()
 			s, twin := random.New(5), random.New(5)
-			assert.True(t, random.Flag(&s, sizes(t, 2, 9), 1), "a forced continue")
+			assert.True(t, random.Flag(&s, sizes(t, 2, 9), 1, 4), "a forced continue")
 			assert.Equal(t, s.Next(), twin.Next(), "the next value of the stream")
 		})
 
 		t.Run("returns false at the maximum without consuming the stream", func(t *testing.T) {
 			t.Parallel()
 			s, twin := random.New(5), random.New(5)
-			assert.False(t, random.Flag(&s, sizes(t, 2, 9), 9), "a forced stop")
+			assert.False(t, random.Flag(&s, sizes(t, 2, 9), 9, 4), "a forced stop")
 			assert.Equal(t, s.Next(), twin.Next(), "the next value of the stream")
 		})
 
@@ -62,7 +62,7 @@ func TestLength(t *testing.T) {
 			t.Parallel()
 			s, twin := random.New(5), random.New(5)
 			for range 100 {
-				assert.Equal(t, random.Flag(&s, unboundedSizes(t, 0), 3), twin.Coin(5, 6), "a coin of 5 in 6")
+				assert.Equal(t, random.Flag(&s, unboundedSizes(t, 0), 3, 5), twin.Coin(5, 6), "a coin of 5 in 6")
 			}
 		})
 
@@ -70,7 +70,15 @@ func TestLength(t *testing.T) {
 			t.Parallel()
 			s, twin := random.New(5), random.New(5)
 			for range 100 {
-				assert.Equal(t, random.Flag(&s, sizes(t, 2, 9), 3), twin.Coin(4, 5), "a coin of 4 in 5")
+				assert.Equal(t, random.Flag(&s, sizes(t, 2, 9), 3, 6), twin.Coin(4, 5), "a coin of 4 in 5")
+			}
+		})
+
+		t.Run("aims for an average that the sizes do not state", func(t *testing.T) {
+			t.Parallel()
+			s, twin := random.New(5), random.New(5)
+			for range 100 {
+				assert.Equal(t, random.Flag(&s, sizes(t, 0, 100), 3, 30), twin.Coin(30, 31), "a coin of 30 in 31")
 			}
 		})
 	})
@@ -81,7 +89,7 @@ func TestLengthAllocs(t *testing.T) {
 	s := random.New(pinnedSeed)
 	free := sizes(t, 0, 16)
 	assert.MaxAllocs(t, func() { _ = random.Average(free) }, 0, "Average allocates nothing")
-	assert.MaxAllocs(t, func() { _ = random.Flag(&s, free, 3) }, 0, "Flag allocates nothing")
+	assert.MaxAllocs(t, func() { _ = random.Flag(&s, free, 3, 5) }, 0, "Flag allocates nothing")
 }
 
 // BenchmarkLength measures Average and a free Flag under a ceiling of no
@@ -107,7 +115,7 @@ func BenchmarkLength(b *testing.B) {
 		defer c.End()
 		for c.Loop() {
 			s := start
-			got = random.Flag(&s, free, 3)
+			got = random.Flag(&s, free, 3, 5)
 		}
 		twin := start
 		assert.Equal(b, got, twin.Coin(5, 6), "the first decision of the seed")

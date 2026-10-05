@@ -61,7 +61,7 @@ func TestForm(t *testing.T) {
 				prop.Draws(`[{"label": "input", "value": {"type": "int", "value": 99}}]`))
 			detail := rec.Failures()[0].Detail
 			assert.Equal(t, detail[casesField], any(0), "the case of the entries fails first")
-			assert.Equal(t, detail[counterexampleField], any([]prop.Drawn{{Label: "input", Value: int8(99)}}),
+			assert.Equal(t, detail[counterexampleField], any([]prop.Entry{prop.Drawn{Label: "input", Value: int8(99)}}),
 				"the entry's value")
 		})
 
@@ -146,7 +146,7 @@ func TestForm(t *testing.T) {
 				prop.Example[int8](120))
 			detail := rec.Failures()[0].Detail
 			assert.Equal(t, detail[casesField], any(0), "the example fails first")
-			assert.Equal(t, detail[counterexampleField], any([]prop.Drawn{{Label: "input", Value: int8(90)}}),
+			assert.Equal(t, detail[counterexampleField], any([]prop.Entry{prop.Drawn{Label: "input", Value: int8(90)}}),
 				"the example shrinks to the smallest failing input")
 		})
 
@@ -157,7 +157,7 @@ func TestForm(t *testing.T) {
 				prop.Using(prop.Just[any](nil)), prop.Example[any](nil))
 			detail := rec.Failures()[0].Detail
 			assert.Equal(t, detail[casesField], any(0), "the example fails first")
-			assert.Equal(t, detail[counterexampleField], any([]prop.Drawn{{Label: "input", Value: nil}}),
+			assert.Equal(t, detail[counterexampleField], any([]prop.Entry{prop.Drawn{Label: "input", Value: nil}}),
 				"the example's nil input")
 		})
 
@@ -168,7 +168,7 @@ func TestForm(t *testing.T) {
 			prop.Commutative(rec, ordered, contractOfForm, prop.Seed(7), prop.Shrink(0), prop.Example[int8](7, 9))
 			detail := rec.Failures()[0].Detail
 			assert.Equal(t, detail[casesField], any(0), "the example fails first")
-			got := detail[counterexampleField].([]prop.Drawn)
+			got := detail[counterexampleField].([]prop.Entry)
 			assert.Equal(t, valuesOfDraws(got), []any{int8(7), int8(9)}, "the two values of the example")
 		})
 
@@ -258,11 +258,12 @@ func BenchmarkForm(b *testing.B) {
 	})
 }
 
-// valuesOfDraws returns the values of draws, in order.
-func valuesOfDraws(draws []prop.Drawn) []any {
-	out := make([]any, len(draws))
-	for i, d := range draws {
-		out[i] = d.Value
+// valuesOfDraws returns the values of the entries of a counterexample of
+// draws, in order.
+func valuesOfDraws(entries []prop.Entry) []any {
+	out := make([]any, len(entries))
+	for i, e := range entries {
+		out[i] = e.(prop.Drawn).Value
 	}
 	return out
 }

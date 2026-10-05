@@ -41,13 +41,24 @@ func duplicate(op, dir, contract string) error {
 // cases for every valid one, when no case requested an input, or when it
 // refuted or left unmet a coverage requirement, checked in that order.
 //
+// Under the campaign profile, which DOKIMI_ASSERT_PROP_PROFILE=campaign
+// names, ForAll runs a campaign instead of a run, for as long as
+// DOKIMI_ASSERT_PROP_BUDGET states in whole seconds, on the platform clock.
+// It tries the case of Draws and the stored cases, and then explores: a
+// valid case that counts a new label, records a new fingerprint or records
+// a better score with [Case.Target] joins the campaign's pool, and three
+// cases in four mutate a member of the pool. Each failure of an identity of
+// its own is shrunk, explained and stored as the campaign finds it. The
+// record states the first failure, with every later one among its others,
+// or the outcome that a run's last check decides over every valid case.
+//
 // The record's detail states the ten fields of the definition:
 //
 //   - outcome, an [Outcome].
 //   - cases and rejected, the counts as int.
 //   - seed, the run's seed as a decimal string.
-//   - counterexample, a []Drawn, and failure, the failing case's
-//     assert.Failure, for a counterexample and a flaky replay.
+//   - counterexample, a []Entry of the failing case's draws and steps, and
+//     failure, its assert.Failure, for a counterexample and a flaky replay.
 //   - choices, the replay token, and others, a []Other, for a
 //     counterexample.
 //   - divergence, a *Divergence, and coverage, a *Shortfall.
@@ -61,15 +72,16 @@ func duplicate(op, dir, contract string) error {
 // with the phase of the case.
 //
 // ForAll ends the call with a fault, without a run, for a profile other than
-// default and ci, a seed variable that is no decimal number below 2^64, a
+// default, ci and campaign, a seed variable that is no decimal number below
+// 2^64, a campaign's budget that is no whole number of seconds above 0, a
 // token to replay that no encoder writes, entries of Draws that are no array
-// of labels and typed literals, a damaged file in the store, and a second
-// property of the test with the same contract and store. It ends the call
-// with a fault before any other case for a draw of the case of Draws that
-// refuses its entry, and the fault names the draw's label. It writes an
-// entry for each failure of a counterexample to the store, unless a file of
-// the entry's name exists, and logs the fault of a store that cannot keep
-// it.
+// of draw entries and step entries, a damaged file in the store, and a
+// second property of the test with the same contract and store. It ends the
+// call with a fault before any other case for a draw or a machine of the
+// case of Draws that refuses its entry, and the fault is at the entry's
+// label, value or step. It writes an entry for each failure of a
+// counterexample to the store, unless a file of the entry's name exists,
+// and logs the fault of a store that cannot keep it.
 //
 // # Allocation contract
 //
@@ -94,8 +106,8 @@ func ForAll(tb assert.TB, contract string, body func(*Case), opts ...Option) {
 // run runs body as the property p on tb, as the call run, and reports a
 // run that does not pass, as [ForAll] states. It ends the call with a fault
 // of p's operation for a second property of the test with p's contract and
-// store, a damaged file in the store, and a draw of the case of Draws that
-// refuses its entry.
+// store, a damaged file in the store, and a case of Draws that refuses an
+// entry.
 func (p property) run(tb assert.TB, run matcher.Running, body func(*Case)) {
 	tb.Helper()
 	if !claim(tb, p.dir, p.contract) {
@@ -115,19 +127,34 @@ func (p property) run(tb assert.TB, run matcher.Running, body func(*Case)) {
 		return
 	}
 	s.Stored = storedChoices(stored)
-	r := engine.Run(cases, s)
+	var r engine.Result
+	var saved []error
+	if s.Budget > 0 {
+		r, saved = p.campaign(cases, s)
+	} else {
+		r = engine.Run(cases, s)
+	}
 	if r.Refused != nil {
 		p.fault(tb, run, fault.In(p.op, fault.At(r.Refused, fault.Field(drawsOption))))
 		return
 	}
-	faults := p.storeFaults(stored, r)
-	if r.Outcome == engine.Counterexample {
-		faults = append(faults, p.save(r)...)
+	if r.Outcome == engine.Counterexample && s.Budget == 0 {
+		saved = p.save(r)
 	}
+	faults := append(p.storeFaults(stored, r), saved...)
 	for _, err := range faults {
 		matcher.NoteFault(tb, err)
 	}
 	p.report(tb, run, r)
+}
+
+// campaign runs a campaign of cases under s, and returns its result and the
+// faults of the store of each failure, which it stores as the campaign
+// concludes it.
+func (p property) campaign(cases engine.Body, s engine.Settings) (engine.Result, []error) {
+	var saved []error
+	s.Concluded = func(found engine.Result) { saved = append(saved, p.save(found)...) }
+	return engine.Campaign(cases, s), saved
 }
 
 // contextOf returns the context of tb when tb states one, as a *testing.T

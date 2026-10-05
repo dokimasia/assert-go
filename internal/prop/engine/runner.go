@@ -130,6 +130,17 @@ type Settings struct {
 	// with the phase of each case. It is nil for a property that is not
 	// recorded.
 	Slot *record.Slot
+	// Budget is how long a [Campaign] explores, on BudgetClock. A run
+	// ignores it.
+	Budget time.Duration
+	// BudgetClock is the clock that Budget is measured on, and the platform
+	// clock, assert.System, when nil.
+	BudgetClock assert.Clock
+	// Concluded receives each failure that a campaign concludes, as it
+	// concludes it: a counterexample of the failure's minimal case, with the
+	// other failures that its shrink found. It is nil for a campaign that
+	// keeps its failures for its result alone. A run ignores it.
+	Concluded func(Result)
 }
 
 // Result is the end of a run.
@@ -523,6 +534,9 @@ func withClocks(s Settings) Settings {
 	}
 	if s.ShrinkClock == nil {
 		s.ShrinkClock = assert.System{}
+	}
+	if s.BudgetClock == nil {
+		s.BudgetClock = assert.System{}
 	}
 	return s
 }

@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // Package history records the calls that concurrent clients make to a
-// subject, and checks that the recorded history is linearizable with
-// respect to a sequential model.
+// subject, and checks the recorded history against a consistency model:
+// linearizability with respect to a sequential model, serializability, or
+// snapshot isolation.
 //
 // A test records each call through a [History]: [History.Invoke] before the
 // call to the subject starts, and [Call.OK], [Call.Fail] or [Call.Unknown]
@@ -64,6 +65,14 @@
 // test as [Violated] does. [Budget], [MemoLimit], [TimeLimit] and [Workers]
 // change the limits and the number of partitions searched at once.
 //
+// [Serializable] and [HasSnapshotIsolation] read each call of the operation
+// "txn" as a transaction of list appends and list reads. They derive the
+// dependencies between the committed transactions that the reads reveal,
+// and search them for the anomalies that the isolation level forbids. Both
+// always decide. A record names the first anomaly, every kind that the
+// history exhibits, the transactions involved, the cycle, and the evidence
+// of each of its dependencies.
+//
 // # Panics
 //
 // A call that breaks the contract of the history panics, and the message
@@ -82,5 +91,5 @@
 //
 // Imports the root package of this module, its internal equality, fault,
 // literal, matcher and text packages, and the standard library. The
-// conformance package imports it.
+// property engine and the conformance package import it.
 package history

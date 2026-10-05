@@ -24,8 +24,6 @@ const (
 
 // The JSON texts of the parts of a seam vector that several tests build.
 const (
-	// nullLiteral is the typed literal of null.
-	nullLiteral = `{"type":"null"}`
 	// readEvent is the JSON form of the invocation of read by client 0 at
 	// index 0.
 	readEvent = `{"index":0,"kind":"invoke","call":0,"client":0,"process":0,"operation":"read","args":[],"keys":[]}`
@@ -201,12 +199,6 @@ func TestSeam(t *testing.T) {
 			})
 		}
 	})
-}
-
-// invoking returns the script entry of an invocation of read without keys
-// under the number n by client.
-func invoking(n, client int) string {
-	return fmt.Sprintf(`{"invoke":%d,"client":%d,"operation":"read","args":[],"keys":[]}`, n, client)
 }
 
 // clientOf returns the JSON form of the invocation of read by client at

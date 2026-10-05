@@ -33,7 +33,7 @@ func TestOther(t *testing.T) {
 			}
 			got := detailOf(body, prop.Seed(7))
 			want := []prop.Other{{
-				Counterexample: []prop.Drawn{{Label: drawn, Value: 52}},
+				Counterexample: []prop.Entry{prop.Drawn{Label: drawn, Value: 52}},
 				Failure:        assert.Failure{Assertion: big},
 				Choices:        "prop1:ADQ",
 			}}
@@ -59,19 +59,38 @@ func TestOther(t *testing.T) {
 				`"counterexample":[{"label":"value","value":{"type":"int","value":52}}],"choices":"prop1:ADQ"}`,
 				"the failure as the record of a run states it")
 		})
+
+		t.Run("returns each step as a counterexample states it, among the draws", func(t *testing.T) {
+			t.Parallel()
+			stepped := prop.Other{
+				Counterexample: []prop.Entry{
+					prop.Step{Action: "put", Client: -1},
+					prop.Drawn{Label: "v", Value: 0},
+					prop.Step{Action: "get", Client: 1},
+				},
+				Failure: assert.Failure{Assertion: "linearizable"},
+				Choices: "prop1:AA",
+			}
+			got, err := json.Marshal(stepped)
+			assert.NoError(t, err, "the failure is JSON")
+			assert.Equal(t, string(got), `{"failure":{"assertion":"linearizable","contract":"","detail":{}},`+
+				`"counterexample":[{"step":"put"},{"label":"v","value":{"type":"int","value":0}},`+
+				`{"step":"get","client":1}],"choices":"prop1:AA"}`, "the steps in request order")
+		})
 	})
 }
 
 // other is the further failure of the definition's vector.
 var other = prop.Other{
-	Counterexample: []prop.Drawn{{Label: drawn, Value: 52}},
+	Counterexample: []prop.Entry{prop.Drawn{Label: drawn, Value: 52}},
 	Failure:        assert.Failure{Assertion: big},
 	Choices:        "prop1:ADQ",
 }
 
 // otherJSONAllocs are the allocations of MarshalJSON on the further failure
-// of the definition's vector, measured.
-const otherJSONAllocs = 17
+// of the definition's vector, its one draw boxed as an entry of the JSON
+// included, measured.
+const otherJSONAllocs = 20
 
 // TestOtherAllocs checks the ceiling of MarshalJSON.
 func TestOtherAllocs(t *testing.T) {

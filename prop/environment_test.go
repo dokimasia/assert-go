@@ -87,13 +87,49 @@ func TestEnvironment(t *testing.T) {
 			})
 		}
 
-		t.Run("fails the run at once for a profile other than default and ci", func(t *testing.T) {
+		t.Run("fails the run at once for a profile other than default, ci and campaign", func(t *testing.T) {
 			clean(t)
 			t.Setenv(profileVariable, "nightly")
 			seat := &matchertest.Seat{}
 			prop.ForAll(seat, contract, failsAtLeast(10000, 1001, big), prop.Seed(7))
 			expectOnlyFault(t, seat.Faults(), profileFault(forAllOp))
 		})
+
+		t.Run("runs a campaign for the budget of the campaign profile, past the first failure", func(t *testing.T) {
+			clean(t)
+			t.Setenv(profileVariable, "campaign")
+			t.Setenv(budgetVariable, "1")
+			dir := t.TempDir()
+			got := detailOf(failsFrom(1001), prop.Seed(7), prop.Store(dir))
+			assert.Equal(t, got[failureField], any(assert.Failure{Assertion: big, Contract: fits}),
+				"the campaign's failure")
+			assert.True(t, got[casesField].(int) > 100, "the valid cases of a second of exploration")
+			assert.Length(t, loaded(t, dir).Entries, 1, "the failure, stored as the campaign concluded it")
+		})
+
+		budgets := []struct {
+			name string
+			give string
+		}{
+			{name: "fails the run at once for a campaign without a budget", give: ""},
+			{name: "fails the run at once for a campaign of a budget of 0", give: "0"},
+			{name: "fails the run at once for a campaign of a budget past 2^33 - 1 seconds", give: "8589934592"},
+			{name: "fails the run at once for a campaign of a budget that is no whole number", give: "1.5"},
+		}
+		for _, tt := range budgets {
+			t.Run(tt.name, func(t *testing.T) {
+				clean(t)
+				t.Setenv(profileVariable, "campaign")
+				t.Setenv(budgetVariable, tt.give)
+				seat := &matchertest.Seat{}
+				prop.ForAll(seat, contract, failsAtLeast(10000, 1001, big), prop.Seed(7))
+				expectOnlyFault(t, seat.Faults(), fault.Error{
+					Op:     forAllOp,
+					Path:   fault.Path{fault.Field(budgetVariable)},
+					Reason: strconv.Quote(tt.give) + " is no whole number of seconds above 0",
+				})
+			})
+		}
 
 		t.Run("replays the token of DOKIMI_ASSERT_PROP_REPLAY", func(t *testing.T) {
 			clean(t)
@@ -129,7 +165,7 @@ func TestEnvironment(t *testing.T) {
 // string, which states nothing, until the test ends.
 func clean(t *testing.T) {
 	t.Helper()
-	for _, name := range []string{seedVariable, profileVariable, replayVariable} {
+	for _, name := range []string{seedVariable, profileVariable, replayVariable, budgetVariable} {
 		t.Setenv(name, "")
 	}
 }

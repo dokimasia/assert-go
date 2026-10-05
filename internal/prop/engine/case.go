@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"runtime"
@@ -15,6 +16,7 @@ import (
 	"sync"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/history"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/tree"
@@ -163,6 +165,20 @@ type Case struct {
 	notes []string
 	// fingerprints are the fingerprints the body observed, in order.
 	fingerprints []uint64
+	// taken are the steps that the body's machine took, each with the number
+	// of draws before it, in order.
+	taken []RecordedStep
+	// targets are the scores that the body recorded, the highest of each
+	// label, and nil before the first.
+	targets map[string]float64
+	// history is the case's history, and nil until the body asks for it.
+	history *history.History
+	// repeat is the most runs of the case that the body asked for, and 0
+	// when it asked for none.
+	repeat int
+	// settings are the settings of the run, under which a repeat of the case
+	// runs.
+	settings Settings
 	// stop is why the case ended before its body returned.
 	stop stop
 	// dropped reports whether the run no longer needs the case, which then
@@ -227,6 +243,7 @@ func (c *Case) recycle(p provider, s Settings, w *tree.Walker) {
 	clear(c.choices)
 	clear(c.spans)
 	clear(c.draws)
+	clear(c.taken)
 	clear(c.cleanups)
 	*c = Case{
 		recorder:   assert.NewRecorder().WithGoexit().WithClock(s.Clock),
@@ -238,7 +255,9 @@ func (c *Case) recycle(p provider, s Settings, w *tree.Walker) {
 		spans:      c.spans[:0],
 		open:       c.open[:0],
 		draws:      c.draws[:0],
+		taken:      c.taken[:0],
 		cleanups:   c.cleanups[:0],
+		settings:   s,
 	}
 	record.Run(&c.calls, s.Slot, nil)
 }
@@ -257,6 +276,18 @@ func (c *Case) steps() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.walk)
+}
+
+// keepWalk makes c, a new case outside the case tree whose body has not
+// started, keep its walk, which the runner enters into the case tree once
+// the case has ended. Each call record that the case keeps then states the
+// steps that its walk had made, so the runner keeps only the calls that a
+// run on one worker makes.
+func (c *Case) keepWalk() {
+	c.keepsWalk = true
+	if c.settings.Slot != nil {
+		record.Run(&c.calls, c.settings.Slot, c.steps)
+	}
 }
 
 // Helper forwards a helper mark to the case's recorder, which counts it.
@@ -324,6 +355,41 @@ func (c *Case) Observe(fingerprint uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.fingerprints = append(c.fingerprints, fingerprint)
+}
+
+// History returns the case's history, which records the calls that the body
+// makes to a subject. It is empty when the case starts, and the case makes
+// it at the first call.
+func (c *Case) History() *history.History {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.history == nil {
+		c.history = history.New()
+	}
+	return c.history
+}
+
+// Target records score as a score that the case achieved under label. A case
+// that records two scores under one label keeps the higher. A campaign
+// explores near the cases with the highest score of each label, and every
+// other run records the score and generates as if it were absent.
+func (c *Case) Target(label string, score float64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.targets == nil {
+		c.targets = make(map[string]float64)
+	}
+	if best, scored := c.targets[label]; !scored || score > best {
+		c.targets[label] = score
+	}
+}
+
+// Targets returns a copy of the scores that the case recorded, the highest
+// of each label.
+func (c *Case) Targets() map[string]float64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return maps.Clone(c.targets)
 }
 
 // Rand returns a source of random values whose every value is an integer
@@ -529,10 +595,10 @@ func (c *Case) sequence(b choice.SequenceBounds) []uint32 {
 	return c.choose(request{bounds: choice.OfSequence(b)}).Sequence
 }
 
-// more returns the decision whether a collection of count elements under
-// sizes gets another: a choice that decides structure, whose edge gives a
-// collection one element.
-func (c *Case) more(sizes choice.Sizes, count int) bool {
+// more returns the decision whether a collection or a run of steps of count
+// elements under sizes gets another, around the length average: a choice
+// that decides structure, whose edge gives one element.
+func (c *Case) more(sizes choice.Sizes, count, average int) bool {
 	edge := uint64(0)
 	if count == 0 {
 		edge = 1
@@ -544,6 +610,7 @@ func (c *Case) more(sizes choice.Sizes, count int) bool {
 		drawing:   byFlag,
 		sizes:     sizes,
 		count:     count,
+		average:   average,
 	}
 	return c.choose(r).Integer == choice.UintOf(1)
 }
@@ -612,8 +679,9 @@ func (c *Case) nextSpan() int {
 	return len(c.spans)
 }
 
-// position returns the index the next choice will have.
-func (c *Case) position() int {
+// Position returns the index that the case's next choice will have. A span
+// that [Case.SpanFrom] opens starts at such an index.
+func (c *Case) Position() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.choices)

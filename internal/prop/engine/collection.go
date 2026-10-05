@@ -9,6 +9,7 @@ import (
 
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/choice"
+	"go.dokimi.dev/assert/internal/prop/random"
 )
 
 // The labels of the spans of a collection's elements.
@@ -208,12 +209,12 @@ func collect[T any](c *Case, sizes choice.Sizes, label string, decode func(*Case
 	seen := make(map[string]struct{})
 	discards := 0
 	for {
-		start := c.position()
+		start := c.Position()
 		decided := sizes
 		if stop != nil && len(items) >= sizes.Min() && stop() {
 			decided = stoppedAt(sizes, len(items))
 		}
-		if !c.more(decided, len(items)) {
+		if !c.more(decided, len(items), random.Average(decided)) {
 			return items
 		}
 		span := c.openSpanAt(label, start)

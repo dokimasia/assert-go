@@ -124,6 +124,9 @@ type search[S any] struct {
 	// clockAt is the number of steps at which the search reads the deadline
 	// next.
 	clockAt int
+	// final reports whether a search that passes states the states that its
+	// order leaves.
+	final bool
 
 	// next and prev link each entry to the entries beside it. The head is the
 	// entry len(position), and the tail the one after the head.
@@ -206,8 +209,9 @@ func newSearch[S any](ops operations[S], p partition, limits config, d *deadline
 		ops:        ops,
 		calls:      p.calls,
 		budget:     limits.budget,
-		capacity:   limits.memoLimit / int64(len(p.calls)),
+		capacity:   limits.memoLimit / int64(max(len(p.calls), 1)),
 		deadline:   d,
+		final:      limits.final != nil,
 		next:       make([]int, head+2),
 		prev:       make([]int, head+2),
 		position:   make([]int, head),
@@ -280,7 +284,11 @@ func (s *search[S]) scan() ending[S] {
 			entry = s.next[entry]
 		}
 	}
-	return ending[S]{verdict: Passed, steps: s.steps}
+	e := ending[S]{verdict: Passed, steps: s.steps}
+	if s.final {
+		e.states = slices.Clone(s.store[s.states.at : s.states.at+s.states.n])
+	}
+	return e
 }
 
 // ending returns the ending of a search that did not pass: v and limit, the

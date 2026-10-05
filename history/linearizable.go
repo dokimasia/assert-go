@@ -5,6 +5,7 @@ package history
 
 import (
 	"errors"
+	"reflect"
 	"runtime"
 	"sync"
 	"time"
@@ -39,7 +40,9 @@ var ErrModel = errors.New("history: a function of a model panics or ends its gor
 // The check searches the partitions in the order of their first invocation,
 // each from the model's initial state, with the search that the definition
 // fixes. It reports the first violated partition, and otherwise the first
-// undecided one. The options state its limits and its workers.
+// undecided one. The options state its limits and its workers, and [Whole]
+// and [Final] search every call as one partition and store the states that
+// a passing order leaves.
 //
 // The record's detail states the ten fields of the definition:
 //
@@ -58,8 +61,9 @@ var ErrModel = errors.New("history: a function of a model panics or ends its gor
 //
 // # Errors
 //
-// The check ends the call with a fault for a nil history, and for a model
-// without Init or without Step. It ends the call with a fault of the kind
+// The check ends the call with a fault for a nil history, for a model
+// without Init or without Step, and for [Final] of states of another type
+// than the model's. It ends the call with a fault of the kind
 // [ErrModel] when a function of the model panics or ends the goroutine, and
 // the fault names the call that the search stepped. A panic in a partition
 // that one worker would not search ends nothing.
@@ -82,10 +86,19 @@ func Linearizable[S any](tb assert.TB, h *History, m Model[S], contract string, 
 			fault.In(linearizableOp, fault.New("the model states no Init or no Step")))
 		return
 	}
+	final, typed := c.final.(*[]S)
+	if c.final != nil && !typed {
+		run.Fault(matcher.Fatal, linearizableID, contract, fault.In(linearizableOp,
+			fault.New("Final states %T for a model whose states are of type %v", c.final, reflect.TypeFor[S]())))
+		return
+	}
 	d, err := check(h, m.operations(), c)
 	if err != nil {
 		run.Fault(matcher.Fatal, linearizableID, contract, err)
 		return
+	}
+	if typed {
+		*final = d.final
 	}
 	if d.outcome == Passed {
 		run.Pass(matcher.Fatal, linearizableID, contract)
@@ -100,19 +113,30 @@ func Linearizable[S any](tb assert.TB, h *History, m Model[S], contract string, 
 
 // check returns the detail of the check of h through the model's functions
 // ops under c: the first violated partition, else the first undecided one,
-// else a pass. It returns the fault of a model's function that panicked in a
-// partition that one worker would search.
+// else a pass. A pass states its final states when c asks for them and the
+// check searched one partition or none. It returns the fault of a model's
+// function that panicked in a partition that one worker would search.
 func check[S any](h *History, ops operations[S], c config) (detail[S], error) {
 	d := &deadline{}
 	if c.timeLimit > 0 {
 		d.end = time.Now().Add(c.timeLimit)
 	}
 	events, ids := h.recorded()
-	parts := partitionsOf(callsOf(events, ids))
+	calls := callsOf(events, ids)
+	parts := partitionsOf(calls)
+	if c.whole && len(calls) > 0 {
+		parts = []partition{{keys: []any{}, calls: calls}}
+	}
+	if c.final != nil && len(parts) == 0 {
+		var e ending[S]
+		newSearch(ops, partition{}, c, d).run(func(end ending[S]) { e = end })
+		return detail[S]{outcome: Passed, final: e.states}, e.err
+	}
 	endingOf, stop := searches(ops, parts, c, d)
 	defer stop()
 	steps := 0
 	var undecided *detail[S]
+	var final []S
 	for i, p := range parts {
 		e := endingOf(i)
 		if e.err != nil {
@@ -120,6 +144,9 @@ func check[S any](h *History, ops operations[S], c config) (detail[S], error) {
 		}
 		steps += e.steps
 		if e.verdict == Passed {
+			if len(parts) == 1 {
+				final = e.states
+			}
 			continue
 		}
 		r := reported(p, e, len(parts), steps)
@@ -133,7 +160,7 @@ func check[S any](h *History, ops operations[S], c config) (detail[S], error) {
 	if undecided != nil {
 		return *undecided, nil
 	}
-	return detail[S]{outcome: Passed, partitions: len(parts), steps: steps}, nil
+	return detail[S]{outcome: Passed, partitions: len(parts), steps: steps, final: final}, nil
 }
 
 // searches starts the searches of parts on c.workers goroutines, in

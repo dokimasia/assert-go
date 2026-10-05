@@ -27,6 +27,7 @@ import (
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 	"go.dokimi.dev/assert/prop"
+	"go.dokimi.dev/assert/stateful"
 )
 
 // The tests of the surfaces use the library's assertions, as a consumer of
@@ -396,6 +397,8 @@ var pinned = map[conformance.ID]any{
 	"case.observe":      (*prop.Case).Observe,
 	"case.cleanup":      (*prop.Case).Cleanup,
 	"case.cancellation": (*prop.Case).Context,
+	"case.history":      (*prop.Case).History,
+	"case.target":       (*prop.Case).Target,
 	"generator.map":     prop.Generator[int].Map[string],
 	"generator.filter":  prop.Generator[int].Filter,
 	"generator.bind":    prop.Generator[int].Bind[string],
@@ -460,6 +463,34 @@ var pinned = map[conformance.ID]any{
 	"history.memo-limit":     history.MemoLimit,
 	"history.time-limit":     history.TimeLimit,
 	"history.workers":        history.Workers,
+
+	"machine":           stateful.Machine[int]{},
+	"machine.model":     stateful.Machine[int]{}.Model,
+	"machine.actions":   stateful.Machine[int]{}.Actions,
+	"machine.invariant": stateful.Machine[int]{}.Invariant,
+	"machine.settle":    stateful.Machine[int]{}.Settle,
+	"action":            stateful.Action[int]{},
+	"action.name":       stateful.Action[int]{}.Name,
+	"action.weight":     stateful.Action[int]{}.Weight,
+	"action.enabled":    stateful.Action[int]{}.Enabled,
+	"action.drain":      stateful.Action[int]{}.Drain,
+	"action.input":      stateful.Action[int]{}.Input,
+	"action.run":        stateful.Action[int]{}.Run,
+	"stateful.steps":    stateful.Steps[int],
+	"steps.mean":        stateful.Mean,
+	"steps.max":         stateful.Max,
+	"steps.swarm":       stateful.Swarm,
+	"steps.clients":     stateful.Clients,
+	"steps.concurrent":  stateful.Concurrent,
+	"steps.scheduler":   stateful.Tasks,
+	"steps.repeat":      stateful.Repeat,
+	"scheduler":         (*stateful.Scheduler)(nil),
+	"scheduler.new":     stateful.NewScheduler,
+	"scheduler.spawn":   (*stateful.Scheduler).Spawn,
+	"scheduler.yield":   (*stateful.Scheduler).Yield,
+	"scheduler.run":     (*stateful.Scheduler).Run,
+	"scheduler.uniform": stateful.Uniform,
+	"scheduler.pct":     stateful.PCT,
 }
 
 // TestSurfaceTable compares the pin map with the naming table: the map

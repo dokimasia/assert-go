@@ -31,15 +31,15 @@ func init() {
 // sentence returns the sentence of a failing run's record f, which the text
 // writer sends to a seat without a Report method. It states the contract,
 // the outcome with the counts and the seed, and then a line for each part of
-// the detail that the outcome uses: the counterexample's draws, its failure
-// and how to replay it, each other failure, the divergence and the coverage
-// requirement.
+// the detail that the outcome uses: each entry of the counterexample, its
+// failure and how to replay it, each other failure, the divergence and the
+// coverage requirement.
 func sentence(f assert.Failure) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s: %v after %d valid and %d rejected cases, seed %s",
 		f.Contract, f.Detail[outcomeField], f.Detail[casesField], f.Detail[rejectedField], f.Detail[seedField])
-	if drawn, ok := f.Detail[counterexampleField].([]Drawn); ok {
-		writeDraws(&b, drawn)
+	if entries, ok := f.Detail[counterexampleField].([]Entry); ok {
+		writeEntries(&b, entries)
 	}
 	if failure, ok := f.Detail[failureField].(assert.Failure); ok {
 		writeFailure(&b, "failure", failure)
@@ -50,7 +50,7 @@ func sentence(f assert.Failure) string {
 	others, _ := f.Detail[othersField].([]Other)
 	for _, other := range others {
 		writeFailure(&b, "other failure", other.Failure)
-		writeDraws(&b, other.Counterexample)
+		writeEntries(&b, other.Counterexample)
 		writeReplay(&b, other.Choices)
 	}
 	if d, ok := f.Detail[divergenceField].(*Divergence); ok {
@@ -64,17 +64,10 @@ func sentence(f assert.Failure) string {
 	return b.String()
 }
 
-// writeDraws writes a line for each draw: its label and its value as a Go
-// literal, and what the explain phase found.
-func writeDraws(b *strings.Builder, drawn []Drawn) {
-	for _, d := range drawn {
-		text.Fprintf(b, "\n  %s: %#v", d.Label, d.Value)
-		if d.Relevance == AnyValueFails {
-			b.WriteString(", any value fails")
-		}
-		if d.NearestPassing != nil {
-			text.Fprintf(b, ", %#v passes", d.NearestPassing)
-		}
+// writeEntries writes the line of each entry of a counterexample, in order.
+func writeEntries(b *strings.Builder, entries []Entry) {
+	for _, e := range entries {
+		e.writeLine(b)
 	}
 }
 

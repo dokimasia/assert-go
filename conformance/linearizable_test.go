@@ -14,11 +14,9 @@ import (
 // The members of a linearizable vector that the paths of the tests name.
 const (
 	modelAt     = "model"
-	historyAt   = "history"
 	budgetAt    = "budget"
 	memoLimitAt = "memo-limit"
 	workersAt   = "workers"
-	expectAt    = "expect"
 	stepsAt     = "steps"
 )
 

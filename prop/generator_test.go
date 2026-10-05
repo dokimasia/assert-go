@@ -52,7 +52,7 @@ func TestGenerator(t *testing.T) {
 				}
 			}
 			got := detailOf(body, prop.Seed(7), prop.Explain(false))
-			want := []prop.Drawn{{Label: drawn, Value: 20}}
+			want := []prop.Entry{prop.Drawn{Label: drawn, Value: 20}}
 			assert.Equal(t, got[counterexampleField], any(want), "twice the smallest failing source")
 		})
 
@@ -64,7 +64,9 @@ func TestGenerator(t *testing.T) {
 				}
 			}
 			got := detailOf(body, prop.Seed(7))
-			want := []prop.Drawn{{Label: drawn, Value: 2002, Relevance: prop.ValueMatters, NearestPassing: 2000}}
+			want := []prop.Entry{
+				prop.Drawn{Label: drawn, Value: 2002, Relevance: prop.ValueMatters, NearestPassing: 2000},
+			}
 			assert.Equal(t, got[counterexampleField], any(want), "twice the minimal value and twice the one below")
 		})
 	})
@@ -122,7 +124,11 @@ func TestGenerator(t *testing.T) {
 				c.Draw(sum(), drawn)
 				fail(c, every)
 			}, 3, 4)
-			want := []prop.Drawn{{Label: "first", Value: 3}, {Label: "second", Value: 4}, {Label: drawn, Value: 7}}
+			want := []prop.Entry{
+				prop.Drawn{Label: "first", Value: 3},
+				prop.Drawn{Label: "second", Value: 4},
+				prop.Drawn{Label: drawn, Value: 7},
+			}
 			assert.Equal(t, detail[counterexampleField], any(want), "the inner draws, then the sum")
 		})
 	})

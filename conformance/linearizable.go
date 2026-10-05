@@ -66,12 +66,9 @@ func checkLinearizable(raw json.RawMessage, _ string) error {
 	if !named {
 		return fault.At(fault.New("%q is no named model", v.Model), fault.Field(modelMember))
 	}
-	h, refused, err := record(v.History)
+	h, err := historyOf(v.History)
 	if err != nil {
-		return fault.At(err, fault.Field(historyMember))
-	}
-	if refused != -1 {
-		return fault.At(fault.New("the seam refuses the entry"), fault.Field(historyMember), fault.Index(refused))
+		return err
 	}
 	opts, err := checkOptions(v.Budget, v.MemoLimit, v.Workers)
 	if err != nil {

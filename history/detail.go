@@ -65,6 +65,9 @@ type detail[S any] struct {
 	// limit is the limit that stopped an undecided search, and zero for a
 	// violated one.
 	limit Limit
+	// final are the states that the order of a passing check leaves, when
+	// [Final] asks for them and the check searched one partition or none.
+	final []S
 }
 
 // reported returns the detail of a check that reports the partition p of

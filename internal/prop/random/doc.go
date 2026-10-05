@@ -18,9 +18,12 @@
 //   - [Integer], [Float] and [AppendSequence] draw a value inside bounds of
 //     the choice package.
 //   - [Flag] decides a collection's length one element at a time, around
-//     the length that [Average] returns.
+//     the length that [Average] returns, or a machine's run of steps
+//     around its mean.
 //   - [Reuse] decides whether a reusable draw repeats an earlier value of
 //     its case.
+//   - [Keep] decides whether a machine's swarm keeps an action, and
+//     [Weighted] draws the index of a machine's action by weight.
 //
 // # Seeds
 //

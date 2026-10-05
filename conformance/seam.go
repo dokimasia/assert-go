@@ -124,6 +124,20 @@ func fromScript(script []json.RawMessage, refused *int) (*history.History, error
 		fault.Field(refusedMember))
 }
 
+// historyOf records script, the history of a vector that a check reads,
+// through a history. It returns a fault at the member history for a
+// malformed entry, and for an entry that the seam refuses.
+func historyOf(script []json.RawMessage) (*history.History, error) {
+	h, refused, err := record(script)
+	if err != nil {
+		return nil, fault.At(err, fault.Field(historyMember))
+	}
+	if refused != -1 {
+		return nil, fault.At(fault.New("the seam refuses the entry"), fault.Field(historyMember), fault.Index(refused))
+	}
+	return h, nil
+}
+
 // record records script through a history, and returns the history and the
 // entry whose call of the seam panics as a usage error, or -1 when the seam
 // refuses none. It records no entry after the refused one. It returns a

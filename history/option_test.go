@@ -10,6 +10,7 @@ import (
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
 	"go.dokimi.dev/assert/history"
+	"go.dokimi.dev/assert/internal/fault"
 )
 
 // optionAllocs are the allocations of an option that its caller keeps,
@@ -86,6 +87,66 @@ func TestOption(t *testing.T) {
 		})
 	})
 
+	t.Run("Whole", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("searches every call as one partition, whatever keys the calls declare", func(t *testing.T) {
+			t.Parallel()
+			h := history.New()
+			recordOK(h, 0, write, writeOne, nil, "x")
+			recordOK(h, 1, read, nil, 0, "y")
+			assert.Nil(t, detailOf(h, register), "x and y pass apart")
+			got := detailOf(h, register, history.Whole())
+			assert.Equal(t, []any{got[outcomeField], got[partitionsField], got[partitionField]},
+				[]any{history.Violated, 1, []any{}},
+				"the read of 0 follows the write of 1 in one partition of every key")
+		})
+	})
+
+	t.Run("Final", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("stores the states that the order of a passing check leaves", func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, finalOf(passingRead, register), []int{1}, "the write left 1, and the read kept it")
+		})
+
+		t.Run("stores the initial state for a history without calls", func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, finalOf(history.New(), register), []int{0}, "the register starts at 0")
+		})
+
+		t.Run("stores nil for a check that does not pass", func(t *testing.T) {
+			t.Parallel()
+			assert.Nil(t, finalOf(violatedRead(), register), "no order passes")
+		})
+
+		t.Run("stores nil for a check of two partitions", func(t *testing.T) {
+			t.Parallel()
+			h := history.New()
+			recordOK(h, 0, write, writeOne, nil, "x")
+			recordOK(h, 1, read, nil, 0, "y")
+			assert.Nil(t, finalOf(h, register), "each partition leaves states of its own")
+		})
+
+		t.Run("stores the states of one partition of every key under Whole", func(t *testing.T) {
+			t.Parallel()
+			h := history.New()
+			recordOK(h, 0, write, writeOne, nil, "x")
+			recordOK(h, 1, read, nil, 1, "y")
+			assert.Equal(t, finalOf(h, register, history.Whole()), []int{1}, "the write and the read in one order")
+		})
+
+		t.Run("returns the fault of an Init that panics on a history without calls", func(t *testing.T) {
+			t.Parallel()
+			m := history.Model[int]{Init: func() int { panic(boom) }, Step: register.Step}
+			got := faultOf(t, history.New(), m, history.Final(new([]int)))
+			expectFault(t, got, fault.Error{
+				Op: linearizableOp, Kind: history.ErrModel, Reason: "the model's Init panics with boom",
+			})
+		})
+	})
+
 	t.Run("Option", func(t *testing.T) {
 		t.Parallel()
 
@@ -103,6 +164,18 @@ func TestOption(t *testing.T) {
 	})
 }
 
+// finalOf checks h against m on a recorder under opts and Final, and
+// returns the states that the check stored, which start as an empty list.
+func finalOf[S any](h *history.History, m history.Model[S], opts ...history.Option) []S {
+	states := []S{}
+	history.Linearizable(assert.NewRecorder(), h, m, contract, append(opts, history.Final(&states))...)
+	return states
+}
+
+// finalStates are the states that the option of the allocation ceiling of
+// Final keeps.
+var finalStates []int
+
 // TestOptionAllocs checks the allocation ceilings of the options.
 func TestOptionAllocs(t *testing.T) {
 	var kept history.Option
@@ -111,6 +184,8 @@ func TestOptionAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { kept = history.TimeLimit(time.Second) }, optionAllocs,
 		"TimeLimit allocates its setting")
 	assert.MaxAllocs(t, func() { kept = history.Workers(2) }, optionAllocs, "Workers allocates its setting")
+	assert.MaxAllocs(t, func() { kept = history.Whole() }, 0, "Whole states a setting that captures nothing")
+	assert.MaxAllocs(t, func() { kept = history.Final(&finalStates) }, optionAllocs, "Final allocates its setting")
 	assert.NotEqual(t, kept, history.Option{}, "the kept option states a setting")
 }
 
@@ -119,16 +194,23 @@ func BenchmarkOption(b *testing.B) {
 	tests := []struct {
 		name   string
 		option func() history.Option
+		allocs uint64
 	}{
-		{name: "Budget", option: func() history.Option { return history.Budget(10) }},
-		{name: "MemoLimit", option: func() history.Option { return history.MemoLimit(10) }},
-		{name: "TimeLimit", option: func() history.Option { return history.TimeLimit(time.Second) }},
-		{name: "Workers", option: func() history.Option { return history.Workers(2) }},
+		{name: "Budget", option: func() history.Option { return history.Budget(10) }, allocs: optionAllocs},
+		{name: "MemoLimit", option: func() history.Option { return history.MemoLimit(10) }, allocs: optionAllocs},
+		{
+			name:   "TimeLimit",
+			option: func() history.Option { return history.TimeLimit(time.Second) },
+			allocs: optionAllocs,
+		},
+		{name: "Workers", option: func() history.Option { return history.Workers(2) }, allocs: optionAllocs},
+		{name: "Whole", option: history.Whole},
+		{name: "Final", option: func() history.Option { return history.Final(&finalStates) }, allocs: optionAllocs},
 	}
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {
 			var got history.Option
-			c := bench.Start(b).MaxAllocs(optionAllocs)
+			c := bench.Start(b).MaxAllocs(tt.allocs)
 			defer c.End()
 			for c.Loop() {
 				got = tt.option()

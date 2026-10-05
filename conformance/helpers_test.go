@@ -26,10 +26,14 @@ const (
 	unknownGenerator = `{"gen":"widget"}`
 	// widget is a typed literal of a type that the encoding does not define.
 	widget = `{"type":"widget"}`
+	// oneLiteral is the typed literal of the integer 1.
+	oneLiteral = `{"type":"int","value":1}`
 	// four is the typed literal of the integer 4.
 	four = `{"type":"int","value":4}`
 	// null is the JSON text of no value.
 	null = "null"
+	// nullLiteral is the typed literal of null.
+	nullLiteral = `{"type":"null"}`
 )
 
 // The reasons of the faults of a vector's inputs that several tests state.
@@ -69,8 +73,10 @@ const (
 	choicesAt   = "choices"
 	detailAt    = "detail"
 	errorAt     = "error"
+	expectAt    = "expect"
 	generatorAt = "generator"
 	genAt       = "gen"
+	historyAt   = "history"
 	kindAt      = "kind"
 	ofAt        = "of"
 	recordedAt  = "recorded"
@@ -95,7 +101,8 @@ func TestHelpers(t *testing.T) {
 			conformance.Decoding, conformance.Generation, conformance.Shrinking, conformance.Coverage,
 			conformance.Bridge, conformance.Token, conformance.Behaviour, conformance.Store, conformance.Shapes,
 			conformance.Inverse, conformance.Draws, conformance.Fixtures, conformance.Forms, conformance.CallRecords,
-			conformance.Seam, conformance.Linearizable,
+			conformance.Seam, conformance.Linearizable, conformance.Serializable, conformance.SnapshotIsolation,
+			conformance.Machines,
 		}
 		for _, kind := range kinds {
 			t.Run("returns a fault at the id for a "+string(kind)+" vector that is no JSON object", func(t *testing.T) {
@@ -193,6 +200,12 @@ func expectFault(t *testing.T, err error, wantPath fault.Path, wantReason string
 	if !slices.Equal(f.Path, wantPath) || f.Reason != wantReason {
 		t.Fatalf("returns the fault %q at %s, want %q at %s", f.Reason, f.Path, wantReason, wantPath)
 	}
+}
+
+// invoking returns the script entry of an invocation of read without keys
+// under the number n by client.
+func invoking(n, client int) string {
+	return fmt.Sprintf(`{"invoke":%d,"client":%d,"operation":"read","args":[],"keys":[]}`, n, client)
 }
 
 // decoded returns a decoding vector of generator that replays choices,

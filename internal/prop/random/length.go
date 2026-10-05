@@ -22,15 +22,17 @@ func Average(sizes choice.Sizes) int {
 }
 
 // Flag decides whether a collection of count elements gets another
-// element. A decision that [choice.Sizes.FlagBounds] forces returns its one
-// value, true for 1, and consumes nothing. A free decision continues by a
-// Coin(extra, extra + 1), where extra is the [Average] length minus the
-// minimum.
-func Flag(s *Source, sizes choice.Sizes, count int) bool {
+// element, around the length average. A collection aims for the [Average]
+// of its sizes, and a machine's run of steps for its mean number of steps. A
+// decision that [choice.Sizes.FlagBounds] forces returns its one value, true
+// for 1, and consumes nothing. A free decision continues by a
+// Coin(extra, extra + 1), where extra is average minus the minimum. average
+// is at least the minimum.
+func Flag(s *Source, sizes choice.Sizes, count, average int) bool {
 	bounds := sizes.FlagBounds(count)
 	if lo := bounds.Lo(); lo == bounds.Hi() {
 		return lo == choice.UintOf(1)
 	}
-	extra := uint64(Average(sizes) - sizes.Min())
+	extra := uint64(average - sizes.Min())
 	return s.Coin(extra, extra+1)
 }

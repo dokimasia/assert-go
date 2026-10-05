@@ -126,13 +126,17 @@ type Divergence struct {
 	Remedy string `json:"remedy"`
 }
 
-// OverlayDoc is this language's declared divergences.
+// OverlayDoc is this language's declared divergences, and how it runs the
+// concurrent section of a machine.
 type OverlayDoc struct {
 	Extends     string       `json:"extends"`
 	Language    string       `json:"language"`
 	Diverge     []Divergence `json:"diverge"`
 	Relaxations []Declined   `json:"relaxations"`
 	Surface     []Declined   `json:"surface"`
+	// Sections are the ways that a concurrent section of a machine runs:
+	// tasks of the task scheduler, threads, or both.
+	Sections []string `json:"sections"`
 }
 
 // Declined is a relaxation this language does not offer, with the

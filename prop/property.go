@@ -29,6 +29,9 @@ const (
 	drawsOption = "Draws"
 	// valueMember is the member of an entry of Draws that states its value.
 	valueMember = "value"
+	// clientMember is the member of a step entry of Draws that states its
+	// client.
+	clientMember = "client"
 )
 
 // property is one call of [ForAll], [Fuzz] or a property form: the
@@ -63,13 +66,18 @@ type property struct {
 // tb of contract under c, whose record states prop-for-all, and closes the
 // registry. Its runs read the clock of tb.
 //
-// It returns a fault of op for a profile other than default and ci, for a
-// seed variable that is no decimal number below 2^64, for a token to replay
-// that no encoder writes, and for entries of Draws that are no array of
-// labels and typed literals.
+// It returns a fault of op for a profile other than default, ci and
+// campaign, for a seed variable that is no decimal number below 2^64, for a
+// campaign's budget that is no whole number of seconds above 0, for a token
+// to replay that no encoder writes, and for entries of Draws that are no
+// array of draw entries and step entries.
 func newProperty(tb assert.TB, op, contract string, pc uintptr, c config) (property, error) {
 	registrations.close()
 	seed, err := seedOf(c, contract)
+	if err != nil {
+		return property{}, fault.In(op, err)
+	}
+	budget, err := budgetOf(op)
 	if err != nil {
 		return property{}, fault.In(op, err)
 	}
@@ -95,6 +103,7 @@ func newProperty(tb assert.TB, op, contract string, pc uintptr, c config) (prope
 			Clock:        matcher.ClockOf(tb),
 			Workers:      c.workers,
 			Draws:        entries,
+			Budget:       budget,
 		},
 		dir: directoryOf(tb, c),
 	}
@@ -108,13 +117,19 @@ func newProperty(tb assert.TB, op, contract string, pc uintptr, c config) (prope
 }
 
 // drawEntries returns the entries of Draws that text states: a JSON array
-// of objects, each with a label and a typed literal. It returns a fault at
-// Draws for other text, and at the entry for an entry without a label or a
-// value, and for a value that is no typed literal.
+// of objects, each a step entry, which states the action of a step under
+// "step", its client under "client" in a concurrent section and "drain":
+// true in the drain, or a draw entry, which states a label and a typed
+// literal. It returns a fault at Draws for other text, and at the entry for
+// an entry that states no step and no label or no value, for a client below
+// 0, and for a value that is no typed literal.
 func drawEntries(text string) ([]engine.Entry, error) {
 	var stated []struct {
-		Label *string         `json:"label"`
-		Value json.RawMessage `json:"value"`
+		Label  *string         `json:"label"`
+		Value  json.RawMessage `json:"value"`
+		Step   *string         `json:"step"`
+		Client *int            `json:"client"`
+		Drain  bool            `json:"drain"`
 	}
 	if err := json.Unmarshal([]byte(text), &stated); err != nil {
 		return nil, fault.At(fault.New("the entries are no JSON array of objects").Because(err),
@@ -122,9 +137,21 @@ func drawEntries(text string) ([]engine.Entry, error) {
 	}
 	entries := make([]engine.Entry, len(stated))
 	for i, s := range stated {
+		if s.Step != nil {
+			step := engine.MachineStep{Action: *s.Step, Client: -1, Drain: s.Drain}
+			if s.Client != nil && *s.Client < 0 {
+				return nil, fault.At(fault.New("the client %d is below 0", *s.Client), fault.Field(drawsOption),
+					fault.Index(i), fault.Field(clientMember))
+			}
+			if s.Client != nil {
+				step.Client = *s.Client
+			}
+			entries[i] = engine.Entry{Step: &step}
+			continue
+		}
 		if s.Label == nil || s.Value == nil {
-			return nil, fault.At(fault.New("the entry states no label or no value"), fault.Field(drawsOption),
-				fault.Index(i))
+			return nil, fault.At(fault.New("the entry states no step, and no label or no value"),
+				fault.Field(drawsOption), fault.Index(i))
 		}
 		value, err := literal.Decode(s.Value)
 		if err != nil {

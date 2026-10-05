@@ -4,16 +4,12 @@
 package history_test
 
 import (
-	"errors"
 	"testing"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/history"
 	"go.dokimi.dev/assert/internal/alloctest"
 )
-
-// errRefused is the error of a call that took no effect.
-var errRefused = errors.New("history_test: the connection is refused")
 
 // The allocations of the JSON form of an event, measured.
 const (

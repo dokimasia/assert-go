@@ -13,10 +13,12 @@ import (
 	"go.dokimi.dev/assert/internal/text"
 )
 
-// The text writer takes the sentence of the record of linearizable from this
-// package, which registers it while it initialises.
+// The text writer takes the sentences of the records of linearizable,
+// serializable and snapshot-isolation from this package, which registers
+// them while it initialises.
 func init() {
 	matcher.RegisterSentence(sentence, linearizableID)
+	matcher.RegisterSentence(isolationSentence, serializableID, snapshotIsolationID)
 }
 
 // sentence returns the sentence of a failing check's record f, which the
@@ -61,6 +63,111 @@ func keysText(keys any) string {
 		}
 		text.Fprintf(&b, "%#v", key)
 	}
+	return b.String()
+}
+
+// isolationSentence returns the sentence of a failing isolation check's
+// record f, which the text writer sends to a seat without a Report method.
+// It states the contract and the anomaly, then the kinds, and then a line
+// for each entry of the explanation.
+func isolationSentence(f assert.Failure) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s: %v\n    kinds: ", f.Contract, f.Detail[anomalyField])
+	kinds, _ := f.Detail[kindsField].([]Anomaly)
+	for i, k := range kinds {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(k.String())
+	}
+	evidence, _ := f.Detail[explanationField].([]Evidence)
+	for _, e := range evidence {
+		b.WriteString("\n    ")
+		switch e := e.(type) {
+		case Edge:
+			writeEdge(&b, e)
+		case Observation:
+			writeObservation(&b, e)
+		}
+	}
+	return b.String()
+}
+
+// writeEdge writes the text of an edge of a cycle: its two calls and its
+// relation, and the key and the values that prove it.
+func writeEdge(b *strings.Builder, e Edge) {
+	fmt.Fprintf(b, "call %d -%v-> call %d: ", e.From, e.Relation, e.To)
+	if e.Relation == WW {
+		text.Fprintf(b, "call %d appended %#v to %#v after %#v", e.To, e.Next, e.Key, e.Value)
+		return
+	}
+	if e.Relation == WR {
+		text.Fprintf(b, "call %d read %#v ending in %#v", e.To, e.Key, e.Value)
+		return
+	}
+	if e.Empty {
+		text.Fprintf(b, "call %d read [] from %#v, and call %d appended %#v to it", e.From, e.Key, e.To, e.Next)
+		return
+	}
+	text.Fprintf(b, "call %d read %#v ending in %#v, and call %d appended %#v after it",
+		e.From, e.Key, e.Value, e.To, e.Next)
+}
+
+// writeObservation writes the text of the observation of an anomaly that is
+// no cycle: the reads and the appends that show it.
+func writeObservation(b *strings.Builder, o Observation) {
+	switch o.Anomaly {
+	case GarbageRead:
+		text.Fprintf(b, "call %d read %s from %#v, and no transaction appended %#v",
+			o.Calls[0], listText(o.Reads[0]), o.Key, o.Value)
+	case DuplicateAppend:
+		text.Fprintf(
+			b,
+			"call %d read %s from %#v, which contains %#v twice",
+			o.Calls[0],
+			listText(o.Reads[0]),
+			o.Key,
+			o.Value,
+		)
+	case InternalInconsistency:
+		text.Fprintf(b, "call %d read %s from %#v", o.Calls[0], listText(o.Reads[0]), o.Key)
+		if o.Whole {
+			fmt.Fprintf(b, ", and it knew the list was %s", listText(o.Expected))
+		} else if len(o.Expected) > 0 {
+			fmt.Fprintf(b, ", and it knew the list ended with %s", listText(o.Expected))
+		}
+		if o.HasFuture {
+			text.Fprintf(b, ", and %#v is a value that call %d appends later", o.Future, o.Calls[0])
+		}
+	case IncompatibleOrder:
+		text.Fprintf(b, "calls %d and %d read %s and %s from %#v, and neither is a prefix of the other",
+			o.Calls[0], o.Calls[1], listText(o.Reads[0]), listText(o.Reads[1]), o.Key)
+	case AbortedRead:
+		text.Fprintf(
+			b,
+			"call %d read %#v from %#v, which call %d appended and aborted",
+			o.Calls[0],
+			o.Value,
+			o.Key,
+			o.Appender,
+		)
+	default:
+		text.Fprintf(b, "call %d read %#v ending in %#v, which call %d followed with %#v",
+			o.Calls[0], o.Key, o.Value, o.Appender, o.Next)
+	}
+}
+
+// listText returns the text of a list of values, each as a Go literal.
+func listText(values []any) string {
+	var b strings.Builder
+	b.WriteString("[")
+	for i, v := range values {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		text.Fprintf(&b, "%#v", v)
+	}
+	b.WriteString("]")
 	return b.String()
 }
 

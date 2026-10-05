@@ -41,6 +41,10 @@ const (
 	// whose body draws one integer and calls Context: those of
 	// drawRunAllocs, and the context with its cancel function.
 	contextRunAllocs = 14
+	// historyRunAllocs are the allocations of a run that replays one case
+	// whose body draws one integer and calls History: those of
+	// drawRunAllocs, and the history.
+	historyRunAllocs = 13
 )
 
 // closing is the label of a draw that a cleanup makes.
@@ -362,7 +366,7 @@ func TestCase(t *testing.T) {
 					fail(c, every)
 				})
 			}, 7, 3)
-			want := []prop.Drawn{{Label: drawn, Value: 7}, {Label: closing, Value: 3}}
+			want := []prop.Entry{prop.Drawn{Label: drawn, Value: 7}, prop.Drawn{Label: closing, Value: 3}}
 			assert.Equal(t, detail[counterexampleField], any(want), "the body's draw, then the cleanup's")
 		})
 	})
@@ -404,6 +408,37 @@ func TestCase(t *testing.T) {
 		})
 	})
 
+	t.Run("History", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns one history to every call of the case, which records the body's calls", func(t *testing.T) {
+			t.Parallel()
+			var same bool
+			var events int
+			replays(assert.NewRecorder(), func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 9), drawn)
+				first := c.History()
+				first.Invoke(0, "read", nil).OK(nil)
+				same, events = c.History() == first, len(c.History().Events())
+			}, 7)
+			assert.Equal(t, []any{same, events}, []any{true, 2}, "the invocation and the completion of read")
+		})
+	})
+
+	t.Run("Target", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("changes nothing that a run generates or reports", func(t *testing.T) {
+			t.Parallel()
+			fails := failsAtLeast(10000, 1001, big)
+			scored := func(c *prop.Case) {
+				c.Target("depth", 1)
+				fails(c)
+			}
+			assert.Equal(t, detailOf(scored, prop.Seed(7)), detailOf(fails, prop.Seed(7)), "the record of the run")
+		})
+	})
+
 	t.Run("Draw", func(t *testing.T) {
 		t.Parallel()
 
@@ -415,7 +450,8 @@ func TestCase(t *testing.T) {
 				fail(c, every)
 			}, 7)
 			assert.Equal(t, got, 7, "the replayed value")
-			assert.Equal(t, detail[counterexampleField], any([]prop.Drawn{{Label: drawn, Value: 7}}), "the draw")
+			assert.Equal(t, detail[counterexampleField], any([]prop.Entry{prop.Drawn{Label: drawn, Value: 7}}),
+				"the draw")
 		})
 
 		t.Run("records two draws under one label", func(t *testing.T) {
@@ -425,7 +461,7 @@ func TestCase(t *testing.T) {
 				c.Draw(prop.Integer(0, 9), drawn)
 				fail(c, every)
 			}, 7, 3)
-			want := []prop.Drawn{{Label: drawn, Value: 7}, {Label: drawn, Value: 3}}
+			want := []prop.Entry{prop.Drawn{Label: drawn, Value: 7}, prop.Drawn{Label: drawn, Value: 3}}
 			assert.Equal(t, detail[counterexampleField], any(want), "both draws in order")
 		})
 	})
@@ -461,6 +497,19 @@ func TestCaseAllocs(t *testing.T) {
 	}
 	assert.MaxAllocs(t, func() { prop.ForAll(rec, contract, contextual, prop.Replay(seven)) }, contextRunAllocs,
 		"a run of a case that calls Context")
+	assert.MaxAllocs(t, func() { prop.ForAll(rec, contract, historical, prop.Replay(seven)) }, historyRunAllocs,
+		"a run of a case that calls History")
+	assert.MaxAllocs(t, func() { c.Target("depth", 1) }, 0, "Target allocates nothing for a scored label")
+}
+
+// historicalDigits is the generator of the draw of historical.
+var historicalDigits = prop.Integer(0, 9)
+
+// historical is the body of a case that draws one integer and asks for its
+// history.
+func historical(c *prop.Case) {
+	c.Draw(historicalDigits, drawn)
+	c.History()
 }
 
 // BenchmarkCase measures each method of the case. A method that ends the
@@ -604,20 +653,41 @@ func BenchmarkCase(b *testing.B) {
 		}
 		assert.False(b, rec.Failed(), "every run passes")
 	})
+
+	b.Run("History", func(b *testing.B) {
+		rec, seven := &matchertest.Seat{}, tokenOf(7)
+		c := bench.Start(b).MaxAllocs(historyRunAllocs)
+		defer c.End()
+		for c.Loop() {
+			prop.ForAll(rec, contract, historical, prop.Replay(seven))
+		}
+		assert.False(b, rec.Failed(), "every run passes")
+	})
+
+	b.Run("Target", func(b *testing.B) {
+		cs := leaked()
+		c := bench.Start(b).MaxAllocs(0)
+		defer c.End()
+		for c.Loop() {
+			cs.Target("depth", 1)
+		}
+		assert.NotNil(b, cs, "the case")
+	})
 }
 
 // nothing is a cleanup that does nothing.
 func nothing() {}
 
 // leaked returns the case of a run that replayed one case, which drew 7
-// from the digits and classified itself as small, for a caller to call
-// after the body returned.
+// from the digits, classified itself as small and scored 3 under depth, for
+// a caller to call after the body returned.
 func leaked() *prop.Case {
 	var c *prop.Case
 	prop.ForAll(assert.NewRecorder(), contract, func(cs *prop.Case) {
 		c = cs
 		cs.Draw(prop.Integer(0, 9), drawn)
 		cs.Classify(small)
+		cs.Target("depth", 3)
 	}, prop.Replay(tokenOf(7)))
 	return c
 }

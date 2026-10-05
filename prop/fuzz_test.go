@@ -210,11 +210,16 @@ func TestFuzz(t *testing.T) {
 			expectEnded(t, childCall(t, out, "FuzzChild", 2), duplicated)
 		})
 
-		t.Run("fails at once for a profile other than default and ci", func(t *testing.T) {
+		t.Run("fails at once for a profile other than default, ci and campaign", func(t *testing.T) {
 			out, err := child(t, passingMode, t.TempDir(), profileVariable+"=nightly", record.Variable+"=1")
 			assert.HasError(t, err, "the child fails")
 			profile := profileFault(fuzzOp)
 			expectEnded(t, childCall(t, out, "FuzzChild", 1), &profile)
+		})
+
+		t.Run("reads no budget under the campaign profile, and runs no campaign", func(t *testing.T) {
+			_, err := child(t, passingMode, t.TempDir(), profileVariable+"=campaign")
+			assert.NoError(t, err, "the child passes without a budget")
 		})
 
 		t.Run("records each input as a separate call, with its case's calls under the phase fuzz", func(t *testing.T) {
@@ -341,6 +346,7 @@ func child(t *testing.T, mode, dir string, env ...string) (string, error) {
 	t.Helper()
 	vars := []string{
 		childMode + "=" + mode, childStore + "=" + dir, seedVariable + "=", profileVariable + "=", replayVariable + "=",
+		budgetVariable + "=",
 	}
 	return childtest.Run(t, "FuzzChild", append(vars, env...)...)
 }

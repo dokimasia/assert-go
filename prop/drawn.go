@@ -5,9 +5,10 @@ package prop
 
 import (
 	"encoding/json"
+	"strings"
 
 	"go.dokimi.dev/assert/internal/literal"
-	"go.dokimi.dev/assert/internal/prop/engine"
+	"go.dokimi.dev/assert/internal/text"
 )
 
 //go:generate go run golang.org/x/tools/cmd/stringer@v0.50.0 -type=Relevance -linecomment -output=drawn.string_gen.go
@@ -35,8 +36,8 @@ func (r Relevance) Valid() bool {
 	return r <= ValueMatters
 }
 
-// Drawn is one value of a counterexample, in the order the body drew it.
-// The zero Drawn is an untested draw of nil under the empty label.
+// Drawn is one value that the body drew in a counterexample, an [Entry]. The
+// zero Drawn is an untested draw of nil under the empty label.
 type Drawn struct {
 	// Label is the label the body drew the value under.
 	Label string
@@ -76,18 +77,27 @@ func (d Drawn) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-// counterexampleOf returns the draws of e's case in order, each with the
-// explanation at its index. explained is the run's explanation of e, which
-// states one entry for each draw, or nil for a case that the run did not
-// explain.
-func counterexampleOf(e engine.Execution, explained []engine.Explained) []Drawn {
-	draws := e.Case.Draws()
-	out := make([]Drawn, len(draws))
-	for i, d := range draws {
-		out[i] = Drawn{Label: d.Label, Value: d.Value}
-		if i < len(explained) {
-			out[i].Relevance, out[i].NearestPassing = Relevance(explained[i].Relevance), explained[i].NearestPassing
-		}
+// labelled is a draw of another failure's case as the record of a run
+// states it.
+type labelled struct {
+	Label string          `json:"label"`
+	Value json.RawMessage `json:"value"`
+}
+
+// writeLine writes the draw's line: its label and its value as a Go
+// literal, and what the explain phase found.
+func (d Drawn) writeLine(b *strings.Builder) {
+	text.Fprintf(b, "\n  %s: %#v", d.Label, d.Value)
+	if d.Relevance == AnyValueFails {
+		b.WriteString(", any value fails")
 	}
-	return out
+	if d.NearestPassing != nil {
+		text.Fprintf(b, ", %#v passes", d.NearestPassing)
+	}
+}
+
+// brief returns the draw's label and the typed literal of its value. A
+// value that no typed literal states is an opaque literal.
+func (d Drawn) brief() any {
+	return labelled{Label: d.Label, Value: literal.Detail(d.Value)}
 }

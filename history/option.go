@@ -92,6 +92,31 @@ func Workers(n int) Option {
 	}}
 }
 
+// Whole makes the check search the whole history as one partition, whatever
+// keys its calls declare. A model that states one state of the whole
+// subject, as the model of a machine does, needs every call in one search.
+func Whole() Option {
+	return Option{set: func(c config) config {
+		c.whole = true
+		return c
+	}}
+}
+
+// Final makes the check store in states, for a check that passes, the states
+// that the first order the search found leaves: the initial state for a
+// history without calls, and the states after the order of its calls for a
+// history of one partition. A check of more partitions, and a check that
+// does not pass, stores nil. [Whole] puts every call in one partition.
+//
+// S must be the type of the model's states. A check whose model has states
+// of another type ends the call with a fault.
+func Final[S any](states *[]S) Option {
+	return Option{set: func(c config) config {
+		c.final = states
+		return c
+	}}
+}
+
 // config is what the options of one check state.
 type config struct {
 	// budget is the steps that one partition's search may spend.
@@ -102,6 +127,11 @@ type config struct {
 	timeLimit time.Duration
 	// workers is the number of partitions searched at once.
 	workers int
+	// whole reports whether the check searches every call as one partition.
+	whole bool
+	// final is the *[]S of Final, which a passing check stores its states
+	// in, and nil without Final.
+	final any
 }
 
 // configure returns the defaults with each option of opts applied in order.

@@ -144,19 +144,29 @@ func Explain(enabled bool) Option {
 	}}
 }
 
-// Draws makes the run's first case decode its draws from entries: a JSON
-// array of objects that each state a label and a typed literal, as a store
-// entry records its counterexample.
+// Draws makes the run's first case decode its draws and take its machine's
+// steps from entries: a JSON array of the entries of a counterexample, in
+// request order. A draw entry states a label and a typed literal, as a store
+// entry records a draw. A step entry states the action of a step, with its
+// client in a concurrent section and the drain mark in the drain.
 //
-//	prop.Draws(`[{"label": "count", "value": {"type": "int", "value": 4}}]`)
+//	prop.Draws(`[
+//		{"label": "capacity", "value": {"type": "int", "value": 2}},
+//		{"step": "put"},
+//		{"label": "v", "value": {"type": "int", "value": 0}},
+//		{"step": "put", "client": 1},
+//		{"step": "deliver", "drain": true}
+//	]`)
 //
 // Each draw takes the next entry, and its choices are the ones that decode
 // to the entry's value under the draw's generator, so a value written by
-// hand runs, and shrinks when it fails, as a generated one does. A draw past
-// the last entry takes its target. A draw whose label differs from its
-// entry's, or whose generator does not produce the entry's value, fails the
-// test before any other case runs, and the failure names the draw's label.
-// Entries that are no such array fail the test without a run.
+// hand runs, and shrinks when it fails, as a generated one does. A machine
+// of package stateful turns each step entry into the choices of one step. A
+// draw past the last entry takes its target. A draw whose label differs from
+// its entry's, a draw whose generator does not produce the entry's value,
+// and a step entry that the machine cannot take at its position fail the
+// test before any other case runs, and the failure names the entry. Entries
+// that are no such array fail the test without a run.
 func Draws(entries string) Option {
 	return Option{set: func(c config) config {
 		c.draws, c.drawn = entries, true

@@ -70,6 +70,7 @@ const (
 	seedVariable    = "DOKIMI_ASSERT_PROP_SEED"
 	profileVariable = "DOKIMI_ASSERT_PROP_PROFILE"
 	replayVariable  = "DOKIMI_ASSERT_PROP_REPLAY"
+	budgetVariable  = "DOKIMI_ASSERT_PROP_BUDGET"
 )
 
 // contractOfForm is the contract of every test form.
@@ -577,7 +578,7 @@ func profileFault(op string) fault.Error {
 	return fault.Error{
 		Op:     op,
 		Path:   fault.Path{fault.Field(profileVariable)},
-		Reason: `"nightly" names neither the default nor the ci profile`,
+		Reason: `"nightly" names none of the default, ci and campaign profiles`,
 	}
 }
 

@@ -96,8 +96,8 @@ func TestStore(t *testing.T) {
 				again := detailOf(body, prop.Seed(7), prop.Explain(false),
 					prop.Draws(`[{"label": "value", "value": `+string(stated)+`}]`))
 				assert.Equal(t, again[casesField], any(0), "the case of the entry fails first")
-				assert.Equal(t, again[counterexampleField], any([]prop.Drawn{{Label: drawn, Value: order{ID: 5}}}),
-					"the order that the entry states")
+				want := []prop.Entry{prop.Drawn{Label: drawn, Value: order{ID: 5}}}
+				assert.Equal(t, again[counterexampleField], any(want), "the order that the entry states")
 			},
 		)
 

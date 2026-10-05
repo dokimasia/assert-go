@@ -14,9 +14,9 @@ import (
 )
 
 // vectorGlobs match the vector files of the vendored definition: those of
-// the history and those of the property engine. The corpus glob of the
-// assertions matches neither.
-var vectorGlobs = [...]string{"spec/corpus/history/*.json", "spec/corpus/prop/*.json"}
+// the history, of the property engine and of machines. The corpus glob of
+// the assertions matches none of them.
+var vectorGlobs = [...]string{"spec/corpus/history/*.json", "spec/corpus/prop/*.json", "spec/corpus/stateful/*.json"}
 
 // The members of a corpus case, of a vector and of the specs inside one,
 // that the path of a fault names.
@@ -123,35 +123,50 @@ const (
 	// Linearizable checks a history against a named model, and states the
 	// verdict and the detail of its record.
 	Linearizable VectorKind = "linearizable"
+	// Serializable checks a history of list-append transactions for the
+	// anomalies that serializability forbids, and states the verdict and the
+	// detail of its record.
+	Serializable VectorKind = "serializable"
+	// SnapshotIsolation checks a history of list-append transactions for the
+	// anomalies that snapshot isolation forbids, and states the verdict and
+	// the detail of its record.
+	SnapshotIsolation VectorKind = "snapshot-isolation"
+	// Machines runs the steps of a named machine subject under a setup,
+	// settings and a trace, and states the detail of the run or the refusal
+	// of the trace.
+	Machines VectorKind = "machines"
 )
 
 // runner runs the JSON of one vector against this implementation, and
 // returns a fault of how the outputs differ from the ones that the vector
-// states, with a path inside the vector. A behaviour vector and a
-// recording vector write their stored cases to dir.
+// states, with a path inside the vector. A behaviour vector, a recording
+// vector and a machines vector write their stored cases to dir.
 type runner func(raw json.RawMessage, dir string) error
 
-// runners maps each of the sixteen kinds to its runner.
+// runners maps each of the nineteen kinds to its runner.
 var runners = map[VectorKind]runner{
-	Decoding:     checkDecoding,
-	Generation:   checkGeneration,
-	Shrinking:    checkShrinking,
-	Coverage:     checkCoverage,
-	Bridge:       checkBridge,
-	Token:        checkToken,
-	Behaviour:    checkBehaviour,
-	Store:        checkStore,
-	Shapes:       checkShapes,
-	Inverse:      checkInverse,
-	Draws:        checkDraws,
-	Fixtures:     checkFixtures,
-	Forms:        checkForms,
-	CallRecords:  checkRecording,
-	Seam:         checkSeam,
-	Linearizable: checkLinearizable,
+	Decoding:          checkDecoding,
+	Generation:        checkGeneration,
+	Shrinking:         checkShrinking,
+	Coverage:          checkCoverage,
+	Bridge:            checkBridge,
+	Token:             checkToken,
+	Behaviour:         checkBehaviour,
+	Store:             checkStore,
+	Shapes:            checkShapes,
+	Inverse:           checkInverse,
+	Draws:             checkDraws,
+	Fixtures:          checkFixtures,
+	Forms:             checkForms,
+	CallRecords:       checkRecording,
+	Seam:              checkSeam,
+	Linearizable:      checkLinearizable,
+	Serializable:      checkSerializable,
+	SnapshotIsolation: checkSnapshotIsolation,
+	Machines:          checkMachines,
 }
 
-// Valid reports whether k is one of the sixteen kinds. It allocates
+// Valid reports whether k is one of the nineteen kinds. It allocates
 // nothing.
 func (k VectorKind) Valid() bool {
 	_, ok := runners[k]
@@ -179,17 +194,17 @@ type Vector struct {
 // Vectors returns every vector of the vendored definition, the files in
 // the order of their names and each file's cases in order. A vector takes
 // the kind that its file states, and [Vector.Check] refuses a kind outside
-// the sixteen.
+// the nineteen.
 //
 // # Allocation contract
 //
-// Vectors allocates 1,149 times on the vendored definition: the names that
-// the two globs return, the open file and the copy of each of the sixteen
-// files, the two structs that each file decodes into with their lists of
-// cases, a copy of each case's JSON, each case's id, and the growth of the
-// list that it returns. The JSON decoder's pooled state, which a garbage
-// collection or a move of the goroutine to another processor leaves empty,
-// adds up to two.
+// Vectors allocates 1,313 times on the vendored definition: the names that
+// the three globs return, the open file and the copy of each of the
+// nineteen files, the two structs that each file decodes into with their
+// lists of cases, a copy of each case's JSON, each case's id, and the growth
+// of the list that it returns. The JSON decoder's pooled state, which a
+// garbage collection or a move of the goroutine to another processor leaves
+// empty, adds up to two.
 func Vectors() []Vector {
 	var names []string
 	for _, pattern := range vectorGlobs {
@@ -219,24 +234,25 @@ func Vectors() []Vector {
 
 // Check runs v against this implementation. It returns how the outputs
 // differ from the ones that v states, or nil when they match. A behaviour
-// vector and a recording vector write their stored cases to dir, an empty
-// directory.
+// vector, a recording vector and a machines vector write their stored cases
+// to dir, an empty directory.
 //
 // # Errors
 //
 // It returns a fault whose path starts at the vector's ID and leads through
 // the vector's JSON to the part at fault. That part is an input that does
 // not parse or that the vocabulary does not state, or an output that
-// differs from the run. A vector of a kind outside the sixteen has a fault
+// differs from the run. A vector of a kind outside the nineteen has a fault
 // at its ID alone.
 //
 // # Allocation contract
 //
 // Check allocates the struct that the vector's JSON decodes into, and the
 // values of what its kind runs. A token vector of no choices allocates
-// twice: the struct and the token. A behaviour vector and a recording
-// vector allocate a whole run of [go.dokimi.dev/assert/prop.ForAll], and a
-// forms vector a whole run of its form.
+// twice: the struct and the token. A behaviour vector, a recording vector
+// and a machines vector allocate a whole run of
+// [go.dokimi.dev/assert/prop.ForAll], and a forms vector a whole run of its
+// form.
 func (v Vector) Check(dir string) error {
 	run, ok := runners[v.Kind]
 	if !ok {

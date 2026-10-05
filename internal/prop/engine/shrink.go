@@ -298,7 +298,7 @@ func (sh *shrinker) settle(batch []candidate) (accepted, over bool) {
 	for i, e := range runs {
 		sh.runs++
 		sh.s.Slot.Take(&e.Case.calls, record.Shrink)
-		sh.sizes[batch[i].token] = e.Case.position()
+		sh.sizes[batch[i].token] = e.Case.Position()
 		if e.Status != CaseFailed {
 			sh.release(e)
 			continue

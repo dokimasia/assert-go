@@ -28,9 +28,6 @@ const (
 	spreadStates = 2000
 )
 
-// boom is the value that the panicking functions of the tests raise.
-const boom = "boom"
-
 // TestSearch checks the search of a partition through the record of a
 // check: its frontier, its limits, its clock, and the faults of a model.
 func TestSearch(t *testing.T) {

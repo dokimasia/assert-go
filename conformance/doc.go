@@ -70,6 +70,22 @@
 //     compares the detail of the record. A passing check reports no record,
 //     so the runner checks the steps of a pass through two more checks
 //     under a budget of the steps and of one step less.
+//   - [Serializable] and [SnapshotIsolation] check a recorded script of
+//     list-append transactions through
+//     [go.dokimi.dev/assert/history.Serializable] or
+//     [go.dokimi.dev/assert/history.HasSnapshotIsolation], and compare the
+//     verdict and the detail of the record.
+//
+// # Machines
+//
+// [Vectors] returns the vectors of machines too. [Machines] runs one of the
+// six machine subjects of the definition, which the runner builds natively,
+// through [go.dokimi.dev/assert/stateful.Steps] in a run of
+// [go.dokimi.dev/assert/prop.ForAll], under the vector's setup, settings and
+// trace. It compares the detail of the run, each step of the
+// counterexample among its draws, or the entry and the member of the
+// trace's refusal. [Overlay] states how this library runs the concurrent
+// section of a machine.
 //
 // # Errors
 //
@@ -88,9 +104,10 @@
 //
 // # Dependency position
 //
-// Imports the standard library, this module's assert, expect, history and
-// prop packages, the fault and literal packages, and the internal packages
-// of the property engine: choice, coverage, engine, matching, shape, store
-// and token. Only tests import it. Besides its own tests, the store tests of
-// prop import it to compare the version of a stored case with [Version].
+// Imports the standard library, this module's assert, expect, history, prop
+// and stateful packages, the fault and literal packages, and the internal
+// packages of the property engine: choice, coverage, engine, matching,
+// shape, store and token. Only tests import it. Besides its own tests, the
+// store tests of prop import it to compare the version of a stored case
+// with [Version].
 package conformance

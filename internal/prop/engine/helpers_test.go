@@ -32,9 +32,21 @@ const referenceSeed = 7
 // with a run on one worker.
 const fourWorkers = 4
 
-// drawAllocs are the allocations of a whole case that replays one draw, its
-// goroutine and its recorder included, measured.
-const drawAllocs = 9
+// The allocations that the specs of more than one file measure.
+const (
+	// drawAllocs are the allocations of a whole case that replays one draw,
+	// its goroutine and its recorder included.
+	drawAllocs = 9
+	// copyAllocs are the allocations of an accessor: the copy it returns.
+	copyAllocs = 1
+	// valueCaseAllocs are the allocations of a whole replayed case whose
+	// body makes one choice, through its source, Integer or Structure.
+	valueCaseAllocs = 5
+	// spanCaseAllocs are the allocations of a whole replayed case whose
+	// body makes one choice inside a span: those of a value case, and the
+	// growth of the case's spans and of its stack of open spans.
+	spanCaseAllocs = 7
+)
 
 // The first values past the members of the engine's enums.
 const (
@@ -316,6 +328,22 @@ func leafCount(value any) int {
 		count += leafCount(item)
 	}
 	return count
+}
+
+// leaked returns the case of a replayed body that drew 7 from the digits,
+// classified, noted, observed, scored and reported once, and recorded one
+// step, for a caller to read and to call after the body returned.
+func leaked() *engine.Case {
+	e := engine.Replay(func(c *engine.Case) {
+		engine.Draw(c, engine.Integer(0, 9), drawn)
+		c.Classify("small")
+		c.Note("seen")
+		c.Observe(42)
+		c.Target("depth", 3)
+		c.Step(engine.MachineStep{Action: "put", Client: -1})
+		c.Report(reported, false)
+	}, integers(7), nil)
+	return e.Case
 }
 
 // site stores the file and the line of its caller in at and returns the

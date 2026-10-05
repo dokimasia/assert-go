@@ -50,8 +50,8 @@ func TestForAll(t *testing.T) {
 				casesField:    1,
 				rejectedField: 0,
 				seedField:     "7",
-				counterexampleField: []prop.Drawn{
-					{Label: drawn, Value: 1001, Relevance: prop.ValueMatters, NearestPassing: 1000},
+				counterexampleField: []prop.Entry{
+					prop.Drawn{Label: drawn, Value: 1001, Relevance: prop.ValueMatters, NearestPassing: 1000},
 				},
 				failureField:    assert.Failure{Assertion: big},
 				choicesField:    "prop1:AOkH",
@@ -122,7 +122,7 @@ func TestForAll(t *testing.T) {
 				}
 			}
 			got := detailOf(body, prop.Seed(7))
-			want := []prop.Drawn{{
+			want := []prop.Entry{prop.Drawn{
 				Label:          drawn,
 				Value:          uint64(math.MaxUint64),
 				Relevance:      prop.ValueMatters,

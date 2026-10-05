@@ -4,8 +4,6 @@
 package history_test
 
 import (
-	"encoding/json"
-	"fmt"
 	"runtime"
 	"slices"
 	"sync"
@@ -72,12 +70,8 @@ func TestLinearizable(t *testing.T) {
 			rec := assert.NewRecorder()
 			history.Linearizable(rec, passingRead, register, contract)
 			assert.False(t, rec.Failed(), "the read follows the write")
-			var record struct {
-				Assertion string `json:"assertion"`
-				Verdict   string `json:"verdict"`
-			}
-			assert.NoError(t, json.Unmarshal([]byte(rec.Records()[0]), &record), "the call record is a JSON object")
-			assert.Equal(t, []string{record.Assertion, record.Verdict}, []string{"linearizable", "pass"},
+			got := recordOf(t, rec)
+			assert.Equal(t, []string{got.Assertion, got.Verdict}, []string{"linearizable", "pass"},
 				"the call record of the pass")
 		})
 
@@ -162,6 +156,14 @@ func TestLinearizable(t *testing.T) {
 				expectFault(t, faultOf(t, tt.history, tt.model), fault.Error{Op: linearizableOp, Reason: tt.want})
 			})
 		}
+
+		t.Run("returns a fault for Final of states of another type than the model's", func(t *testing.T) {
+			t.Parallel()
+			got := faultOf(t, violatedRead(), register, history.Final(new([]string)))
+			expectFault(t, got, fault.Error{
+				Op: linearizableOp, Reason: "Final states *[]string for a model whose states are of type int",
+			})
+		})
 	})
 
 	t.Run("Workers", func(t *testing.T) {
@@ -226,26 +228,6 @@ func TestLinearizable(t *testing.T) {
 			assert.InRange(t, puts.Load(), 1, cancelledSteps, "the search of b stopped long before its budget")
 		})
 	})
-}
-
-// fatalSeat is a seat without Report, which keeps the text of each failure
-// that it receives.
-type fatalSeat struct {
-	// texts are the texts of the failures, in order.
-	texts []string
-}
-
-// Helper does nothing.
-func (*fatalSeat) Helper() {}
-
-// Fatalf keeps the text of a failure.
-func (s *fatalSeat) Fatalf(format string, args ...any) {
-	s.texts = append(s.texts, fmt.Sprintf(format, args...))
-}
-
-// Errorf keeps the text of a failure.
-func (s *fatalSeat) Errorf(format string, args ...any) {
-	s.texts = append(s.texts, fmt.Sprintf(format, args...))
 }
 
 // passingRead is a history in which client 0 writes 1 and client 1 then

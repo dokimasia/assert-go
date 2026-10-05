@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 
 	"go.dokimi.dev/assert"
-	"go.dokimi.dev/assert/internal/literal"
 	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/internal/prop/token"
 )
@@ -17,9 +16,10 @@ import (
 // every failure of a run, so a failure that the budget left unfinished
 // states the smallest case found.
 type Other struct {
-	// Counterexample are the values the case drew, in order, each
-	// [Untested]: the explain phase explains the first failure only.
-	Counterexample []Drawn
+	// Counterexample are the entries of the case in request order: the
+	// values it drew, each [Untested] because the explain phase explains the
+	// first failure only, and the steps it took.
+	Counterexample []Entry
 	// Failure is the case's record, as [Case] keeps it.
 	Failure assert.Failure
 	// Choices is the case's replay token, for [Replay].
@@ -29,27 +29,20 @@ type Other struct {
 // otherJSON is another failure as the record of a run states it.
 type otherJSON struct {
 	Failure        assert.Failure `json:"failure"`
-	Counterexample []labelled     `json:"counterexample"`
+	Counterexample []any          `json:"counterexample"`
 	Choices        string         `json:"choices"`
-}
-
-// labelled is a draw of another failure's case as the record of a run
-// states it.
-type labelled struct {
-	Label string          `json:"label"`
-	Value json.RawMessage `json:"value"`
 }
 
 // MarshalJSON returns the failure as the record of a run states another
 // failure: its failure record, the label and the typed literal of the value
-// of each draw, and its replay token. A value that no typed literal states
-// is an opaque literal.
+// of each draw, each step as a counterexample states it, and its replay
+// token. A value that no typed literal states is an opaque literal.
 func (o Other) MarshalJSON() ([]byte, error) {
-	draws := make([]labelled, len(o.Counterexample))
-	for i, d := range o.Counterexample {
-		draws[i] = labelled{Label: d.Label, Value: literal.Detail(d.Value)}
+	entries := make([]any, len(o.Counterexample))
+	for i, e := range o.Counterexample {
+		entries[i] = e.brief()
 	}
-	return json.Marshal(otherJSON{Failure: o.Failure, Counterexample: draws, Choices: o.Choices})
+	return json.Marshal(otherJSON{Failure: o.Failure, Counterexample: entries, Choices: o.Choices})
 }
 
 // othersOf returns the other failures of a run in the order the run found

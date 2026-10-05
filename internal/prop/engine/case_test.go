@@ -14,6 +14,7 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
+	"go.dokimi.dev/assert/history"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
@@ -27,18 +28,15 @@ const (
 	// searched for the caller's code, the rendered record and the message
 	// the recorder formats from it.
 	errorfAllocs = 5
-	// copyAllocs are the allocations of an accessor: the copy it returns.
-	copyAllocs = 1
 	// fatalCaseAllocs are the allocations of a whole replayed case whose
 	// body calls Fatalf.
 	fatalCaseAllocs = 10
-	// valueCaseAllocs are the allocations of a whole replayed case whose
-	// body makes one choice, through its source, Integer or Structure.
-	valueCaseAllocs = 5
-	// spanCaseAllocs are the allocations of a whole replayed case whose
-	// body makes one choice inside a span: those of a value case, and the
-	// growth of the case's spans and of its stack of open spans.
-	spanCaseAllocs = 7
+	// historyCaseAllocs are the allocations of a whole replayed case whose
+	// body calls History: the case's own three, and the history.
+	historyCaseAllocs = 4
+	// targetsAllocs are the allocations of Targets: the map of the copy and
+	// its storage.
+	targetsAllocs = 2
 	// contextCaseAllocs are the allocations of a whole replayed case whose
 	// body calls Context: the case's own three, and the context with its
 	// cancel function.
@@ -288,6 +286,35 @@ func TestCase(t *testing.T) {
 				c.Observe(1)
 			}, nil, nil)
 			assert.Equal(t, e.Case.Fingerprints(), []uint64{3, 1}, "both fingerprints")
+		})
+	})
+
+	t.Run("History", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns one empty history to every call of the case", func(t *testing.T) {
+			t.Parallel()
+			var first, second *history.History
+			engine.Replay(func(c *engine.Case) { first, second = c.History(), c.History() }, nil, nil)
+			assert.True(t, first == second, "the same history")
+			assert.Empty(t, first.Events(), "no event")
+		})
+	})
+
+	t.Run("Target", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("keeps the highest score of each label", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) {
+				c.Target("depth", 3)
+				c.Target("depth", 1)
+				c.Target("loss", -2)
+				c.Target("width", 2)
+				c.Target("width", 4)
+			}, nil, nil)
+			assert.Equal(t, e.Case.Targets(), map[string]float64{"depth": 3, "loss": -2, "width": 4},
+				"the higher of two scores, and a first score below 0")
 		})
 	})
 
@@ -556,6 +583,17 @@ func TestCase(t *testing.T) {
 		})
 	})
 
+	t.Run("Targets", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns a copy that the caller may change", func(t *testing.T) {
+			t.Parallel()
+			c := leaked()
+			c.Targets()["depth"] = 0
+			assert.Equal(t, c.Targets(), map[string]float64{"depth": 3}, "the recorded score")
+		})
+	})
+
 	t.Run("Failures", func(t *testing.T) {
 		t.Parallel()
 
@@ -564,6 +602,21 @@ func TestCase(t *testing.T) {
 			c := leaked()
 			c.Failures()[0].Assertion = "changed"
 			assert.Equal(t, c.Failures(), []assert.Failure{reported}, "the recorded failure")
+		})
+	})
+
+	t.Run("Position", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns the index of the case's next choice", func(t *testing.T) {
+			t.Parallel()
+			var got []int
+			engine.Replay(func(c *engine.Case) {
+				got = append(got, c.Position())
+				c.Integer(digitRange)
+				got = append(got, c.Position())
+			}, nil, nil)
+			assert.Equal(t, got, []int{0, 1}, "before and after one choice")
 		})
 	})
 
@@ -762,6 +815,12 @@ func TestCaseAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { c.Classify("small") }, 0, "Classify allocates nothing for a known label")
 	assert.MaxAllocs(t, func() { c.Note("seen") }, 0, "Note allocates only to grow the record")
 	assert.MaxAllocs(t, func() { c.Observe(42) }, 0, "Observe allocates only to grow the record")
+	historical := func(c *engine.Case) { c.History() }
+	assert.MaxAllocs(t, func() { engine.Replay(historical, nil, nil) }, historyCaseAllocs,
+		"a case that calls History")
+	assert.MaxAllocs(t, func() { c.Target("depth", 1) }, 0, "Target allocates nothing for a known label")
+	assert.MaxAllocs(t, func() { _ = c.Targets() }, targetsAllocs, "Targets allocates its copy")
+	assert.MaxAllocs(t, func() { _ = c.Position() }, 0, "Position allocates nothing")
 	assert.MaxAllocs(t, func() { _ = c.Rand() }, 0, "Rand allocates nothing")
 	assert.MaxAllocs(t, func() { c.Cleanup(nothing) }, 0, "Cleanup allocates only to grow its list")
 	contextual := func(c *engine.Case) { _ = c.Context() }
@@ -894,6 +953,49 @@ func BenchmarkCase(b *testing.B) {
 			cs.Observe(42)
 		}
 		assert.Equal(b, cs.Fingerprints()[0], uint64(42), "the first fingerprint")
+	})
+
+	b.Run("History", func(b *testing.B) {
+		var got engine.Execution
+		historical := func(c *engine.Case) { c.History() }
+		c := bench.Start(b).MaxAllocs(historyCaseAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Replay(historical, nil, nil)
+		}
+		assert.Equal(b, got.Status, engine.CasePassed, "the case passes")
+	})
+
+	b.Run("Target", func(b *testing.B) {
+		cs := leaked()
+		c := bench.Start(b).MaxAllocs(0)
+		defer c.End()
+		for c.Loop() {
+			cs.Target("depth", 1)
+		}
+		assert.Equal(b, cs.Targets(), map[string]float64{"depth": 3}, "the higher score")
+	})
+
+	b.Run("Targets", func(b *testing.B) {
+		var got map[string]float64
+		cs := leaked()
+		c := bench.Start(b).MaxAllocs(targetsAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = cs.Targets()
+		}
+		assert.Equal(b, got, map[string]float64{"depth": 3}, "the recorded score")
+	})
+
+	b.Run("Position", func(b *testing.B) {
+		var got int
+		cs := leaked()
+		c := bench.Start(b).MaxAllocs(0)
+		defer c.End()
+		for c.Loop() {
+			got = cs.Position()
+		}
+		assert.Equal(b, got, 1, "the one choice of the case")
 	})
 
 	b.Run("Rand", func(b *testing.B) {
@@ -1101,20 +1203,6 @@ func BenchmarkCase(b *testing.B) {
 
 // nothing is a cleanup that does nothing.
 func nothing() {}
-
-// leaked returns the case of a replayed body that drew 7 from the digits,
-// and classified, noted, observed and reported once, for a caller to read
-// and to call after the body returned.
-func leaked() *engine.Case {
-	e := engine.Replay(func(c *engine.Case) {
-		engine.Draw(c, engine.Integer(0, 9), drawn)
-		c.Classify("small")
-		c.Note("seen")
-		c.Observe(42)
-		c.Report(reported, false)
-	}, integers(7), nil)
-	return e.Case
-}
 
 // failingAt runs a property of the reference seed, without shrinking, whose
 // body makes the one choice that choose makes and fails when the choice is

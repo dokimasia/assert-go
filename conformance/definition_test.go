@@ -122,6 +122,14 @@ func TestDefinition(t *testing.T) {
 			assert.HasPrefix(t, overlay.Extends, "spec://", "the overlay names the definition it extends")
 			assert.Equal(t, overlay.Language, "go", "the overlay names the language it speaks for")
 		})
+
+		t.Run("returns both ways that a concurrent section of a machine runs in this library", func(t *testing.T) {
+			t.Parallel()
+
+			// stateful.Tasks runs a section as tasks of the scheduler, and a
+			// section without it runs on threads.
+			assert.Equal(t, overlay.Sections, []string{"tasks", "threads"}, "tasks and threads")
+		})
 	})
 
 	declared := conformance.OverlayDoc{

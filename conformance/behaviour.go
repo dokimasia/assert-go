@@ -15,10 +15,11 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// The property of a behaviour vector or a recording vector, and the
+// The property of a behaviour, a recording or a machines vector, and the
 // identity of the entries that keep its stored cases.
 const (
-	// behaviourContract is the contract of the property.
+	// behaviourContract is the contract of the property, whose store entries
+	// resolve writes.
 	behaviourContract = "the behaviour vector is true"
 	// storedAssertion is the assertion of a stored case's entry.
 	storedAssertion = "stored"

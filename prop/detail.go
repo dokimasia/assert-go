@@ -26,7 +26,7 @@ const (
 	rejectedField = "rejected"
 	// seedField is the run's seed as a decimal string.
 	seedField = "seed"
-	// counterexampleField is the failing case's draws, a []Drawn.
+	// counterexampleField is the failing case's entries, a []Entry.
 	counterexampleField = "counterexample"
 	// failureField is the failing case's record, an assert.Failure.
 	failureField = "failure"
@@ -64,8 +64,8 @@ type runDetail struct {
 	cases, rejected int
 	// seed is the run's seed as a decimal string.
 	seed string
-	// counterexample are the failing case's draws.
-	counterexample []Drawn
+	// counterexample are the failing case's entries.
+	counterexample []Entry
 	// failure is the failing case's record.
 	failure *assert.Failure
 	// choices is the failing case's replay token.
@@ -139,7 +139,7 @@ type detailJSON struct {
 	Cases          int             `json:"cases"`
 	Rejected       int             `json:"rejected"`
 	Seed           string          `json:"seed"`
-	Counterexample []Drawn         `json:"counterexample"`
+	Counterexample []Entry         `json:"counterexample"`
 	Failure        *assert.Failure `json:"failure"`
 	Choices        *string         `json:"choices"`
 	Others         []Other         `json:"others"`

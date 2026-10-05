@@ -139,12 +139,19 @@ type Error struct {
   caller's goroutine.
 - A named model of `conformance` panics on an operation that it does not
   define, and the check reports the panic as a fault of its model.
+- `Steps` panics for a machine that states no machine: an action with a
+  negative weight or without `Run`, and two actions with one name. An
+  option of `stateful` panics for a count below its minimum, `Tasks` for
+  a nil scheduler, and `PCT` for a depth below 1. A scheduler panics when
+  a task calls `Run` of its own scheduler. Each message starts with the
+  package and names the call.
 - No other code panics on purpose.
 - A `recover` exists only where a panic is what the code observes: an
   assertion about panics, the end of a property's case, a body of
-  `Concurrently`, a function of the model in `Linearizable`, and a call
-  of the history that the seam runner of `conformance` makes to read the
-  entry that a script refuses.
+  `Concurrently`, a function of the model in `Linearizable`, a task of the
+  task scheduler, whose panic `Run` raises again, and a call of the
+  history that the seam runner of `conformance` makes to read the entry
+  that a script refuses.
 
 ## Writing
 
@@ -171,9 +178,10 @@ type Writer interface {
   replay token.
 - `prop` registers the sentence of its 39 property assertions with
   `matcher.RegisterSentence` in its `init` function, because `matcher`
-  does not import `prop`. `history` registers the sentence of
-  `linearizable` the same way. The table of sentences is complete before
-  any test starts, so the writer reads it without a lock.
+  does not import `prop`. `history` registers the sentences of
+  `linearizable`, `serializable` and `snapshot-isolation` the same way.
+  The table of sentences is complete before any test starts, so the
+  writer reads it without a lock.
 - `matcher.Note` writes a note's text into the log of a seat that has
   `Logf`. `matcher.NoteFault` passes a fault that does not end the call
   to a `matcher.FaultReporter`, and writes the writer's text of the fault

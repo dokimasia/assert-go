@@ -31,9 +31,6 @@ const (
 	recordedCalls = 200
 )
 
-// writeOne are the args of a write of 1.
-var writeOne = []any{1}
-
 // TestHistory checks the recording order, the processes and the readings
 // of a history.
 func TestHistory(t *testing.T) {

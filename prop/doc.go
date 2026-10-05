@@ -135,6 +135,28 @@
 // [Replay], or the variable DOKIMI_ASSERT_PROP_REPLAY, runs the one case of
 // a replay token.
 //
+// # Campaigns
+//
+// The campaign profile runs every property of [ForAll] and of a form as a
+// campaign: a search that runs for as long as DOKIMI_ASSERT_PROP_BUDGET
+// states in whole seconds, on the platform clock. A case that counts a new
+// label, records a new fingerprint or records a better score with
+// [Case.Target] joins the campaign's pool, and most later cases mutate a
+// member of the pool. The campaign shrinks, explains and stores each
+// failure of an identity of its own as it finds it, and reports every one
+// when the budget has passed. Its mutations are this library's own, so a
+// campaign's search reproduces in no other implementation, and every
+// failure that it stores replays in all of them. [Fuzz] runs no campaign.
+//
+// # Machines
+//
+// A body records the calls that it makes to a subject in the case's
+// history, which [Case.History] returns, and package stateful runs a
+// machine's steps in the case. A counterexample lists each [Step] of a
+// machine among the values that the case drew, and [Draws] takes the same
+// entries, so a counterexample or a production incident runs as the first
+// case of a run.
+//
 // # Store
 //
 // A test's store keeps the smallest failing case of each failure as one
@@ -159,6 +181,7 @@
 //
 //	prop.ForAll: DOKIMI_ASSERT_PROP_SEED: "seven" is no decimal number below 2^64
 //	prop.Equal: Example[1][0]: 12 is outside [0, 9]
+//	prop.ForAll: Draws[1].step: "flush" is not among the actions that the step lists
 //
 // # Concurrency
 //
@@ -170,8 +193,8 @@
 //
 // # Dependency position
 //
-// Imports the root package of this module, its internal fault, literal,
-// matcher, record and text packages, its choice, coverage, engine, matching,
-// random, shape, store, token and zone packages, and the standard library,
-// testing included.
+// Imports the root package of this module and its history package, its
+// internal fault, literal, matcher, record and text packages, its choice,
+// coverage, engine, matching, random, shape, store, token and zone packages,
+// and the standard library, testing included.
 package prop

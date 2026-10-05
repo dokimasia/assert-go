@@ -112,7 +112,8 @@ never ran.
 | `go.dokimi.dev/assert/golden` | comparison against a recorded file, with scrubbers for content that changes each run |
 | `go.dokimi.dev/assert/bench` | ceilings on latency, allocations and bytes per benchmark iteration |
 | `go.dokimi.dev/assert/prop` | property checks over generated inputs, the generators, and the bridge to `go test -fuzz` |
-| `go.dokimi.dev/assert/history` | the record of concurrent calls, the driver of the clients, and the check that a record is linearizable |
+| `go.dokimi.dev/assert/history` | the record of concurrent calls, the driver of the clients, and the checks that a record is linearizable, serializable, or has snapshot isolation |
+| `go.dokimi.dev/assert/stateful` | machines that take the steps of a property's case against a model of their subject, and the task scheduler |
 | `go.dokimi.dev/assert/conformance` | this library checked against the standard |
 
 ## Golden files
@@ -201,6 +202,13 @@ The run also writes the smallest failing case of each failure to
 that case first. Review the store as you review golden files. `prop.Fuzz`
 runs the same body under `go test -fuzz`.
 
+`DOKIMI_ASSERT_PROP_PROFILE=campaign` runs every property as a campaign
+for as long as `DOKIMI_ASSERT_PROP_BUDGET` states in seconds. A case that
+counts a new label, records a new fingerprint or records a better score
+with `Case.Target` joins the campaign's pool, and most later cases mutate
+a member of the pool. The campaign stores each failure that it finds, and
+reports every one when the budget has passed.
+
 ## Histories
 
 A store, a queue or a cache that two or more clients use at once is
@@ -249,6 +257,80 @@ that stopped it.
 `history.ModelFrom` builds the model from the subject itself, and then
 the check finds a call that was not atomic. `history.FromIntervals`
 builds a history from calls that a log recorded with a start and an end.
+
+`history.Serializable` and `history.HasSnapshotIsolation` check a store
+of transactions without a model. Each transaction is one call of the
+operation `"txn"`, whose arguments are its micro-operations: an append of
+a value to a key's list, or a read of a key's whole list. Every value is
+appended to its key once:
+
+```go
+c := h.Invoke(client, "txn", []any{
+    []any{"append", "x", 7},
+    []any{"read", "y", nil},
+}, "x", "y")
+y, err := store.AppendThenRead(ctx, "x", 7, "y")
+switch {
+case errors.Is(err, ErrAborted):
+    c.Fail(err)
+case err != nil:
+    c.Unknown(err)
+default:
+    c.OK([]any{[]any{"append", "x", 7}, []any{"read", "y", y}})
+}
+```
+
+A check derives the dependencies between the committed transactions that
+the reads reveal, and fails with the first anomaly that its level
+forbids. Serializability forbids an inconsistent read, an aborted or
+intermediate read, and every cycle of dependencies. Snapshot isolation
+permits a cycle with two adjacent read-write dependencies, such as a
+write skew. Both checks always decide. A record states the transactions,
+the cycle and the evidence of each dependency.
+
+## Machines
+
+`stateful.Steps` takes the steps of a machine in a property's case. The
+machine states a model of the subject and the actions that a step takes,
+and every decision of the steps is a choice of the case, so a failing case
+shrinks to the steps that the failure needs:
+
+```go
+func TestQueue(t *testing.T) {
+    prop.ForAll(t, "the queue keeps its values in order", func(c *prop.Case) {
+        q := NewQueue()
+        written := 0
+        stateful.Steps(c, stateful.Machine[[]int]{
+            Model: history.Model[[]int]{Init: func() []int { return nil }, Step: queueStep},
+            Actions: []stateful.Action[[]int]{{
+                Name:  "put",
+                Input: func(*prop.Case, []int) any { written++; return written },
+                Run: func(c *prop.Case, client int, v any) {
+                    call := c.History().Invoke(client, "put", []any{v})
+                    q.Put(v.(int))
+                    call.OK(nil)
+                },
+            }, {
+                Name: "get",
+                Run: func(c *prop.Case, client int, _ any) {
+                    call := c.History().Invoke(client, "get", nil)
+                    call.OK(q.Get())
+                },
+            }},
+        }, stateful.Clients(2))
+    })
+}
+```
+
+After each step, `history.Linearizable` checks the case's history against
+the model, with every call in one partition. With `Clients` of 2 or more,
+a case lists the steps of a concurrent section and then runs them on its
+clients at once. The clients run on threads by default, and each case
+then runs up to four times. Under `stateful.Tasks`, they run as tasks of a
+`stateful.Scheduler`, whose releases are choices of the case, so a race
+replays and shrinks. A counterexample lists the steps among the values
+that the case drew, and `prop.Draws` runs such a list, such as the steps
+of a production incident, as the first case of a run.
 
 ## Call records
 
@@ -402,6 +484,8 @@ the relation, except where the relation requires a failure.
 | Name | What it states |
 |---|---|
 | `history.Linearizable` | Every partition of a recorded history has an order of its calls that keeps the history's precedence and that the model accepts. A search that uses up its budget or its memo limit is undecided, and fails. |
+| `history.Serializable` | The list-append transactions of a history exhibit no anomaly that serializability forbids, among the dependencies that their reads reveal. |
+| `history.HasSnapshotIsolation` | The list-append transactions of a history exhibit no anomaly that snapshot isolation forbids: every cycle of their dependencies has two adjacent read-write dependencies. |
 
 ### Proof
 
@@ -434,17 +518,23 @@ holds itself to it on every run:
   generates and shrinks inputs, decides coverage, encodes replay tokens,
   stores failures, reports a run and records its calls, shared with
   every other implementation.
-- **Histories.** 42 vectors state the events that a history records, the
-  history that `FromIntervals` builds from a log, and the verdict, the
-  steps and the record of each check of a history against a named model,
+- **Histories.** 80 vectors state the events that a history records, the
+  history that `FromIntervals` builds from a log, the verdict, the steps
+  and the record of each check of a history against a named model, and
+  the verdict and the record of each isolation check of a history of
+  transactions, shared with every other implementation.
+- **Machines.** 13 vectors state the steps that six machine subjects
+  take, the counterexample that a failure shrinks to, a race that the
+  task scheduler finds, and the traces that a run follows or refuses,
   shared with every other implementation.
 
 A corpus case states its arguments as data, or names a behaviour that
 each implementation builds, such as a callable that panics. The cases
-cover 39 of the 57 assertions outside `prop`. No case can state an error
+cover 39 of the 59 assertions outside `prop`. No case can state an error
 value, a golden file, a benchmark, a predicate or a history, so those
 assertions are checked for presence and tested here, and the history
-vectors cover `linearizable`. The vectors cover 38 of the 39 property
+vectors cover `linearizable`, `serializable` and `snapshot-isolation`.
+The vectors cover 38 of the 39 property
 assertions: `prop-for-all` and every property form but `prop-max-allocs`,
 whose allocation count no vector can state.
 

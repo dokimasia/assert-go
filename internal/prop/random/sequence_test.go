@@ -58,7 +58,7 @@ func TestSequence(t *testing.T) {
 			for seed := range uint64(100) {
 				s, twin := random.New(seed), random.New(seed)
 				var want []uint32
-				for random.Flag(&twin, b.Sizes(), len(want)) {
+				for random.Flag(&twin, b.Sizes(), len(want), random.Average(b.Sizes())) {
 					want = append(want, uint32(random.Integer(&twin, b.Element()).Magnitude()))
 				}
 				msg := "the draw of seed " + strconv.FormatUint(seed, 10)

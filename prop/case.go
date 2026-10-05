@@ -9,6 +9,7 @@ import (
 	"math/rand/v2"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/history"
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
 
@@ -48,9 +49,10 @@ import (
 //
 // # Allocation contract
 //
-// Helper, Clock, Assume, Classify of a counted label and Rand allocate
-// nothing. Observe and Cleanup allocate only to grow the case's record, and
-// Logf allocates the message it formats as well. A recording Report
+// Helper, Clock, Assume, Classify of a counted label, Target of a scored
+// label and Rand allocate nothing. Observe and Cleanup allocate only to grow
+// the case's record, and Logf allocates the message it formats as well.
+// History allocates the history on its first call. A recording Report
 // allocates twice, for the record's sentence and the message formatted
 // from it. Errorf allocates five times: the message, the frames searched
 // for its location, and the same two. Context allocates the case's context
@@ -133,6 +135,21 @@ func (c *Case) Rand() rand.Source {
 // them, ends as [Flaky].
 func (c *Case) Observe(fingerprint uint64) {
 	(*engine.Case)(c).Observe(fingerprint)
+}
+
+// History returns the case's history, which records the calls that the body
+// makes to a subject, for a check of package history or a machine of
+// package stateful. It is empty when the case starts.
+func (c *Case) History() *history.History {
+	return (*engine.Case)(c).History()
+}
+
+// Target records score as a score that the case achieved under label. A
+// case that records two scores under one label keeps the higher. A campaign
+// explores near the cases with the highest score of each label, and every
+// other run records the score and generates as if it were absent.
+func (c *Case) Target(label string, score float64) {
+	(*engine.Case)(c).Target(label, score)
 }
 
 // Cleanup registers f to run when the case ends: after its body returns,

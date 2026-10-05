@@ -115,7 +115,7 @@ func TestForms(t *testing.T) {
 			rec := assert.NewRecorder()
 			prop.Equal(rec, same, next, contractOfForm, prop.Seed(7))
 			detail := rec.Failures()[0].Detail
-			want := []prop.Drawn{{Label: "input", Value: int8(0), Relevance: prop.AnyValueFails}}
+			want := []prop.Entry{prop.Drawn{Label: "input", Value: int8(0), Relevance: prop.AnyValueFails}}
 			assert.Equal(t, detail[counterexampleField], any(want), "the input 0, which any input fails like")
 			failure := detail[failureField].(assert.Failure)
 			assert.Equal(t, failure.Detail, map[string]any{"want": int8(1), "got": int8(0)},
@@ -130,7 +130,7 @@ func TestForms(t *testing.T) {
 			t.Parallel()
 			rec := assert.NewRecorder()
 			prop.Commutative(rec, subtract, contractOfForm, prop.Seed(7), prop.Explain(false))
-			got := rec.Failures()[0].Detail[counterexampleField].([]prop.Drawn)
+			got := rec.Failures()[0].Detail[counterexampleField].([]prop.Entry)
 			assert.Equal(t, labelsOf(got), []string{"a", "b"}, "the two inputs")
 		})
 	})
@@ -142,7 +142,7 @@ func TestForms(t *testing.T) {
 			t.Parallel()
 			rec := assert.NewRecorder()
 			prop.Associative(rec, subtract, contractOfForm, prop.Seed(7), prop.Explain(false))
-			got := rec.Failures()[0].Detail[counterexampleField].([]prop.Drawn)
+			got := rec.Failures()[0].Detail[counterexampleField].([]prop.Entry)
 			assert.Equal(t, labelsOf(got), []string{"a", "b", "c"}, "the three inputs")
 		})
 	})
@@ -195,8 +195,8 @@ func TestMaxAllocsForm(t *testing.T) {
 			records := rec.Failures()
 			assert.Length(t, records, 1, "one record")
 			assert.Equal(t, records[0].Assertion, "prop-max-allocs", "the form's id")
-			assert.Equal(t, records[0].Detail[counterexampleField], any([]prop.Drawn{{Label: "input", Value: int8(5)}}),
-				"the smallest input that allocates")
+			assert.Equal(t, records[0].Detail[counterexampleField],
+				any([]prop.Entry{prop.Drawn{Label: "input", Value: int8(5)}}), "the smallest input that allocates")
 		}
 	})
 
@@ -585,11 +585,12 @@ func parse(s string) (int16, error) {
 	return int16(n), err
 }
 
-// labelsOf returns the labels of draws, in order.
-func labelsOf(draws []prop.Drawn) []string {
-	out := make([]string, len(draws))
-	for i, d := range draws {
-		out[i] = d.Label
+// labelsOf returns the labels of the entries of a counterexample of draws,
+// in order.
+func labelsOf(entries []prop.Entry) []string {
+	out := make([]string, len(entries))
+	for i, e := range entries {
+		out[i] = e.(prop.Drawn).Label
 	}
 	return out
 }

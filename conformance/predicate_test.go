@@ -11,13 +11,9 @@ import (
 	"go.dokimi.dev/assert/internal/fault"
 )
 
-// The literals that the predicates are tested on.
-const (
-	// oneLiteral is the int 1.
-	oneLiteral = `{"type":"int","value":1}`
-	// pairLiteral is the list of the ints 1 and 2.
-	pairLiteral = `{"type":"list","of":"int","value":[1,2]}`
-)
+// pairLiteral is the list of the ints 1 and 2, which the predicates are
+// tested on with oneLiteral.
+const pairLiteral = `{"type":"list","of":"int","value":[1,2]}`
 
 // TestPredicate checks each predicate of the vocabulary through a filter of
 // one stated value: the case keeps the value where the predicate reports

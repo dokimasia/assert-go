@@ -73,6 +73,32 @@
 //
 // Its inverse returns a [Step] for each choice that its decode makes.
 //
+// # Machines
+//
+// A machine's run of steps, which a package outside this one builds, asks
+// the case for its choices through these primitives:
+//
+//   - [Case.Keep] decides whether the case keeps an action of the swarm.
+//   - [Case.Continue] decides whether the run takes another step, and
+//     [Case.Weighted] chooses the action of the step.
+//   - [Case.Uniform] chooses the client of a step of a concurrent section.
+//   - [Case.SpanFrom] puts a step in a span from its continue flag, and
+//     [Case.Step] records the step.
+//
+// [Case.Repeat] runs a case again on its choices, for a section whose
+// clients run on threads. The case of [Settings.Draws] follows its entries
+// through a [Trace], which turns each step entry into the choices of one
+// step.
+//
+// # Campaigns
+//
+// [Campaign] runs the cases that [Run] tries first, and then explores until
+// [Settings.Budget] has passed on [Settings.BudgetClock]: the random cases
+// of the seed in order, and mutations of the cases that joined its pool by
+// a new label, fingerprint or score, which [Case.Target] records. It
+// concludes each failure of an identity of its own as Run concludes its
+// failure, and goes on.
+//
 // # Errors
 //
 // Running a generator backwards returns a fault of the kind
@@ -90,7 +116,8 @@
 //
 // # Dependency position
 //
-// Imports the root package of this module, its internal matcher, fault,
-// literal, record and cycle packages, its choice, random, alphabet, token,
-// coverage and tree packages, and the standard library.
+// Imports the root package of this module and its history package, its
+// internal matcher, fault, literal, record and cycle packages, its choice,
+// random, alphabet, token, coverage and tree packages, and the standard
+// library.
 package engine
