@@ -5,6 +5,7 @@ package text_test
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
@@ -26,6 +27,10 @@ const (
 	// fprintfAllocs are the allocations of Fprintf of scalars into a reset
 	// builder: the builder's storage.
 	fprintfAllocs = 1
+	// decimalAllocs are the allocations of a format with a whole float of a
+	// million or more: fmt's text, the copy of the arguments, the float as
+	// an argument, its directive and its text.
+	decimalAllocs = 5
 )
 
 // sink receives the text that a measured call returns.
@@ -103,6 +108,34 @@ func TestText(t *testing.T) {
 			}
 			pointer := &value
 			assert.Equal(t, text.Sprintf("%+v", pointer), fmt.Sprintf("%+v", pointer), "fmt's text of a pointer")
+		})
+
+		t.Run("writes a whole float of a million or more in decimal under %v and %+v", func(t *testing.T) {
+			t.Parallel()
+			got := text.Sprintf("got %v, low %v, high %+v, of %v", 4194298.0, 0.0, 4194000.0, float32(-1e6))
+			assert.Equal(t, got, "got 4194298, low 0, high 4194000, of -1000000", "each count in decimal")
+		})
+
+		t.Run("writes a float that is no whole number from a million to 10^21 as fmt writes it", func(t *testing.T) {
+			t.Parallel()
+			for _, f := range []float64{999999, 1234567.5, 1e21, -1e21, math.Inf(1), math.NaN()} {
+				assert.Equal(t, text.Sprintf("%v", f), fmt.Sprintf("%v", f), "fmt's text of "+fmt.Sprint(f))
+			}
+		})
+
+		t.Run("writes a whole float under any other directive as fmt writes it", func(t *testing.T) {
+			t.Parallel()
+			for _, format := range []string{"%e", "%g", "%.1f", "%12v", "%#v"} {
+				got, want := text.Sprintf(format, 4194298.0), fmt.Sprintf(format, 4194298.0)
+				assert.Equal(t, got, want, "fmt's text under "+format)
+			}
+		})
+
+		t.Run("writes a whole float inside a value with a cycle in decimal", func(t *testing.T) {
+			t.Parallel()
+			s := []any{nil, 4194298.0, 2.5}
+			s[0] = s
+			assert.Equal(t, text.Sprintf("%v", s), "[<cycle> 4194298 2.5]", "the cycle, the count and the fraction")
 		})
 
 		t.Run("writes a map inside itself with the cycle marked", func(t *testing.T) {
@@ -231,6 +264,8 @@ func TestTextAllocs(t *testing.T) {
 		"Sprintf of scalars allocates fmt's text")
 	assert.MaxAllocs(t, func() { sink = text.Sprintf("%v", value) }, structAllocs,
 		"Sprintf of a struct allocates its walk and fmt's text")
+	assert.MaxAllocs(t, func() { sink = text.Sprintf("got %v", 4194298.0) }, decimalAllocs,
+		"Sprintf of a whole float allocates fmt's text, a copy of the arguments, the float, its directive and its text")
 	var b strings.Builder
 	b.Grow(64)
 	assert.MaxAllocs(t, func() { b.Reset(); b.Grow(64); text.Fprintf(&b, "the key %s states %d values", "min", 3) },

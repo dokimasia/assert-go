@@ -118,6 +118,14 @@ func TestWriter(t *testing.T) {
 				want: "the contract: got 2, apple 3, zebra 1",
 			},
 			{
+				name: "writes a whole float of a million or more in decimal",
+				give: matcher.Failure{
+					Assertion: "in-range", Contract: "the allocations per iteration are within their ceiling",
+					Detail: map[string]any{"got": 4194298.0, "low": 0.0, "high": 4194000.0},
+				},
+				want: "the allocations per iteration are within their ceiling: got 4194298, low 0, high 4194000",
+			},
+			{
 				name: "lists the fields of an equality record without got",
 				give: matcher.Failure{
 					Assertion: "equal",

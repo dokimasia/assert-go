@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"slices"
 	"strconv"
@@ -18,6 +19,14 @@ import (
 // maxParts is the most values that the walk of one argument visits. It
 // bounds the text of a large value.
 const maxParts = 65536
+
+// The magnitudes of the whole numbers that %v writes in decimal: fmt writes
+// a float of a million or more with an exponent, and a decimal of 10^21 or
+// more runs to 22 digits.
+const (
+	decimalFrom  = 1e6
+	decimalBelow = 1e21
+)
 
 // The marks of the structural text.
 const (
@@ -31,12 +40,15 @@ const (
 
 // Sprintf returns what fmt.Sprintf returns for format and args, for every
 // argument whose walk ends within 65,536 values without meeting a map or a
-// slice inside itself.
+// slice inside itself, but one: %v and %+v write a float argument whose
+// value is a whole number of at least a million and below 10^21 in
+// magnitude in decimal, as 4194298 where fmt writes 4.194298e+06.
 //
 // fmt writes each other argument as its structural text, whatever its verb:
 // the layout of fmt's %+v verb, with <cycle> where the walk meets a map or a
 // slice inside itself, and … in place of the values past the 65,536th. The
-// structural text calls no method of the value.
+// structural text calls no method of the value, and writes its floats as %v
+// writes a float argument.
 //
 // An argument of type [reflect.Value] is the value inside it, as fmt takes
 // it, so a value of an unexported field is written without its methods.
@@ -44,8 +56,10 @@ const (
 // # Allocation contract
 //
 // Sprintf allocates what fmt.Sprintf allocates for an argument whose walk
-// ends. The walk allocates nothing for a value whose maps and slices hold
-// no map, slice or interface.
+// ends. The walk allocates nothing for a value whose maps and slices
+// contain no map, slice or interface. A float written in decimal allocates
+// a copy of the arguments, the float as an argument, its directive and its
+// text.
 func Sprintf(format string, args ...any) string {
 	return fmt.Sprintf(format, walled(args)...)
 }
@@ -61,20 +75,69 @@ func Fprintf(b *strings.Builder, format string, args ...any) {
 }
 
 // walled returns args when every argument's walk ends within maxParts
-// values without meeting a map or a slice inside itself, and otherwise a
-// copy in which each other argument is its structural text.
+// values without meeting a map or a slice inside itself and no argument is
+// a float that %v writes in decimal. Otherwise it returns a copy in which
+// each such float writes itself, and each other argument is its structural
+// text.
 func walled(args []any) []any {
 	written, cloned := args, false
 	for i, arg := range args {
-		if bounded(arg) {
+		var replaced any
+		if w, ok := wholeOf(arg); ok {
+			replaced = w
+		} else if !bounded(arg) {
+			replaced = structural(arg)
+		} else {
 			continue
 		}
 		if !cloned {
 			written, cloned = slices.Clone(args), true
 		}
-		written[i] = structural(arg)
+		written[i] = replaced
 	}
 	return written
+}
+
+// whole is a float argument whose value %v writes in decimal.
+type whole struct {
+	// arg is the float32 or the float64 argument.
+	arg any
+	// value is its value, and bits its width.
+	value float64
+	bits  int
+}
+
+// wholeOf returns the whole of a float argument whose value %v writes in
+// decimal, and false for any other argument.
+func wholeOf(arg any) (whole, bool) {
+	w := whole{arg: arg, bits: 64}
+	switch f := arg.(type) {
+	case float64:
+		w.value = f
+	case float32:
+		w.value, w.bits = float64(f), 32
+	default:
+		return whole{}, false
+	}
+	return w, decimal(w.value)
+}
+
+// Format writes the value in decimal under %v and %+v, and as fmt writes
+// the float under any other directive.
+func (w whole) Format(f fmt.State, verb rune) {
+	directive := fmt.FormatString(f, verb)
+	if directive != "%v" && directive != "%+v" {
+		_, _ = fmt.Fprintf(f, directive, w.arg)
+		return
+	}
+	_, _ = io.WriteString(f, strconv.FormatFloat(w.value, 'f', -1, w.bits))
+}
+
+// decimal reports whether %v writes f in decimal: whether f is a whole
+// number of at least decimalFrom and below decimalBelow in magnitude.
+func decimal(f float64) bool {
+	magnitude := math.Abs(f)
+	return f == math.Trunc(f) && magnitude >= decimalFrom && magnitude < decimalBelow
 }
 
 // structured is the structural text of an argument, which fmt writes as it
@@ -287,8 +350,9 @@ func (w *walk) list(v reflect.Value, depth int) {
 }
 
 // scalar writes a value that fmt writes without walking it: a bool, a
-// number and a string as fmt's %v writes them, and a channel, a function
-// and an unsafe pointer as an address.
+// number and a string as fmt's %v writes them, but a float that %v writes
+// in decimal, and a channel, a function and an unsafe pointer as an
+// address.
 func (w *walk) scalar(v reflect.Value) {
 	if w.out == nil {
 		return
@@ -301,7 +365,11 @@ func (w *walk) scalar(v reflect.Value) {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		w.write(strconv.FormatUint(v.Uint(), 10))
 	case reflect.Float32, reflect.Float64:
-		w.write(strconv.FormatFloat(v.Float(), 'g', -1, v.Type().Bits()))
+		format := byte('g')
+		if decimal(v.Float()) {
+			format = 'f'
+		}
+		w.write(strconv.FormatFloat(v.Float(), format, -1, v.Type().Bits()))
 	case reflect.Complex64, reflect.Complex128:
 		w.write(strconv.FormatComplex(v.Complex(), 'g', -1, v.Type().Bits()))
 	case reflect.String:

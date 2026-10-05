@@ -11,6 +11,11 @@
 // when the walk ends within 65,536 values without meeting a map or a slice
 // inside itself. Every other argument becomes its structural text.
 //
+// fmt's %v writes a float of a million or more with an exponent, as
+// 4.194298e+06. Sprintf writes a float whose value is a whole number of at
+// least a million and below 10^21 in magnitude in decimal under %v and %+v,
+// as 4194298, so a reader compares two counts without expanding them.
+//
 // # Dependency position
 //
 // Imports the standard library and internal/cycle, which keeps the path of
