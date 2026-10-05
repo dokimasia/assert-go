@@ -103,7 +103,7 @@ func TestCollection(t *testing.T) {
 		t.Run("returns the pinned lists of seed 42", func(t *testing.T) {
 			t.Parallel()
 			values, choices := generated(engine.List(digit, sizes(t, 0, 10)), 42, 6)
-			assert.Equal(t, values, [][]int{nil, nil, {1, 1, 1, 1, 9, 1, 1, 8, 0, 1}, {9, 5}, {1, 1, 5}, {3, 5, 5}},
+			assert.Equal(t, values, [][]int{{}, {}, {1, 1, 1, 1, 9, 1, 1, 8, 0, 1}, {9, 5}, {1, 1, 5}, {3, 5, 5}},
 				"the lists of the first six cases")
 			assert.True(t, sameRecords(choices, [][]choice.Choice{
 				integers(0),
@@ -118,7 +118,7 @@ func TestCollection(t *testing.T) {
 		t.Run("returns the pinned lengths of seed 7 for elements without a choice", func(t *testing.T) {
 			t.Parallel()
 			values, choices := generated(engine.List(engine.Just(5), sizes(t, 0, 4)), 7, 4)
-			assert.Equal(t, values, [][]int{{5}, {5, 5, 5, 5}, nil, {5, 5}}, "the lists of the first four cases")
+			assert.Equal(t, values, [][]int{{5}, {5, 5, 5, 5}, {}, {5, 5}}, "the lists of the first four cases")
 			assert.True(t, sameRecords(choices, [][]choice.Choice{
 				integers(1, 0), integers(1, 1, 1, 1, 0), integers(0), integers(1, 1, 0),
 			}), "the recorded flags of each case")

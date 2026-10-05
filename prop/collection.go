@@ -43,7 +43,9 @@ func (unique) applyList(l *listing) {
 // the options admit: per element a choice to continue that decides
 // structure, then the element in a span labelled element, and a final
 // choice to stop. Its simplest value is the shortest list of simplest
-// elements. It panics when the options state no length.
+// elements. An empty list is a non-nil slice, so the typed literal of a
+// drawn list states an empty list and not null. It panics when the options
+// state no length.
 func List[T any](of Generator[T], opts ...ListOption) Generator[[]T] {
 	var l listing
 	for _, o := range opts {

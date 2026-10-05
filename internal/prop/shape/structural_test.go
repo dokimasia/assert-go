@@ -40,6 +40,7 @@ var structuralTrips = []string{
 	`{"shape":"set","of":` + uint8Shape + `,"max_size":4}`,
 	`{"shape":"map","key":{"shape":"string","max_size":2},"of":{"shape":"bool"},"max_size":3}`,
 	`{"shape":"optional","of":` + uint8Shape + `}`,
+	`{"shape":"optional","of":{"shape":"list","of":{"shape":"bool"},"max_size":2}}`,
 	recordShape,
 	`{"shape":"enum","variants":[["none",null],["some",` + uint8Shape + `],["maybe",{"shape":"optional","of":{"shape":"bool"}}]]}`,
 	`{"shape":"literal","values":[{"type":"string","value":"paid"},{"type":"int","value":3}]}`,
@@ -210,6 +211,12 @@ func TestStructural(t *testing.T) {
 				shape: `{"shape":"optional","of":` + uint8Shape + `}`,
 				give:  []choice.Choice{n(1), n(5)},
 				want:  uint64(5),
+			},
+			{
+				name:  "returns a present empty list as a non-nil slice, which no optional reads as absent",
+				shape: `{"shape":"optional","of":{"shape":"list","of":{"shape":"bool"}}}`,
+				give:  []choice.Choice{n(1), n(0)},
+				want:  []any{},
 			},
 			{
 				name:  "returns a record's fields in order",

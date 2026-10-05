@@ -39,7 +39,7 @@ func TestSize(t *testing.T) {
 				give: []prop.ListOption{prop.MinSize(2), prop.SizeOption{}},
 				want: []int{0, 0},
 			},
-			{name: "makes 0 the shortest length", give: []prop.ListOption{prop.MinSize(0)}, want: nil},
+			{name: "makes 0 the shortest length", give: []prop.ListOption{prop.MinSize(0)}, want: []int{}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

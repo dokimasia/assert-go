@@ -99,14 +99,14 @@ func TestRecursive(t *testing.T) {
 			outer = engine.Recursive(anyOf(engine.Integer(0, 9)), extend, 1)
 			nested := integers(1, 1, 1, 0, 3, 1, 0, 1, 0, 0)
 			got, e := decode(t, outer, nested...)
-			assert.Equal[any](t, got, []any{3, []any(nil)}, "the outer position after the inner leaf still extends")
+			assert.Equal[any](t, got, []any{3, []any{}}, "the outer position after the inner leaf still extends")
 			assert.True(t, sameChoices(e.Case.Choices(), nested), "the choices as stated")
 		})
 
 		t.Run("returns the pinned trees of seed 42", func(t *testing.T) {
 			t.Parallel()
 			values, choices := generated(tree(t, 3, 10), 42, 6)
-			assert.Equal(t, values, []any{5, 1, []any(nil), 7, []any{5}, 6}, "the trees of the first six cases")
+			assert.Equal(t, values, []any{5, 1, []any{}, 7, []any{5}, 6}, "the trees of the first six cases")
 			assert.True(t, sameRecords(choices, [][]choice.Choice{
 				integers(0, 5), integers(0, 1), integers(1, 0), integers(0, 7), integers(1, 1, 0, 5, 0), integers(0, 6),
 			}), "the recorded choices of each case")
@@ -119,7 +119,7 @@ func TestRecursive(t *testing.T) {
 				return engine.OneOf(anyOf(engine.List(self, upTo)), engine.Optional(self).Map(present))
 			}, 5)
 			values, choices := generated(g, 7, 6)
-			assert.Equal(t, values, []any{nil, true, []any(nil), nil, true, true}, "the values of the first six cases")
+			assert.Equal(t, values, []any{nil, true, []any{}, nil, true, true}, "the values of the first six cases")
 			assert.True(t, sameRecords(choices, [][]choice.Choice{
 				integers(1, 1, 0), integers(0, 1), integers(1, 0, 0),
 				integers(1, 1, 0), integers(0, 1), integers(1, 1, 1, 0, 1),

@@ -43,8 +43,9 @@ type entry[K comparable, V any] struct {
 // List returns a generator of lists of of's values with lengths that sizes
 // admits: per element a continue flag that decides structure, then the
 // element. Its simplest value is the minimum number of simplest elements.
-// It runs backwards from a slice or an array, through each element in
-// order.
+// An empty list is a non-nil slice, as a typed literal of an empty list
+// decodes to one. It runs backwards from a slice or an array, through each
+// element in order.
 func List[T any](of Generator[T], sizes choice.Sizes) Generator[[]T] {
 	decode := func(c *Case) []T {
 		span := c.openSpan(listID)
@@ -184,7 +185,9 @@ func Collect(c *Case, sizes choice.Sizes, element func()) {
 // Elements decodes a collection of the values that decode returns, as List
 // and Dict do: per element a continue flag that decides structure, then a
 // call of decode in a span labelled label that starts at its flag. The
-// number of elements is one that sizes admits.
+// number of elements is one that sizes admits. A collection of no element
+// is a non-nil slice, so an optional tells it from an absent one, which is
+// nil.
 //
 // key, when not nil, returns the key that an element is unique by. An
 // element whose key repeats an earlier one is discarded, and the next flag
@@ -205,7 +208,7 @@ func Elements[T any](c *Case, sizes choice.Sizes, label string, decode func(*Cas
 func collect[T any](c *Case, sizes choice.Sizes, label string, decode func(*Case) T, key func(T) string,
 	stop func() bool,
 ) []T {
-	var items []T
+	items := []T{}
 	seen := make(map[string]struct{})
 	discards := 0
 	for {

@@ -97,7 +97,7 @@ func TestEdge(t *testing.T) {
 				call: 2,
 				want: edgeValues{
 					signed: -5, above: 3, below: -9, unit: 0.25, one: 1, word: "a", letter: "a",
-					pair: []byte{0, 0}, maybe: new(1), pick: "x", digits: []int{0},
+					pair: []byte{0, 0}, maybe: new(1), pick: "x", digits: []int{0}, empty: []int{},
 				},
 			},
 			{
@@ -105,7 +105,7 @@ func TestEdge(t *testing.T) {
 				call: 4,
 				want: edgeValues{
 					signed: 5, above: 9, below: -3, unit: 0.75, one: 1, word: "b", letter: "a",
-					pair: []byte{0xff, 0xff}, maybe: new(3), pick: "x", digits: []int{9},
+					pair: []byte{0xff, 0xff}, maybe: new(3), pick: "x", digits: []int{9}, empty: []int{},
 				},
 			},
 			{
@@ -113,7 +113,7 @@ func TestEdge(t *testing.T) {
 				call: 5,
 				want: edgeValues{
 					signed: 1, above: 4, below: -3, unit: 0.5000000000000001, one: 1, word: "b", letter: "a",
-					pair: []byte{1, 1}, maybe: new(2), pick: "x", digits: []int{1},
+					pair: []byte{1, 1}, maybe: new(2), pick: "x", digits: []int{1}, empty: []int{},
 				},
 			},
 			{
@@ -121,7 +121,7 @@ func TestEdge(t *testing.T) {
 				call: 6,
 				want: edgeValues{
 					signed: -1, above: 3, below: -4, unit: 0.49999999999999994, one: 1, word: "a", letter: "a",
-					pair: []byte{0, 0}, maybe: new(1), pick: "x", digits: []int{0},
+					pair: []byte{0, 0}, maybe: new(1), pick: "x", digits: []int{0}, empty: []int{},
 				},
 			},
 		}

@@ -12,6 +12,7 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
+	"go.dokimi.dev/assert/expect"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 	"go.dokimi.dev/assert/prop"
@@ -26,9 +27,9 @@ const maxAllocsFormAllocs = 834
 // assertion and its subjects allocate in each case.
 var formAllocs = map[string]uint64{
 	"Equal": 833, "NotEqual": 833, "True": 833, "False": 833, "Nil": 833, "NotNil": 933, "Length": 933,
-	"Empty": 1912, "NotEmpty": 2111, "Contains": 2211, "NotContains": 1912, "ContainsInOrder": 1262,
-	"IsPermutation": 2542, "HasPrefix": 1261, "HasSuffix": 1261, "Matches": 3961, "CloseTo": 932,
-	"InRange": 932, "Pairwise": 2344, "NoError": 833, "HasError": 833, "ErrorIs": 833, "ErrorIsNot": 833,
+	"Empty": 1913, "NotEmpty": 2112, "Contains": 2212, "NotContains": 1913, "ContainsInOrder": 1262,
+	"IsPermutation": 2543, "HasPrefix": 1261, "HasSuffix": 1261, "Matches": 3961, "CloseTo": 932,
+	"InRange": 932, "Pairwise": 2345, "NoError": 833, "HasError": 833, "ErrorIs": 833, "ErrorIsNot": 833,
 	"ErrorAs": 1033, "Panics": 833, "NotPanics": 833, "Pure": 833, "NotPure": 836, "NilContextSafe": 833,
 	"HonoursCancellation": 1033, "HonoursDeadline": 1033, "Idempotent": 836, "Accumulates": 836,
 	"Deterministic": 833, "Commutative": 855, "Associative": 1078, "RoundTrip": 1036,
@@ -219,13 +220,13 @@ func detailsOf(records []assert.Failure) []map[string]any {
 }
 
 // TestFormsAllocs checks the allocation ceiling of a passing run of each
-// property form.
+// property form, and reports each ceiling that a run passes.
 func TestFormsAllocs(t *testing.T) {
 	rec := &matchertest.Seat{}
 	for _, tt := range formCases() {
-		assert.MaxAllocs(t, func() { tt.pass(rec) }, formAllocs[tt.name], tt.name+" allocates its run")
+		expect.MaxAllocs(t, func() { tt.pass(rec) }, formAllocs[tt.name], tt.name+" allocates its run")
 	}
-	assert.MaxAllocs(t, func() { prop.MaxAllocs(rec, func(int8) {}, 0, contractOfForm, prop.Seed(7)) },
+	expect.MaxAllocs(t, func() { prop.MaxAllocs(rec, func(int8) {}, 0, contractOfForm, prop.Seed(7)) },
 		maxAllocsFormAllocs, "MaxAllocs allocates its run")
 	assert.False(t, rec.Failed(), "every run passes")
 }
