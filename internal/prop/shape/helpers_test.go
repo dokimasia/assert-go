@@ -77,25 +77,33 @@ func isFault(tb testing.TB, err, kind error, path fault.Path, reason string) {
 }
 
 // roundTrips checks that each value that the shape text generates in the
-// first 60 cases of seed 9 runs back to choices that decode to the value,
-// and that the decoded value runs back to the same choices. A set decodes
-// its elements in the order of their choices, so its decoded value is
-// compared by its choices alone.
+// first 60 cases of seed 9 runs back, as runsBack checks.
 func roundTrips(tb testing.TB, text string) {
 	tb.Helper()
 	g := read(tb, text)
 	for index := range uint64(60) {
 		var v any
 		engine.Generate(func(c *engine.Case) { v = engine.Draw(c, g, drawn) }, 9, index, nil)
-		choices, err := engine.Invert(g, v)
-		assert.NoError(tb, err, text+" runs its value back")
-		got, _ := decode(tb, text, choices...)
-		again, err := engine.Invert(g, got)
-		assert.NoError(tb, err, text+" runs the decoded value back")
-		assert.True(tb, slices.EqualFunc(again, choices, choice.Choice.Equal),
-			text+" runs the decoded value back to the same choices")
-		if !strings.Contains(text, `"set"`) {
-			assert.Equal(tb, literal.Canonical(got), literal.Canonical(v), text+" decodes the value back")
-		}
+		runsBack(tb, text, g, v)
+	}
+}
+
+// runsBack checks that v, a value of g, the generator of the shape text, runs
+// back to choices that decode to the value, and that the decoded value runs
+// back to the same choices. A set decodes its elements in the order of their
+// choices, so the decoded value of a text that states a set is compared by
+// its choices alone.
+func runsBack(tb testing.TB, text string, g engine.Generator[any], v any) {
+	tb.Helper()
+	choices, err := engine.Invert(g, v)
+	assert.NoError(tb, err, text+" runs its value back")
+	var got any
+	engine.Replay(func(c *engine.Case) { got = engine.Draw(c, g, drawn) }, choices, nil)
+	again, err := engine.Invert(g, got)
+	assert.NoError(tb, err, text+" runs the decoded value back")
+	assert.True(tb, slices.EqualFunc(again, choices, choice.Choice.Equal),
+		text+" runs the decoded value back to the same choices")
+	if !strings.Contains(text, `"set"`) {
+		assert.Equal(tb, literal.Canonical(got), literal.Canonical(v), text+" decodes the value back")
 	}
 }

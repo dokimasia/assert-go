@@ -4,6 +4,7 @@
 package prop_test
 
 import (
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -24,6 +25,34 @@ const optionAllocs = 1
 
 // never is a label that no case counts.
 const never = "never"
+
+// FuzzDraws checks that a run under the entries of any text fails the test
+// with one fault at Draws or takes the entries, and does not panic. The body
+// draws a digit and never fails, so no run reports a record.
+func FuzzDraws(f *testing.F) {
+	f.Add(`[{"label": "value", "value": {"type": "int", "value": 4}}]`)
+	f.Add(`[{"label": "value", "value": {"type": "int", "value": 12}}]`)
+	f.Add(`[{"label": "other", "value": {"type": "string", "value": "a"}}]`)
+	f.Add(`[{"step": "put", "client": 1, "drain": true}]`)
+	f.Add(`[{"step": "put"}, {"step": "put", "client": -1}]`)
+	f.Add(`[{"label": "value"}]`)
+	f.Add(`{`)
+	f.Fuzz(func(t *testing.T, text string) {
+		seat := &matchertest.Seat{}
+		prop.ForAll(seat, contract, draws(prop.Integer(0, 9)), prop.Seed(7), prop.Cases(1), prop.Draws(text))
+		assert.Empty(t, seat.Records(), "no record of a body that never fails")
+		faults := seat.Faults()
+		if len(faults) == 0 {
+			return
+		}
+		assert.Length(t, faults, 1, "one fault")
+		got, ok := errors.AsType[*fault.Error](faults[0])
+		assert.True(t, ok, "the error is a fault")
+		assert.Equal(t, got.Op, forAllOp, "a fault of ForAll")
+		assert.NotEmpty(t, got.Path, "a fault with a path")
+		assert.Equal(t, got.Path[0], fault.Field("Draws"), "a fault at Draws")
+	})
+}
 
 // TestOption checks each option of a run.
 func TestOption(t *testing.T) {

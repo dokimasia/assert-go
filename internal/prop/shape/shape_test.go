@@ -32,6 +32,34 @@ const (
 const infinite = "the definition has no finite value, because it refers back without an optional, a list, " +
 	"a set, a map or an enum that can exit"
 
+// FuzzRead checks that Read returns a generator or a fault of the kind
+// ErrShape for any bytes, and does not panic. A case of seed 9 draws from the
+// generator of a document that Read accepts without failing, and a value
+// that it draws runs back, as runsBack checks.
+func FuzzRead(f *testing.F) {
+	f.Add([]byte(recordShape))
+	f.Add([]byte(`{"shape":"set","of":` + uint8Shape + `,"max_size":4}`))
+	f.Add([]byte(`{"shape":"ref","name":"t","definitions":{"t":{"shape":"optional",` +
+		`"of":{"shape":"list","of":{"shape":"ref","name":"t"},"max_size":2}}}}`))
+	f.Add([]byte(`{"shape":"string","pattern":"[a-c]{2,4}"}`))
+	f.Add([]byte(`{"shape":"map","key":{"shape":"string","max_size":2},"of":{"shape":"float","width":64}}`))
+	f.Add([]byte(`{"shape":"int","width":8,"signed":true,"mx":1}`))
+	f.Add([]byte(`{`))
+	f.Fuzz(func(t *testing.T, document []byte) {
+		g, err := shape.Read(document)
+		if err != nil {
+			assert.ErrorIs(t, err, shape.ErrShape, "a fault of the kind ErrShape")
+			return
+		}
+		var v any
+		e := engine.Generate(func(c *engine.Case) { v = engine.Draw(c, g, drawn) }, 9, 0, nil)
+		assert.NotEqual(t, e.Status, engine.CaseFailed, "the generator decodes a case without failing")
+		if e.Status == engine.CasePassed {
+			runsBack(t, string(document), g, v)
+		}
+	})
+}
+
 // TestShape checks the vocabulary, the documents that fail to read and
 // where each fault is, and the generator of a document's root.
 func TestShape(t *testing.T) {
