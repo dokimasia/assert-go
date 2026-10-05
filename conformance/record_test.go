@@ -5,6 +5,7 @@ package conformance_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert/conformance"
@@ -21,8 +22,9 @@ const (
 	// unknownDraw is a draw of a typed literal of an unknown type.
 	unknownDraw = `{"label":"value","value":` + widget + `}`
 	// divergedRun is the divergence of the run of divergingBody under seven,
-	// in normal form.
-	divergedRun = `{"index":0,"recorded":"integer in [0, 9]","replayed":"integer in [0, 1]","what":"request"}`
+	// in normal form: in the body's draw, outside a machine's steps.
+	divergedRun = `{"index":0,"label":"value","recorded":"integer in [0, 9]","replayed":"integer in [0, 1]",` +
+		`"step":null,"what":"request"}`
 )
 
 // TestRecord checks the comparison of the record of a run with the detail
@@ -171,39 +173,56 @@ func TestRecord(t *testing.T) {
 				give: behaving(divergingBody, seven,
 					diverged(`{"kind":"float","min":0,"max":1,"allow_nan":true,"width":64}`, bitRequest)),
 				wantPath: at(fault.Field("divergence")),
-				wantReason: divergence(`{"index":0,"recorded":"float in [0, 1] of width 64 or NaN",` +
-					`"replayed":"integer in [0, 1]","what":"request"}`),
+				wantReason: divergence(`{"index":0,"label":"value","recorded":"float in [0, 1] of width 64 or NaN",` +
+					`"replayed":"integer in [0, 1]","step":null,"what":"request"}`),
 			},
 			{
 				name: "returns a fault that states the float bounds without NaN as their text",
 				give: behaving(divergingBody, seven,
 					diverged(`{"kind":"float","min":0,"max":1,"allow_nan":false,"width":32}`, bitRequest)),
 				wantPath: at(fault.Field("divergence")),
-				wantReason: divergence(`{"index":0,"recorded":"float in [0, 1] of width 32",` +
-					`"replayed":"integer in [0, 1]","what":"request"}`),
+				wantReason: divergence(`{"index":0,"label":"value","recorded":"float in [0, 1] of width 32",` +
+					`"replayed":"integer in [0, 1]","step":null,"what":"request"}`),
 			},
 			{
 				name: "returns a fault that states the bounds of a bounded sequence as their text",
 				give: behaving(divergingBody, seven,
 					diverged(`{"kind":"sequence","k":3,"min_size":0,"max_size":2}`, bitRequest)),
 				wantPath: at(fault.Field("divergence")),
-				wantReason: divergence(`{"index":0,"recorded":"sequence of 0 to 2 values below 3",` +
-					`"replayed":"integer in [0, 1]","what":"request"}`),
+				wantReason: divergence(`{"index":0,"label":"value","recorded":"sequence of 0 to 2 values below 3",` +
+					`"replayed":"integer in [0, 1]","step":null,"what":"request"}`),
 			},
 			{
 				name: "returns a fault that states the bounds of an unbounded sequence as their text",
 				give: behaving(divergingBody, seven,
 					diverged(`{"kind":"sequence","k":3,"min_size":1,"max_size":null}`, bitRequest)),
 				wantPath: at(fault.Field("divergence")),
-				wantReason: divergence(`{"index":0,"recorded":"sequence of 1 or more values below 3",` +
-					`"replayed":"integer in [0, 1]","what":"request"}`),
+				wantReason: divergence(`{"index":0,"label":"value","recorded":"sequence of 1 or more values below 3",` +
+					`"replayed":"integer in [0, 1]","step":null,"what":"request"}`),
 			},
 			{
 				name:     "returns a fault that states a fingerprint as its number",
 				give:     behaving(divergingBody, seven, diverged(`42`, bitRequest)),
 				wantPath: at(fault.Field("divergence")),
-				wantReason: divergence(
-					`{"index":0,"recorded":42,"replayed":"integer in [0, 1]","what":"request"}`),
+				wantReason: divergence(`{"index":0,"label":"value","recorded":42,"replayed":"integer in [0, 1]",` +
+					`"step":null,"what":"request"}`),
+			},
+			{
+				name: "returns a fault at the divergence for a divergence in another draw",
+				give: behaving(divergingBody, seven,
+					strings.Replace(diverged(digitRequest, bitRequest), `"label":"value"`, `"label":"other"`, 1)),
+				wantPath: at(fault.Field("divergence")),
+				wantReason: divergence(`{"index":0,"label":"other","recorded":"integer in [0, 9]",` +
+					`"replayed":"integer in [0, 1]","step":null,"what":"request"}`),
+			},
+			{
+				name: "returns a fault at the divergence for a divergence in a step of a machine",
+				give: behaving(divergingBody, seven, strings.Replace(diverged(digitRequest, bitRequest),
+					`"step":null`, `"step":{"part":"swarm","position":0,"action":"put"}`, 1)),
+				wantPath: at(fault.Field("divergence")),
+				wantReason: divergence(`{"index":0,"label":"value","recorded":"integer in [0, 9]",` +
+					`"replayed":"integer in [0, 1]","step":{"action":"put","part":"swarm","position":0},` +
+					`"what":"request"}`),
 			},
 		}
 		for _, tt := range tests {
@@ -217,11 +236,11 @@ func TestRecord(t *testing.T) {
 
 // diverged returns the detail of the run of divergingBody under seven, of
 // the divergence of the first request between the sides recorded and
-// replayed, each a JSON text.
+// replayed, each a JSON text, in the body's draw outside a machine's steps.
 func diverged(recorded, replayed string) string {
 	return fmt.Sprintf(`{"outcome":"flaky","cases":1,"rejected":0,"seed":"7","counterexample":null,`+
-		`"failure":null,"choices":null,"others":null,`+
-		`"divergence":{"what":"request","index":0,"recorded":%s,"replayed":%s},"coverage":null}`, recorded, replayed)
+		`"failure":null,"choices":null,"others":null,"divergence":{"what":"request","index":0,"recorded":%s,`+
+		`"replayed":%s,"label":"value","step":null},"coverage":null}`, recorded, replayed)
 }
 
 // divergence returns the reason of a divergence of the run of divergingBody

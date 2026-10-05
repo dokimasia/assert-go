@@ -90,6 +90,7 @@ func contractCases() []alloctest.Case {
 		{Name: "MaxMean", Call: func(assert.TB) { stated.MaxMean(time.Second) }},
 		{Name: "MaxAllocs", Call: func(assert.TB) { stated.MaxAllocs(1) }},
 		{Name: "MaxBytes", Call: func(assert.TB) { stated.MaxBytes(1) }},
+		{Name: "Warmup", Call: func(assert.TB) { stated.Warmup(1) }},
 		{Name: "Loop", Call: func(assert.TB) { running.Loop() }},
 		{Name: "Excluding", Call: func(assert.TB) { running.Excluding(noop) }},
 		{Name: "End", Call: func(assert.TB) { ended.End() }, Allocs: 1},
@@ -271,6 +272,77 @@ func TestContract(t *testing.T) {
 				"every ceiling returns the receiver")
 		})
 	})
+
+	t.Run("Warmup", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns the receiver", func(t *testing.T) {
+			t.Parallel()
+
+			c := bench.Start(newBenchSeat(1))
+			assert.Equal(t, c.Warmup(3), c, "Warmup returns the receiver")
+		})
+
+		t.Run("runs the body once per warm-up iteration before the measured ones", func(t *testing.T) {
+			t.Parallel()
+
+			calls := 0
+			seat := run(iterations, func(c *bench.Contract) *bench.Contract { return c.Warmup(5) }, func() { calls++ })
+
+			assert.Equal(t, calls, iterations+5, "the body runs 5 warm-up iterations and the measured ones")
+			assert.Equal(t, seat.remaining, 0, "the benchmark's own loop runs the measured iterations alone")
+		})
+
+		t.Run("leaves a warm-up iteration out of the latency ceilings", func(t *testing.T) {
+			t.Parallel()
+
+			first := true
+			seat := run(4, func(c *bench.Contract) *bench.Contract {
+				return c.Warmup(1).MaxLatency(10 * time.Millisecond)
+			}, func() {
+				if first {
+					first = false
+					time.Sleep(50 * time.Millisecond)
+				}
+			})
+
+			assert.False(t, seat.Failed(), "a slow first iteration in the warm-up exceeds no ceiling")
+		})
+
+		t.Run("publishes nothing for a run that ends during the warm-up", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newBenchSeat(iterations)
+			c := bench.Start(seat).Warmup(3).MaxLatency(time.Nanosecond)
+			for c.Loop() {
+				break
+			}
+			c.End()
+
+			_, published := seat.metric("p99-ns/op")
+			assert.False(t, published, "a run that measured nothing publishes nothing")
+			assert.Length(t, seat.verdicts(t), 0, "a run that measured nothing checks no ceiling")
+		})
+
+		t.Run("panics for a negative number of iterations", func(t *testing.T) {
+			t.Parallel()
+
+			c := bench.Start(newBenchSeat(1))
+			raised := assert.Panics(t, func() { c.Warmup(-1) }, "a negative count is a usage error")
+			assert.Equal(t, raised, any("bench: Warmup(-1) states a negative number of iterations"),
+				"the message names the call")
+		})
+
+		t.Run("panics after Loop has run", func(t *testing.T) {
+			t.Parallel()
+
+			c := bench.Start(newBenchSeat(1))
+			c.Loop()
+			raised := assert.Panics(t, func() { c.Warmup(1) }, "a warm-up after the first iteration is a usage error")
+			assert.Equal(t, raised, any("bench: Warmup after the contract has run its body"),
+				"the message names the call")
+		})
+	})
 }
 
 // sink stores what a fixture built, so that escape analysis cannot
@@ -342,6 +414,31 @@ func TestContractCounting(t *testing.T) {
 			seat := run(longRun, nothing, noop)
 
 			assert.Equal(t, seat.First(), "", "a body that allocates nothing meets ceilings of zero")
+		})
+
+		t.Run("leaves the warm-up out of the allocation ceilings", func(t *testing.T) {
+			warmed := false
+			seat := run(1, func(c *bench.Contract) *bench.Contract { return c.Warmup(1).MaxAllocs(0) }, func() {
+				if !warmed {
+					warmed = true
+					sink = make([][]int, 128)
+				}
+			})
+
+			assert.Equal(t, seat.First(), "", "the allocation of the warm-up iteration counts against no ceiling")
+		})
+
+		t.Run("counts the first iteration of a run without a warm-up", func(t *testing.T) {
+			warmed := false
+			seat := run(1, func(c *bench.Contract) *bench.Contract { return c.MaxAllocs(0) }, func() {
+				if !warmed {
+					warmed = true
+					sink = make([][]int, 128)
+				}
+			})
+
+			assert.Equal(t, seat.Failed(), matcher.AllocationsCounted(),
+				"the allocation of the one measured iteration exceeds a ceiling of zero in a build that checks it")
 		})
 
 		t.Run("leaves the code after the loop out of the allocation ceilings", func(t *testing.T) {
@@ -520,6 +617,42 @@ func TestContractCounting(t *testing.T) {
 			assert.True(t, seat.Failed(), "iterations of a millisecond exceed a mean of 0.9 milliseconds")
 		})
 	})
+}
+
+// TestContractAfterRunParallel checks the calls that a contract refuses once
+// RunParallel has run its body, in benchmarks of testing that run in this
+// process. It does not run in parallel, because it sets -benchtime, a flag
+// of the process.
+func TestContractAfterRunParallel(t *testing.T) {
+	tests := []struct {
+		name string
+		give func(c *bench.Contract)
+		want string
+	}{
+		{name: "Loop", give: func(c *bench.Contract) { c.Loop() }, want: "bench: Loop after RunParallel"},
+		{
+			name: "Warmup",
+			give: func(c *bench.Contract) { c.Warmup(1) },
+			want: "bench: Warmup after the contract has run its body",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Run("panics after RunParallel has run", func(t *testing.T) {
+				var recovered any
+				benchmark(t, "1x", func(b bench.B, _ int) {
+					c := bench.Start(b)
+					c.RunParallel(spin)
+					func() {
+						defer func() { recovered = recover() }()
+						tt.give(c)
+					}()
+				})
+
+				assert.Equal(t, recovered, any(tt.want), "the message names the call")
+			})
+		})
+	}
 }
 
 // TestContractAllocs checks the allocation ceiling of each function and

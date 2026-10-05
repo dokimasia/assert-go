@@ -54,8 +54,8 @@ func sentence(f assert.Failure) string {
 		writeReplay(&b, other.Choices)
 	}
 	if d, ok := f.Detail[divergenceField].(*Divergence); ok {
-		fmt.Fprintf(&b, "\ndivergence: the %v at %d, recorded %s, replayed %s",
-			d.What, d.Index, sideText(d.What, d.Recorded), sideText(d.What, d.Replayed))
+		fmt.Fprintf(&b, "\ndivergence: the %v at %d%s, recorded %s, replayed %s",
+			d.What, d.Index, whereText(d), sideText(d.What, d.Recorded), sideText(d.What, d.Replayed))
 	}
 	if s, ok := f.Detail[coverageField].(*Shortfall); ok {
 		fmt.Fprintf(&b, "\ncoverage: %v, %q counted %d of %d valid cases against a required share of %v",
@@ -89,6 +89,24 @@ func writeFailure(b *strings.Builder, what string, f assert.Failure) {
 // that tok records.
 func writeReplay(b *strings.Builder, tok string) {
 	fmt.Fprintf(b, "\nreplay: prop.Replay(%q) or %s=%s", tok, replayVariable, tok)
+}
+
+// whereText returns where the replayed run of a divergence made its request
+// or observed its fingerprint, in parentheses after a space: the draw that
+// ran, and the part and the step of a machine. It returns the empty string
+// where neither ran.
+func whereText(d *Divergence) string {
+	var parts []string
+	if d.Label != nil {
+		parts = append(parts, fmt.Sprintf("in the draw %q", *d.Label))
+	}
+	if d.Step != nil {
+		parts = append(parts, "in "+d.Step.text())
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(parts, ", ") + ")"
 }
 
 // sideText returns one side of a divergence of what as text, and the words

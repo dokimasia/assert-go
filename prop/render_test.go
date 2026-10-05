@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/prop"
 )
 
@@ -19,6 +20,9 @@ const (
 	// replayZero is the replay line of the case of one integer choice of 0.
 	replayZero = "\nreplay: prop.Replay(\"prop1:AAA\") or DOKIMI_ASSERT_PROP_REPLAY=prop1:AAA"
 )
+
+// flushStep is the place of the third drain step, of the action flush.
+var flushStep = engine.Place{Part: engine.DrainPart, Position: 2, Positioned: true, Action: "flush", Acting: true}
 
 // TestRender checks the sentence of a failing run's record that a seat
 // receives when it takes no record.
@@ -73,7 +77,15 @@ func TestRender(t *testing.T) {
 				name: "states the requests of a body that diverges",
 				body: diverges(prop.Integer(0, 9), prop.Boolean()),
 				want: fmt.Sprintf(header, "flaky", 1) +
-					"\ndivergence: the request at 0, recorded integer in [0, 9], replayed integer in [0, 1]",
+					"\ndivergence: the request at 0 (in the draw \"value\"), recorded integer in [0, 9], " +
+					"replayed integer in [0, 1]",
+			},
+			{
+				name: "states the draw and the step of a machine where the replay requested other bounds",
+				body: placed(flushStep, diverges(prop.Integer(0, 9), prop.Boolean())),
+				want: fmt.Sprintf(header, "flaky", 1) +
+					"\ndivergence: the request at 0 (in the draw \"value\", in drain step 2, of flush), " +
+					"recorded integer in [0, 9], replayed integer in [0, 1]",
 			},
 			{
 				name: "states the end of a body that requests nothing where it requested before",

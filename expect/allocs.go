@@ -44,3 +44,39 @@ func MaxAllocs(tb assert.TB, fn func(), ceiling uint64, msg string) {
 	tb.Helper()
 	matcher.MaxAllocs(tb, matcher.Soft, fn, ceiling, msg)
 }
+
+// MaxAllocsWithSetup calls setup, and fn on the input that setup returns,
+// once to warm both. It then counts the heap allocations of the next 100
+// calls of fn, each on an input that a call of setup builds outside the
+// count, and records a failure and lets the test continue when their
+// average, rounded down, exceeds ceiling. The failure names the ceiling
+// and the count.
+//
+//	expect.MaxAllocsWithSetup(t, freshStore, (*Store).Settle, 4,
+//	    "settling a store allocates at most four times")
+//
+// It states a ceiling on a call that consumes its input, which
+// [MaxAllocs] would count together with the input's build. A setup can
+// also empty a cache before each call: two runs of [runtime.GC] empty
+// every [sync.Pool].
+//
+// # Builds that allocate differently
+//
+// In a build with the race detector, msan or asan, and in one whose
+// -gcflags turn off optimisation or inlining, it calls setup and fn as an
+// ordinary build does and checks no ceiling. Those builds allocate
+// differently from an ordinary build.
+//
+// # Parallel tests
+//
+// It counts the allocations of the whole process, with GOMAXPROCS at 1, so
+// the test that calls MaxAllocsWithSetup does not call t.Parallel.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what the 101 calls of setup and
+// of fn allocate.
+func MaxAllocsWithSetup[T any](tb assert.TB, setup func() T, fn func(T), ceiling uint64, msg string) {
+	tb.Helper()
+	matcher.MaxAllocsWithSetup(tb, matcher.Soft, setup, fn, ceiling, msg)
+}

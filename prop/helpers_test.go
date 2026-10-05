@@ -168,6 +168,7 @@ const (
 // The first value past the members of each enumeration of the package.
 const (
 	invalidDifference prop.Difference = 3
+	invalidPart       prop.Part       = 6
 	invalidRelevance  prop.Relevance  = 3
 	invalidOutcome    prop.Outcome    = 6
 	invalidVerdict    prop.Verdict    = 2
@@ -405,6 +406,15 @@ func diverges[T, U any](first prop.Generator[T], then prop.Generator[U]) func(*p
 			return
 		}
 		c.Draw(then, drawn)
+	}
+}
+
+// placed returns the body that runs body at place p of a machine's steps,
+// as the steps of a machine set it.
+func placed(p engine.Place, body func(*prop.Case)) func(*prop.Case) {
+	return func(c *prop.Case) {
+		(*engine.Case)(c).SetPlace(p)
+		body(c)
 	}
 }
 

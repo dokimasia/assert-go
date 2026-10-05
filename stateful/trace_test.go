@@ -142,18 +142,3 @@ func followed(body func(c *prop.Case), entries ...engine.Entry) ([]engine.Machin
 	}, engine.Settings{Cases: 1, MaxChoices: engine.MaxChoices, Draws: entries})
 	return got, r.Refused
 }
-
-// step returns the entry of a sequential step of action.
-func step(action string) engine.Entry {
-	return engine.Entry{Step: &engine.MachineStep{Action: action, Client: -1}}
-}
-
-// concurrent returns the entry of a step of action on client.
-func concurrent(action string, client int) engine.Entry {
-	return engine.Entry{Step: &engine.MachineStep{Action: action, Client: client}}
-}
-
-// drained returns the entry of a drain step of action.
-func drained(action string) engine.Entry {
-	return engine.Entry{Step: &engine.MachineStep{Action: action, Client: -1, Drain: true}}
-}

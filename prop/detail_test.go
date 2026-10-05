@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/prop"
 )
 
@@ -78,14 +79,24 @@ func TestDetail(t *testing.T) {
 				"what": "request", "index": 0.0,
 				"recorded": map[string]any{"kind": "integer", "min": 0.0, "max": 9.0},
 				"replayed": map[string]any{"kind": "integer", "min": 0.0, "max": 1.0},
+				"label":    drawn, "step": nil,
 			}), "the divergence of the definition's vector")
+		})
+
+		t.Run("records the step of a machine where the replay requested other bounds", func(t *testing.T) {
+			t.Parallel()
+			step := engine.Place{Part: engine.SequentialPart, Position: 4, Positioned: true}
+			detail := recordedDetail(t, placed(step, diverges(prop.Integer(0, 9), prop.Boolean())), prop.Seed(7))
+			got, _ := detail[divergenceField].(map[string]any)
+			assert.Equal(t, got["step"], any(map[string]any{"part": "sequential", "position": 4.0, "action": nil}),
+				"the part and the position, without an action")
 		})
 
 		t.Run("records the identity of a verdict that differs as its text, and a pass as null", func(t *testing.T) {
 			t.Parallel()
 			detail := recordedDetail(t, once(func(c *prop.Case) { fail(c, "once") }), prop.Seed(7))
 			assert.Equal(t, detail[divergenceField], any(map[string]any{
-				"what": "verdict", "index": 0.0, "recorded": "once", "replayed": nil,
+				"what": "verdict", "index": 0.0, "recorded": "once", "replayed": nil, "label": nil, "step": nil,
 			}), "the divergence of a replay that passes")
 		})
 
@@ -96,7 +107,7 @@ func TestDetail(t *testing.T) {
 				fail(c, always)
 			}), prop.Seed(7))
 			assert.Equal(t, detail[divergenceField], any(map[string]any{
-				"what": "fingerprint", "index": 0.0, "recorded": 7.0, "replayed": nil,
+				"what": "fingerprint", "index": 0.0, "recorded": 7.0, "replayed": nil, "label": nil, "step": nil,
 			}), "the divergence of a replay without the fingerprint")
 		})
 

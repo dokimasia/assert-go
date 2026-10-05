@@ -44,6 +44,7 @@ const (
 	honoursCancellationID = "prop-honours-cancellation"
 	honoursDeadlineID     = "prop-honours-deadline"
 	maxAllocsID           = "prop-max-allocs"
+	maxAllocsWithSetupID  = "prop-max-allocs-with-setup"
 	idempotentID          = "prop-idempotent"
 	accumulatesID         = "prop-accumulates"
 	deterministicID       = "prop-deterministic"
@@ -57,8 +58,8 @@ var formIDs = [...]string{
 	equalID, notEqualID, trueID, falseID, nilID, notNilID, lengthID, emptyID, notEmptyID, containsID,
 	notContainsID, containsInOrderID, permutationID, hasPrefixID, hasSuffixID, matchesID, closeToID, inRangeID,
 	pairwiseID, errAbsentID, errPresentID, errIsID, errIsNotID, errAsID, throwsID, notThrowsID, pureID,
-	notPureID, nilContextSafeID, honoursCancellationID, honoursDeadlineID, maxAllocsID, idempotentID,
-	accumulatesID, deterministicID, commutativeID, associativeID, roundTripID,
+	notPureID, nilContextSafeID, honoursCancellationID, honoursDeadlineID, maxAllocsID, maxAllocsWithSetupID,
+	idempotentID, accumulatesID, deterministicID, commutativeID, associativeID, roundTripID,
 }
 
 // Equal runs [assert.Equal] on got(input) and want(input) for each input
@@ -428,6 +429,30 @@ func MaxAllocs[T any](tb assert.TB, fn func(T), ceiling uint64, msg string, opts
 		opts,
 		func(c *Case, in []T, _ []matcher.Option) {
 			matcher.MaxAllocs(c, matcher.Fatal, func() { fn(in[0]) }, ceiling, msg)
+		},
+	)
+}
+
+// MaxAllocsWithSetup runs [assert.MaxAllocsWithSetup] on fn and ceiling
+// for each input that the run generates, and shrinks to the smallest input
+// whose calls allocate more. Each call of fn takes what a call of setup
+// builds from the input, outside the count. It is the property form
+// prop-max-allocs-with-setup. The count covers the whole process, so the
+// cases run one at a time whatever [Workers] states, and the test that
+// calls it does not run in parallel. It checks no ceiling in the builds
+// where assert.MaxAllocsWithSetup checks none.
+func MaxAllocsWithSetup[T, I any](tb assert.TB, setup func(T) I, fn func(I), ceiling uint64, msg string,
+	opts ...FormOption,
+) {
+	tb.Helper()
+	runForm(
+		tb,
+		form{op: "prop.MaxAllocsWithSetup", id: maxAllocsWithSetupID, serial: true, labels: inputLabel},
+		msg,
+		caller(),
+		opts,
+		func(c *Case, in []T, _ []matcher.Option) {
+			matcher.MaxAllocsWithSetup(c, matcher.Fatal, func() I { return setup(in[0]) }, fn, ceiling, msg)
 		},
 	)
 }

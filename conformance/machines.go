@@ -30,6 +30,13 @@ const (
 	// overflow is the count at which the counter of counter-overflows starts
 	// at 0 again.
 	overflow = 3
+	// refusal is the interval of the increments that the counter of
+	// counter-refuses-every-third refuses: each increment whose number,
+	// counted over the cases of a run, is a multiple of it.
+	refusal = 3
+	// limit is the count of the model below which counter-refuses-every-third
+	// enables its increment.
+	limit = 3
 	// setupClients is the clients of a vector's setup that states none.
 	setupClients = 2
 	// drawsOption is the option of prop at which the path of a refused
@@ -54,18 +61,28 @@ var (
 	storeKeys = prop.Integer(0, 3)
 )
 
+// errRefused is the error of an increment that counter-refuses-every-third
+// refuses.
+var errRefused = errors.New("conformance: refused")
+
 // machineSubject runs the steps of one machine subject in a case, with the
 // options of a vector's setup.
 type machineSubject func(c *prop.Case, o machineOptions)
 
-// machineSubjects are the six machine subjects of the definition, by name.
-var machineSubjects = map[string]machineSubject{
-	"queue-loses-on-wrap":  func(c *prop.Case, o machineOptions) { queueSubject(c, o, true) },
-	"correct-queue":        func(c *prop.Case, o machineOptions) { queueSubject(c, o, false) },
-	"counter-overflows":    counterOverflows,
-	"store-loses-on-crash": storeLosesOnCrash,
-	"racy-counter":         func(c *prop.Case, o machineOptions) { sharedCounter(c, o, true) },
-	"correct-counter":      func(c *prop.Case, o machineOptions) { sharedCounter(c, o, false) },
+// machineSubjects returns the seven machine subjects of the definition, by
+// name, for one run. A subject that counts over the cases of a run starts
+// at 0 in each map that it returns.
+func machineSubjects() map[string]machineSubject {
+	increments := 0
+	return map[string]machineSubject{
+		"queue-loses-on-wrap":         func(c *prop.Case, o machineOptions) { queueSubject(c, o, true) },
+		"correct-queue":               func(c *prop.Case, o machineOptions) { queueSubject(c, o, false) },
+		"counter-overflows":           counterOverflows,
+		"store-loses-on-crash":        storeLosesOnCrash,
+		"racy-counter":                func(c *prop.Case, o machineOptions) { sharedCounter(c, o, true) },
+		"correct-counter":             func(c *prop.Case, o machineOptions) { sharedCounter(c, o, false) },
+		"counter-refuses-every-third": func(c *prop.Case, o machineOptions) { refusingCounter(c, o, &increments) },
+	}
 }
 
 // machinesVector is a machines vector: a subject, the options of its steps,
@@ -143,7 +160,7 @@ func checkMachines(raw json.RawMessage, dir string) error {
 	if err := decode(raw, &v); err != nil {
 		return err
 	}
-	subject, ok := machineSubjects[v.Subject]
+	subject, ok := machineSubjects()[v.Subject]
 	if !ok {
 		return fault.At(fault.New("%q names no machine subject", v.Subject), fault.Field(subjectMember))
 	}
@@ -317,18 +334,22 @@ func boundedQueue(capacity int) history.Model[[]int] {
 }
 
 // counterModel is the model of a counter whose increment returns the new
-// count, and whose reset sets it to 0. It models the calls of the counter
-// subjects, each of which completes.
+// count, whose reset sets it to 0, and whose read returns the count. It
+// models the calls of the counter subjects that take effect: each call of
+// a subject completes, or fails and takes no effect.
 var counterModel = history.Model[int]{
 	Init: func() int { return 0 },
 	Step: func(state int, op history.Op) []int {
 		if op.Operation == "reset" {
 			return []int{0}
 		}
-		if op.Output != any(state+1) {
-			return nil
+		if op.Operation == "read" && op.Output == any(state) {
+			return []int{state}
 		}
-		return []int{state + 1}
+		if op.Operation != "read" && op.Output == any(state+1) {
+			return []int{state + 1}
+		}
+		return nil
 	},
 }
 
@@ -352,6 +373,37 @@ func counterOverflows(c *prop.Case, o machineOptions) {
 				call := c.History().Invoke(client, "reset", nil)
 				count = 0
 				call.OK(nil)
+			},
+		}},
+	}, o.steps...)
+}
+
+// refusingCounter runs the counter machine over a counter that refuses each
+// increment whose number in increments, the increments of the run, is a
+// multiple of refusal: increment, enabled while the model's count is below
+// limit, and read, over the model of a counter. A refused increment fails
+// with errRefused and leaves the count.
+func refusingCounter(c *prop.Case, o machineOptions, increments *int) {
+	count := 0
+	stateful.Steps(c, stateful.Machine[int]{
+		Model: counterModel,
+		Actions: []stateful.Action[int]{{
+			Name:    "increment",
+			Enabled: func(state int) bool { return state < limit },
+			Run: func(c *prop.Case, client int, _ any) {
+				call := c.History().Invoke(client, "increment", nil)
+				*increments++
+				if *increments%refusal == 0 {
+					call.Fail(errRefused)
+					return
+				}
+				count++
+				call.OK(count)
+			},
+		}, {
+			Name: "read",
+			Run: func(c *prop.Case, client int, _ any) {
+				c.History().Invoke(client, "read", nil).OK(count)
 			},
 		}},
 	}, o.steps...)

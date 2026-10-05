@@ -149,12 +149,15 @@ type detailJSON struct {
 
 // divergenceJSON is a divergence as the call record of a property states
 // it: a side is the bounds of a request, the text of a failure's identity,
-// a fingerprint, or null.
+// a fingerprint, or null, and the label and the step are null where
+// [Divergence] states nil.
 type divergenceJSON struct {
 	What     Difference `json:"what"`
 	Index    int        `json:"index"`
 	Recorded any        `json:"recorded"`
 	Replayed any        `json:"replayed"`
+	Label    *string    `json:"label"`
+	Step     *Place     `json:"step"`
 }
 
 // MarshalJSON returns the detail as the call record of a property states
@@ -169,9 +172,10 @@ func (d runDetail) MarshalJSON() ([]byte, error) {
 		Coverage: d.coverage,
 	}
 	if v := d.divergence; v != nil {
+		public := divergenceOf(*v)
 		out.Divergence = &divergenceJSON{
 			What: Difference(v.What), Index: v.Index, Recorded: sideOf(v.Recorded),
-			Replayed: sideOf(v.Replayed),
+			Replayed: sideOf(v.Replayed), Label: public.Label, Step: public.Step,
 		}
 	}
 	return json.Marshal(out)

@@ -29,8 +29,9 @@ const (
 	replayAllocs = 9
 	// concludeAllocs are the allocations of concluding the bridged case of
 	// 10,000 for a body that fails from 1,001: the replay that confirms it,
-	// the runs of its shrink and of its explanation, and the result.
-	concludeAllocs = 471
+	// with the list of where it made its request, the runs of its shrink and
+	// of its explanation, and the result.
+	concludeAllocs = 472
 )
 
 // largestBytes are the fuzzer's bytes that the bridge decodes as 10,000
@@ -292,7 +293,10 @@ func TestRunner(t *testing.T) {
 				}
 				engine.Draw(c, engine.Boolean(1, 2), drawn)
 			}, settled())
-			divergence := &engine.Divergence{What: engine.RequestDifference, Recorded: digitBounds, Replayed: bitBounds}
+			divergence := &engine.Divergence{
+				What: engine.RequestDifference, Recorded: digitBounds, Replayed: bitBounds,
+				Where: engine.Where{Label: drawn, Drawing: true},
+			}
 			want := engine.Result{Outcome: engine.Flaky, Cases: 1, Seed: referenceSeed, Divergence: divergence}
 			assert.Equal(t, summary(got), want, "the second case requests other bounds at its first choice")
 			assert.Equal(t, digestOf(trace), "706d2435438fccdb677ab7ab2ec05973a15348f7c8e6478a2bbb4d406d53c5ae",

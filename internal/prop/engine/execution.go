@@ -108,12 +108,14 @@ func execute(body Body, p provider, s Settings) Execution {
 // finish calls body on c, on a goroutine of its own, and returns how the
 // case ended. A case that passes and asked for more runs with [Case.Repeat]
 // runs again on its choices, on a case outside the case tree that keeps its
-// walk when c does, until a run fails or the runs it asked for have passed.
-// The first run that fails is the case's end, with its record and its calls.
+// walk and its wheres when c does, until a run fails or the runs it asked
+// for have passed. The first run that fails is the case's end, with its
+// record and its calls.
 func finish(c *Case, body Body) Execution {
 	e := runOnce(c, body)
 	for n := 1; e.Status == CasePassed && n < c.repeats(); n++ {
 		again := newCase(replaying{choices: c.Choices()}, c.settings, nil)
+		again.keepsWheres = c.keepsWheres
 		if c.keepsWalk {
 			again.keepWalk()
 		}
@@ -176,7 +178,7 @@ func executionOf(c *Case) Execution {
 		return Execution{Case: c, Status: CaseRepeated}
 	}
 	if c.stop == diverged {
-		return Execution{Case: c, Status: CaseDiverged, Divergence: requestDivergence(c.divergence)}
+		return Execution{Case: c, Status: CaseDiverged, Divergence: requestDivergence(c, c.divergence)}
 	}
 	if c.stop == overrun {
 		return Execution{Case: c, Status: CaseRejected}
@@ -193,7 +195,7 @@ func executionOf(c *Case) Execution {
 		return e
 	}
 	if d, ok := errors.AsType[*tree.DivergenceError](c.walker.End()); ok {
-		return Execution{Case: c, Status: CaseDiverged, Divergence: requestDivergence(d)}
+		return Execution{Case: c, Status: CaseDiverged, Divergence: requestDivergence(c, d)}
 	}
 	return e
 }

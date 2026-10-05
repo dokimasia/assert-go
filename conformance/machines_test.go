@@ -38,6 +38,16 @@ const (
 		`"cases":0,"rejected":0,"seed":"1","counterexample":[{"step":"increment"},{"step":"increment"},` +
 		`{"step":"increment"}],"failure":"linearizable","choices":"prop1:AAEAAAABAAAAAQAAAAEAAA",` +
 		`"others":[],"divergence":null,"coverage":null},"error":null}`
+	// refusingRun is the vector of counter-refuses-every-third whose run is
+	// flaky at the index of its fifth sequential step: a case that repeats an
+	// earlier case's choices refuses an increment that the earlier case
+	// completed, so the step lists two actions where the earlier case listed
+	// one.
+	refusingRun = `{"subject":"counter-refuses-every-third","setup":{"swarm":false},"settings":{"seed":"1"},` +
+		`"detail":{"outcome":"flaky","cases":7,"rejected":0,"seed":"1","counterexample":null,"failure":null,` +
+		`"choices":null,"others":null,"divergence":{"what":"request","index":9,` +
+		`"recorded":{"kind":"integer","min":0,"max":0},"replayed":{"kind":"integer","min":0,"max":1},` +
+		`"label":null,"step":{"part":"sequential","position":4,"action":null}},"coverage":null},"error":null}`
 )
 
 // The vectors and the details that the tests derive from others.
@@ -143,6 +153,13 @@ func TestMachines(t *testing.T) {
 				expectFault(t, check(t, conformance.Machines, tt.give), tt.wantPath, tt.wantReason)
 			})
 		}
+
+		t.Run("returns nil again for a second check of a subject that counts over its run", func(t *testing.T) {
+			t.Parallel()
+			for range 2 {
+				expectFault(t, check(t, conformance.Machines, refusingRun), nil, "")
+			}
+		})
 	})
 }
 

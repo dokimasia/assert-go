@@ -281,14 +281,16 @@ func Just[T any](value T) Generator[T] {
 }
 
 // Draw returns a value of g and records it under label. The draw's span is
-// the first span g opens. Two draws may share a label. In the case of
-// [Settings.Draws], the draw first takes the next entry, and its choices
-// are the ones that decode to the entry's value.
+// the first span g opens. Two draws may share a label. Every request of the
+// draw is made under its label. In the case of [Settings.Draws], the draw
+// first takes the next entry, and its choices are the ones that decode to
+// the entry's value.
 func Draw[T any](c *Case, g Generator[T], label string) T {
 	if c.inverting != nil {
 		c.enterDraw(label, func(v any) ([]choice.Choice, error) { return invert(g, v) })
 	}
 	span := c.nextSpan()
+	defer c.closeDraw(c.openDraw(label))
 	v := g.decode(c)
 	c.draw(label, v, span, g.erased)
 	return v

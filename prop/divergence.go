@@ -67,6 +67,13 @@ func (d Difference) MarshalText() ([]byte, error) {
 //     codec_test.go:18".
 //
 // A side is nil where its run ended, observed no fingerprint, or passed.
+//
+// Label and Step state where the replayed run made the request or
+// observed the fingerprint, so a reader finds the code that read what
+// differed: the draw that ran, and the part and the step of a machine. A
+// request of a sequential step's index whose bounds differ, for example,
+// lists other actions than the recorded run listed, because an Enabled of
+// the machine read a result that the subject returned differently.
 type Divergence struct {
 	// What is what differed.
 	What Difference
@@ -78,17 +85,31 @@ type Divergence struct {
 	Recorded any
 	// Replayed is the replayed run's side of the difference.
 	Replayed any
+	// Label is the label of the draw that ran where the replayed run made
+	// the request or observed the fingerprint. It is nil where no draw ran,
+	// where the replayed run made no request or observed no fingerprint at
+	// the position, and for a verdict.
+	Label *string
+	// Step is the part and the step of a machine that ran there. It is nil
+	// outside a machine's steps, where the replayed run made no request or
+	// observed no fingerprint at the position, and for a verdict.
+	Step *Place
 }
 
 // divergenceOf returns the engine's divergence d with each side in the
 // form that [Divergence] states.
 func divergenceOf(d engine.Divergence) *Divergence {
-	return &Divergence{
+	out := &Divergence{
 		What:     Difference(d.What),
 		Index:    d.Index,
 		Recorded: versionOf(d.Recorded),
 		Replayed: versionOf(d.Replayed),
+		Step:     placeOf(d.Where),
 	}
+	if d.Where.Drawing {
+		out.Label = new(d.Where.Label)
+	}
+	return out
 }
 
 // versionOf returns one side of an engine's divergence in the form that

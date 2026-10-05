@@ -64,6 +64,13 @@ const unlimited = time.Duration(math.MaxInt64)
 // a client outside the clients, a concurrent step of a machine with one
 // client, and a drain step after the drain.
 //
+// Each request that the case makes while Steps runs, and each fingerprint
+// that it observes, belongs to the part and the step that run, which the
+// divergence of a flaky run names: a sequential, concurrent or drain step
+// at its position in its part, from 0, with its action once its index has
+// chosen it, and a swarm choice at the position of its action. Setup,
+// settle and the run of a concurrent section's steps have no position.
+//
 // # Panics
 //
 // Steps panics for a machine that states no machine: an action with a
@@ -114,18 +121,34 @@ type plannedStep[S any] struct {
 	input any
 }
 
-// steps runs the six parts in order.
+// steps runs the six parts in order, and leaves the case outside the steps
+// when they end, however they end.
 func (r *run[S]) steps() {
+	defer r.e.ClearPlace()
 	kept := r.swarm()
+	r.e.SetPlace(engine.Place{Part: engine.SetupPart})
 	r.check()
 	r.invariant()
 	r.sequential(kept)
 	r.concurrent(kept)
 	r.drain()
+	r.e.SetPlace(engine.Place{Part: engine.SettlePart})
 	if r.m.Settle != nil {
 		r.m.Settle(r.c, r.states[0])
 	}
 	r.invariant()
+}
+
+// at makes the case's place the step at position of part, before the step
+// has chosen its action.
+func (r *run[S]) at(part engine.Part, position int) {
+	r.e.SetPlace(engine.Place{Part: part, Position: position, Positioned: true})
+}
+
+// acting makes the case's place the step at position of part, which takes
+// the action a.
+func (r *run[S]) acting(part engine.Part, position int, a Action[S]) {
+	r.e.SetPlace(engine.Place{Part: part, Position: position, Positioned: true, Action: a.Name, Acting: true})
 }
 
 // swarm returns the actions that the case keeps, in order. A case that
@@ -137,6 +160,7 @@ func (r *run[S]) swarm() []Action[S] {
 	}
 	var kept []Action[S]
 	for i, a := range actions {
+		r.acting(engine.SwarmPart, i, a)
 		if r.traced {
 			named := uint64(0)
 			if r.trace.Names(a.Name) {
@@ -155,6 +179,7 @@ func (r *run[S]) swarm() []Action[S] {
 // flag stops them.
 func (r *run[S]) sequential(kept []Action[S]) {
 	for count := 0; ; count++ {
+		r.at(engine.SequentialPart, count)
 		available := r.available(kept)
 		start := r.e.Position()
 		if r.traced {
@@ -163,7 +188,7 @@ func (r *run[S]) sequential(kept []Action[S]) {
 		if len(available) == 0 || !r.e.Continue(count, r.cfg.max, r.cfg.mean) {
 			return
 		}
-		r.take(start, available, false)
+		r.take(start, available, engine.SequentialPart, count)
 	}
 }
 
@@ -186,6 +211,7 @@ func (r *run[S]) concurrent(kept []Action[S]) {
 	average := random.Average(sizes)
 	planned := make([][]plannedStep[S], r.cfg.clients+1)
 	for count := 0; ; count++ {
+		r.at(engine.ConcurrentPart, count)
 		start := r.e.Position()
 		if r.traced {
 			r.followConcurrent(eligible, count)
@@ -195,11 +221,13 @@ func (r *run[S]) concurrent(kept []Action[S]) {
 		}
 		client := int(r.e.Uniform(uint64(r.cfg.clients)+1, 0))
 		a := eligible[r.index(eligible)]
+		r.acting(engine.ConcurrentPart, count, a)
 		r.e.SpanFrom(start, a.Name, func() {
 			r.e.Step(engine.MachineStep{Action: a.Name, Client: client})
 			planned[client] = append(planned[client], plannedStep[S]{action: a, input: r.input(a)})
 		})
 	}
+	r.e.SetPlace(engine.Place{Part: engine.ConcurrentPart})
 	runSteps(r.c, 0, planned[0])
 	r.section(planned)
 	r.check()
@@ -242,6 +270,7 @@ func (r *run[S]) drain() {
 		}
 	}
 	for count := 0; ; count++ {
+		r.at(engine.DrainPart, count)
 		var available []Action[S]
 		if count < r.cfg.max {
 			available = r.available(drains)
@@ -252,18 +281,19 @@ func (r *run[S]) drain() {
 		if len(available) == 0 {
 			return
 		}
-		r.take(r.e.Position(), available, true)
+		r.take(r.e.Position(), available, engine.DrainPart, count)
 	}
 }
 
-// take takes a step on client 0 of the action of listed that the case's
-// index chooses: a span labelled with the action's name from start, which
-// records the step, requests its input and runs it, and then the check and
-// the invariant.
-func (r *run[S]) take(start int, listed []Action[S], drain bool) {
+// take takes the step at position of part, sequential or drain, on client 0,
+// of the action of listed that the case's index chooses: a span labelled
+// with the action's name from start, which records the step, requests its
+// input and runs it, and then the check and the invariant.
+func (r *run[S]) take(start int, listed []Action[S], part engine.Part, position int) {
 	a := listed[r.index(listed)]
+	r.acting(part, position, a)
 	r.e.SpanFrom(start, a.Name, func() {
-		r.e.Step(engine.MachineStep{Action: a.Name, Client: -1, Drain: drain})
+		r.e.Step(engine.MachineStep{Action: a.Name, Client: -1, Drain: part == engine.DrainPart})
 		a.Run(r.c, 0, r.input(a))
 	})
 	r.check()

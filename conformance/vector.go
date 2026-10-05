@@ -198,7 +198,7 @@ type Vector struct {
 //
 // # Allocation contract
 //
-// Vectors allocates 1,313 times on the vendored definition: the names that
+// Vectors allocates 1,315 times on the vendored definition: the names that
 // the three globs return, the open file and the copy of each of the
 // nineteen files, the two structs that each file decodes into with their
 // lists of cases, a copy of each case's JSON, each case's id, and the growth

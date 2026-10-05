@@ -63,9 +63,9 @@ type request struct {
 }
 
 // recorded is what a case keeps of a request once the choice is made: its
-// bounds, and whether the choice decides structure. The shrinker, the
-// replay that confirms a failure and the explain phase read nothing else of
-// a request.
+// bounds, and whether the choice decides structure. The shrinker and the
+// explain phase read nothing else of a request. The replay that confirms a
+// failure also reads where the case made it, which the case keeps apart.
 type recorded struct {
 	// bounds are the bounds of the choice.
 	bounds choice.Bounds

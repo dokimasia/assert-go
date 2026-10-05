@@ -22,6 +22,11 @@ import (
 // MaxAllocs, measured: the run's, and the count of each case.
 const maxAllocsFormAllocs = 834
 
+// maxAllocsWithSetupFormAllocs are the allocations of a passing run of 100
+// cases of MaxAllocsWithSetup, measured: the 834 of a run of MaxAllocs, and
+// the 101 inputs that the setup builds in each case.
+const maxAllocsWithSetupFormAllocs = 10934
+
 // formAllocs are the allocations of a passing run of 100 cases of each
 // property form of formCases, measured: the run's own, and what the form's
 // assertion and its subjects allocate in each case.
@@ -171,6 +176,57 @@ func TestFormsEnv(t *testing.T) {
 			expectOnlyFault(t, seat.Faults(), profileFault("prop.MaxAllocs"))
 		})
 	})
+
+	t.Run("MaxAllocsWithSetup", func(t *testing.T) {
+		t.Run("names a fault of its run by its Go name", func(t *testing.T) {
+			seat := &matchertest.Seat{}
+			prop.MaxAllocsWithSetup(seat, boxed, func(*int8) {}, 0, contractOfForm)
+			expectOnlyFault(t, seat.Faults(), profileFault("prop.MaxAllocsWithSetup"))
+		})
+	})
+}
+
+// boxed returns a copy of x on the heap, as a setup builds a fresh input.
+func boxed(x int8) *int8 {
+	return new(x)
+}
+
+// TestMaxAllocsWithSetupForm checks prop.MaxAllocsWithSetup, which counts
+// the allocations of the whole process and so runs in a test that does
+// not run in parallel.
+func TestMaxAllocsWithSetupForm(t *testing.T) {
+	allocates := func(x *int8) {
+		if *x >= 5 {
+			heap = make([]byte, 16)
+		}
+	}
+
+	t.Run("reports no record for a function within the ceiling, whatever its setup allocates", func(t *testing.T) {
+		rec := assert.NewRecorder()
+		prop.MaxAllocsWithSetup(rec, boxed, func(*int8) {}, 0, contractOfForm, prop.Seed(7))
+		assert.False(t, rec.Failed(), "the run passes")
+	})
+
+	t.Run("reports the smallest input that allocates past the ceiling in a build that counts them", func(t *testing.T) {
+		rec := assert.NewRecorder()
+		prop.MaxAllocsWithSetup(rec, boxed, allocates, 0, contractOfForm, prop.Seed(7), prop.Explain(false))
+		assert.Equal(t, rec.Failed(), matcher.AllocationsCounted(), "the run fails in a build that counts allocations")
+		if matcher.AllocationsCounted() {
+			records := rec.Failures()
+			assert.Length(t, records, 1, "one record")
+			assert.Equal(t, records[0].Assertion, "prop-max-allocs-with-setup", "the form's id")
+			assert.Equal(t, records[0].Detail[counterexampleField],
+				any([]prop.Entry{prop.Drawn{Label: "input", Value: int8(5)}}), "the smallest input that allocates")
+		}
+	})
+
+	t.Run("runs one case at a time on four workers, and reports what one worker reports", func(t *testing.T) {
+		one, four := assert.NewRecorder(), assert.NewRecorder()
+		prop.MaxAllocsWithSetup(one, boxed, allocates, 0, contractOfForm, prop.Seed(7))
+		prop.MaxAllocsWithSetup(four, boxed, allocates, 0, contractOfForm, prop.Seed(7), prop.Workers(4))
+		assert.Equal(t, one.Failed(), matcher.AllocationsCounted(), "the run fails in a build that counts allocations")
+		assert.Equal(t, detailsOf(four.Failures()), detailsOf(one.Failures()), "the records of one worker")
+	})
 }
 
 // TestMaxAllocsForm checks prop.MaxAllocs, which counts the allocations of
@@ -228,6 +284,9 @@ func TestFormsAllocs(t *testing.T) {
 	}
 	expect.MaxAllocs(t, func() { prop.MaxAllocs(rec, func(int8) {}, 0, contractOfForm, prop.Seed(7)) },
 		maxAllocsFormAllocs, "MaxAllocs allocates its run")
+	expect.MaxAllocs(t,
+		func() { prop.MaxAllocsWithSetup(rec, boxed, func(*int8) {}, 0, contractOfForm, prop.Seed(7)) },
+		maxAllocsWithSetupFormAllocs, "MaxAllocsWithSetup allocates its run and its inputs")
 	assert.False(t, rec.Failed(), "every run passes")
 }
 
@@ -252,6 +311,16 @@ func BenchmarkForms(b *testing.B) {
 		defer c.End()
 		for c.Loop() {
 			prop.MaxAllocs(rec, func(int8) {}, 0, contractOfForm, prop.Seed(7))
+		}
+		assert.False(b, rec.Failed(), "every run passes")
+	})
+
+	b.Run("MaxAllocsWithSetup", func(b *testing.B) {
+		rec := &matchertest.Seat{}
+		c := bench.Start(b).MaxAllocs(maxAllocsWithSetupFormAllocs)
+		defer c.End()
+		for c.Loop() {
+			prop.MaxAllocsWithSetup(rec, boxed, func(*int8) {}, 0, contractOfForm, prop.Seed(7))
 		}
 		assert.False(b, rec.Failed(), "every run passes")
 	})

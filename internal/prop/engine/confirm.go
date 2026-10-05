@@ -8,23 +8,33 @@ import "go.dokimi.dev/assert/internal/record"
 // confirm replays a failing case once from its choices, and returns how
 // the replay differed, or nil when it did not. The comparison takes the
 // requests' bounds first, then the observed fingerprints, then the way the
-// replay ended. The slot of s takes the calls of the replay under the phase
-// replay.
+// replay ended. A request or a fingerprint that differs takes where the
+// replay made it. The slot of s takes the calls of the replay under the
+// phase replay.
 func confirm(body Body, failing Execution, s Settings) *Divergence {
-	replay := execute(body, replaying{choices: failing.Case.Choices()}, s)
+	choices := failing.Case.Choices()
+	c := newCase(replaying{choices: choices}, s, nil)
+	c.keepsWheres, c.wheres = true, make([]Where, 0, len(choices))
+	replay := finish(c, body)
 	s.Slot.Take(&replay.Case.calls, record.Replay)
 	recorded, replayed := nodesOf(failing.Case), nodesOf(replay.Case)
 	for index := range max(len(recorded), len(replayed)) {
 		before, after := requestAt(recorded, index), requestAt(replayed, index)
 		if before != after {
-			return &Divergence{What: RequestDifference, Index: index, Recorded: before, Replayed: after}
+			return &Divergence{
+				What: RequestDifference, Index: index, Recorded: before, Replayed: after,
+				Where: replay.Case.requestWhere(index),
+			}
 		}
 	}
 	prints, again := failing.Case.Fingerprints(), replay.Case.Fingerprints()
 	for index := range max(len(prints), len(again)) {
 		before, after := fingerprintAt(prints, index), fingerprintAt(again, index)
 		if before != after {
-			return &Divergence{What: FingerprintDifference, Index: index, Recorded: before, Replayed: after}
+			return &Divergence{
+				What: FingerprintDifference, Index: index, Recorded: before, Replayed: after,
+				Where: replay.Case.fingerprintWhere(index),
+			}
 		}
 	}
 	if replay.Status != CaseFailed || replay.Identity != failing.Identity {

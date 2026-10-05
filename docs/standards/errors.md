@@ -145,13 +145,20 @@ type Error struct {
   a nil scheduler, and `PCT` for a depth below 1. A scheduler panics when
   a task calls `Run` of its own scheduler. Each message starts with the
   package and names the call.
+- A contract of `bench` panics when a caller breaks its contract:
+  `Warmup` with a negative count or after the contract has run its body,
+  `RunParallel` of a benchmark that is no `*testing.B` or after the
+  contract has run its body, a body of `RunParallel` that returns before
+  `Next` reports false, and `Loop` after `RunParallel`. Each message
+  starts with the package and names the call. `RunParallel` raises a
+  body's panic again on the caller's goroutine.
 - No other code panics on purpose.
 - A `recover` exists only where a panic is what the code observes: an
   assertion about panics, the end of a property's case, a body of
-  `Concurrently`, a function of the model in `Linearizable`, a task of the
-  task scheduler, whose panic `Run` raises again, and a call of the
-  history that the seam runner of `conformance` makes to read the entry
-  that a script refuses.
+  `Concurrently`, a goroutine of `RunParallel`, a function of the model in
+  `Linearizable`, a task of the task scheduler, whose panic `Run` raises
+  again, and a call of the history that the seam runner of `conformance`
+  makes to read the entry that a script refuses.
 
 ## Writing
 
@@ -176,7 +183,7 @@ type Writer interface {
   reader expects: the contract, then the detail, a diff labelled
   `-want +got` for a mismatch, and a property's outcome, draws and
   replay token.
-- `prop` registers the sentence of its 39 property assertions with
+- `prop` registers the sentence of its 40 property assertions with
   `matcher.RegisterSentence` in its `init` function, because `matcher`
   does not import `prop`. `history` registers the sentences of
   `linearizable`, `serializable` and `snapshot-isolation` the same way.

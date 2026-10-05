@@ -71,6 +71,7 @@ func TestDivergence(t *testing.T) {
 					What:     prop.RequestDifference,
 					Recorded: "integer in [0, 9]",
 					Replayed: "integer in [0, 1]",
+					Label:    new(drawn),
 				},
 				coverageField: nil,
 			}
@@ -86,27 +87,28 @@ func TestDivergence(t *testing.T) {
 			{
 				name: "states signed integer bounds",
 				body: diverges(prop.Integer(-5, 5), prop.Integer(-3, 3)),
-				want: requested("integer in [-5, 5]", "integer in [-3, 3]"),
+				want: requested("integer in [-5, 5]", "integer in [-3, 3]", new(drawn)),
 			},
 			{
 				name: "states the bounds of a float of width 64",
 				body: diverges(prop.Float(0.0, 1.0), prop.Float(0.0, 2.0)),
-				want: requested("float in [0, 1] of width 64", "float in [0, 2] of width 64"),
+				want: requested("float in [0, 1] of width 64", "float in [0, 2] of width 64", new(drawn)),
 			},
 			{
 				name: "states the bounds of a float of width 32 that admits NaN",
 				body: diverges(prop.Float[float32](0, 1, prop.AllowNaN()), prop.Float[float32](0, 2)),
-				want: requested("float in [0, 1] of width 32 or NaN", "float in [0, 2] of width 32"),
+				want: requested("float in [0, 1] of width 32 or NaN", "float in [0, 2] of width 32", new(drawn)),
 			},
 			{
 				name: "states the bounds of a sequence with and without a longest length",
 				body: diverges(prop.Bytes(prop.MaxSize(8)), prop.Bytes(prop.MinSize(2))),
-				want: requested("sequence of 0 to 8 values below 256", "sequence of 2 or more values below 256"),
+				want: requested("sequence of 0 to 8 values below 256", "sequence of 2 or more values below 256",
+					new(drawn)),
 			},
 			{
-				name: "states no request for a body that ends where it requested before",
+				name: "states no request and no draw for a body that ends where it requested before",
 				body: diverges(prop.Integer(0, 9), prop.Just(0)),
-				want: requested("integer in [0, 9]", nil),
+				want: requested("integer in [0, 9]", nil, nil),
 			},
 		}
 		for _, tt := range tests {
@@ -249,9 +251,10 @@ func BenchmarkDivergence(b *testing.B) {
 	})
 }
 
-// requested returns the divergence of two requests at the first choice.
-func requested(recorded, replayed any) *prop.Divergence {
-	return &prop.Divergence{What: prop.RequestDifference, Recorded: recorded, Replayed: replayed}
+// requested returns the divergence of two requests at the first choice,
+// whose replayed request a draw of label made, outside a machine's steps.
+func requested(recorded, replayed any, label *string) *prop.Divergence {
+	return &prop.Divergence{What: prop.RequestDifference, Recorded: recorded, Replayed: replayed, Label: label}
 }
 
 // verdict returns the divergence of a replay of a failing case without a

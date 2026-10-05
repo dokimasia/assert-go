@@ -107,7 +107,7 @@ never ran.
 
 | Import | What it holds |
 |---|---|
-| `go.dokimi.dev/assert` | 49 assertions and a 15-method chain, stopping at the first failure |
+| `go.dokimi.dev/assert` | 50 assertions and a 15-method chain, stopping at the first failure |
 | `go.dokimi.dev/assert/expect` | the same, recording and continuing |
 | `go.dokimi.dev/assert/golden` | comparison against a recorded file, with scrubbers for content that changes each run |
 | `go.dokimi.dev/assert/bench` | ceilings on latency, allocations and bytes per benchmark iteration |
@@ -152,6 +152,12 @@ func BenchmarkGet(b *testing.B) {
 Ceilings are checked together, so one run names each one exceeded. The
 p99 rather than the mean, because the tail is what a caller waits for.
 
+With `Warmup(n)`, the contract runs n iterations before it measures any,
+and a cache that the body fills in its first iterations counts against no
+ceiling. `RunParallel` takes the place of the loop for a body that runs on
+`GOMAXPROCS` goroutines at once, as `testing.B.RunParallel` does. The
+contract checks the ceilings of the reported run alone.
+
 A contract is checked only when benchmarks run. `MaxAllocs` states an
 allocation ceiling in a test, so the ordinary test run checks it:
 
@@ -165,12 +171,18 @@ func TestGetAllocs(t *testing.T) {
 It calls the function once to warm it and counts the next 100 calls,
 through `testing.AllocsPerRun`, so the test that calls it does not call
 `t.Parallel`. The average is rounded down. A ceiling of 0 then passes a
-function that allocates on 99 of the 100 calls. In a build with the race
-detector, msan or asan, and in one whose `-gcflags` turn off
-optimisation or inlining, neither form
-checks an allocation ceiling, because those builds allocate differently
-from the one that ships. `MaxAllocs` still calls the function, and a
-contract still publishes its counts.
+function that allocates on 99 of the 100 calls.
+
+`MaxAllocsWithSetup` counts a function whose input a setup builds before
+each call, such as a decoder that consumes its buffer. It counts the same
+100 calls on one processor, and leaves every call of the setup out.
+
+In a build with the race detector, msan or asan, and in one whose
+`-gcflags` turn off optimisation or inlining, the assertions and the
+contracts check no allocation ceiling, because those builds allocate
+differently from a production build. `MaxAllocs` and
+`MaxAllocsWithSetup` still call the function, and a contract still
+publishes its counts.
 
 ## Properties
 
@@ -454,6 +466,7 @@ the relation, except where the relation requires a failure.
 | Name | What it states |
 |---|---|
 | `MaxAllocs` | A callable makes at most a stated number of heap allocations per call. One call warms it first, and the count is the average over the calls after it, rounded down. |
+| `MaxAllocsWithSetup` | A callable makes at most a stated number of heap allocations per call on an input that a setup builds before each call. The setup is not counted. One setup and one call warm both first, and the count is the average over the calls after them, rounded down. |
 
 ### Golden files
 
@@ -523,20 +536,21 @@ holds itself to it on every run:
   and the record of each check of a history against a named model, and
   the verdict and the record of each isolation check of a history of
   transactions, shared with every other implementation.
-- **Machines.** 13 vectors state the steps that six machine subjects
+- **Machines.** 14 vectors state the steps that seven machine subjects
   take, the counterexample that a failure shrinks to, a race that the
-  task scheduler finds, and the traces that a run follows or refuses,
-  shared with every other implementation.
+  task scheduler finds, the traces that a run follows or refuses, and the
+  step that a flaky run's divergence names, shared with every other
+  implementation.
 
 A corpus case states its arguments as data, or names a behaviour that
 each implementation builds, such as a callable that panics. The cases
-cover 39 of the 59 assertions outside `prop`. No case can state an error
+cover 39 of the 60 assertions outside `prop`. No case can state an error
 value, a golden file, a benchmark, a predicate or a history, so those
 assertions are checked for presence and tested here, and the history
 vectors cover `linearizable`, `serializable` and `snapshot-isolation`.
-The vectors cover 38 of the 39 property
-assertions: `prop-for-all` and every property form but `prop-max-allocs`,
-whose allocation count no vector can state.
+The vectors cover 38 of the 40 property assertions: `prop-for-all` and
+every property form but `prop-max-allocs` and
+`prop-max-allocs-with-setup`, whose allocation counts no vector can state.
 
 ## Development
 

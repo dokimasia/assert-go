@@ -215,7 +215,164 @@ func TestSteps(t *testing.T) {
 			assert.Equal(t, calls, []any{"invariant", 0, "invariant", 1, "settle", 1, "invariant", 1},
 				"the invariant after setup and the step, then the settle and the invariant")
 		})
+
+		input := engine.Entry{Label: "v", Value: 5}
+		tests := []struct {
+			name    string
+			give    func(c *prop.Case, calls int)
+			entries []engine.Entry
+			want    engine.Place
+			drawing bool
+		}{
+			{
+				name: "places a swarm choice at the position of its action",
+				give: func(c *prop.Case, calls int) {
+					names := []string{put}
+					if calls > 1 {
+						names = append(names, get)
+					}
+					stateful.Steps(c, machineOf(&runLog{}, names...))
+				},
+				entries: []engine.Entry{step(put)},
+				want:    engine.Place{Part: engine.SwarmPart, Position: 0, Positioned: true, Action: put, Acting: true},
+			},
+			{
+				name: "places the invariant before the first step in setup",
+				give: func(c *prop.Case, calls int) {
+					m := machineOf(&runLog{}, put)
+					m.Invariant = func(c *prop.Case, _ int) { c.Observe(uint64(calls)) }
+					stateful.Steps(c, m)
+				},
+				entries: []engine.Entry{step(put)},
+				want:    engine.Place{Part: engine.SetupPart},
+			},
+			{
+				name: "places the index of a sequential step at its position, before the step has its action",
+				give: func(c *prop.Case, calls int) {
+					m := machineOf(&runLog{}, put, get)
+					m.Actions[1].Enabled = func(int) bool { return calls == 1 }
+					stateful.Steps(c, m, stateful.Swarm(false))
+				},
+				entries: []engine.Entry{step(get)},
+				want:    engine.Place{Part: engine.SequentialPart, Position: 0, Positioned: true},
+			},
+			{
+				name: "places the input of a sequential step at its position, with its action",
+				give: func(c *prop.Case, calls int) {
+					stateful.Steps(c, stateful.Machine[int]{Actions: []stateful.Action[int]{varying(put, calls, 1)}})
+				},
+				entries: []engine.Entry{step(put), input, step(put), input},
+				want: engine.Place{
+					Part: engine.SequentialPart, Position: 1, Positioned: true, Action: put, Acting: true,
+				},
+				drawing: true,
+			},
+			{
+				name: "places the input of a step that a concurrent section lists at its position, with its action",
+				give: func(c *prop.Case, calls int) {
+					stateful.Steps(c, stateful.Machine[int]{Actions: []stateful.Action[int]{varying(put, calls, 0)}},
+						tasks(c)...)
+				},
+				entries: []engine.Entry{concurrent(put, 1), input},
+				want: engine.Place{
+					Part: engine.ConcurrentPart, Position: 0, Positioned: true, Action: put, Acting: true,
+				},
+				drawing: true,
+			},
+			{
+				name: "places the run of a concurrent section's steps in the section, without a position",
+				give: func(c *prop.Case, calls int) {
+					observing := stateful.Action[int]{
+						Name: put,
+						Run:  func(c *prop.Case, _ int, _ any) { c.Observe(uint64(calls)) },
+					}
+					stateful.Steps(c, stateful.Machine[int]{Actions: []stateful.Action[int]{observing}}, tasks(c)...)
+				},
+				entries: []engine.Entry{concurrent(put, 1)},
+				want:    engine.Place{Part: engine.ConcurrentPart},
+			},
+			{
+				name: "places the input of a drain step at its position, with its action",
+				give: func(c *prop.Case, calls int) {
+					done := false
+					a := varying(flush, calls, 0)
+					a.Drain, a.Enabled = true, func(int) bool { return !done }
+					a.Run = func(*prop.Case, int, any) { done = true }
+					stateful.Steps(c, stateful.Machine[int]{Actions: []stateful.Action[int]{a}})
+				},
+				entries: []engine.Entry{drained(flush), input},
+				want: engine.Place{
+					Part: engine.DrainPart, Position: 0, Positioned: true, Action: flush, Acting: true,
+				},
+				drawing: true,
+			},
+			{
+				name: "places Settle in settle",
+				give: func(c *prop.Case, calls int) {
+					m := machineOf(&runLog{}, put)
+					m.Settle = func(c *prop.Case, _ int) { c.Observe(uint64(calls)) }
+					stateful.Steps(c, m)
+				},
+				entries: []engine.Entry{step(put)},
+				want:    engine.Place{Part: engine.SettlePart},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				want := engine.Where{Place: tt.want, Placed: true}
+				if tt.drawing {
+					want.Label, want.Drawing = "v", true
+				}
+				assert.Equal(t, divergedWhere(t, tt.give, tt.entries), want,
+					"where the replay of the failing case differs")
+			})
+		}
+
+		t.Run("leaves the case outside a machine's steps once they end", func(t *testing.T) {
+			t.Parallel()
+			give := func(c *prop.Case, calls int) {
+				stateful.Steps(c, machineOf(&runLog{}, put))
+				c.Observe(uint64(calls))
+			}
+			assert.Equal(t, divergedWhere(t, give, []engine.Entry{step(put)}), engine.Where{},
+				"no place after the steps")
+		})
 	})
+}
+
+// divergedWhere runs give in a case that follows entries and then fails,
+// and returns where the replay of the failing case differs. give takes the
+// number of its call, so the replay, its second call, can differ from the
+// case.
+func divergedWhere(t *testing.T, give func(c *prop.Case, calls int), entries []engine.Entry) engine.Where {
+	t.Helper()
+	calls := 0
+	r := engine.Run(bodyOf(func(c *prop.Case) {
+		calls++
+		give(c, calls)
+		c.Fatalf("always")
+	}), engine.Settings{Cases: 1, MaxChoices: engine.MaxChoices, Shrink: engine.DefaultShrink, Draws: entries})
+	assert.Equal(t, r.Outcome, engine.Flaky, "a flaky run")
+	return r.Divergence.Where
+}
+
+// varying returns the action named name whose input is a draw under "v":
+// from 0 to 99 in the step at index at of a later call of a body, and from
+// the digits in every other step.
+func varying(name string, calls, at int) stateful.Action[int] {
+	steps := 0
+	return stateful.Action[int]{
+		Name: name,
+		Input: func(c *prop.Case, _ int) any {
+			steps++
+			if calls > 1 && steps == at+1 {
+				return c.Draw(prop.Integer(0, 99), "v")
+			}
+			return c.Draw(digit, "v")
+		},
+		Run: func(*prop.Case, int, any) {},
+	}
 }
 
 // forked is the model of a counter whose first increment may have taken it

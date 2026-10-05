@@ -5,16 +5,55 @@ package bench_test
 
 import (
 	"encoding/json"
+	"flag"
 	"sync"
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/bench"
 	"go.dokimi.dev/assert/internal/matchertest"
 	"go.dokimi.dev/assert/internal/record"
 )
 
+// benchtimeFlag is the flag of testing that states how long a benchmark
+// runs.
+const benchtimeFlag = "test.benchtime"
+
 // calls is the record of the calls that a benchSeat receives.
 type calls = record.Calls
+
+// benchCall is what one call of a benchmark function of testing saw: its
+// b.N, and whether the benchmark had failed when the call returned.
+type benchCall struct {
+	n      int
+	failed bool
+}
+
+// benchmark runs body as the function of a benchmark of testing under
+// -benchtime=stated, and restores the flag after the run. body measures the
+// benchmark b, whose b.N is n. benchmark returns the benchmark's result and
+// what each call of body saw. The flag belongs to the process, so a test
+// that calls benchmark does not run in parallel.
+func benchmark(t *testing.T, stated string, body func(b bench.B, n int)) (testing.BenchmarkResult, []benchCall) {
+	t.Helper()
+
+	before := flag.Lookup(benchtimeFlag).Value.String()
+	assert.NoError(t, flag.Set(benchtimeFlag, stated), "-benchtime takes "+stated)
+	defer func() { assert.NoError(t, flag.Set(benchtimeFlag, before), "-benchtime takes its value back") }()
+	var seen []benchCall
+	result := testing.Benchmark(func(b *testing.B) {
+		b.Helper()
+		body(b, b.N)
+		seen = append(seen, benchCall{n: b.N, failed: b.Failed()})
+	})
+	return result, seen
+}
+
+// spin is a parallel body whose iterations do nothing.
+func spin(pb *bench.PB) {
+	for pb.Next() {
+	}
+}
 
 // benchSeat is a fake benchmark. It records what a contract reported and
 // keeps the call record of each call. Its Loop runs a fixed number of

@@ -39,7 +39,10 @@ func TestConfirm(t *testing.T) {
 					}
 					return "always"
 				},
-				want: engine.Divergence{What: engine.RequestDifference, Recorded: wideBounds, Replayed: smallBounds},
+				want: engine.Divergence{
+					What: engine.RequestDifference, Recorded: wideBounds, Replayed: smallBounds,
+					Where: engine.Where{Label: "n", Drawing: true},
+				},
 			},
 			{
 				name: "returns a request difference for a replay that ends earlier",

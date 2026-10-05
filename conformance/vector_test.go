@@ -17,10 +17,10 @@ import (
 
 // vectorCount is the number of vectors of the vendored definition: 26
 // behaviour, 11 bridge, 12 coverage, 49 decoding, 4 draws, 34 fixtures, 74
-// forms, 32 generation, 43 inverse, 30 linearizable, 13 machines, 6
+// forms, 32 generation, 43 inverse, 30 linearizable, 14 machines, 6
 // recording, 12 seam, 19 serializable, 54 shapes, 36 shrinking, 19
 // snapshot-isolation, 21 store and 17 token vectors.
-const vectorCount = 512
+const vectorCount = 513
 
 // firstVector is the id of the first case of behaviour.json, the file whose
 // name sorts first.
@@ -35,10 +35,10 @@ const emptyToken = `{"choices":[],"token":"prop1:"}`
 const (
 	// validAllocs are the allocations of Valid.
 	validAllocs = 0
-	// vectorsAllocs are the allocations of Vectors: the 1,313 of its
+	// vectorsAllocs are the allocations of Vectors: the 1,315 of its
 	// contract, the two that the JSON decoder's pooled state adds, and one
 	// that a collection during the count adds when it empties the pool.
-	vectorsAllocs = 1316
+	vectorsAllocs = 1318
 	// checkAllocs are the allocations of Check on emptyToken: the struct
 	// that the vector decodes into, and the token that Encode returns.
 	checkAllocs = 2

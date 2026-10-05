@@ -146,6 +146,14 @@ type Case struct {
 	// requests are what the case recorded of the requests behind the
 	// choices, in order.
 	requests []recorded
+	// keepsWheres reports whether the case keeps where it made each request
+	// and where it observed each fingerprint, in wheres and observed, as the
+	// replay that confirms a failure does.
+	keepsWheres      bool
+	wheres, observed []Where
+	// divergedAt is where the case made the request that diverged from the
+	// case tree.
+	divergedAt Where
 	// keepsWalk reports whether the case keeps its walk, which a case that
 	// runs outside the case tree and enters it afterwards does.
 	keepsWalk bool
@@ -165,6 +173,13 @@ type Case struct {
 	notes []string
 	// fingerprints are the fingerprints the body observed, in order.
 	fingerprints []uint64
+	// label is the label of the innermost draw that runs, when drawing.
+	label   string
+	drawing bool
+	// place is the part and the step of a machine that are running, when
+	// placed.
+	place  Place
+	placed bool
 	// taken are the steps that the body's machine took, each with the number
 	// of draws before it, in order.
 	taken []RecordedStep
@@ -350,11 +365,15 @@ func (c *Case) Note(message string) {
 }
 
 // Observe records a fingerprint of the subject's state, which a replay of
-// the case compares.
+// the case compares. The replay that confirms a failure also records where
+// it observed the fingerprint.
 func (c *Case) Observe(fingerprint uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.fingerprints = append(c.fingerprints, fingerprint)
+	if c.keepsWheres {
+		c.observed = append(c.observed, c.where())
+	}
 }
 
 // History returns the case's history, which records the calls that the body
@@ -526,6 +545,9 @@ func (c *Case) choose(r request) choice.Choice {
 	}
 	c.choices = append(c.choices, value)
 	c.requests = append(c.requests, recorded{bounds: r.bounds, structure: r.structure})
+	if c.keepsWheres {
+		c.wheres = append(c.wheres, c.where())
+	}
 	if c.keepsWalk {
 		c.walk = append(c.walk, walkStep{bounds: r.bounds, value: value, at: len(c.choices) - 1})
 	}
@@ -541,13 +563,14 @@ func (c *Case) choose(r request) choice.Choice {
 // walked returns why the case stops at a step of its walk that returned
 // err: repeated for a choice that repeats a tested case, diverged for a
 // request that differs from the recorded one, and running for a step that
-// goes on. It keeps the divergence in c.divergence. The caller has locked
-// c.mu.
+// goes on. It keeps the divergence in c.divergence, and where the case made
+// the request in c.divergedAt. The caller has locked c.mu.
 func (c *Case) walked(err error) stop {
 	if errors.Is(err, tree.ErrRepeated) {
 		return repeated
 	}
 	if errors.As(err, &c.divergence) {
+		c.divergedAt = c.where()
 		return diverged
 	}
 	return running
@@ -707,6 +730,7 @@ func (c *Case) rewind(at mark) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.choices, c.requests = c.choices[:at.choices], c.requests[:at.choices]
+	c.wheres = c.wheres[:min(len(c.wheres), at.choices)]
 	c.spans, c.draws = c.spans[:at.spans], c.draws[:at.draws]
 }
 

@@ -30,8 +30,8 @@ const (
 	coverageField       = "coverage"
 )
 
-// The field names of a draw, a step, a divergence and a coverage
-// requirement in a record's detail.
+// The field names of a draw, a step, a divergence, the step of a
+// divergence and a coverage requirement in a record's detail.
 const (
 	labelField          = "label"
 	valueField          = "value"
@@ -44,6 +44,9 @@ const (
 	indexField          = "index"
 	recordedField       = "recorded"
 	replayedField       = "replayed"
+	partField           = "part"
+	positionField       = "position"
+	actionField         = "action"
 	shareField          = "share"
 	countedField        = "counted"
 	validField          = "valid"
@@ -87,12 +90,24 @@ type otherSpec struct {
 }
 
 // divergenceSpec is a divergence, as a vector states it: a side is a
-// request's bounds, a fingerprint, an identity, or null.
+// request's bounds, a fingerprint, an identity, or null, and the label and
+// the step are null where the replayed run ran no draw or no step.
 type divergenceSpec struct {
 	What     string          `json:"what"`
 	Index    int             `json:"index"`
 	Recorded json.RawMessage `json:"recorded"`
 	Replayed json.RawMessage `json:"replayed"`
+	Label    *string         `json:"label"`
+	Step     *placeSpec      `json:"step"`
+}
+
+// placeSpec is the step of a divergence, as a vector states it: the part of
+// a machine's steps, the step's position in it, and its action, each of the
+// last two null where the step states none.
+type placeSpec struct {
+	Part     string  `json:"part"`
+	Position *int    `json:"position"`
+	Action   *string `json:"action"`
 }
 
 // shortfallSpec is a coverage requirement that a run missed, as a vector
@@ -212,12 +227,18 @@ func (d runDetail) normal() (map[string]any, error) {
 		if err != nil {
 			return nil, fault.At(err, fault.Field(divergenceField), fault.Field(replayedField))
 		}
-		out[divergenceField] = map[string]any{
+		divergence := map[string]any{
 			whatField:     v.What,
 			indexField:    v.Index,
 			recordedField: recorded,
 			replayedField: replayed,
+			labelField:    orNil(v.Label),
+			stepField:     nil,
 		}
+		if s := v.Step; s != nil {
+			divergence[stepField] = normalPlace(s.Part, s.Position, s.Action)
+		}
+		out[divergenceField] = divergence
 	}
 	if c := d.Coverage; c != nil {
 		out[coverageField] = normalShortfall(c.Label, c.Share, c.Counted, c.Valid, c.Verdict)
@@ -371,12 +392,18 @@ func normalRecord(detail map[string]any) map[string]any {
 		out[othersField] = normal
 	}
 	if d, ok := detail[divergenceField].(*prop.Divergence); ok {
-		out[divergenceField] = map[string]any{
+		divergence := map[string]any{
 			whatField:     d.What.String(),
 			indexField:    d.Index,
 			recordedField: d.Recorded,
 			replayedField: d.Replayed,
+			labelField:    orNil(d.Label),
+			stepField:     nil,
 		}
+		if s := d.Step; s != nil {
+			divergence[stepField] = normalPlace(s.Part.String(), s.Position, s.Action)
+		}
+		out[divergenceField] = divergence
 	}
 	if s, ok := detail[coverageField].(*prop.Shortfall); ok {
 		out[coverageField] = normalShortfall(s.Label, s.Share, s.Counted, s.Valid, s.Verdict.String())
@@ -420,6 +447,21 @@ func normalDrawn(d prop.Drawn, explained bool) map[string]any {
 // its client, which is -1 outside a concurrent section, and its drain mark.
 func normalStep(action string, client int, drain bool) map[string]any {
 	return map[string]any{stepField: action, clientField: client, drainField: drain}
+}
+
+// normalPlace returns the step of a divergence in normal form: its part,
+// its position and its action, each of the last two nil where the step
+// states none.
+func normalPlace(part string, position *int, action *string) map[string]any {
+	return map[string]any{partField: part, positionField: orNil(position), actionField: orNil(action)}
+}
+
+// orNil returns the value that p points to, and nil for a nil p.
+func orNil[T any](p *T) any {
+	if p == nil {
+		return nil
+	}
+	return *p
 }
 
 // normalShortfall returns a coverage requirement in normal form.

@@ -25,6 +25,15 @@ func TestMaxAllocs(t *testing.T) {
 	})
 }
 
+// TestMaxAllocsWithSetup does not run in parallel: its count covers the
+// whole process.
+func TestMaxAllocsWithSetup(t *testing.T) {
+	matchertest.RunMaxAllocsWithSetup(t,
+		func(s *matchertest.Seat, setup func() *[]byte, fn func(*[]byte), ceiling uint64, msg string) {
+			matcher.MaxAllocsWithSetup(s, matcher.Fatal, setup, fn, ceiling, msg)
+		})
+}
+
 // buildWith returns build information that records gcflags as its
 // -gcflags setting.
 func buildWith(gcflags string) *debug.BuildInfo {
@@ -113,6 +122,9 @@ func allocsCases() []allocCase {
 	return []allocCase{
 		{name: "MaxAllocs", call: func(seat matcher.Seat) {
 			matcher.MaxAllocs(seat, matcher.Fatal, func() {}, 0, allocContract)
+		}},
+		{name: "MaxAllocsWithSetup", call: func(seat matcher.Seat) {
+			matcher.MaxAllocsWithSetup(seat, matcher.Fatal, func() int { return 0 }, func(int) {}, 0, allocContract)
 		}},
 		{name: "AllocationsCounted", call: func(matcher.Seat) { counted = matcher.AllocationsCounted() }},
 		{name: "OptimisationsOff", call: func(matcher.Seat) { off = matcher.OptimisationsOff(debugger) }},

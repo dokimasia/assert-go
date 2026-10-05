@@ -43,17 +43,24 @@ type Divergence struct {
 	Recorded any
 	// Replayed is the replayed run's side of the difference.
 	Replayed any
+	// Where is where the replayed run made the request or observed the
+	// fingerprint. It is the zero Where for a verdict, and where the
+	// replayed run made no request or observed no fingerprint at the
+	// position.
+	Where Where
 }
 
-// requestDivergence returns the tree's report of a divergence as a request
-// difference.
-func requestDivergence(d *tree.DivergenceError) *Divergence {
+// requestDivergence returns the tree's report of a divergence of c as a
+// request difference. A request that diverged takes where c made it. The
+// caller has locked c.mu.
+func requestDivergence(c *Case, d *tree.DivergenceError) *Divergence {
 	divergence := &Divergence{What: RequestDifference, Index: d.Index}
 	if d.Recorded != nil {
 		divergence.Recorded = *d.Recorded
 	}
 	if d.Requested != nil {
 		divergence.Replayed = *d.Requested
+		divergence.Where = c.divergedAt
 	}
 	return divergence
 }

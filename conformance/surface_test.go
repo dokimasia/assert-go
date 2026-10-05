@@ -378,8 +378,10 @@ var pinned = map[conformance.ID]any{
 	"recorder-seat.helper-calls": (*assert.Recorder).HelperCalls,
 	"recorder-seat.records":      (*assert.Recorder).Records,
 
-	"contract.loop":  (*bench.Contract).Loop,
-	"contract.check": (*bench.Contract).End,
+	"contract.loop":         (*bench.Contract).Loop,
+	"contract.check":        (*bench.Contract).End,
+	"contract.warmup":       (*bench.Contract).Warmup,
+	"contract.run-parallel": (*bench.Contract).RunParallel,
 
 	"golden.scrub-timestamps":  golden.ScrubTimestamps,
 	"golden.scrub-hashes":      golden.ScrubHashes,
@@ -628,6 +630,9 @@ var recordingFunctions = map[string]func(tb assert.TB){
 	"MaxAllocs": func(tb assert.TB) {
 		expect.MaxAllocs(tb, func() { escaped = make([]byte, 64) }, 0, rejected)
 	},
+	"MaxAllocsWithSetup": func(tb assert.TB) {
+		expect.MaxAllocsWithSetup(tb, func() int { return 64 }, func(n int) { escaped = make([]byte, n) }, 0, rejected)
+	},
 	"Monotonic": func(tb assert.TB) {
 		expect.Monotonic(tb, func() int { return 0 }, func() error { return io.EOF }, 1, rejected)
 	},
@@ -703,8 +708,9 @@ var recordingMethods = map[string]func(tb assert.TB){
 // method set, so a member added without a driver fails here.
 //
 // It does not run in parallel. The MaxAllocs driver calls
-// testing.AllocsPerRun, which panics while a parallel test runs, and
-// the NoGoroutineLeaks driver reads every goroutine in the process.
+// testing.AllocsPerRun, which panics while a parallel test runs, the
+// MaxAllocsWithSetup driver counts the allocations of the whole process,
+// and the NoGoroutineLeaks driver reads every goroutine in the process.
 func TestSurfaceRecording(t *testing.T) {
 	members, err := conformance.Members(conformance.Recording)
 	if err != nil {
@@ -797,6 +803,9 @@ var abortingFunctions = map[string]func(tb assert.TB){
 	"Matches": func(tb assert.TB) { assert.Matches(tb, "abc", "^x", rejected) },
 	"MaxAllocs": func(tb assert.TB) {
 		assert.MaxAllocs(tb, func() { escaped = make([]byte, 64) }, 0, rejected)
+	},
+	"MaxAllocsWithSetup": func(tb assert.TB) {
+		assert.MaxAllocsWithSetup(tb, func() int { return 64 }, func(n int) { escaped = make([]byte, n) }, 0, rejected)
 	},
 	"Monotonic": func(tb assert.TB) {
 		assert.Monotonic(tb, func() int { return 0 }, func() error { return io.EOF }, 1, rejected)
@@ -926,7 +935,7 @@ func drive(t *testing.T, drivers map[string]func(tb assert.TB), names map[confor
 
 	for _, name := range slices.Sorted(maps.Keys(drivers)) {
 		t.Run(name, func(t *testing.T) {
-			if name == "MaxAllocs" && !matcher.AllocationsCounted() {
+			if strings.HasPrefix(name, "MaxAllocs") && !matcher.AllocationsCounted() {
 				t.Skip("this build does not count allocations, so no ceiling can fail")
 			}
 

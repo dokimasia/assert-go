@@ -116,6 +116,21 @@ func sequential(action string) engine.MachineStep {
 	return engine.MachineStep{Action: action, Client: -1}
 }
 
+// step returns the entry of a sequential step of action.
+func step(action string) engine.Entry {
+	return engine.Entry{Step: &engine.MachineStep{Action: action, Client: -1}}
+}
+
+// concurrent returns the entry of a step of action on client.
+func concurrent(action string, client int) engine.Entry {
+	return engine.Entry{Step: &engine.MachineStep{Action: action, Client: client}}
+}
+
+// drained returns the entry of a drain step of action.
+func drained(action string) engine.Entry {
+	return engine.Entry{Step: &engine.MachineStep{Action: action, Client: -1, Drain: true}}
+}
+
 // counter is the model of a counter whose increment returns the new count.
 var counter = history.Model[int]{
 	Init: func() int { return 0 },

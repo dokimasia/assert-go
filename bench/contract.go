@@ -4,9 +4,11 @@
 package bench
 
 import (
+	"fmt"
 	"math"
 	"runtime"
 	"slices"
+	"testing"
 	"time"
 
 	"go.dokimi.dev/assert/internal/matcher"
@@ -45,11 +47,23 @@ const unset = -1
 // [Contract.End] checks every stated ceiling and reports each one that
 // the benchmark exceeded. It checks no ceiling that was not stated.
 //
+// [Contract.Warmup] states iterations that run before the measurement,
+// and [Contract.RunParallel] measures a body that runs on GOMAXPROCS
+// goroutines at once in place of the loop.
+//
 // A Contract is not safe for concurrent use. Call its methods from the
 // goroutine that runs the benchmark.
 type Contract struct {
 	// b is the benchmark being measured.
 	b B
+
+	// warmup is the number of warm-up iterations that the contract runs
+	// before the first measured one, and warmed the number that Loop has
+	// run.
+	warmup, warmed int
+	// ran reports whether Loop or RunParallel has run, and parallel whether
+	// RunParallel has.
+	ran, parallel bool
 
 	// each contains one duration per iteration. [Contract.End] reads the
 	// quantile and the mean from it.
@@ -165,6 +179,43 @@ func (c *Contract) MaxAllocs(n uint64) *Contract {
 	return c
 }
 
+// Warmup states n iterations that run before the first measured one, and
+// returns the receiver. [Contract.Loop] returns true n times before it
+// times an iteration, reads a counter or calls testing.B.Loop, so testing's
+// own ns/op and allocs/op leave the warm-up out as well. A warm-up
+// iteration runs the whole body: [Contract.Excluding] runs its work and
+// takes nothing out. No ceiling covers a warm-up iteration, and
+// [Contract.End] publishes nothing about one. Under -benchtime=1x the
+// benchmark runs n warm-up iterations and one measured iteration.
+//
+// A warm-up leaves out what the first iterations build, such as the cache
+// of an interface conversion, which the runtime allocates once for each
+// conversion site after a random number of its executions. An iteration
+// that executes the site many times builds the cache within one warm-up
+// iteration, and one that executes it once needs about 20,000.
+//
+// [Contract.RunParallel] runs the warm-up on its goroutines, n iterations
+// in all.
+//
+// # Panics
+//
+// Warmup panics for a negative n, and after [Contract.Loop] or
+// [Contract.RunParallel] has run.
+//
+// # Allocation contract
+//
+// Warmup allocates nothing.
+func (c *Contract) Warmup(n int) *Contract {
+	if n < 0 {
+		panic(fmt.Sprintf("bench: Warmup(%d) states a negative number of iterations", n))
+	}
+	if c.ran {
+		panic("bench: Warmup after the contract has run its body")
+	}
+	c.warmup = n
+	return c
+}
+
 // MaxBytes states the most heap bytes per iteration that the benchmark
 // may allocate, and returns the receiver.
 //
@@ -188,9 +239,14 @@ func (c *Contract) MaxBytes(n uint64) *Contract {
 //	}
 //
 // Loop times each iteration for the latency ceilings. It reads the
-// allocation counters before the first iteration and after the last, so
-// the allocation ceilings count neither the setup before the loop nor
-// the code after it.
+// allocation counters before the first measured iteration and after the
+// last, so the allocation ceilings count neither the setup before the
+// loop, nor the iterations of [Contract.Warmup], nor the code after it.
+//
+// # Panics
+//
+// Loop panics after [Contract.RunParallel] has run, because a benchmark
+// function measures either a loop or a parallel body.
 //
 // # Allocation contract
 //
@@ -198,6 +254,14 @@ func (c *Contract) MaxBytes(n uint64) *Contract {
 // durations that it keeps. It takes that growth out of the count of the
 // allocation ceilings.
 func (c *Contract) Loop() bool {
+	if c.parallel {
+		panic("bench: Loop after RunParallel")
+	}
+	c.ran = true
+	if c.warmed < c.warmup {
+		c.warmed++
+		return true
+	}
 	if c.measuring {
 		elapsed := time.Since(c.started) - c.excluded
 		c.excluded = 0
@@ -236,6 +300,9 @@ func (c *Contract) Loop() bool {
 // check included. A run of no iteration publishes nothing and checks no
 // ceiling.
 //
+// After [Contract.RunParallel], End checks the ceilings of the run that
+// testing reports and of no earlier one, as RunParallel states.
+//
 // # Allocation contract
 //
 // End allocates a sorted copy of the durations of the iterations: one
@@ -266,6 +333,9 @@ func (c *Contract) End() {
 	c.b.ReportMetric(allocs, unitAllocs)
 	c.b.ReportMetric(bytes, unitBytes)
 
+	if c.parallel && !lastRun(c.b.(*testing.B)) {
+		return
+	}
 	if c.maxLatency != unset {
 		c.check("bench-max-latency", "the p99 latency per iteration is within its ceiling",
 			tail > c.maxLatency, map[string]any{"want": c.maxLatency, "got": tail})

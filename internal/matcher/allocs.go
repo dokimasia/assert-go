@@ -4,14 +4,15 @@
 package matcher
 
 import (
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"sync"
 	"testing"
 )
 
-// allocRuns is the number of calls that [MaxAllocs] counts, after the
-// call that warms the callable.
+// allocRuns is the number of calls that [MaxAllocs] and
+// [MaxAllocsWithSetup] count, after the call that warms the callable.
 const allocRuns = 100
 
 // gcflagsSetting is the key under which the build information records
@@ -51,6 +52,57 @@ func MaxAllocs(seat Seat, mode Mode, fn func(), ceiling uint64, msg string) {
 		return
 	}
 	Pass(seat, mode, "max-allocs", msg)
+}
+
+// MaxAllocsWithSetup calls setup, and fn on the input that setup returns,
+// once to warm both. It then counts the heap allocations of the next 100
+// calls of fn, each on an input that a call of setup builds outside the
+// count, and reports when their average, rounded down, exceeds ceiling.
+// It sets GOMAXPROCS to 1 while it counts, as [testing.AllocsPerRun] does.
+//
+//	matcher.MaxAllocsWithSetup(seat, matcher.Fatal, freshStore, (*Store).Settle, 4,
+//	    "settling a store allocates at most four times")
+//
+// In a build where [AllocationsCounted] reports false, it calls setup and
+// fn as an ordinary build does and passes.
+//
+// The count covers the whole process, so the test that calls
+// MaxAllocsWithSetup does not call t.Parallel.
+//
+// # Allocation contract
+//
+// A passing call allocates nothing besides what the 101 calls of setup and
+// of fn allocate.
+func MaxAllocsWithSetup[T any](seat Seat, mode Mode, setup func() T, fn func(T), ceiling uint64, msg string) {
+	seat.Helper()
+
+	got := allocsAfter(setup, fn)
+	if AllocationsCounted() && got > ceiling {
+		Fail(seat, mode, "max-allocs-with-setup", msg, map[string]any{"want": ceiling, "got": got})
+		return
+	}
+	Pass(seat, mode, "max-allocs-with-setup", msg)
+}
+
+// allocsAfter returns the heap allocations per call of fn, rounded down,
+// over allocRuns calls after one call that warms setup and fn. Each
+// counted call takes an input that a call of setup builds before the
+// counter is read.
+func allocsAfter[T any](setup func() T, fn func(T)) uint64 {
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
+
+	fn(setup())
+	var stats runtime.MemStats
+	var total uint64
+	for range allocRuns {
+		input := setup()
+		runtime.ReadMemStats(&stats)
+		before := stats.Mallocs
+		fn(input)
+		runtime.ReadMemStats(&stats)
+		total += stats.Mallocs - before
+	}
+	return total / allocRuns
 }
 
 // AllocationsCounted reports whether the running binary's allocation
