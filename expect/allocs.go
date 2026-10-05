@@ -25,10 +25,11 @@ import (
 //
 // # Builds that allocate differently
 //
-// In a build with the race detector, msan or asan, and in one whose
-// -gcflags turn off optimisation or inlining, it calls fn as an ordinary
-// build does and checks no ceiling. Those builds allocate differently
-// from an ordinary build.
+// In a build with the race detector, msan or asan, in one whose -gcflags
+// turn off optimisation or inlining, and in a test binary that a mutation
+// run instrumented, which runs with DOKIMI_MUTATE_MUTANT in its
+// environment, it calls fn as an ordinary build does and checks no
+// ceiling. Those builds allocate differently from an ordinary build.
 //
 // # Parallel tests
 //
@@ -62,10 +63,8 @@ func MaxAllocs(tb assert.TB, fn func(), ceiling uint64, msg string) {
 //
 // # Builds that allocate differently
 //
-// In a build with the race detector, msan or asan, and in one whose
-// -gcflags turn off optimisation or inlining, it calls setup and fn as an
-// ordinary build does and checks no ceiling. Those builds allocate
-// differently from an ordinary build.
+// In the builds where [MaxAllocs] checks no ceiling, it calls setup and fn
+// as an ordinary build does and checks no ceiling either.
 //
 // # Parallel tests
 //

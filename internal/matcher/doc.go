@@ -33,9 +33,10 @@
 // # Allocation counts
 //
 // [AllocationsCounted] reports false in a build with the race detector,
-// msan or asan, and in a build whose -gcflags turn off optimisation or
-// inlining. Neither build allocates as an ordinary one does, and
-// [MaxAllocs] checks no ceiling in either.
+// msan or asan, in a build whose -gcflags turn off optimisation or
+// inlining, and in a test binary that a mutation run instrumented. None of
+// them allocates as an ordinary build does, and [MaxAllocs] checks no
+// ceiling in any of them.
 //
 // # Allocation contracts
 //

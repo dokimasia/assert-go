@@ -24,6 +24,10 @@ const allocRuns = 100
 // allocContract is the contract of every call of the allocation cases.
 const allocContract = "the call passes"
 
+// mutantVariable is the variable that a mutation run sets in every run of
+// a test binary that it instrumented, its control runs included.
+const mutantVariable = "DOKIMI_MUTATE_MUTANT"
+
 // allocCase is one call of a function of the package, and the ceiling of
 // its allocations.
 type allocCase struct {

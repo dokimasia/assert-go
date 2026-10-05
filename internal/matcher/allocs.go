@@ -4,6 +4,7 @@
 package matcher
 
 import (
+	"os"
 	"runtime"
 	"runtime/debug"
 	"strings"
@@ -25,6 +26,11 @@ const (
 	flagNoOptimisation = "-N"
 	flagNoInlining     = "-l"
 )
+
+// mutantVariable is the variable that a mutation run sets in the
+// environment of every run of a test binary that it instrumented, its
+// control runs included.
+const mutantVariable = "DOKIMI_MUTATE_MUTANT"
 
 // MaxAllocs calls fn once to warm it, counts the heap allocations of
 // the next 100 calls, and reports when their average, rounded down,
@@ -106,7 +112,7 @@ func allocsAfter[T any](setup func() T, fn func(T)) uint64 {
 }
 
 // AllocationsCounted reports whether the running binary's allocation
-// counts describe the code under test. They do not describe it in two
+// counts describe the code under test. They do not describe it in three
 // kinds of build:
 //
 //   - A build with the race detector, msan or asan, which allocates on
@@ -115,9 +121,14 @@ func allocsAfter[T any](setup func() T, fn func(T)) uint64 {
 //   - A build whose -gcflags turn off optimisation or inlining, as a
 //     debugger's build does. With inlining off, a value that an ordinary
 //     build keeps on the stack can move to the heap.
+//   - A test binary that a mutation run instrumented, which runs with
+//     DOKIMI_MUTATE_MUTANT in its environment, whatever its value. The
+//     binary contains every mutant of a package behind a switch, so the
+//     compiler inlines fewer of its functions, and a value can move to the
+//     heap as it does with inlining off.
 //
-// It reads the build information on its first call, and returns the result
-// of that reading afterwards.
+// It reads the build information and the environment on its first call,
+// and returns the result of that reading afterwards.
 //
 // # Allocation contract
 //
@@ -129,7 +140,8 @@ func AllocationsCounted() bool {
 // allocationsCounted computes [AllocationsCounted] on its first call.
 var allocationsCounted = sync.OnceValue(func() bool {
 	info, _ := debug.ReadBuildInfo()
-	return !instrumented && !OptimisationsOff(info)
+	_, mutated := os.LookupEnv(mutantVariable)
+	return !instrumented && !OptimisationsOff(info) && !mutated
 })
 
 // OptimisationsOff reports whether info records -gcflags that turn off

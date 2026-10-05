@@ -177,12 +177,13 @@ function that allocates on 99 of the 100 calls.
 each call, such as a decoder that consumes its buffer. It counts the same
 100 calls on one processor, and leaves every call of the setup out.
 
-In a build with the race detector, msan or asan, and in one whose
-`-gcflags` turn off optimisation or inlining, the assertions and the
-contracts check no allocation ceiling, because those builds allocate
-differently from a production build. `MaxAllocs` and
-`MaxAllocsWithSetup` still call the function, and a contract still
-publishes its counts.
+In a build with the race detector, msan or asan, in one whose
+`-gcflags` turn off optimisation or inlining, and in a test binary that
+a mutation run instrumented, the assertions and the contracts check no
+allocation ceiling, because those builds allocate differently from a
+production build. A mutation run sets `DOKIMI_MUTATE_MUTANT` in every
+run of such a binary. `MaxAllocs` and `MaxAllocsWithSetup` still call
+the function, and a contract still publishes its counts.
 
 ## Properties
 

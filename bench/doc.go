@@ -43,9 +43,11 @@
 // behalf. Under the race detector, sync.Pool also drops a quarter of the
 // items it is given. A build whose -gcflags turn off optimisation or
 // inlining, as a debugger's build does, moves values to the heap that an
-// ordinary build keeps on the stack. In either build [Contract.End]
-// publishes the allocation and byte counts and leaves both ceilings
-// unchecked.
+// ordinary build keeps on the stack. A test binary that a mutation run
+// instrumented, which runs with DOKIMI_MUTATE_MUTANT in its environment,
+// inlines fewer functions and moves values the same way. In each of these
+// builds [Contract.End] publishes the allocation and byte counts and
+// leaves both ceilings unchecked.
 //
 // # Dependency position
 //

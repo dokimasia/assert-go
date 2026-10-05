@@ -4,9 +4,12 @@
 package matcher_test
 
 import (
+	"os"
 	"runtime/debug"
+	"strings"
 	"testing"
 
+	"go.dokimi.dev/assert/internal/childtest"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
@@ -79,11 +82,13 @@ func TestOptimisationsOff(t *testing.T) {
 var instrumentedSettings = map[string]bool{"-race": true, "-msan": true, "-asan": true}
 
 // TestAllocationsCounted checks AllocationsCounted against the build
-// information of the running binary.
+// information and the environment of the running binary, and in child
+// processes whose environment states the variable of a mutation run. Each
+// child reads its own environment on its first call.
 func TestAllocationsCounted(t *testing.T) {
 	t.Parallel()
 
-	t.Run("agrees with the running binary's build information", func(t *testing.T) {
+	t.Run("agrees with the running binary's build information and environment", func(t *testing.T) {
 		t.Parallel()
 
 		// The build tags and the build information are two records of one
@@ -97,11 +102,36 @@ func TestAllocationsCounted(t *testing.T) {
 			}
 		}
 
-		want := !instrumented && !matcher.OptimisationsOff(info)
+		_, mutated := os.LookupEnv(mutantVariable)
+		want := !instrumented && !matcher.OptimisationsOff(info) && !mutated
 		if got := matcher.AllocationsCounted(); got != want {
 			t.Fatalf("AllocationsCounted = %v, want %v for settings %v", got, want, info.Settings)
 		}
 	})
+
+	tests := []struct {
+		name string
+		give string
+	}{
+		{name: "reports false in a test binary that runs a mutant", give: mutantVariable + "=12"},
+		{name: "reports false whatever the variable states, the empty value included", give: mutantVariable + "="},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if childtest.InChild(t) {
+				if matcher.AllocationsCounted() {
+					t.Fatal("AllocationsCounted = true, want false in a binary that a mutation run instrumented")
+				}
+				return
+			}
+			out, err := childtest.Run(t, t.Name(), tt.give)
+			if err != nil || !strings.Contains(out, "--- PASS: "+t.Name()+" ") {
+				t.Fatalf("the child exits with %v, want a pass:\n%s", err, out)
+			}
+		})
+	}
 }
 
 // TestAllocsAllocs checks the allocation ceiling of a passing call of each

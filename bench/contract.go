@@ -164,10 +164,11 @@ func (c *Contract) MaxMean(d time.Duration) *Contract {
 // A language implementation of this standard that cannot count
 // allocations declares a divergence. It does not approximate the count.
 //
-// In a build with the race detector, msan or asan, and in one whose
-// -gcflags turn off optimisation or inlining, [Contract.End] publishes
-// the count and does not check the ceiling, because those builds
-// allocate differently from a production build.
+// In a build with the race detector, msan or asan, in one whose -gcflags
+// turn off optimisation or inlining, and in a test binary that a mutation
+// run instrumented, [Contract.End] publishes the count and does not check
+// the ceiling, because those builds allocate differently from a
+// production build.
 // [go.dokimi.dev/assert.MaxAllocs] states the same ceiling in a test,
 // which the ordinary test run checks.
 //
