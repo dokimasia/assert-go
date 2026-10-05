@@ -15,3 +15,5 @@ they record why not.
 | [0007](0007-recording-every-assertion-call-and-the-writer.md) | Recording every assertion call, and the writer | Accepted |
 | [0008](0008-one-equality-for-every-comparison.md) | One equality for every comparison | Accepted |
 | [0009](0009-the-history-seam-and-the-linearizability-checker-in-go.md) | The history seam and the linearizability checker in Go | Accepted |
+| [0010](0010-the-isolation-checks-in-go.md) | The isolation checks in Go | Accepted |
+| [0011](0011-machines-the-task-scheduler-and-campaigns-in-go.md) | Machines, the task scheduler and campaigns in Go | Accepted |
