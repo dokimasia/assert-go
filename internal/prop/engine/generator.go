@@ -130,19 +130,20 @@ func (g Generator[T]) Decode(c *Case) T {
 // Inverse returns the steps whose choices decode to v under g, and the value
 // they decode to, as a generator that runs another one backwards inside its
 // own value needs them. It returns a fault of the kind [ErrCannotInvert] at
-// the part of v that no choice produces, and one for a g without an inverse.
-// [Invert] checks the steps against a replay, and Inverse does not.
+// the part of v that no choice produces, and one of the kind [ErrNoInverse]
+// for a g without an inverse. [Invert] checks the steps against a replay,
+// and Inverse does not.
 func (g Generator[T]) Inverse(v any) ([]Step, T, error) {
 	return g.inverse(v)
 }
 
 // inverse returns the steps that decode to v and the value they decode to,
-// and a fault of the kind ErrCannotInvert for a v that g does not produce or
-// a g without an inverse.
+// a fault of the kind ErrCannotInvert for a v that g does not produce, and
+// one of the kind ErrNoInverse for a g without an inverse.
 func (g Generator[T]) inverse(v any) ([]Step, T, error) {
 	if g.invert == nil {
 		var zero T
-		return nil, zero, uninvertible("%s has no inverse", g.erased.name)
+		return nil, zero, noInverse("%s has no inverse", g.erased.name)
 	}
 	steps, t, err := g.invert(v)
 	if err != nil {
@@ -284,8 +285,19 @@ func Just[T any](value T) Generator[T] {
 // the first span g opens. Two draws may share a label. Every request of the
 // draw is made under its label. In the case of [Settings.Draws], the draw
 // first takes the next entry, and its choices are the ones that decode to
-// the entry's value.
+// the entry's value. In an example of values, the draw takes the next value
+// while one is left, and makes no choice and opens no span.
 func Draw[T any](c *Case, g Generator[T], label string) T {
+	if c.valuing != nil {
+		if v, ok := c.stated(); ok {
+			// A form states the values of an example as values of T, so the
+			// assertion fails only for a nil interface value, whose T is the
+			// zero value.
+			t, _ := v.(T)
+			c.draw(label, t, c.nextSpan(), g.erased)
+			return t
+		}
+	}
 	if c.inverting != nil {
 		c.enterDraw(label, func(v any) ([]choice.Choice, error) { return invert(g, v) })
 	}

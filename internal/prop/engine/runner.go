@@ -99,9 +99,9 @@ type Settings struct {
 	// in order: each draw decodes its entry's value. A refused entry ends
 	// the run before any other case.
 	Draws []Entry
-	// Examples are the choice sequences of the cases that the run tries
-	// after the case of Draws and before the stored cases, in order.
-	Examples [][]choice.Choice
+	// Examples are the cases whose values the caller states, which the run
+	// tries after the case of Draws and before the stored cases, in order.
+	Examples []Example
 	// Stored are the choice sequences of stored cases, oldest first.
 	Stored [][]choice.Choice
 	// Shrink is the budget of runs that shrinking and explaining every
@@ -192,11 +192,13 @@ type Result struct {
 // While a coverage requirement is undecided at a check, more random cases
 // run up to the next check.
 //
-// A failing case is replayed, shrunk and explained. A run that found no
-// failing case fails when it rejected more than ten cases for every valid
-// one, when no case requested an input, or when it refuted or left unmet
-// a coverage requirement, checked in that order. A run whose case of the
-// Draws entries refuses an entry ends at once with [Result.Refused].
+// A failing case is replayed, shrunk and explained. A failing example of
+// values has no choices, and the run reports it as found, without a replay
+// token. A run that found no failing case fails when it rejected more than
+// ten cases for every valid one, when no case requested an input, or when it
+// refuted or left unmet a coverage requirement, checked in that order. A run
+// whose case of the Draws entries refuses an entry ends at once with
+// [Result.Refused].
 //
 // The slot of s takes the calls of every case that a run on one worker
 // runs, in that order, each under the phase of its case: the case of the
@@ -444,8 +446,8 @@ func known(body Body, s Settings, t *tally) (Result, bool) {
 			return r, true
 		}
 	}
-	for _, choices := range s.Examples {
-		if r, ended := t.take(execute(body, replaying{choices: choices}, s), record.Example); ended {
+	for _, ex := range s.Examples {
+		if r, ended := t.take(executeExample(body, s, ex), record.Example); ended {
 			return r, true
 		}
 	}
@@ -542,9 +544,10 @@ func withClocks(s Settings) Settings {
 }
 
 // conclude replays, shrinks and explains the failing case of a
-// counterexample.
+// counterexample. It reports an example of values as found, without a
+// token.
 func conclude(body Body, s Settings, r Result) Result {
-	if r.Outcome != Counterexample {
+	if r.Outcome != Counterexample || r.Failing.Case.Valued() {
 		return r
 	}
 	if s.Shrink == 0 {

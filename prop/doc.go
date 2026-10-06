@@ -112,11 +112,18 @@
 // record that the assertion reported for the minimal case.
 //
 // A form takes [FormOption] values: the [Option] values of the run, the
-// relaxations of its assertion, and what [Using] and [Example] return. The
-// input's generator is the one that Using states, then the one that
-// [Register] states, then the generator of the type's shape. A form fails
-// the test before any case runs for a relaxation of an assertion that takes
-// none, for an input type that the reader refuses, and for a wrong example.
+// relaxations of its assertion, and what [Using], [Example] and [Examples]
+// return. The input's generator is the one that Using states, then the one
+// that [Register] states, then the generator of the type's shape. A form
+// fails the test before any case runs for a relaxation of an assertion that
+// takes none, for an input type that the reader refuses, and for a wrong
+// example.
+//
+// An example of an input with an inverse runs on the choices that decode to
+// its values, so a failing example shrinks. An input built with
+// [Generator.Map], [Generator.Bind] or [Composite] has no inverse, and its
+// example runs on its values: a failing one is reported as found, without a
+// replay token and without a store entry.
 //
 // # Runs
 //

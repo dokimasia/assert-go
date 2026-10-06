@@ -226,6 +226,9 @@ type Case struct {
 	// inverting is the provider of a case of Settings.Draws, and nil for any
 	// other case. It is set before the body starts and never changes.
 	inverting *inverting
+	// valuing is the provider of an example of values, and nil for any other
+	// case. It is set before the body starts and never changes.
+	valuing *valuing
 	// refusal is the refusal that ended a case of Settings.Draws.
 	refusal error
 	// ctx is the case's context, and nil until a caller asks for it.

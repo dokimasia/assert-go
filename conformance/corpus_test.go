@@ -91,7 +91,7 @@ func TestCorpus(t *testing.T) {
 					}
 					opts := options(t, tc, overlay)
 					if tc.Subject.Kind != "" {
-						runSubjectCase(t, tc)
+						runSubjectCase(t, tc, opts)
 						return
 					}
 					if !registered {
@@ -393,18 +393,16 @@ func options(t *testing.T, tc conformance.Case, overlay conformance.OverlayDoc) 
 }
 
 // runSubjectCase runs a case that names a behaviour through both surfaces,
-// and compares each outcome with the one the case states. A kind that this
-// language cannot build, or an assertion that no driver calls, fails the
-// case, because only a skip in the definition excuses a case.
-func runSubjectCase(t *testing.T, tc conformance.Case) {
+// with the options of its relaxations, and compares each outcome with the
+// one the case states. A kind that this language cannot build, or an
+// assertion that no driver calls, fails the case, because only a skip in the
+// definition excuses a case.
+func runSubjectCase(t *testing.T, tc conformance.Case, opts []assert.Option) {
 	t.Helper()
 
-	if len(tc.Options) > 0 {
-		t.Fatalf("the case names the options %v, and no subject driver passes options", tc.Options)
-	}
 	for _, surface := range []string{"check", "expect"} {
 		r := assert.NewRecorder().WithClock(assert.NewControlled(time.Time{}))
-		if !conformance.RunSubject(surface, tc.Assertion, tc.Subject.Kind, r, tc.ID) {
+		if !conformance.RunSubject(surface, tc.Assertion, tc.Subject.Kind, r, tc.ID, opts...) {
 			t.Fatalf("%s: no subject named %q, or no driver of %s, and the case declares no skip",
 				surface, tc.Subject.Kind, tc.Assertion)
 		}

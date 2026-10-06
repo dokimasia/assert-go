@@ -15,7 +15,7 @@ import (
 // option keeps the option that a call of an option's constructor returns.
 var option assert.Option
 
-// TestOption checks that an option relaxes the call it is passed to alone.
+// TestOption checks that an option changes the call it is passed to alone.
 func TestOption(t *testing.T) {
 	t.Parallel()
 
@@ -60,6 +60,27 @@ func TestOption(t *testing.T) {
 			}
 		})
 	})
+
+	t.Run("ByIdentity", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("applies to the call it is passed to", func(t *testing.T) {
+			t.Parallel()
+
+			narrowed, structural := &matchertest.Seat{}, &matchertest.Seat{}
+			first, second := new(1), new(1)
+
+			assert.Equal(narrowed, first, second, "opted in", assert.ByIdentity())
+			assert.Equal(structural, first, second, "not opted in")
+
+			if !narrowed.Failed() {
+				t.Fatal("two allocations of one value are the same object under the option")
+			}
+			if structural.Failed() {
+				t.Fatalf("the second call inherited the first call's option: %q", structural.First())
+			}
+		})
+	})
 }
 
 // TestOptionAllocs checks the allocation ceiling of each constructor of an
@@ -81,5 +102,6 @@ func optionCases() []alloctest.Case {
 	return []alloctest.Case{
 		{Name: "EquateEmpty", Call: func(assert.TB) { option = assert.EquateEmpty() }},
 		{Name: "EquateNaNs", Call: func(assert.TB) { option = assert.EquateNaNs() }},
+		{Name: "ByIdentity", Call: func(assert.TB) { option = assert.ByIdentity() }},
 	}
 }

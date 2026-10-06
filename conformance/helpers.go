@@ -87,10 +87,13 @@ func sameValue(got any, want json.RawMessage) (bool, error) {
 
 // decodeValues returns the values that the typed literals of raw state, in
 // order, and the fault at the index of the first literal that states none.
+// The literals are of one case, so the references of one id among them
+// decode to one object.
 func decodeValues(raw []json.RawMessage) ([]any, error) {
+	objects := literal.Objects{}
 	out := make([]any, len(raw))
 	for i, r := range raw {
-		value, err := literal.Decode(r)
+		value, err := objects.Decode(r)
 		if err != nil {
 			return nil, fault.At(err, fault.Index(i))
 		}

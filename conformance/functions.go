@@ -54,8 +54,8 @@ type functions struct {
 	Associative   func(tb assert.TB, combine func(a, b int) int, a, b, c int, msg string, opts ...assert.Option)
 	RoundTrip     func(tb assert.TB, forward func(int) (string, error), inverse func(string) (int, error), input int,
 		msg string, opts ...assert.Option)
-	StableOrder     func(tb assert.TB, iterate func() ([]int, error), msg string, opts ...assert.Option)
-	NoDuplicates    func(tb assert.TB, iterate func() ([]int, error), msg string, opts ...assert.Option)
+	StableOrder     func(tb assert.TB, iterate func() ([]any, error), msg string, opts ...assert.Option)
+	NoDuplicates    func(tb assert.TB, iterate func() ([]any, error), msg string, opts ...assert.Option)
 	Monotonic       func(tb assert.TB, observe func() int, advance func() error, steps int, msg string)
 	Total           func(tb assert.TB, call func(int) error, domain []int, msg string)
 	FailsAfterClose func(tb assert.TB, closer, call func() error, sentinel error, msg string)
@@ -100,8 +100,8 @@ var abortingFunctions = functions{
 	Commutative:         assert.Commutative[int, int],
 	Associative:         assert.Associative[int],
 	RoundTrip:           assert.RoundTrip[int, string],
-	StableOrder:         assert.StableOrder[int],
-	NoDuplicates:        assert.NoDuplicates[int],
+	StableOrder:         assert.StableOrder[any],
+	NoDuplicates:        assert.NoDuplicates[any],
 	Monotonic:           assert.Monotonic[int],
 	Total:               assert.Total[int],
 	FailsAfterClose:     assert.FailsAfterClose,
@@ -146,8 +146,8 @@ var recordingFunctions = functions{
 	Commutative:         expect.Commutative[int, int],
 	Associative:         expect.Associative[int],
 	RoundTrip:           expect.RoundTrip[int, string],
-	StableOrder:         expect.StableOrder[int],
-	NoDuplicates:        expect.NoDuplicates[int],
+	StableOrder:         expect.StableOrder[any],
+	NoDuplicates:        expect.NoDuplicates[any],
 	Monotonic:           expect.Monotonic[int],
 	Total:               expect.Total[int],
 	FailsAfterClose:     expect.FailsAfterClose,

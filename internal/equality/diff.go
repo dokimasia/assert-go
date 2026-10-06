@@ -44,7 +44,9 @@ type Step struct {
 // compares each part that it does not descend into as [Equal] does:
 //
 //   - Values of different types, scalars, functions and channels differ
-//     whole, and so do a nil pointer, slice or map and a non-nil one.
+//     whole, and so do a nil pointer, slice or map and a non-nil one. Under
+//     ByIdentity, two pointers, maps or slices that are not the same object
+//     differ whole.
 //   - Pointers descend into their targets, and structs and arrays into
 //     their fields and elements.
 //   - Slices align their elements by their longest common subsequence. An
@@ -125,7 +127,8 @@ func (d *differ) walk(path *trail, x, y reflect.Value, depth int) {
 		return
 	}
 	ix, iy := inside(x), inside(y)
-	if depth == maxDepth || !ix.IsValid() || !iy.IsValid() || ix.Type() != iy.Type() {
+	if depth == maxDepth || !ix.IsValid() || !iy.IsValid() || ix.Type() != iy.Type() ||
+		d.rules.ByIdentity && reference(ix.Kind()) {
 		d.whole(path, x, y)
 		return
 	}

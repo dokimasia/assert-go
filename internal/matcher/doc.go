@@ -25,6 +25,8 @@
 //
 //   - A nil collection does not equal an empty one. [EquateEmpty] reverses this.
 //   - NaN does not equal NaN. [EquateNaNs] reverses this.
+//   - A pointer, a map or a slice compares by the values it refers to.
+//     [ByIdentity] compares each by identity.
 //   - Negative zero equals positive zero, as IEEE 754 states.
 //   - Unexported fields take part, and no method of a value runs.
 //   - A map key compares as any value compares.

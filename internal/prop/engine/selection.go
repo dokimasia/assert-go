@@ -53,8 +53,9 @@ func SampledFrom[T any](values ...T) Generator[T] {
 // OneOf returns a generator of a value of one of gens: an integer index
 // that decides structure, then that generator's choices. Its simplest
 // value is the first generator's simplest. It runs backwards through the
-// first generator whose inverse produces the value. It panics when gens is
-// empty.
+// first generator whose inverse produces the value, and has no inverse for
+// a value that none produces while one of gens has none. It panics when
+// gens is empty.
 func OneOf[T any](gens ...Generator[T]) Generator[T] {
 	if len(gens) == 0 {
 		panic("prop: " + oneOfID + " of no generator")
@@ -67,13 +68,11 @@ func OneOf[T any](gens ...Generator[T]) Generator[T] {
 		return stated[c.Structure(bounds, 0).Magnitude()].decode(c)
 	}
 	return NewInvertible(oneOfID, decode, func(v any) ([]Step, T, error) {
-		for i, g := range stated {
-			if steps, t, err := g.inverse(v); err == nil {
-				return append([]Step{indexStep(bounds, i)}, steps...), t, nil
-			}
+		steps, t, produced, unknown := firstBranch(stated, bounds, v)
+		if !produced {
+			return nil, t, noBranch(unknown, "none of the %d alternatives produces %v", len(stated), v)
 		}
-		var zero T
-		return nil, zero, uninvertible("none of the %d alternatives produces %v", len(stated), v)
+		return steps, t, nil
 	})
 }
 

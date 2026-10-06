@@ -15,6 +15,12 @@ type Rules struct {
 	EquateEmpty bool
 	// EquateNaNs makes a NaN equal a NaN of its type.
 	EquateNaNs bool
+	// ByIdentity makes a pointer, a map and a slice equal another only when
+	// both are the same object: the same address, and for a slice the same
+	// length as well. The walk does not enter them, so EquateEmpty does not
+	// apply to them. A channel and a function compare by their address
+	// under every rule.
+	ByIdentity bool
 }
 
 // stackBuffer is the most frames that a walk keeps on the stack of its
@@ -114,6 +120,9 @@ func (c *comparison) begin(x, y reflect.Value) (frame, bool) {
 	if x.Type() != y.Type() {
 		return frame{}, false
 	}
+	if c.rules.ByIdentity && reference(x.Kind()) {
+		return frame{}, sameObject(x, y)
+	}
 	switch x.Kind() {
 	case reflect.Bool:
 		return frame{}, x.Bool() == y.Bool()
@@ -141,6 +150,19 @@ func (c *comparison) begin(x, y reflect.Value) (frame, bool) {
 	}
 	// A map is the one kind left: inside unwraps every interface.
 	return frame{}, c.maps(x, y)
+}
+
+// reference reports whether a value of kind k is a pointer, a map or a
+// slice, which ByIdentity compares by the object it refers to.
+func reference(k reflect.Kind) bool {
+	return k == reflect.Pointer || k == reflect.Map || k == reflect.Slice
+}
+
+// sameObject reports whether x and y, two pointers, maps or slices of one
+// type, refer to the same object: the same address, and for slices the
+// same length.
+func sameObject(x, y reflect.Value) bool {
+	return x.Pointer() == y.Pointer() && (x.Kind() != reflect.Slice || x.Len() == y.Len())
 }
 
 // floats reports whether a equals b: by value, and a NaN equals a NaN under

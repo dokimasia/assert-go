@@ -116,7 +116,7 @@ func TestDraws(t *testing.T) {
 			t.Parallel()
 			s := settled(integers(4)...)
 			s.Draws = []engine.Entry{{Label: "count", Value: 1}}
-			s.Examples = [][]choice.Choice{integers(2), integers(3)}
+			s.Examples = []engine.Example{{Choices: integers(2)}, {Choices: integers(3)}}
 			_, calls := drawsRun(func(c *engine.Case) []any { return []any{engine.Draw(c, count, "count")} }, s)
 			firsts := []any{calls[0].values[0], calls[1].values[0], calls[2].values[0], calls[3].values[0]}
 			assert.Equal(t, firsts, []any{1, 2, 3, 4}, "the entries, the two examples, then the stored case")
@@ -140,7 +140,7 @@ func TestDraws(t *testing.T) {
 		t.Run("shrinks a failing example", func(t *testing.T) {
 			t.Parallel()
 			s := settled()
-			s.Examples = [][]choice.Choice{integers(9)}
+			s.Examples = []engine.Example{{Choices: integers(9)}}
 			got := engine.Run(failsFromFive, s)
 			assert.Equal(t, got.Outcome, engine.Counterexample, "a counterexample")
 			assert.Equal(t, drawValues(got.Failing.Case.Draws()), []any{5}, "the smallest count that fails")

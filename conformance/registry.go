@@ -187,4 +187,5 @@ func chainInvokers[C chain[C]](that func(tb assert.TB, got any) C) map[ID]Invoke
 var Relaxations = map[ID]assert.Option{
 	"equate-empty": assert.EquateEmpty(),
 	"equate-nans":  assert.EquateNaNs(),
+	"by-identity":  assert.ByIdentity(),
 }

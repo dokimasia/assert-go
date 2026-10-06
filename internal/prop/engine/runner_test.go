@@ -474,7 +474,7 @@ func TestRunner(t *testing.T) {
 		t.Run("records the calls of the stated cases first, each under its phase and run", func(t *testing.T) {
 			t.Parallel()
 			s := settled(integers(5)...)
-			s.Examples = [][]choice.Choice{integers(4)}
+			s.Examples = []engine.Example{{Choices: integers(4)}}
 			s.Draws = []engine.Entry{{Label: drawn, Value: 3}}
 			got := recordedRun(t, s, func(s engine.Settings) {
 				engine.Run(ended(func(c *engine.Case) { engine.Draw(c, digit, drawn) }), s)

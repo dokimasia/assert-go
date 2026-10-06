@@ -55,9 +55,10 @@
 // choices that decode to a value, which a run tries as an example through
 // [Settings.Examples]. A filter runs backwards through its source, and
 // [Generator.MapBack] through the inverse it states. [Generator.Map],
-// [Generator.Bind] and [Composite] apply functions without an inverse. The
-// case of [Settings.Draws] runs each draw's generator backwards from the
-// draw's entry.
+// [Generator.Bind] and [Composite] apply functions without an inverse, so
+// an example of such an input states its values, and its draws take them
+// without a choice. The case of [Settings.Draws] runs each draw's generator
+// backwards from the draw's entry.
 //
 // # Generators outside this package
 //
@@ -103,9 +104,10 @@
 //
 // Running a generator backwards returns a fault of the kind
 // [ErrCannotInvert], whose path leads to the part of the value that no
-// choice produces. The case of [Settings.Draws] ends with the refusal of an
-// entry, a fault whose path starts at the entry's index and leads through
-// its label or its value.
+// choice produces, or one of the kind [ErrNoInverse] for a generator on the
+// way that has no inverse. The case of [Settings.Draws] ends with the
+// refusal of an entry, a fault whose path starts at the entry's index and
+// leads through its label or its value.
 //
 // # Clocks
 //

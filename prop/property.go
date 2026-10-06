@@ -186,9 +186,11 @@ func (p property) load() (store.Stored, error) {
 // directory for each entry that the store cannot keep. A property without a
 // store saves nothing, and so does a property in a test binary that a
 // mutation run instrumented: a counterexample of one mutant would enter the
-// module under test, and every later mutant's run would try it first.
+// module under test, and every later mutant's run would try it first. An
+// example of values has no entry: an entry records choices, and the
+// example's values are in the test's source.
 func (p property) save(r engine.Result) []error {
-	if p.dir == "" || matcher.Mutated() {
+	if p.dir == "" || matcher.Mutated() || r.Failing.Case.Valued() {
 		return nil
 	}
 	found := p.settings.Clock.Now()

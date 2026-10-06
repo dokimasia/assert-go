@@ -66,6 +66,7 @@ stated instead:
 |---|---|
 | A nil map or slice does not equal an empty one | `EquateEmpty()` |
 | NaN does not equal NaN | `EquateNaNs()` |
+| A pointer, a map or a slice compares by the values it refers to | `ByIdentity()` compares it by identity |
 | Floats compare exactly | `CloseTo` applies a tolerance |
 | Unexported fields take part | — |
 | No method of a value runs, so a type's `Equal` method does not decide | — |
@@ -585,7 +586,7 @@ holds itself to it on every run:
   number of arguments that the definition states. `NoGoroutineLeaks` is
   the one exception: it returns its check instead of taking the scope.
 - **Parity.** Both surfaces carry the same members.
-- **Meaning.** 182 corpus cases state what an assertion must report,
+- **Meaning.** 195 corpus cases state what an assertion must report,
   shared with every other implementation. Each case runs through every
   function and chain form of both surfaces. The record of a failing
   case must state the case's assertion and the message unchanged, and
@@ -593,7 +594,7 @@ holds itself to it on every run:
   record of each case must state the assertion, the message, the
   verdict and the surface, and on a failure the same fields as typed
   literals.
-- **Properties.** 419 vectors state how the property engine decodes,
+- **Properties.** 430 vectors state how the property engine decodes,
   generates and shrinks inputs, decides coverage, encodes replay tokens,
   stores failures, reports a run and records its calls, shared with
   every other implementation.

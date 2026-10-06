@@ -34,6 +34,7 @@ const (
 	stringMatchingGen = "string-matching"
 	recursiveGen      = "recursive"
 	filterGen         = "filter"
+	mapGen            = "map"
 	selfGen           = "self"
 )
 
@@ -90,6 +91,8 @@ type generatorSpec struct {
 	MaxLeaves *int `json:"max_leaves"`
 	// Keep is the predicate of filter.
 	Keep json.RawMessage `json:"keep"`
+	// Subject is the kind of the subject whose function map applies.
+	Subject string `json:"subject"`
 }
 
 // generatorOf returns the generator that a corpus spec states, as a
@@ -97,8 +100,8 @@ type generatorSpec struct {
 // generators: int64 or uint64 for an integer, time.Duration, float32 or
 // float64, bool, string, []byte, []any for a list and a permutation,
 // map[any]any for a dict, nil for an absent optional, and the decoded
-// literals of just and sampled-from. Each generator runs backwards from
-// the value that a typed literal of one of its values decodes to.
+// literals of just and sampled-from. Each generator but map runs backwards
+// from the value that a typed literal of one of its values decodes to.
 //
 // It returns a fault for a spec that names no generator of the vocabulary
 // or misstates a parameter, whose path leads through the spec to the part
@@ -139,6 +142,8 @@ func build(raw json.RawMessage, self *engine.Generator[any]) (engine.Generator[a
 		return textOf(spec)
 	case recursiveGen:
 		return recursiveOf(spec)
+	case mapGen:
+		return mapOf(spec, self)
 	case selfGen:
 		if self == nil {
 			return engine.Generator[any]{}, fault.At(
@@ -319,6 +324,26 @@ func composedOf(spec generatorSpec, self *engine.Generator[any]) (engine.Generat
 		return engine.Erase(engine.UniqueList(of, sizes)), nil
 	}
 	return engine.Erase(engine.List(of, sizes)), nil
+}
+
+// mapOf returns the map of spec: the function of the subject kind that spec
+// names, applied to each value of the source generator that spec states
+// under of. It makes the source's choices and opens no span of its own, and
+// it has no inverse.
+func mapOf(spec generatorSpec, self *engine.Generator[any]) (engine.Generator[any], error) {
+	of, err := build(spec.Of, self)
+	if err != nil {
+		return engine.Generator[any]{}, fault.At(err, fault.Field(ofMember))
+	}
+	var function func(x any) any
+	if subject, ok := Subjects[spec.Subject]; ok {
+		function = subject().Function
+	}
+	if function == nil {
+		return engine.Generator[any]{}, fault.At(fault.New("%q names no subject of a function", spec.Subject),
+			fault.Field(subjectMember))
+	}
+	return of.Map(function), nil
 }
 
 // filterOf returns the generator of the values of g that the predicate keep

@@ -85,6 +85,9 @@ func TestEqual(t *testing.T) {
 		selfList[0], otherSelfList[0] = selfList, otherSelfList
 		endsInOne, endsInTwo := []any{nil, 1}, []any{nil, 2}
 		now := time.Now()
+		object, twin := new(1), new(1)
+		elements, table := []int{1, 2}, map[string]int{"a": 1}
+		byIdentity := equality.Rules{ByIdentity: true}
 		tests := []struct {
 			name      string
 			giveX     any
@@ -265,6 +268,91 @@ func TestEqual(t *testing.T) {
 				name:  "reports a slice that contains itself unequal to one that contains an empty slice",
 				giveX: selfList,
 				giveY: []any{[]any{}},
+			},
+			{
+				name:      "reports a pointer equal to itself under ByIdentity",
+				giveX:     object,
+				giveY:     object,
+				giveRules: byIdentity,
+				want:      true,
+			},
+			{
+				name:      "reports pointers to equal values unequal under ByIdentity",
+				giveX:     object,
+				giveY:     twin,
+				giveRules: byIdentity,
+			},
+			{
+				name:      "reports two nil pointers equal under ByIdentity",
+				giveX:     (*int)(nil),
+				giveY:     (*int)(nil),
+				giveRules: byIdentity,
+				want:      true,
+			},
+			{
+				name:      "reports a slice equal to itself under ByIdentity",
+				giveX:     elements,
+				giveY:     elements,
+				giveRules: byIdentity,
+				want:      true,
+			},
+			{
+				name:      "reports slices of equal elements unequal under ByIdentity",
+				giveX:     elements,
+				giveY:     []int{1, 2},
+				giveRules: byIdentity,
+			},
+			{
+				name:      "reports a shorter slice of one array unequal under ByIdentity",
+				giveX:     elements[:1],
+				giveY:     elements,
+				giveRules: byIdentity,
+			},
+			{
+				name:      "reports a nil slice unequal to an empty one under ByIdentity and EquateEmpty",
+				giveX:     []int(nil),
+				giveY:     []int{},
+				giveRules: equality.Rules{ByIdentity: true, EquateEmpty: true},
+			},
+			{
+				name:      "reports a map equal to itself under ByIdentity",
+				giveX:     table,
+				giveY:     table,
+				giveRules: byIdentity,
+				want:      true,
+			},
+			{
+				name:      "reports maps of equal entries unequal under ByIdentity",
+				giveX:     table,
+				giveY:     map[string]int{"a": 1},
+				giveRules: byIdentity,
+			},
+			{
+				name:      "reports fields that refer to one object equal under ByIdentity",
+				giveX:     holder{V: object},
+				giveY:     holder{V: object},
+				giveRules: byIdentity,
+				want:      true,
+			},
+			{
+				name:      "reports fields that refer to objects of equal values unequal under ByIdentity",
+				giveX:     holder{V: object},
+				giveY:     holder{V: twin},
+				giveRules: byIdentity,
+			},
+			{
+				name:      "reports arrays of the same objects equal under ByIdentity",
+				giveX:     [2]*int{object, twin},
+				giveY:     [2]*int{object, twin},
+				giveRules: byIdentity,
+				want:      true,
+			},
+			{
+				name:      "compares a value that is no reference as without ByIdentity",
+				giveX:     hidden{1, 2},
+				giveY:     hidden{1, 2},
+				giveRules: byIdentity,
+				want:      true,
 			},
 		}
 		for _, tt := range tests {

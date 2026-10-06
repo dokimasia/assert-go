@@ -18,6 +18,12 @@ import (
 // under a generator. Every value of a generator without an inverse is one.
 var ErrCannotInvert = errors.New("engine: no choices decode to the value")
 
+// ErrNoInverse reports a value whose choices the engine cannot compute,
+// because a generator on the way applies a function that has no inverse.
+// Whether the generator produces the value is unknown. A fault of this kind
+// has ErrCannotInvert as its cause, so errors.Is matches it with either.
+var ErrNoInverse = errors.New("engine: a generator on the way has no inverse")
+
 // Step is one choice of a generator that runs backwards: the bounds of the
 // request that the generator's decode makes, and the choice that the
 // request takes.
@@ -54,7 +60,10 @@ type Step struct {
 // does not produce. Its path leads to the part of the value that no choice
 // produces, as [2] does to the third element of a list. A generator built
 // with [Generator.Map], [Generator.Bind] or [Composite] has no inverse, and
-// Invert returns the fault for each of its values.
+// Invert returns a fault of the kind [ErrNoInverse] for each of its values.
+// A filter, a collection, an optional and a shape pass on that fault of the
+// generator inside them. A one-of and a recursive generator return it when
+// none of their branches produces the value and one of them has no inverse.
 func Invert[T any](g Generator[T], value T) ([]choice.Choice, error) {
 	return invert(g, value)
 }
@@ -90,6 +99,40 @@ func invert[T any](g Generator[T], v any) ([]choice.Choice, error) {
 // format with args, as fmt.Sprintf formats them.
 func uninvertible(format string, args ...any) *fault.Error {
 	return fault.Of(ErrCannotInvert, format, args...)
+}
+
+// noInverse returns a fault of the kind ErrNoInverse whose reason is format
+// with args, and whose cause is ErrCannotInvert.
+func noInverse(format string, args ...any) *fault.Error {
+	return fault.Of(ErrNoInverse, format, args...).Because(ErrCannotInvert)
+}
+
+// firstBranch returns the steps of the first of branches whose inverse
+// produces v, after the step of its index under bounds, and the value they
+// decode to. When no branch produces v, it reports false, and whether one of
+// the branches has no inverse.
+func firstBranch[T any](branches []Generator[T], bounds choice.IntegerBounds, v any) (
+	steps []Step, value T, produced, unknown bool,
+) {
+	for i, g := range branches {
+		branch, t, err := g.inverse(v)
+		if err == nil {
+			return append([]Step{indexStep(bounds, i)}, branch...), t, true, false
+		}
+		unknown = unknown || errors.Is(err, ErrNoInverse)
+	}
+	return nil, value, false, unknown
+}
+
+// noBranch returns the fault of a value that no branch of a generator
+// produces, whose reason is format with args: of the kind ErrNoInverse when
+// one of the branches has no inverse, and of the kind ErrCannotInvert
+// otherwise.
+func noBranch(unknown bool, format string, args ...any) *fault.Error {
+	if unknown {
+		return noInverse(format+", and one of them has no inverse", args...)
+	}
+	return uninvertible(format, args...)
 }
 
 // cannotInvert returns err, the error of the inverse of the generator name,

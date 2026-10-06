@@ -22,7 +22,8 @@
 //     finite time.
 //
 // [Rules] relax the comparison of NaNs and of empty containers for one
-// call. No method of a value runs, so a type's Equal or String method
+// call, or narrow the comparison of pointers, maps and slices to their
+// identity. No method of a value runs, so a type's Equal or String method
 // cannot change a verdict, or panic inside one. [Diff] walks two unequal
 // values under the same rules, and descends only into the parts that
 // [Equal] reports unequal. [Hash] returns a hash that two values share when

@@ -189,9 +189,11 @@ var diffed = map[string]bool{
 // text states each place where they differ, which a Go reader reads more
 // easily than two large structs side by side. The places are those of the
 // default comparison: a record contains what the definition states, and an
-// option is no part of it. A relaxation only widens what counts as equal,
-// so the text can show a difference that the comparison ignored, and never
-// misses one that it counted.
+// option is no part of it. A relaxation that widens equality can make the
+// text show a difference that the comparison ignored. ByIdentity narrows
+// it, and two objects of equal values differ in no place of the default
+// comparison, so the text then states want and got as it states the detail
+// of any other assertion.
 func equalDiff(f Failure) string {
 	if !diffed[f.Assertion] {
 		return ""

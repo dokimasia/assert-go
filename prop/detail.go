@@ -54,7 +54,8 @@ const (
 //
 //   - counterexample and failure are set for a run with a failing case: a
 //     counterexample, and a flaky run whose replay differed.
-//   - choices and others are set for a counterexample.
+//   - others is set for a counterexample, and choices for a counterexample
+//     that is no example of values, which has no replay token.
 //   - divergence is set for a flaky run, and coverage for a run that missed
 //     a coverage requirement.
 type runDetail struct {
@@ -92,7 +93,10 @@ func detailOf(r engine.Result) runDetail {
 		d.counterexample, d.failure = counterexampleOf(*r.Failing, r.Explanation), &failure
 	}
 	if r.Outcome == engine.Counterexample {
-		d.choices, d.others = &r.Token, othersOf(r.Others)
+		d.others = othersOf(r.Others)
+		if !r.Failing.Case.Valued() {
+			d.choices = &r.Token
+		}
 	}
 	d.divergence = r.Divergence
 	if r.Shortfall != nil {
@@ -120,8 +124,11 @@ func (d runDetail) fields() map[string]any {
 	if d.failure != nil {
 		detail[counterexampleField], detail[failureField] = d.counterexample, *d.failure
 	}
+	if d.outcome == Counterexample {
+		detail[othersField] = d.others
+	}
 	if d.choices != nil {
-		detail[choicesField], detail[othersField] = *d.choices, d.others
+		detail[choicesField] = *d.choices
 	}
 	if d.divergence != nil {
 		detail[divergenceField] = divergenceOf(*d.divergence)

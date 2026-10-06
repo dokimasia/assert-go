@@ -650,6 +650,77 @@ func TestInverse(t *testing.T) {
 			cause := assert.ErrorAs[*fault.Error](t, f.Err, "the fault of the keys")
 			assert.Equal(t, cause.Reason, "12 is outside [0, 9]", "why the keys produce no such key")
 		})
+
+		mapped := digit.Map(func(v int) int { return v })
+		unknown := []struct {
+			name       string
+			give       func() ([]choice.Choice, error)
+			wantReason string
+		}{
+			{
+				name:       "returns no inverse for a generator that applies a function",
+				give:       func() ([]choice.Choice, error) { return engine.Invert(mapped, 4) },
+				wantReason: "map has no inverse",
+			},
+			{
+				name:       "returns no inverse for a list of a generator without one",
+				give:       func() ([]choice.Choice, error) { return engine.Invert(engine.List(mapped, upToThree), []int{4}) },
+				wantReason: "map has no inverse",
+			},
+			{
+				name:       "returns no inverse for an optional of a generator without one",
+				give:       func() ([]choice.Choice, error) { return engine.Invert(engine.Optional(mapped), &seven) },
+				wantReason: "map has no inverse",
+			},
+			{
+				name: "returns no inverse for a filter of a generator without one",
+				give: func() ([]choice.Choice, error) {
+					return engine.Invert(mapped.Filter(func(int) bool { return true }), 4)
+				},
+				wantReason: "map has no inverse",
+			},
+			{
+				name:       "returns no inverse for a one-of whose alternative without one might produce the value",
+				give:       func() ([]choice.Choice, error) { return engine.Invert(engine.OneOf(digit, mapped), 12) },
+				wantReason: "none of the 2 alternatives produces 12, and one of them has no inverse",
+			},
+			{
+				name: "returns no inverse for a recursive generator whose base has none",
+				give: func() ([]choice.Choice, error) {
+					base := engine.Erase(mapped)
+					shallow := engine.Recursive(base, func(self engine.Generator[any]) engine.Generator[any] {
+						return engine.Erase(engine.List(self, upToThree))
+					}, engine.DefaultMaxLeaves)
+					return engine.Invert(shallow, any("x"))
+				},
+				wantReason: "neither the base nor the extension produces x, and one of them has no inverse",
+			},
+		}
+		for _, tt := range unknown {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				got, err := tt.give()
+				assert.ErrorIs(t, err, engine.ErrNoInverse, "no inverse on the way")
+				assert.ErrorIs(t, err, engine.ErrCannotInvert, "and no choices decode to the value")
+				assert.Equal(t, assert.ErrorAs[*fault.Error](t, err, "a fault").Reason, tt.wantReason,
+					"which generator has no inverse")
+				assert.Nil(t, got, "no choices")
+			})
+		}
+
+		t.Run("runs a one-of back through an alternative after one without an inverse", func(t *testing.T) {
+			t.Parallel()
+			got, err := engine.Invert(engine.OneOf(mapped, digit), 3)
+			assert.NoError(t, err, "the digit produces 3")
+			assert.True(t, sameChoices(got, integers(1, 3)), "the index of the digit, then 3")
+		})
+
+		t.Run("returns a value outside every alternative with an inverse as outside the domain", func(t *testing.T) {
+			t.Parallel()
+			_, err := engine.Invert(engine.OneOf(digit, wide), 20)
+			assert.ErrorIs(t, err, engine.ErrCannotInvert, "no alternative produces 20")
+			assert.ErrorIsNot(t, err, engine.ErrNoInverse, "every alternative has an inverse")
+		})
 	})
 }
 

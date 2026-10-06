@@ -5,6 +5,7 @@ package prop_test
 
 import (
 	"math"
+	"os"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -21,8 +22,8 @@ const (
 	// usingAllocs are the allocations of Using: the generator with its type
 	// erased, its inverse, and the option.
 	usingAllocs = 3
-	// exampleAllocs are the allocations of Example of one value: the list of
-	// values and the boxed value.
+	// exampleAllocs are the allocations of Example and of Examples of one
+	// value: the list of values and the option.
 	exampleAllocs = 2
 )
 
@@ -172,6 +173,32 @@ func TestForm(t *testing.T) {
 			assert.Equal(t, valuesOfDraws(got), []any{int8(7), int8(9)}, "the two values of the example")
 		})
 
+		t.Run("runs an example of an input without an inverse on its value, as found", func(t *testing.T) {
+			t.Parallel()
+			rec := assert.NewRecorder()
+			mapped := prop.Integer[int8](0, 9).Map(func(x int8) int8 { return x })
+			prop.True(rec, func(x int8) bool { return x >= 0 }, contractOfForm, prop.Seed(7),
+				prop.Using(mapped), prop.Example[int8](-5))
+			detail := rec.Failures()[0].Detail
+			assert.Equal(t, detail[casesField], any(0), "the example fails first")
+			got := detail[counterexampleField].([]prop.Entry)
+			assert.Equal(t, valuesOfDraws(got), []any{int8(-5)}, "the stated value, outside the source's domain")
+			assert.Nil(t, detail[choicesField], "no replay token")
+			assert.Equal(t, detail[othersField], any([]prop.Other{}), "no other failure")
+		})
+
+		t.Run("writes no store entry for an example of values", func(t *testing.T) {
+			t.Parallel()
+			rec, dir := assert.NewRecorder(), t.TempDir()
+			mapped := prop.Integer[int8](0, 9).Map(func(x int8) int8 { return x })
+			prop.True(rec, func(x int8) bool { return x >= 0 }, contractOfForm, prop.Seed(7), prop.Store(dir),
+				prop.Using(mapped), prop.Example[int8](-5))
+			entries, err := os.ReadDir(dir)
+			assert.NoError(t, err, "the store's directory reads")
+			assert.True(t, rec.Failed(), "the example fails")
+			assert.Empty(t, entries, "no entry")
+		})
+
 		tests := []struct {
 			name string
 			give func(tb assert.TB)
@@ -223,18 +250,94 @@ func TestForm(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("Examples", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("runs a case of each value, in order, before any other case", func(t *testing.T) {
+			t.Parallel()
+			rec := assert.NewRecorder()
+			prop.True(rec, func(x int8) bool { return x < 90 }, contractOfForm, prop.Seed(7), prop.Explain(false),
+				prop.Examples[int8](3, 120, 5))
+			detail := rec.Failures()[0].Detail
+			assert.Equal(t, detail[casesField], any(1), "the second example fails after the first passes")
+			assert.Equal(t, detail[counterexampleField], any([]prop.Entry{prop.Drawn{Label: "input", Value: int8(90)}}),
+				"the example shrinks to the smallest failing input")
+		})
+
+		t.Run("runs Example and Examples in the order of the options", func(t *testing.T) {
+			t.Parallel()
+			var seen []int8
+			prop.True(assert.NewRecorder(), func(x int8) bool { seen = append(seen, x); return true }, contractOfForm,
+				prop.Seed(7), prop.Examples[int8](1, 2), prop.Example[int8](3))
+			assert.Equal(t, seen[:3], []int8{1, 2, 3}, "the values of the two options")
+		})
+
+		tests := []struct {
+			name string
+			give func(tb assert.TB)
+			want fault.Error
+		}{
+			{
+				name: "fails the run at once for a form over more than one input",
+				give: func(tb assert.TB) {
+					prop.Commutative(tb, subtract, contractOfForm, prop.Examples[int8](1))
+				},
+				want: fault.Error{
+					Op:     "prop.Commutative",
+					Path:   fault.Path{fault.Field("Examples"), fault.Index(0)},
+					Reason: "the examples state one value per case, and the form generates 2",
+				},
+			},
+			{
+				name: "fails the run at once for examples of another type",
+				give: func(tb assert.TB) {
+					prop.Equal(tb, same, same, contractOfForm, prop.Example[int8](1), prop.Examples[int16](1))
+				},
+				want: fault.Error{
+					Op:     "prop.Equal",
+					Path:   fault.Path{fault.Field("Examples"), fault.Index(1)},
+					Reason: "the example states values of int16, and the input is of int8",
+				},
+			},
+			{
+				name: "fails the run at once at a value that the generator does not produce",
+				give: func(tb assert.TB) {
+					prop.True(tb, func(int8) bool { return true }, contractOfForm,
+						prop.Using(prop.Integer[int8](0, 9)), prop.Examples[int8](1, 12))
+				},
+				want: fault.Error{
+					Op:     "prop.True",
+					Path:   fault.Path{fault.Field("Examples"), fault.Index(0), fault.Index(1)},
+					Kind:   engine.ErrCannotInvert,
+					Reason: "12 is outside [0, 9]",
+				},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				seat := &matchertest.Seat{}
+				tt.give(seat)
+				expectOnlyFault(t, seat.Faults(), tt.want)
+				assert.Empty(t, seat.Records(), "no record of the form")
+			})
+		}
+	})
 }
 
-// TestFormAllocs checks the allocation ceilings of Using and Example.
+// TestFormAllocs checks the allocation ceilings of Using, Example and
+// Examples.
 func TestFormAllocs(t *testing.T) {
 	digits := prop.Integer[int8](0, 9)
 	var kept prop.FormOption
 	assert.MaxAllocs(t, func() { kept = prop.Using(digits) }, usingAllocs, "Using allocates its option")
 	assert.MaxAllocs(t, func() { kept = prop.Example[int8](1) }, exampleAllocs, "Example allocates its option")
+	assert.MaxAllocs(t, func() { kept = prop.Examples[int8](1) }, exampleAllocs, "Examples allocates its option")
 	assert.NotNil(t, kept, "the kept option")
 }
 
-// BenchmarkForm measures Using and Example.
+// BenchmarkForm measures Using, Example and Examples.
 func BenchmarkForm(b *testing.B) {
 	b.Run("Using", func(b *testing.B) {
 		digits := prop.Integer[int8](0, 9)
@@ -253,6 +356,16 @@ func BenchmarkForm(b *testing.B) {
 		defer c.End()
 		for c.Loop() {
 			got = prop.Example[int8](1)
+		}
+		assert.NotNil(b, got, "the option")
+	})
+
+	b.Run("Examples", func(b *testing.B) {
+		var got prop.FormOption
+		c := bench.Start(b).MaxAllocs(exampleAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = prop.Examples[int8](1)
 		}
 		assert.NotNil(b, got, "the option")
 	})

@@ -257,6 +257,13 @@ func TestDiff(t *testing.T) {
 				want:      []string{".V[1]: -float64(1) +float64(2)"},
 			},
 			{
+				name:      "returns two slices of equal elements whole under ByIdentity",
+				giveX:     holder{V: []int{1}},
+				giveY:     holder{V: []int{1}},
+				giveRules: equality.Rules{ByIdentity: true},
+				want:      []string{".V: -[]int([1]) +[]int([1])"},
+			},
+			{
 				name:  "descends into the values of a key that both maps have",
 				giveX: map[string]int{"a": 1, "b": 2},
 				giveY: map[string]int{"a": 1, "b": 3},

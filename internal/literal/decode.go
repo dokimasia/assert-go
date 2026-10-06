@@ -38,6 +38,9 @@ const (
 	typeRecord = "record"
 	// typeVariant is a variant of an enum.
 	typeVariant = "variant"
+	// typeReference is an object of a corpus case, which a pointer to its
+	// value is in Go.
+	typeReference = "reference"
 	// typeOpaque is a value that no other literal states, which a call
 	// record states and a corpus case never does. Decode refuses it.
 	typeOpaque = "opaque"
@@ -64,6 +67,8 @@ const (
 	memberName = "name"
 	// memberPayload is a variant's payload.
 	memberPayload = "payload"
+	// memberID is the id of a reference.
+	memberID = "id"
 )
 
 // The names of the floats that JSON has no number for.
@@ -113,6 +118,21 @@ type typed struct {
 	Name string `json:"name"`
 	// Payload is a variant's payload, and nil for a variant without one.
 	Payload json.RawMessage `json:"payload"`
+	// ID is the id of a reference.
+	ID string `json:"id"`
+}
+
+// Objects are the objects of the references that the literals of one
+// corpus case state, by their ids. A case states every reference of one id
+// as one object.
+type Objects map[string]any
+
+// decoder decodes typed literals, and the references among them through its
+// objects, which are nil for a decoder that makes a new object of each
+// reference.
+type decoder struct {
+	// objects are the objects decoded so far, by their ids.
+	objects Objects
 }
 
 // Decode turns one typed literal into a Go value.
@@ -132,6 +152,8 @@ type typed struct {
 // lowercase hexadecimal and decode to a []byte. A list of items decodes to
 // a []any, and a map of entries to a map[any]any, whose keys must be
 // comparable. A record decodes to a [Record], and a variant to a [Variant].
+// A reference decodes to a new pointer to its value, so two references of
+// one id decode to two objects. [Objects.Decode] decodes them to one.
 //
 // # Errors
 //
@@ -140,6 +162,30 @@ type typed struct {
 // fields[2][1].items[0].value. A fault of a type that the encoding does not
 // define has the kind [ErrUnknownType].
 func Decode(raw json.RawMessage) (any, error) {
+	return decoder{}.decode(raw)
+}
+
+// Decode turns one typed literal into a Go value, as the package's Decode
+// does, and decodes the first reference of an id to a new pointer to its
+// value and every later reference of the id to that pointer. o keeps the
+// pointer of each id, so the literals of one case decoded with one o share
+// their objects.
+//
+// # Allocation contract
+//
+// Decode allocates what the package's Decode allocates, and the object of
+// the first reference of an id. A later reference of the id allocates the
+// copies of its id and of its value's text: two allocations.
+//
+// # Errors
+//
+// It returns the faults that the package's Decode returns.
+func (o Objects) Decode(raw json.RawMessage) (any, error) {
+	return decoder{objects: o}.decode(raw)
+}
+
+// decode turns one typed literal into a Go value, as [Decode] states.
+func (d decoder) decode(raw json.RawMessage) (any, error) {
 	var lit typed
 	if err := json.Unmarshal(raw, &lit); err != nil {
 		return nil, fault.New("the text is no typed literal").Because(err)
@@ -159,13 +205,15 @@ func Decode(raw json.RawMessage) (any, error) {
 	case typeBytes:
 		return atValue(decodeBytes(lit.Value))
 	case typeList:
-		return decodeList(lit)
+		return d.decodeList(lit)
 	case typeMap:
-		return decodeMap(lit)
+		return d.decodeMap(lit)
 	case typeRecord:
-		return decodeRecord(lit.Fields)
+		return d.decodeRecord(lit.Fields)
 	case typeVariant:
-		return decodeVariant(lit)
+		return d.decodeVariant(lit)
+	case typeReference:
+		return d.decodeReference(lit)
 	default:
 		return nil, fault.At(fault.Of(ErrUnknownType, "the type %q is no type of the encoding", lit.Type),
 			fault.Field(memberType))
@@ -285,11 +333,11 @@ func decodeBytes(raw json.RawMessage) (any, error) {
 
 // decodeList materializes a list of the literals of Items, or of the element
 // type that Of names.
-func decodeList(lit typed) (any, error) {
+func (d decoder) decodeList(lit typed) (any, error) {
 	if lit.Items != nil {
 		out := make([]any, len(lit.Items))
 		for i, item := range lit.Items {
-			value, err := Decode(item)
+			value, err := d.decode(item)
 			if err != nil {
 				return nil, fault.At(err, fault.Field(memberItems), fault.Index(i))
 			}
@@ -407,9 +455,9 @@ func intOf(v any) (int, bool) {
 
 // decodeMap materializes a map of the pairs of Entries, or a string-keyed
 // map of the type that Of names.
-func decodeMap(lit typed) (any, error) {
+func (d decoder) decodeMap(lit typed) (any, error) {
 	if lit.Entries != nil {
-		return decodeEntries(lit.Entries)
+		return d.decodeEntries(lit.Entries)
 	}
 	if lit.Key != typeString {
 		return nil, fault.At(fault.Of(ErrUnknownType, "the key type %q is not string", lit.Key),
@@ -434,14 +482,14 @@ func decodeMap(lit typed) (any, error) {
 // decodeEntries decodes the key and the value literal of each entry into a
 // non-nil map[any]any. It refuses an entry that is no pair, and a key of a
 // type that is not comparable.
-func decodeEntries(entries [][]json.RawMessage) (any, error) {
+func (d decoder) decodeEntries(entries [][]json.RawMessage) (any, error) {
 	out := make(map[any]any, len(entries))
 	for i, entry := range entries {
 		if len(entry) != pair {
 			return nil, fault.At(fault.New("the entry states %d literals, not a key and a value", len(entry)),
 				fault.Field(memberEntries), fault.Index(i))
 		}
-		key, err := Decode(entry[0])
+		key, err := d.decode(entry[0])
 		if err != nil {
 			return nil, fault.At(err, fault.Field(memberEntries), fault.Index(i), fault.Index(0))
 		}
@@ -449,7 +497,7 @@ func decodeEntries(entries [][]json.RawMessage) (any, error) {
 			return nil, fault.At(fault.New("a key of %T is no key of a Go map", key),
 				fault.Field(memberEntries), fault.Index(i), fault.Index(0))
 		}
-		value, err := Decode(entry[1])
+		value, err := d.decode(entry[1])
 		if err != nil {
 			return nil, fault.At(err, fault.Field(memberEntries), fault.Index(i), fault.Index(1))
 		}
@@ -484,7 +532,7 @@ func typedMap[T any](raw json.RawMessage, decode func(json.RawMessage) (T, error
 // into a [Record]. It refuses a record that states no list of fields, a
 // field that is no pair of a name and a literal, an empty name, and a name
 // stated twice.
-func decodeRecord(fields []json.RawMessage) (any, error) {
+func (d decoder) decodeRecord(fields []json.RawMessage) (any, error) {
 	if fields == nil {
 		return nil, fault.At(fault.New("the record states no fields"), fault.Field(memberFields))
 	}
@@ -502,7 +550,7 @@ func decodeRecord(fields []json.RawMessage) (any, error) {
 				fault.Field(memberFields), fault.Index(i), fault.Index(0))
 		}
 		seen[name] = true
-		value, err := Decode(parts[1])
+		value, err := d.decode(parts[1])
 		if err != nil {
 			return nil, fault.At(err, fault.Field(memberFields), fault.Index(i), fault.Index(1))
 		}
@@ -513,16 +561,44 @@ func decodeRecord(fields []json.RawMessage) (any, error) {
 
 // decodeVariant decodes a variant's name, and its payload when it states
 // one, into a [Variant]. It refuses an empty name.
-func decodeVariant(lit typed) (any, error) {
+func (d decoder) decodeVariant(lit typed) (any, error) {
 	if lit.Name == "" {
 		return nil, fault.At(fault.New("the variant states no name"), fault.Field(memberName))
 	}
 	if lit.Payload == nil {
 		return Variant{Name: lit.Name}, nil
 	}
-	payload, err := Decode(lit.Payload)
+	payload, err := d.decode(lit.Payload)
 	if err != nil {
 		return nil, fault.At(err, fault.Field(memberPayload))
 	}
 	return Variant{Name: lit.Name, Payload: payload, HasPayload: true}, nil
+}
+
+// decodeReference decodes a reference to the object of its id that an
+// earlier reference of the decoder's objects decoded, and otherwise to a new
+// pointer to its value, which the objects keep. It refuses a reference
+// without an id, and a value that is no typed literal or that is null,
+// which is no object.
+func (d decoder) decodeReference(lit typed) (any, error) {
+	if lit.ID == "" {
+		return nil, fault.At(fault.New("the reference states no id"), fault.Field(memberID))
+	}
+	if object, decoded := d.objects[lit.ID]; decoded {
+		return object, nil
+	}
+	value, err := d.decode(lit.Value)
+	if err != nil {
+		return nil, fault.At(err, fault.Field(memberValue))
+	}
+	if value == nil {
+		return nil, fault.At(fault.New("the reference %q refers to null, which is no object", lit.ID),
+			fault.Field(memberValue))
+	}
+	object := reflect.New(reflect.TypeOf(value))
+	object.Elem().Set(reflect.ValueOf(value))
+	if d.objects != nil {
+		d.objects[lit.ID] = object.Interface()
+	}
+	return object.Interface(), nil
 }

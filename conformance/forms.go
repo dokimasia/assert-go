@@ -328,7 +328,8 @@ var formDrivers = map[string]formDriver{
 
 // formVector is a forms vector: the form, the kinds of the subjects that
 // its assertion takes, the values that the assertion takes beside them, the
-// shape of what the form generates, the seed, and the detail of the run.
+// shape or the generator of what the form generates, the examples, the seed,
+// and the detail of the run.
 type formVector struct {
 	// Form is the form's id.
 	Form string `json:"form"`
@@ -336,12 +337,49 @@ type formVector struct {
 	Subjects []string `json:"subjects"`
 	// Args are the values, as typed literals.
 	Args []json.RawMessage `json:"args"`
-	// Shape is the shape of each argument that the form generates.
+	// Shape is the shape of each argument that the form generates, and nil
+	// for a vector that states a generator.
 	Shape json.RawMessage `json:"shape"`
+	// Generator is the generator of each argument that the form generates,
+	// and nil for a vector that states a shape.
+	Generator json.RawMessage `json:"generator"`
+	// Examples are the values of the cases that the run tries first, one
+	// case per value, as typed literals.
+	Examples []json.RawMessage `json:"examples"`
 	// Seed is the seed in decimal.
 	Seed string `json:"seed"`
 	// Detail is the detail of the run.
 	Detail formDetail `json:"detail"`
+}
+
+// input returns the generator of each argument that the form of v generates,
+// and the integers of the input: from the shape that v states, or from its
+// generator, whose run states each integer as the generator returns it. It
+// returns a fault for a vector that states both or neither, and at the shape
+// or the generator for one that does not read.
+func (v formVector) input() (prop.Generator[any], integers, error) {
+	if (v.Shape == nil) == (v.Generator == nil) {
+		return prop.Generator[any]{}, integers{}, fault.New("the vector states one of a shape and a generator")
+	}
+	if v.Generator != nil {
+		g, err := generatorOf(v.Generator)
+		if err != nil {
+			return prop.Generator[any]{}, integers{}, fault.At(err, fault.Field(generatorMember))
+		}
+		return prop.Generator[any](g), integers{}, nil
+	}
+	g, err := prop.OfShape(string(v.Shape))
+	if err != nil {
+		return prop.Generator[any]{}, integers{}, fault.At(fault.New("the shape does not read").Because(err),
+			fault.Field(shapeMember))
+	}
+	ints, err := integersOf(v.Shape)
+	if err != nil {
+		return prop.Generator[any]{}, integers{}, fault.At(
+			fault.New("the shape of the elements does not read alone").Because(err),
+			fault.Field(shapeMember), fault.Field(ofMember))
+	}
+	return g, ints, nil
 }
 
 // formDetail is the detail of a forms vector's run. It states the failure
@@ -361,11 +399,13 @@ type formDetail struct {
 }
 
 // checkForms runs the form of a forms vector on its subjects and values,
-// over the generator that OfShape returns for its shape, with its seed, and
-// compares the run with the detail it states. A failing run is compared
-// through its record, every detail field of it and each field of the
-// failure that the vector states. A passing run reports no record, so it
-// is compared through the detail that the form's call record states.
+// over the generator that OfShape returns for its shape or the generator
+// that it states in place of one, with its seed, and compares the run with
+// the detail it states. The run tries the vector's examples first, through
+// Examples. A failing run is compared through its record, every detail field
+// of it and each field of the failure that the vector states. A passing run
+// reports no record, so it is compared through the detail that the form's
+// call record states.
 func checkForms(raw json.RawMessage, _ string) error {
 	var v formVector
 	if err := decode(raw, &v); err != nil {
@@ -379,14 +419,9 @@ func checkForms(raw json.RawMessage, _ string) error {
 	if err != nil {
 		return err
 	}
-	g, err := prop.OfShape(string(v.Shape))
+	g, ints, err := v.input()
 	if err != nil {
-		return fault.At(fault.New("the shape does not read").Because(err), fault.Field(shapeMember))
-	}
-	ints, err := integersOf(v.Shape)
-	if err != nil {
-		return fault.At(fault.New("the shape of the elements does not read alone").Because(err),
-			fault.Field(shapeMember), fault.Field(ofMember))
+		return err
 	}
 	subjects, err := d.build(v.Subjects)
 	if err != nil {
@@ -396,10 +431,17 @@ func checkForms(raw json.RawMessage, _ string) error {
 	if err != nil {
 		return fault.At(err, fault.Field(argsMember))
 	}
+	examples, err := decodeValues(v.Examples)
+	if err != nil {
+		return fault.At(err, fault.Field(examplesMember))
+	}
 	if err := d.check(args); err != nil {
 		return err
 	}
 	r := formRun{subjects: subjects, args: args, ints: ints, opts: []prop.FormOption{prop.Using(g)}}
+	if len(examples) > 0 {
+		r.opts = append(r.opts, prop.Examples(examples...))
+	}
 	for _, o := range opts {
 		r.opts = append(r.opts, o)
 	}

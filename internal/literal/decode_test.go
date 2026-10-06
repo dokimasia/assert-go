@@ -16,12 +16,18 @@ import (
 )
 
 // The allocations of the decoders: Decode on a record of one integer field,
-// Int on a decimal string beyond 2^53 - 1, and Float on the name NaN.
+// Int on a decimal string beyond 2^53 - 1, Float on the name NaN, and
+// Objects.Decode on a reference to an integer whose id it decoded before,
+// which allocates the copies of the reference's id and value text.
 const (
-	decodeAllocs = 17
-	intAllocs    = 3
-	floatAllocs  = 1
+	decodeAllocs        = 17
+	intAllocs           = 3
+	floatAllocs         = 1
+	objectsDecodeAllocs = 2
 )
+
+// referenceToOne is the literal of a reference of the id a to the integer 1.
+const referenceToOne = `{"type":"reference","id":"a","value":{"type":"int","value":1}}`
 
 // FuzzDecode checks that Decode returns a value or an error for any bytes,
 // and does not panic.
@@ -32,6 +38,7 @@ func FuzzDecode(f *testing.F) {
 	f.Add([]byte(`{"type":"map","entries":[[{"type":"list","items":[]},{"type":"bytes","value":"00"}]]}`))
 	f.Add([]byte(`{"type":"record","fields":[["id",{"type":"int","value":1}]]}`))
 	f.Add([]byte(`{"type":"variant","name":"paid","payload":{"type":"null"}}`))
+	f.Add([]byte(referenceToOne))
 	f.Fuzz(func(t *testing.T, raw []byte) {
 		_, _ = literal.Decode(raw)
 	})
@@ -225,6 +232,11 @@ func TestDecode(t *testing.T) {
 				give: `{"type":"variant","name":"paid","payload":{"type":"int","value":5}}`,
 				want: literal.Variant{Name: "paid", Payload: 5, HasPayload: true},
 			},
+			{
+				name: "returns a pointer to the value of a reference",
+				give: referenceToOne,
+				want: new(1),
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -308,6 +320,11 @@ func TestDecode(t *testing.T) {
 				name: "returns ErrUnknownType at the payload for a payload of an unknown type",
 				give: `{"type":"variant","name":"paid","payload":{"type":"widget"}}`,
 				want: fault.Path{fault.Field("payload"), fault.Field("type")},
+			},
+			{
+				name: "returns ErrUnknownType at the value for a reference to a value of an unknown type",
+				give: `{"type":"reference","id":"a","value":{"type":"widget"}}`,
+				want: fault.Path{fault.Field("value"), fault.Field("type")},
 			},
 		}
 		for _, tt := range unknown {
@@ -499,6 +516,18 @@ func TestDecode(t *testing.T) {
 				wantPath:   fault.Path{fault.Field("name")},
 				wantReason: "the variant states no name",
 			},
+			{
+				name:       "returns a fault at the id for a reference without an id",
+				give:       `{"type":"reference","value":{"type":"int","value":1}}`,
+				wantPath:   fault.Path{fault.Field("id")},
+				wantReason: "the reference states no id",
+			},
+			{
+				name:       "returns a fault at the value for a reference to null",
+				give:       `{"type":"reference","id":"a","value":{"type":"null"}}`,
+				wantPath:   fault.Path{fault.Field("value")},
+				wantReason: `the reference "a" refers to null, which is no object`,
+			},
 		}
 		for _, tt := range refusals {
 			t.Run(tt.name, func(t *testing.T) {
@@ -509,6 +538,41 @@ func TestDecode(t *testing.T) {
 				assert.Equal(t, f.Reason, tt.wantReason, "what the literal misstates")
 			})
 		}
+
+		t.Run("returns two objects for two references of one id", func(t *testing.T) {
+			t.Parallel()
+			first, err := literal.Decode(json.RawMessage(referenceToOne))
+			assert.NoError(t, err, "the first reference decodes")
+			second, err := literal.Decode(json.RawMessage(referenceToOne))
+			assert.NoError(t, err, "the second reference decodes")
+			assert.NotEqual(t, first, second, "a new object each time", assert.ByIdentity())
+		})
+	})
+
+	t.Run("Objects.Decode", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns one object for every reference of one id, and another for another id", func(t *testing.T) {
+			t.Parallel()
+			objects := literal.Objects{}
+			first, err := objects.Decode(json.RawMessage(referenceToOne))
+			assert.NoError(t, err, "the first reference decodes")
+			listed, err := objects.Decode(json.RawMessage(`{"type":"list","items":[` + referenceToOne + `]}`))
+			assert.NoError(t, err, "the list decodes")
+			other, err := objects.Decode(
+				json.RawMessage(`{"type":"reference","id":"b","value":{"type":"int","value":1}}`),
+			)
+			assert.NoError(t, err, "the other reference decodes")
+			assert.Equal(t, listed.([]any)[0], first, "the item is the object of a", assert.ByIdentity())
+			assert.NotEqual(t, other, first, "b is another object", assert.ByIdentity())
+			assert.Equal(t, other, first, "of an equal value")
+		})
+
+		t.Run("returns the fault of a literal as Decode does", func(t *testing.T) {
+			t.Parallel()
+			_, err := literal.Objects{}.Decode(json.RawMessage(`{"type":"widget"}`))
+			assert.ErrorIs(t, err, literal.ErrUnknownType, "the literal states a type outside the encoding")
+		})
 	})
 }
 
@@ -531,6 +595,21 @@ func BenchmarkDecode(b *testing.B) {
 		got, _ = literal.Decode(raw)
 	}
 	assert.Equal(b, got, any(literal.Record{Fields: []literal.Field{{Name: "id", Value: 1}}}), "the record")
+}
+
+// BenchmarkObjectsDecode measures Objects.Decode on a reference whose id it
+// decoded before, which returns the object without decoding the value.
+func BenchmarkObjectsDecode(b *testing.B) {
+	raw := json.RawMessage(referenceToOne)
+	objects := literal.Objects{}
+	first, _ := objects.Decode(raw)
+	got := first
+	c := bench.Start(b).MaxAllocs(objectsDecodeAllocs)
+	defer c.End()
+	for c.Loop() {
+		got, _ = objects.Decode(raw)
+	}
+	assert.Equal(b, got, first, "the object of the id", assert.ByIdentity())
 }
 
 // BenchmarkInt measures Int on a decimal string beyond 2^53 - 1.

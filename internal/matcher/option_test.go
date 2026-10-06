@@ -77,11 +77,35 @@ func TestOption(t *testing.T) {
 		})
 	})
 
+	t.Run("ByIdentity", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("makes a pointer equal itself and differ from a pointer to an equal value", func(t *testing.T) {
+			t.Parallel()
+
+			object := new(1)
+			if !passes(object, object, matcher.ByIdentity()) {
+				t.Fatal("a pointer differs from itself under ByIdentity")
+			}
+			if passes(object, new(1), matcher.ByIdentity()) {
+				t.Fatal("two allocations of one value are equal under ByIdentity")
+			}
+		})
+
+		t.Run("keeps NaN unequal to NaN", func(t *testing.T) {
+			t.Parallel()
+
+			if passes(math.NaN(), math.NaN(), matcher.ByIdentity()) {
+				t.Fatal("ByIdentity also equated NaN with NaN, want independent flags")
+			}
+		})
+	})
+
 	t.Run("relaxes nothing without an option", func(t *testing.T) {
 		t.Parallel()
 
-		if passes([]int(nil), []int{}) || passes(math.NaN(), math.NaN()) {
-			t.Fatal("the comparison without options equated nil with empty or NaN with NaN")
+		if passes([]int(nil), []int{}) || passes(math.NaN(), math.NaN()) || !passes(new(1), new(1)) {
+			t.Fatal("the comparison without options equated nil with empty or NaN with NaN, or compared by identity")
 		}
 	})
 }
@@ -104,6 +128,7 @@ func optionCases() []allocCase {
 	return []allocCase{
 		{name: "EquateEmpty", call: func(matcher.Seat) { option = matcher.EquateEmpty() }},
 		{name: "EquateNaNs", call: func(matcher.Seat) { option = matcher.EquateNaNs() }},
+		{name: "ByIdentity", call: func(matcher.Seat) { option = matcher.ByIdentity() }},
 		{name: "Option.FormOption", call: func(matcher.Seat) { empty.FormOption(matcher.FormSeal{}) }},
 	}
 }

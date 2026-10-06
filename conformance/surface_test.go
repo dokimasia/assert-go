@@ -443,6 +443,7 @@ var pinned = map[conformance.ID]any{
 	"prop.register-variants": prop.RegisterVariants[any],
 	"prop.using":             prop.Using[int],
 	"prop.example":           prop.Example[int],
+	"prop.examples":          prop.Examples[int],
 	"prop.draws":             prop.Draws,
 
 	"history":                (*history.History)(nil),
@@ -578,6 +579,7 @@ var silent = map[string]string{
 	"Option":      "is the type of a comparison option",
 	"EquateEmpty": "returns a comparison option",
 	"EquateNaNs":  "returns a comparison option",
+	"ByIdentity":  "returns a comparison option",
 }
 
 // escaped is the slice that the MaxAllocs driver allocates, which escape

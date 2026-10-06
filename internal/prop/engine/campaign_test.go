@@ -180,7 +180,7 @@ func TestCampaign(t *testing.T) {
 			t.Parallel()
 			concluded := 0
 			s := settled()
-			s.Examples = [][]choice.Choice{integers(950)}
+			s.Examples = []engine.Example{{Choices: integers(950)}}
 			s.Concluded = func(engine.Result) { concluded++ }
 			r := campaigned(func(c *engine.Case) {
 				v := engine.Draw(c, engine.Integer(0, 1000), drawn)
@@ -196,6 +196,24 @@ func TestCampaign(t *testing.T) {
 			assert.Equal(t, concluded, 1, "no conclusion of a later failure of big")
 		})
 
+		t.Run("concludes a failing example of values as found, and goes on", func(t *testing.T) {
+			t.Parallel()
+			var concluded []engine.Result
+			s := settled()
+			s.Examples = []engine.Example{{Values: []any{42}}}
+			s.Concluded = func(r engine.Result) { concluded = append(concluded, r) }
+			r := campaigned(func(c *engine.Case) {
+				if engine.Draw(c, digit, drawn) >= 10 {
+					c.Report(assert.Failure{Assertion: "beyond"}, false)
+				}
+			}, s, shortCases)
+			assert.Length(t, concluded, 1, "the example's failure, concluded once")
+			assert.Equal(t, []any{concluded[0].Token, concluded[0].Runs}, []any{"", 0}, "no token, and no shrink")
+			assert.Equal(t, []any{r.Outcome, r.Cases}, []any{engine.Counterexample, shortCases - 1},
+				"the example's failure, after the campaign's other cases")
+			assert.True(t, r.Failing.Case.Valued(), "the example of values")
+		})
+
 		flaky := []struct {
 			name   string
 			adjust func(s *engine.Settings)
@@ -203,7 +221,7 @@ func TestCampaign(t *testing.T) {
 			{name: "ends as flaky at a random case whose replay passes", adjust: func(*engine.Settings) {}},
 			{
 				name:   "ends as flaky at an example whose replay passes",
-				adjust: func(s *engine.Settings) { s.Examples = [][]choice.Choice{integers(3)} },
+				adjust: func(s *engine.Settings) { s.Examples = []engine.Example{{Choices: integers(3)}} },
 			},
 			{
 				name:   "ends as flaky at a stored case whose replay passes",
@@ -274,7 +292,7 @@ func TestCampaign(t *testing.T) {
 			var got []any
 			s := settled(integers(6)...)
 			s.Draws = []engine.Entry{{Label: drawn, Value: 4}}
-			s.Examples = [][]choice.Choice{integers(5)}
+			s.Examples = []engine.Example{{Choices: integers(5)}}
 			r := campaigned(func(c *engine.Case) { got = append(got, engine.Draw(c, digit, drawn)) }, s, shortCases)
 			assert.Equal(t, got[:3], []any{4, 5, 6}, "the entry's value, the example's, then the stored case's")
 			assert.Length(t, r.Stored, 1, "the run of the stored case")

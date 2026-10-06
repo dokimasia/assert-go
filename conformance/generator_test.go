@@ -223,6 +223,24 @@ func TestGenerator(t *testing.T) {
 				wantPath:   at(fault.Field("extend"), fault.Field(genAt)),
 				wantReason: noGenerator,
 			},
+			{
+				name:       "returns a fault at of for a map of a generator of an unknown id",
+				give:       `{"gen":"map","of":` + unknownGenerator + `,"subject":"identity"}`,
+				wantPath:   at(fault.Field(ofAt), fault.Field(genAt)),
+				wantReason: noGenerator,
+			},
+			{
+				name:       "returns a fault at the subject for a map of a subject that is no function",
+				give:       `{"gen":"map","of":` + digitGenerator + `,"subject":"ascending"}`,
+				wantPath:   at(fault.Field("subject")),
+				wantReason: `"ascending" names no subject of a function`,
+			},
+			{
+				name:       "returns a fault at the subject for a map of a subject that the definition does not state",
+				give:       `{"gen":"map","of":` + digitGenerator + `,"subject":"sleeps"}`,
+				wantPath:   at(fault.Field("subject")),
+				wantReason: `"sleeps" names no subject of a function`,
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

@@ -65,14 +65,14 @@ func (r *recursion[T]) position(c *Case) T {
 
 // invert returns the steps of one position that decode to v: the base's
 // choice and steps, or, when the base does not produce v, the extension's.
-// A value past the bound on its leaves fails the replay that [Invert]
+// It has no inverse for a value that neither produces while one of them has
+// none. A value past the bound on its leaves fails the replay that [Invert]
 // checks the steps with.
 func (r *recursion[T]) invert(v any) ([]Step, T, error) {
-	for index, branch := range [...]Generator[T]{r.base, r.extend} {
-		if steps, t, err := branch.inverse(v); err == nil {
-			return append([]Step{bitStep(index == 1)}, steps...), t, nil
-		}
+	branches := [...]Generator[T]{r.base, r.extend}
+	steps, t, produced, unknown := firstBranch(branches[:], bitBounds, v)
+	if !produced {
+		return nil, t, noBranch(unknown, "neither the base nor the extension produces %v", v)
 	}
-	var zero T
-	return nil, zero, uninvertible("neither the base nor the extension produces %v", v)
+	return steps, t, nil
 }

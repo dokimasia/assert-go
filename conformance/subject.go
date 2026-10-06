@@ -69,8 +69,10 @@ type Subject struct {
 	// Render renders x as decimal text, which round-trip parses back as
 	// decimal text.
 	Render func(x any) string
-	// Iterate yields the sequence that stable-order and no-duplicates read.
-	Iterate func() ([]int, error)
+	// Iterate yields the sequence that stable-order and no-duplicates read:
+	// integers, or the objects of a subject that yields references, each a
+	// pointer to an int.
+	Iterate func() ([]any, error)
 	// Advance moves the integer that monotonic reads through Observe, Steps
 	// times.
 	Advance func() error
@@ -135,6 +137,10 @@ var Subjects = map[string]func() *Subject{
 	"rewrites-files":      onFiles(rewritesFiles),
 	"writes-a-file":       onFiles(writesAFile),
 	"writes-a-large-file": onFiles(writesALargeFile),
+
+	// The iterations of objects, which no-duplicates compares by identity.
+	"yields-one-object-twice":  oneObjectTwice,
+	"yields-two-equal-objects": func() *Subject { return yields(new(1), new(1)) },
 }
 
 // signedOf returns x, a value of a signed integer type, as an int64.
@@ -327,16 +333,23 @@ func renders(dropSign bool) *Subject {
 	}
 }
 
-// yields returns a subject that yields items on every iteration.
-func yields(items ...int) *Subject {
-	return &Subject{Iterate: func() ([]int, error) { return slices.Clone(items), nil }}
+// yields returns a subject that yields items on every iteration: integers,
+// or objects, each a pointer to an int.
+func yields(items ...any) *Subject {
+	return &Subject{Iterate: func() ([]any, error) { return slices.Clone(items), nil }}
+}
+
+// oneObjectTwice yields one object twice, an object whose value is 1.
+func oneObjectTwice() *Subject {
+	object := new(1)
+	return yields(object, object)
 }
 
 // rotates yields the integers 1 to 5, rotated one place further on each
 // iteration.
 func rotates() *Subject {
-	items := []int{1, 2, 3, 4, 5}
-	return &Subject{Iterate: func() ([]int, error) {
+	items := []any{1, 2, 3, 4, 5}
+	return &Subject{Iterate: func() ([]any, error) {
 		out := items
 		items = slices.Concat(items[1:], items[:1])
 		return out, nil

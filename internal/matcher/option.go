@@ -5,7 +5,9 @@ package matcher
 
 import "go.dokimi.dev/assert/internal/equality"
 
-// Option relaxes one comparison rule for the call it is passed to.
+// Option changes one comparison rule for the call it is passed to: it
+// relaxes a rule, or narrows the comparison of references to their
+// identity.
 //
 // An Option has no state of its own, and is safe to reuse across calls
 // and across goroutines. The order of options has no effect, and passing
@@ -54,6 +56,25 @@ func EquateEmpty() Option {
 func EquateNaNs() Option {
 	return func(r equality.Rules) equality.Rules {
 		r.EquateNaNs = true
+		return r
+	}
+}
+
+// ByIdentity makes a pointer, a map and a slice equal another only when both
+// are the same object: the same address, and for a slice the same length
+// as well. The rule applies at every depth: at the top, in an element, in a
+// map's value and in a field. A value that is no reference compares as
+// without it, and EquateEmpty does not apply to a slice or a map under it.
+//
+// The default compares the values that two references refer to, so two
+// allocations of one value are equal.
+//
+// # Allocation contract
+//
+// ByIdentity allocates nothing.
+func ByIdentity() Option {
+	return func(r equality.Rules) equality.Rules {
+		r.ByIdentity = true
 		return r
 	}
 }

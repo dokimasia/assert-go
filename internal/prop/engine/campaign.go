@@ -144,8 +144,8 @@ func (c *campaign) known() (Result, bool) {
 			return r, true
 		}
 	}
-	for _, choices := range c.s.Examples {
-		if r, ended := c.take(execute(c.body, replaying{choices: choices}, c.s), record.Example); ended {
+	for _, ex := range c.s.Examples {
+		if r, ended := c.take(executeExample(c.body, c.s, ex), record.Example); ended {
 			return r, true
 		}
 	}

@@ -155,6 +155,32 @@ func TestForms(t *testing.T) {
 				wantPath:   atFailure(fault.Key("got")),
 				wantReason: `the field is int:0, want {"type":"int","value":1}`,
 			},
+			{
+				name: "returns nil for a run over a generator that states no shape",
+				give: `{"form":"prop-nil-context-safe","subjects":["reads-handle"],"args":[],` +
+					`"generator":{"gen":"integer","min":-1000,"max":1000},"seed":"7","detail":` + passed + `}`,
+			},
+			{
+				name: "returns a fault for a vector that states a shape and a generator",
+				give: `{"form":"prop-nil","subjects":["returns-null"],"args":[],"shape":` + thousands +
+					`,"generator":{"gen":"integer","min":0,"max":9},"seed":"7","detail":` + passed + `}`,
+				wantPath:   inVector(),
+				wantReason: "the vector states one of a shape and a generator",
+			},
+			{
+				name: "returns a fault at the generator for a generator that does not read",
+				give: `{"form":"prop-nil","subjects":["returns-null"],"args":[],"generator":{"gen":"widget"},` +
+					`"seed":"7","detail":` + passed + `}`,
+				wantPath:   inVector(fault.Field("generator"), fault.Field(genAt)),
+				wantReason: `"widget" names no generator`,
+			},
+			{
+				name: "returns a fault at the example for an example that is no typed literal",
+				give: `{"form":"prop-nil","subjects":["returns-null"],"args":[],"shape":` + thousands +
+					`,"examples":[` + widget + `],"seed":"7","detail":` + passed + `}`,
+				wantPath:   inVector(fault.Field("examples"), fault.Index(0), fault.Field(typeAt)),
+				wantReason: unknownWidget,
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
