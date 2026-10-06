@@ -272,8 +272,10 @@ A failure states the counterexample, the seed and a replay token.
 The run also writes the smallest failing case of each failure to
 `testdata/prop/<test name>/` beside `testdata/golden`. The next run tries
 that case first. Review the store as you review golden files. `prop.Fuzz`
-runs the same body as `ForAll` does under `go test`, and as a fuzz target
-under `go test -fuzz`.
+runs the same body as a fuzz target under `go test -fuzz`. Without
+`-fuzz`, it replays its stored cases and runs the seed corpus, and
+generates no case, so a property that `go test` checks runs through
+`ForAll` in a test.
 
 `DOKIMI_ASSERT_PROP_PROFILE=campaign` runs every property as a campaign
 for as long as `DOKIMI_ASSERT_PROP_BUDGET` states in seconds. A case that

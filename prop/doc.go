@@ -3,8 +3,8 @@
 
 // Package prop checks properties over generated inputs: [ForAll] runs a
 // body against many generated cases and fails with the smallest
-// counterexample it finds, and [Fuzz] runs the same body as ForAll does
-// under go test and as a fuzz target under go test -fuzz.
+// counterexample it finds, and [Fuzz] runs the same body as a fuzz target
+// under go test -fuzz.
 //
 // A body receives a [Case], draws its inputs from generators with
 // [Case.Draw], and asserts on the case as on any seat:

@@ -5,7 +5,6 @@ package prop_test
 
 import (
 	"bytes"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -36,13 +35,7 @@ const (
 	childMode = "PROP_TEST_FUZZ_MODE"
 	// childStore is the directory of the store that FuzzChild uses.
 	childStore = "PROP_TEST_FUZZ_STORE"
-	// childFuzzing, when not empty, makes FuzzChild set the flag test.fuzz
-	// to its own name, as -fuzz sets it, for the call of Fuzz.
-	childFuzzing = "PROP_TEST_FUZZ_FLAG"
 )
-
-// fuzzFlag is the flag that names the fuzz targets of a binary that fuzzes.
-const fuzzFlag = "test.fuzz"
 
 // located matches a record of a run whose line starts with the file and the
 // line that testing puts before a log line.
@@ -67,16 +60,16 @@ const (
 	// rejectingMode fuzzes a body that rejects the sentinel, from the seed
 	// of the sentinel.
 	rejectingMode = "rejecting"
-	// refutedMode fuzzes a body that fails for every input, from a seed.
+	// refutedMode fuzzes a body that fails for every input, without a seed.
 	refutedMode = "refuted"
 )
 
-// childSeed is the seed of each property of FuzzChild, so the cases that a
-// run without fuzzing generates are the same on every run.
+// childSeed is the seed of each property of FuzzChild, which the record of
+// each of its runs states.
 const childSeed = 7
 
 // sentinel is the first bytes of the byte string at which failsAtSentinel
-// fails: four bytes, which a run of 100 generated cases does not draw.
+// fails.
 var sentinel = []byte{0xde, 0xad, 0xbe, 0xef}
 
 // sentinelSeed is the input of the seed corpus that the bridge decodes to the
@@ -86,11 +79,10 @@ var sentinelSeed = append([]byte{byte(len(sentinel)), 0}, sentinel...)
 // sentinelChoice is the choice of the sentinel's byte string.
 var sentinelChoice = sequence(0xde, 0xad, 0xbe, 0xef)
 
-// TestFuzz checks the run of the property that Fuzz makes without fuzzing,
-// what it reports for a failing input, and the store of its fuzz test. Fuzz
-// takes a *testing.F, which only the testing
-// package constructs, so each case runs FuzzChild in a child process of
-// the test binary. The children run one at a time, because two children
+// TestFuzz checks the stored cases that Fuzz replays, what it reports for a
+// failing input, and the store of its fuzz test. Fuzz takes a *testing.F,
+// which only the testing package constructs, so each case runs FuzzChild in
+// a child process of the test binary. The children run one at a time, because two children
 // of a coverage run that exit in the same nanosecond write one coverage
 // file.
 //
@@ -99,66 +91,16 @@ var sentinelChoice = sequence(0xde, 0xad, 0xbe, 0xef)
 // builds the text it expects with the writer.
 func TestFuzz(t *testing.T) {
 	t.Run("Fuzz", func(t *testing.T) {
-		t.Run("fails the test with the counterexample of a run without fuzzing, before any input", func(t *testing.T) {
-			out, err := child(t, refutedMode, t.TempDir(), record.Variable+"=1")
-			assert.HasError(t, err, "the child fails")
-			call := childCall(t, out, "FuzzChild", 1)
-			detail, _ := call["detail"].(map[string]any)
-			assert.Equal(t, []any{call["assertion"], call["verdict"], counts(detail)},
-				[]any{"prop-for-all", "fail", []any{"counterexample", 0.0, 0.0}},
-				"the call of the test fails at the first generated case")
-			zero, _ := literal.Encode(0)
-			assert.Equal(t, drawnOf(detail), [][2]any{{drawn, jsonTree(t, string(zero))}}, "the smallest integer")
-			assert.NotContains(t, out, "FuzzChild/seed#0", "no input of the seed corpus runs")
-		})
-
-		t.Run("replays only the stored cases in a test binary that fuzzes", func(t *testing.T) {
-			out, err := child(t, storedMode, t.TempDir(), childFuzzing+"=1", record.Variable+"=1")
-			assert.NoError(t, err, "the child passes")
-			call := childCall(t, out, "FuzzChild", 1)
-			detail, _ := call["detail"].(map[string]any)
-			assert.Equal(t, []any{call["verdict"], counts(detail)}, []any{"pass", []any{"passed", 0.0, 0.0}},
-				"the call of the test generates no case")
-		})
-
-		t.Run("fails a second property of the same contract and store in a test binary that fuzzes",
+		t.Run("generates no case under go test, so a body that fails for every input passes without a seed",
 			func(t *testing.T) {
-				dir := t.TempDir()
-				out, err := child(t, twiceMode, dir, childFuzzing+"=1", record.Variable+"=1")
-				assert.HasError(t, err, "the child fails")
-				duplicated := &fault.Error{Op: fuzzOp, Path: fault.Path{fault.Field(dir)}, Reason: duplicateReason}
-				expectEnded(t, childCall(t, out, "FuzzChild", 2), duplicated)
-			})
-
-		t.Run("fails at once for a damaged file in the store of a test binary that fuzzes", func(t *testing.T) {
-			dir := t.TempDir()
-			write(t, filepath.Join(dir, "damaged.json"), "{")
-			out, err := child(t, passingMode, dir, childFuzzing+"=1", record.Variable+"=1")
-			assert.HasError(t, err, "the child fails")
-			expectEnded(t, childCall(t, out, "FuzzChild", 1), damagedFault(dir))
-		})
-
-		t.Run("logs the fault of a stored case that decodes to other values in a test binary that fuzzes",
-			func(t *testing.T) {
-				dir := t.TempDir()
-				recorded, _ := literal.Encode([]byte{8})
-				moved := store.Entry{
-					Definition:     "1.2.0",
-					Property:       contract,
-					Identity:       store.Identity{Assertion: big, Contract: fits},
-					Choices:        []choice.Choice{sequence(7)},
-					Counterexample: []store.Draw{{Label: drawn, Value: recorded}},
-					Found:          earlier,
-				}
-				save(t, dir, moved)
-				out, err := child(t, storedMode, dir, childFuzzing+"=1")
+				out, err := child(t, refutedMode, t.TempDir(), record.Variable+"=1")
 				assert.NoError(t, err, "the child passes")
-				decoded := &fault.Error{
-					Op:     fuzzOp,
-					Path:   fault.Path{fault.Field(dir), fault.Field(moved.Name())},
-					Reason: decodedReason,
-				}
-				assert.Contains(t, out, matcher.RenderFault(decoded), "the fault at the entry's file")
+				call := childCall(t, out, "FuzzChild", 1)
+				detail, _ := call["detail"].(map[string]any)
+				assert.Equal(t, []any{call["assertion"], call["verdict"], counts(detail)},
+					[]any{"prop-for-all", "pass", []any{"passed", 0.0, 0.0}},
+					"the call of the test replays no stored case and generates none")
+				assert.NotContains(t, out, "FuzzChild/seed#0", "the seed corpus has no input")
 			})
 
 		t.Run("reports the shrunk case of a failing input through the input's test", func(t *testing.T) {
@@ -356,7 +298,7 @@ func TestFuzz(t *testing.T) {
 				[]any{1.0, 1.0, "stored", "true"}, "the call of the stored case under the call of the test")
 			detail, _ := test["detail"].(map[string]any)
 			assert.Equal(t, []any{test["verdict"], test["aborting"], detail[casesField], detail[rejectedField]},
-				[]any{"pass", true, 100.0, 0.0}, "the call of the test passes, and counts the stored case in 100")
+				[]any{"pass", true, 1.0, 0.0}, "the call of the test passes, and counts the stored case")
 		})
 	})
 }
@@ -376,13 +318,6 @@ func FuzzChild(f *testing.F) {
 	mode := os.Getenv(childMode)
 	if mode == "" {
 		f.Skip("runs in a child process of TestFuzz")
-	}
-	if os.Getenv(childFuzzing) != "" {
-		// The testing package reads the flag again after the fuzz tests, so
-		// the child clears it before then. Setting a flag that the package
-		// registered fails for no value.
-		_ = flag.Set(fuzzFlag, "^FuzzChild$")
-		f.Cleanup(func() { _ = flag.Set(fuzzFlag, "") })
 	}
 	stored, seeded := prop.Store(os.Getenv(childStore)), prop.Seed(childSeed)
 	if mode == passingMode {
@@ -412,7 +347,6 @@ func FuzzChild(f *testing.F) {
 		return
 	}
 	if mode == refutedMode {
-		f.Add([]byte{1})
 		prop.Fuzz(f, contract, failsAtLeast(9, 0, every), stored, seeded)
 		return
 	}
@@ -458,7 +392,7 @@ func failsAtSentinel(c *prop.Case) {
 func child(t *testing.T, mode, dir string, env ...string) (string, error) {
 	t.Helper()
 	vars := []string{
-		childMode + "=" + mode, childStore + "=" + dir, childFuzzing + "=", seedVariable + "=", profileVariable + "=",
+		childMode + "=" + mode, childStore + "=" + dir, seedVariable + "=", profileVariable + "=",
 		replayVariable + "=", budgetVariable + "=",
 	}
 	return childtest.Run(t, "FuzzChild", append(vars, env...)...)

@@ -4,7 +4,6 @@
 package prop
 
 import (
-	"flag"
 	"fmt"
 	"testing"
 
@@ -15,25 +14,22 @@ import (
 // fuzzOp is the operation of Fuzz, which names its faults.
 const fuzzOp = "prop.Fuzz"
 
-// Fuzz checks the property that body states on f, and registers body as the
-// fuzz target of f, so one declaration checks the property under go test and
-// serves the fuzzer under go test -fuzz.
+// Fuzz registers body as the fuzz target of f. go test -fuzz generates the
+// inputs. go test without -fuzz runs the seed corpus alone: the entries that
+// f.Add states and the files under testdata/fuzz/<FuzzName>. Fuzz generates
+// no case of its own, so a property that runs under go test without -fuzz
+// is checked by [ForAll] in a test, with the same body and contract.
 //
-// In a test binary that does not fuzz, which the flag test.fuzz states, Fuzz
-// first runs the property on f as [ForAll] runs it, with the same record,
-// store and options, and fails f as ForAll fails its seat. A failing run
-// registers no target. Fuzz runs no campaign, also under the campaign
-// profile. go test then runs the seed corpus: the entries that f.Add states
-// and the files under testdata/fuzz/<FuzzName>.
-//
-// In a test binary that fuzzes, Fuzz replays only the property's stored
-// cases, oldest first, from the store of the fuzz test, and fails f with the
-// record of the first that fails, as found. The record of the call on f
-// counts the stored cases that ran, the failing one's predecessors included,
-// and states the calls of each under the phase stored. Fuzz logs the fault
-// of each stored case that decodes to other values than its entry records,
-// as ForAll does. [Replay], DOKIMI_ASSERT_PROP_REPLAY, [Draws], [Cases] and
-// [Require] apply to the run without fuzzing alone.
+// Before it registers the target, Fuzz replays the property's stored cases,
+// oldest first, from the store of the fuzz test, as ForAll replays them,
+// and fails f with the record of the first that fails, as found. A failing
+// replay registers no target. The record of the call on f counts the stored
+// cases that ran, the failing one's predecessors included, and states the
+// calls of each under the phase stored. Fuzz logs the fault of each stored
+// case that decodes to other values than its entry records, as ForAll does.
+// Fuzz runs no campaign, also under the campaign profile. [Replay],
+// DOKIMI_ASSERT_PROP_REPLAY, [Draws], [Cases] and [Require] apply to ForAll
+// and the property forms alone.
 //
 // Each input's bytes decode into the choices of one case by the definition's
 // bridge rules, so every input is a valid case. A body that draws one byte
@@ -65,25 +61,15 @@ func Fuzz(f *testing.F, contract string, body func(*Case), opts ...Option) {
 		run.Fault(matcher.Fatal, forAllID, contract, err)
 		return
 	}
-	if fuzzing() {
-		p.replayStored(f, run, body)
-	} else {
-		p.run(f, run, body)
-	}
+	p.replayStored(f, run, body)
 	f.Fuzz(func(t *testing.T, data []byte) {
 		p.input(inputSeat{T: t}, bodyOf(t.Context(), body), data)
 	})
 }
 
-// fuzzing reports whether the test binary fuzzes. The testing package
-// registers the flag test.fuzz in every test binary, and -fuzz sets it.
-func fuzzing() bool {
-	return flag.Lookup("test.fuzz").Value.String() != ""
-}
-
 // replayStored replays the stored cases of the property p on f, as the call
-// run, and reports the run, as [Fuzz] states for a test binary that fuzzes.
-// A report that does not pass ends the call on f.
+// run, and reports the run, as [Fuzz] states. A report that does not pass
+// ends the call on f.
 func (p property) replayStored(f *testing.F, run matcher.Running, body func(*Case)) {
 	f.Helper()
 	if !claim(f, p.dir, p.contract) {
