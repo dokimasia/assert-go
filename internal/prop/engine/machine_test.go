@@ -53,8 +53,9 @@ const (
 	// case's own three, and the growth of its steps.
 	stepCaseAllocs = 4
 	// repeatCaseAllocs are the allocations of a case that asks for two runs
-	// and passes both: the own three of the case and of its repeat.
-	repeatCaseAllocs = 6
+	// and passes both: the own three of the case and of its repeat, and the
+	// list of the two runs, whose calls the property's record takes.
+	repeatCaseAllocs = 7
 )
 
 // stepWeights are the weights of the actions that a step's index chooses
@@ -293,6 +294,20 @@ func TestMachine(t *testing.T) {
 			assert.Equal(t, []any{e.Status, runs, e.Case.Failures()[0].Assertion},
 				[]any{engine.CaseFailed, 2, "lost"}, "the second run's failure ends the case")
 		})
+
+		t.Run("hands the calls of every run to the property's record, each run under a number of its own",
+			func(t *testing.T) {
+				t.Parallel()
+				got := recordedRun(t, engine.Settings{}, func(s engine.Settings) {
+					engine.Bridge(ended(func(c *engine.Case) { c.Repeat(repeatedRuns) }), nil, s)
+				})
+				assert.Equal(
+					t,
+					got,
+					[]callRecord{{Run: 1, Phase: "fuzz"}, {Run: 2, Phase: "fuzz"}, {Run: 3, Phase: "fuzz"}},
+					"the call of each of the three runs",
+				)
+			})
 
 		t.Run("reports on more workers what one worker reports for a case that fails on a repeat", func(t *testing.T) {
 			t.Parallel()

@@ -112,6 +112,11 @@ func TestExecution(t *testing.T) {
 				elements: engine.MaxChoices - 1,
 				want:     engine.CasePassed,
 			},
+			{
+				name:     "returns CaseRejected for a sequence whose minimum length alone takes the case past the cap",
+				elements: math.MaxInt,
+				want:     engine.CaseRejected,
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -119,6 +124,40 @@ func TestExecution(t *testing.T) {
 				g := engine.Bytes(sizes(t, tt.elements, tt.elements))
 				e := engine.Replay(func(c *engine.Case) { engine.Draw(c, g, drawn) }, nil, nil)
 				assert.Equal(t, e.Status, tt.want, "one choice for the sequence and one for each element")
+			})
+		}
+
+		overruns := []struct {
+			name      string
+			body      func(c *engine.Case)
+			wantPanic any
+		}{
+			{
+				name: "returns CaseFailed for a case past MaxChoices whose cleanup fails",
+				body: func(c *engine.Case) { c.Cleanup(func() { c.Report(reported, true) }) },
+			},
+			{
+				name:      "returns CaseFailed for a case past MaxChoices whose cleanup panics",
+				body:      func(c *engine.Case) { c.Cleanup(func() { panic("cleanup") }) },
+				wantPanic: "cleanup",
+			},
+			{
+				name: "returns CaseFailed for a body that fails and then goes past MaxChoices",
+				body: func(c *engine.Case) { c.Report(reported, false) },
+			},
+		}
+		for _, tt := range overruns {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				e := engine.Replay(func(c *engine.Case) {
+					tt.body(c)
+					source := c.Rand()
+					for range engine.MaxChoices + 1 {
+						source.Uint64()
+					}
+				}, nil, nil)
+				assert.Equal(t, e.Status, engine.CaseFailed, "the failure outweighs the cap")
+				assert.Equal(t, e.Panic, tt.wantPanic, "the panic's value")
 			})
 		}
 

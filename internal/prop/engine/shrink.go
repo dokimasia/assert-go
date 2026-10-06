@@ -184,24 +184,35 @@ func (sh *shrinker) spent() bool {
 	return sh.room() == 0
 }
 
-// run runs the body on choices, spending one run of the budget, whose
-// calls the slot of the run takes under phase. It reports false, and runs
-// nothing, once the budget or the time is spent. The caller releases the
-// run's case once it no longer reads it.
+// run runs the body on choices, with every repeat that the case asks for
+// within the budget, and charges the budget, as charge does. It reports
+// false, and runs nothing, once the budget or the time is spent. The caller
+// releases the run's case once it no longer reads it.
 func (sh *shrinker) run(choices []choice.Choice, phase record.Phase) (Execution, bool) {
-	if sh.room() == 0 {
+	room := sh.room()
+	if room == 0 {
 		return Execution{}, false
 	}
-	sh.runs++
-	e := finish(sh.replaying(choices), sh.body)
-	sh.s.Slot.Take(&e.Case.calls, phase)
-	return e, true
+	return sh.charge(runOnce(sh.replaying(choices), sh.body), room, phase), true
 }
 
-// runAll runs the body on each of one or more choice sequences at once,
-// the first on the calling goroutine, and returns their runs in order,
-// valid until its next call. The caller charges the budget for each run it
-// takes, and releases the case of each run whose failure it discards.
+// charge runs the repeats that the case of e, which ran once, asks for, up
+// to room runs in all, charges the budget one run for each run of the body,
+// and hands the calls of the runs to the slot of the run under phase. A case
+// that asks for more runs than room allows ends as its runs within room
+// ended, as one worker that ran it with that room left would end it.
+func (sh *shrinker) charge(e Execution, room int, phase record.Phase) Execution {
+	e = repeat(e, sh.body, room)
+	sh.runs += e.runs()
+	e.take(sh.s.Slot, phase)
+	return e
+}
+
+// runAll runs the body once on each of one or more choice sequences at
+// once, the first on the calling goroutine, and returns their runs in
+// order, valid until its next call. The caller charges the budget for each
+// run it takes, which runs the repeats that its case asks for, and releases
+// the case of each run whose failure it discards.
 func (sh *shrinker) runAll(choices [][]choice.Choice) []Execution {
 	runs := slices.Grow(sh.executions[:0], len(choices))[:len(choices)]
 	for i, c := range choices {
@@ -209,9 +220,9 @@ func (sh *shrinker) runAll(choices [][]choice.Choice) []Execution {
 	}
 	var wg sync.WaitGroup
 	for i := range runs[1:] {
-		wg.Go(func() { runs[i+1] = finish(runs[i+1].Case, sh.body) })
+		wg.Go(func() { runs[i+1] = runOnce(runs[i+1].Case, sh.body) })
 	}
-	runs[0] = finish(runs[0].Case, sh.body)
+	runs[0] = runOnce(runs[0].Case, sh.body)
 	wg.Wait()
 	sh.executions = runs
 	return runs
@@ -274,11 +285,14 @@ func (sh *shrinker) fresh(nodes []node, batch []candidate) (candidate, bool) {
 
 // settle runs the candidates of a non-empty batch that the budget leaves
 // room for at once, and takes their runs in order, up to the first run that
-// became the best case. For each run that it takes, settle:
+// became the best case or the end of the budget. For each run that it
+// takes, settle:
 //
-//   - charges the budget,
+//   - runs the repeats that its case asks for and charges the budget, as
+//     charge does,
 //   - records the run's size,
-//   - hands the run's calls to the slot of the run under the phase shrink,
+//   - hands the calls of the runs to the slot of the run under the phase
+//     shrink,
 //   - keeps the run's failure.
 //
 // It reports whether a run became the best case, and whether the search is
@@ -295,10 +309,11 @@ func (sh *shrinker) settle(batch []candidate) (accepted, over bool) {
 		sh.batch = append(sh.batch, c.choices)
 	}
 	runs := sh.runAll(sh.batch)
-	for i, e := range runs {
-		sh.runs++
-		sh.s.Slot.Take(&e.Case.calls, record.Shrink)
-		sh.sizes[batch[i].token] = e.Case.Position()
+	taken := 0
+	for ; taken < len(runs) && room > 0; taken++ {
+		e := sh.charge(runs[taken], room, record.Shrink)
+		room -= e.runs()
+		sh.sizes[batch[taken].token] = e.Case.Position()
 		if e.Status != CaseFailed {
 			sh.release(e)
 			continue
@@ -308,11 +323,12 @@ func (sh *shrinker) settle(batch []candidate) (accepted, over bool) {
 			sh.release(e)
 		}
 		if sh.best() != before {
-			sh.release(runs[i+1:]...)
+			sh.release(runs[taken+1:]...)
 			return true, true
 		}
 	}
-	return false, false
+	sh.release(runs[taken:]...)
+	return false, room == 0
 }
 
 // first runs candidates in order, up to Workers of them at once, and

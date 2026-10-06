@@ -244,6 +244,17 @@ func TestOption(t *testing.T) {
 			assert.NotNil(t, detailOf(long, prop.Seed(7)), "a list of two elements fits the default cap")
 		})
 
+		t.Run("fails a case whose cleanup fails after the case went past the cap", func(t *testing.T) {
+			t.Parallel()
+			over := func(c *prop.Case) {
+				c.Cleanup(func() { fail(c, "cleanup") })
+				c.Draw(prop.Boolean(), drawn)
+				c.Draw(prop.Boolean(), drawn)
+			}
+			got := detailOf(over, prop.Seed(7), prop.MaxChoices(1), prop.Shrink(0))
+			assert.Equal(t, got[outcomeField], any(prop.Counterexample), "the cleanup's failure fails the property")
+		})
+
 		t.Run("panics for n below 1", func(t *testing.T) {
 			t.Parallel()
 			got := assert.Panics(t, func() { prop.MaxChoices(0) }, "a cap of no choice")

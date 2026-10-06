@@ -77,9 +77,10 @@ func explain(sh *shrinker, f *failure, seed uint64) []Explained {
 }
 
 // fill runs the fillings of one draw, the n-th from the stream of base + n,
-// up to Workers of them at once, and takes their runs in order, each
-// charged to the budget. A filling whose decode returns no value is not a
-// value of the draw, and is skipped without a charge to the budget. It returns [ValueMatters]
+// up to Workers of them at once, and takes their runs in order, each with
+// the repeats that its case asks for and charged to the budget, as charge
+// does. A filling whose decode returns no value is not a value of the draw,
+// and is skipped without a charge to the budget. It returns [ValueMatters]
 // at the first filling that passes or fails another way, [AnyValueFails]
 // when every filling that decoded fails the same way, and [Untested] when
 // none decoded or the budget or the time runs out first.
@@ -95,21 +96,25 @@ func fill(sh *shrinker, f *failure, span Span, g erased, base uint64) Relevance 
 		if len(sh.batch) == 0 {
 			return relevance
 		}
-		count := min(len(sh.batch), sh.room())
+		room := sh.room()
+		count := min(len(sh.batch), room)
 		if count == 0 {
 			return Untested
 		}
 		runs := sh.runAll(sh.batch[:count])
-		for i, e := range runs {
-			sh.runs++
-			sh.s.Slot.Take(&e.Case.calls, record.Explain)
-			if e.Status != CaseFailed || e.Identity != f.identity {
-				sh.release(runs[i:]...)
+		taken := 0
+		for ; taken < len(runs) && room > 0; taken++ {
+			e := sh.charge(runs[taken], room, record.Explain)
+			room -= e.runs()
+			same := e.Status == CaseFailed && e.Identity == f.identity
+			sh.release(e)
+			if !same {
+				sh.release(runs[taken+1:]...)
 				return ValueMatters
 			}
-			sh.release(e)
 		}
-		if count < len(sh.batch) {
+		sh.release(runs[taken:]...)
+		if taken < len(sh.batch) {
 			return Untested
 		}
 		relevance = AnyValueFails

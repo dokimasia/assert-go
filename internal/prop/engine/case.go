@@ -10,6 +10,7 @@ import (
 	"maps"
 	"math"
 	"math/rand/v2"
+	"reflect"
 	"runtime"
 	"runtime/debug"
 	"slices"
@@ -208,6 +209,9 @@ type Case struct {
 	// panicStack is the stack of the body's goroutine at that panic, as
 	// runtime/debug.Stack formats it.
 	panicStack []byte
+	// raised is where the last panic that [Case.Raise] raises again was
+	// raised first, and nil before one.
+	raised *origin
 	// recursion are the counts of base values of the recursive values
 	// being decoded, a stack for each recursive generator.
 	recursion map[any][]int
@@ -531,7 +535,9 @@ func (c *Case) record() []choice.Choice {
 // choose returns the value for r and records it, with r. It ends the
 // calling goroutine when the value takes the case past its cap, repeats a
 // tested case or diverges from one, and once the case has stopped, as a
-// cleanup's draw after such a stop does.
+// cleanup's draw after such a stop does. A sequence whose minimum length
+// alone takes the case past its cap ends it before the provider makes the
+// value, which would make that many elements.
 func (c *Case) choose(r request) choice.Choice {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -540,6 +546,9 @@ func (c *Case) choose(r request) choice.Choice {
 	}
 	if c.stop != running {
 		c.halt(c.stop)
+	}
+	if r.bounds.Kind() == choice.Sequence && r.bounds.Sequence().Sizes().Min() >= c.maxChoices-c.cost {
+		c.halt(overrun)
 	}
 	value := c.provider.value(r, len(c.choices))
 	c.cost += 1 + len(value.Sequence)
@@ -826,10 +835,36 @@ func (c *Case) run(body Body) {
 	body(c)
 }
 
+// origin is where a panic was raised first: its value, and the frames and
+// the stack of the goroutine that raised it.
+type origin struct {
+	// value is the value of the panic.
+	value any
+	// pcs are the frames of the goroutine at the panic.
+	pcs []uintptr
+	// stack is the stack of the goroutine at the panic, as runtime/debug.Stack
+	// formats it.
+	stack []byte
+}
+
+// Raise panics with v on the calling goroutine, as a panic that another
+// goroutine of the case raised where pcs and stack were taken. When the
+// panic ends the body or a cleanup, the case keeps v with the identity and
+// the stack of that goroutine, so two panics raised again keep the places
+// where they were raised. A scheduler raises the panic of a task again
+// this way. A body that recovers the panic recovers v.
+func (c *Case) Raise(v any, pcs []uintptr, stack []byte) {
+	c.mu.Lock()
+	c.raised = &origin{value: v, pcs: pcs, stack: stack}
+	c.mu.Unlock()
+	panic(v)
+}
+
 // recoverPanic keeps the identity, the value and the stack of a panic that
-// ends the body or a cleanup. The first panic of the case is kept. The
-// runner defers it on the body's goroutine. A Goexit is no panic, and
-// recover returns nil for it.
+// ends the body or a cleanup: those of the goroutine that raised it first,
+// for a panic that [Case.Raise] raised again, and its own otherwise. The
+// first panic of the case is kept. The runner defers it on the body's
+// goroutine. A Goexit is no panic, and recover returns nil for it.
 func (c *Case) recoverPanic() {
 	v := recover()
 	if v == nil {
@@ -837,10 +872,13 @@ func (c *Case) recoverPanic() {
 	}
 	var pcs [maxFrames]uintptr
 	n := runtime.Callers(1, pcs[:])
-	identity := panicIdentity(v, pcs[:n])
-	stack := debug.Stack()
+	frames, stack := pcs[:n], debug.Stack()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if o := c.raised; o != nil && reflect.DeepEqual(o.value, v) {
+		frames, stack = o.pcs, o.stack
+	}
+	identity := panicIdentity(v, frames)
 	if c.panicked == nil {
 		c.panicked, c.panicValue, c.panicStack = &identity, v, stack
 	}

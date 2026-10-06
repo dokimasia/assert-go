@@ -4,8 +4,10 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"math"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/prop/choice"
@@ -61,6 +63,26 @@ type Execution struct {
 	// Refusal is the refusal of a refused case, a fault at the entry of
 	// Settings.Draws that the case refused, and nil for any other.
 	Refusal error
+	// ran are the cases of the runs of a case that [Case.Repeat] ran more
+	// than once, in the order they ran, and nil for a case that ran once.
+	ran []*Case
+}
+
+// runs returns the number of runs of the body that e made.
+func (e Execution) runs() int {
+	return max(len(e.ran), 1)
+}
+
+// take hands the calls of every run of e to slot under phase, in the order
+// the runs ran. Each run takes a number of its own.
+func (e Execution) take(slot *record.Slot, phase record.Phase) {
+	if e.ran == nil {
+		slot.Take(&e.Case.calls, phase)
+		return
+	}
+	for _, c := range e.ran {
+		slot.Take(&c.calls, phase)
+	}
 }
 
 // Body is a property's body: it draws from the case it receives, and
@@ -90,11 +112,13 @@ func Replay(body Body, choices []choice.Choice, clock assert.Clock) Execution {
 }
 
 // Bridge calls body once on a case decoded from a fuzzer's bytes, outside
-// the case tree, with the cap of [MaxChoices], and reads the clock of s.
-// The slot of s takes the calls of the case under the phase fuzz.
+// the case tree, with the cap of s.MaxChoices, or of [MaxChoices] when s
+// states none, and reads the clock of s. The slot of s takes the calls of
+// the case under the phase fuzz.
 func Bridge(body Body, data []byte, s Settings) Execution {
-	e := execute(body, &bridging{data: data}, Settings{MaxChoices: MaxChoices, Clock: s.Clock, Slot: s.Slot})
-	s.Slot.Take(&e.Case.calls, record.Fuzz)
+	limits := Settings{MaxChoices: cmp.Or(s.MaxChoices, MaxChoices), Clock: s.Clock, Slot: s.Slot}
+	e := execute(body, &bridging{data: data}, limits)
+	e.take(s.Slot, record.Fuzz)
 	return e
 }
 
@@ -106,23 +130,41 @@ func execute(body Body, p provider, s Settings) Execution {
 }
 
 // finish calls body on c, on a goroutine of its own, and returns how the
-// case ended. A case that passes and asked for more runs with [Case.Repeat]
-// runs again on its choices, on a case outside the case tree that keeps its
-// walk and its wheres when c does, until a run fails or the runs it asked
-// for have passed. The first run that fails is the case's end, with its
-// record and its calls.
+// case ended, with every run that [Case.Repeat] asks for, as repeat runs
+// them.
 func finish(c *Case, body Body) Execution {
-	e := runOnce(c, body)
-	for n := 1; e.Status == CasePassed && n < c.repeats(); n++ {
+	return repeat(runOnce(c, body), body, math.MaxInt)
+}
+
+// repeat runs the case of e, which ran once, again on its choices when it
+// passed and asked for more runs with [Case.Repeat]. Each run is a case
+// outside the case tree that keeps its walk and its wheres when the first
+// does. The runs go on until one fails, the runs the case asked for have
+// passed, or limit runs in all have run. The first run that fails is the
+// case's end, with its record. The execution keeps the case of every run,
+// whose calls [Execution.take] hands on.
+func repeat(e Execution, body Body, limit int) Execution {
+	c := e.Case
+	runs := min(c.repeats(), limit)
+	if e.Status != CasePassed || runs == 1 {
+		return e
+	}
+	ran := make([]*Case, 1, runs)
+	ran[0] = c
+	for n := 1; n < runs; n++ {
 		again := newCase(replaying{choices: c.Choices()}, c.settings, nil)
 		again.keepsWheres = c.keepsWheres
 		if c.keepsWalk {
 			again.keepWalk()
 		}
-		if r := runOnce(again, body); r.Status == CaseFailed {
+		r := runOnce(again, body)
+		ran = append(ran, again)
+		if r.Status == CaseFailed {
+			r.ran = ran
 			return r
 		}
 	}
+	e.ran = ran
 	return e
 }
 
@@ -145,7 +187,8 @@ func runOnce(c *Case, body Body) Execution {
 // tested case, or at a request that differs from the recorded one.
 // [executionOf] then ends the case as it ends a case that walked t as it
 // ran. The case keeps the calls made before the step that stops it, which
-// are the calls of such a case.
+// are the calls of such a case, and keeps no other run that [Case.Repeat]
+// asked for. A case that the walk does not stop keeps its runs.
 func entered(t *tree.Tree, e Execution) (Execution, int) {
 	c := e.Case
 	c.mu.Lock()
@@ -159,15 +202,20 @@ func entered(t *tree.Tree, e Execution) (Execution, int) {
 		}
 	}
 	c.mu.Unlock()
+	out := executionOf(c)
 	if stopped {
 		record.Cut(&c.calls, steps)
+		return out, steps
 	}
-	return executionOf(c), steps
+	out.ran = e.ran
+	return out, steps
 }
 
 // executionOf returns how the case ended, once its body's goroutine ended.
-// A case that ended in a repeat, a divergence or past its cap leaves no
-// leaf in the tree. Every other case ends its walk with a leaf.
+// A failure or a panic of the body or of a cleanup fails a case that the
+// body rejected or that went past its cap, as it fails any other. A case
+// that ended in a repeat, a divergence or past its cap leaves no leaf in the
+// tree. Every other case ends its walk with a leaf.
 func executionOf(c *Case) Execution {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -180,18 +228,15 @@ func executionOf(c *Case) Execution {
 	if c.stop == diverged {
 		return Execution{Case: c, Status: CaseDiverged, Divergence: requestDivergence(c, c.divergence)}
 	}
-	if c.stop == overrun {
-		return Execution{Case: c, Status: CaseRejected}
-	}
 	e := Execution{Case: c, Status: CasePassed}
 	if records := c.recorder.Failures(); len(records) > 0 {
 		e.Status, e.Identity = CaseFailed, identityOf(records[0])
 	} else if c.panicked != nil {
 		e.Status, e.Identity, e.Panic, e.Stack = CaseFailed, *c.panicked, c.panicValue, c.panicStack
-	} else if c.stop == rejected {
+	} else if c.stop == rejected || c.stop == overrun {
 		e.Status = CaseRejected
 	}
-	if c.walker == nil {
+	if c.walker == nil || c.stop == overrun {
 		return e
 	}
 	if d, ok := errors.AsType[*tree.DivergenceError](c.walker.End()); ok {

@@ -32,8 +32,9 @@ type earlierValue struct {
 // the value of an earlier reuse request of the same case with the same
 // bounds, as [random.Reuse] decides. The second of two keys or two
 // identifiers then equals the first in at least one case in four. The
-// earlier values are those whose choices the record still contains, so a
-// filter's next attempt never takes a value of an attempt it rejected.
+// earlier values are those whose choices the record still contains,
+// whatever their bounds, so a filter's next attempt never takes a value of
+// an attempt it rejected.
 //
 // A run on one worker serves every random case with one generating
 // provider, which reset starts over for each case. The map of earlier
@@ -44,6 +45,8 @@ type generating struct {
 	// earlier are the values of the case's reuse requests so far, by their
 	// bounds, in record order. Only integer requests are marked reuse.
 	earlier map[choice.IntegerBounds][]earlierValue
+	// next is one past the index of the last earlier value, and 0 for none.
+	next int
 }
 
 // newGenerating returns a provider that draws from source.
@@ -55,21 +58,23 @@ func newGenerating(source random.Source) *generating {
 // the next case. It allocates nothing.
 func (g *generating) reset(source random.Source) {
 	g.source = source
+	g.next = 0
 	clear(g.earlier)
 }
 
 // value returns r's draw from the source, or an earlier value of the case.
-// The values of choices at index or after it, which a rewind removed from
-// the record, leave the earlier values first.
+// A request at index finds index choices in the record, so the earlier
+// values at index and after it, of every bounds, are of choices that a
+// rewind removed, and leave the earlier values first.
 func (g *generating) value(r request, index int) choice.Choice {
+	if index < g.next {
+		g.forget(index)
+	}
 	bounds := r.bounds.Integer()
 	if !r.reuse || bounds.Lo() == bounds.Hi() {
 		return r.draw(&g.source)
 	}
 	earlier := g.earlier[bounds]
-	for len(earlier) > 0 && earlier[len(earlier)-1].index >= index {
-		earlier = earlier[:len(earlier)-1]
-	}
 	var v choice.Choice
 	if i, ok := random.Reuse(&g.source, len(earlier)); ok {
 		v = earlier[i].value
@@ -77,7 +82,20 @@ func (g *generating) value(r request, index int) choice.Choice {
 		v = r.draw(&g.source)
 	}
 	g.earlier[bounds] = append(earlier, earlierValue{index: index, value: v})
+	g.next = index + 1
 	return v
+}
+
+// forget removes the earlier values at index and after it, of every
+// bounds.
+func (g *generating) forget(index int) {
+	for bounds, earlier := range g.earlier {
+		for len(earlier) > 0 && earlier[len(earlier)-1].index >= index {
+			earlier = earlier[:len(earlier)-1]
+		}
+		g.earlier[bounds] = earlier
+	}
+	g.next = index
 }
 
 // trailing is a generating provider that keeps the state of its source

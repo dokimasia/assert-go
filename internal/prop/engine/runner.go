@@ -264,7 +264,7 @@ func newTally(s Settings) *tally {
 // take counts one case, whose calls the property's record takes under
 // phase, and returns the result it ends the run with.
 func (t *tally) take(e Execution, phase record.Phase) (Result, bool) {
-	t.slot.Take(&e.Case.calls, phase)
+	e.take(t.slot, phase)
 	if e.Status == CaseRefused {
 		return Result{Refused: e.Refusal}, true
 	}

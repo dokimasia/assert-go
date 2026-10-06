@@ -5,6 +5,7 @@ package engine_test
 
 import (
 	"math"
+	"strconv"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -59,6 +60,30 @@ func TestProvider(t *testing.T) {
 				random.Integer(&twin, whole).Magnitude(),
 			}
 			assert.Equal(t, got, want, "three draws without a reuse coin")
+		})
+
+		t.Run("returns no earlier value of a choice that a rewind removed, whatever its bounds", func(t *testing.T) {
+			t.Parallel()
+			wide := choice.MustIntegerBounds(choice.Int{}, choice.UintOf(1_000_000_000))
+			narrow := choice.MustIntegerBounds(choice.Int{}, choice.UintOf(999_999_999))
+			for seed := range uint64(50) {
+				attempts := 0
+				g := engine.Composite(func(c *engine.Case) uint64 {
+					attempts++
+					if attempts == 1 {
+						return c.Reusable(wide).Magnitude()
+					}
+					c.Reusable(narrow)
+					return c.Reusable(wide).Magnitude()
+				}).Filter(func(uint64) bool { return attempts > 1 })
+				var got uint64
+				engine.Generate(func(c *engine.Case) { got = engine.Draw(c, g, drawn) }, seed, 0, nil)
+				twin := random.ForCase(seed, 0)
+				random.Integer(&twin, wide)
+				random.Integer(&twin, narrow)
+				assert.Equal(t, got, random.Integer(&twin, wide).Magnitude(),
+					"the second attempt's wide value, drawn without a coin, for seed "+strconv.FormatUint(seed, 10))
+			}
 		})
 	})
 

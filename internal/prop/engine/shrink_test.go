@@ -40,7 +40,8 @@ func TestShrink(t *testing.T) {
 	t.Parallel()
 
 	percent := engine.List(engine.Integer(0, 100), unbounded(t, 0))
-	digits := engine.List(engine.Integer(0, 9), unbounded(t, 0))
+	digit := engine.Integer(0, 9)
+	digits := engine.List(digit, unbounded(t, 0))
 	small, wide := engine.Integer(0, 1000), engine.Integer(0, 1_000_000_000)
 	start := time.Date(2026, time.October, 1, 9, 0, 0, 0, time.UTC)
 
@@ -210,6 +211,37 @@ func TestShrink(t *testing.T) {
 			assert.Equal(t, got.Runs, 24, "the runs of the whole shrink and explanation, well within an hour")
 		})
 
+		repeats := []struct {
+			name      string
+			budget    int
+			wantRuns  int
+			wantCalls int
+		}{
+			{
+				name: "stops the repeats of a candidate at the end of the budget", budget: 1, wantRuns: 1,
+				wantCalls: 3,
+			},
+			{
+				name: "charges the budget one run for each repeat of a candidate", budget: 8, wantRuns: 8,
+				wantCalls: 10,
+			},
+		}
+		for _, tt := range repeats {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				s := settled(integers(9)...)
+				s.Shrink, s.Explain = tt.budget, false
+				calls := 0
+				got := engine.Run(failing(func(c *engine.Case) string {
+					calls++
+					c.Repeat(4)
+					return failsWhen(engine.Draw(c, digit, "x") == 9, "nine")
+				}), s)
+				assert.Equal(t, []int{got.Runs, calls}, []int{tt.wantRuns, tt.wantCalls},
+					"the runs that shrinking spent, and the calls of the stored case, its replay and the shrink")
+			})
+		}
+
 		t.Run("returns the first failing case when shrinking is off", func(t *testing.T) {
 			t.Parallel()
 			s := settled()
@@ -286,6 +318,25 @@ func TestShrink(t *testing.T) {
 					return failsWhen(value > 1000, "above")
 				},
 				budget: 54,
+			},
+			{
+				name: "reports on four workers the budget that one spends on the repeats of each candidate",
+				p: func(c *engine.Case) string {
+					c.Repeat(4)
+					return failsWhen(engine.Draw(c, small, "x") > 600, "big")
+				},
+				stored: integers(900),
+				budget: 6,
+			},
+			{
+				name: "reports on four workers a budget that the repeats of the fillings spend",
+				p: func(c *engine.Case) string {
+					c.Repeat(3)
+					value := engine.Draw(c, wide, "n")
+					engine.Draw(c, wide, "noise")
+					return failsWhen(value > 1000, "above")
+				},
+				budget: 100,
 			},
 		}
 		for _, tt := range workers {

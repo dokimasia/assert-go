@@ -9,14 +9,14 @@ import "go.dokimi.dev/assert/internal/record"
 // the replay differed, or nil when it did not. The comparison takes the
 // requests' bounds first, then the observed fingerprints, then the way the
 // replay ended. A request or a fingerprint that differs takes where the
-// replay made it. The slot of s takes the calls of the replay under the
-// phase replay.
+// replay made it. The slot of s takes the calls of every run of the replay
+// under the phase replay.
 func confirm(body Body, failing Execution, s Settings) *Divergence {
 	choices := failing.Case.Choices()
 	c := newCase(replaying{choices: choices}, s, nil)
 	c.keepsWheres, c.wheres = true, make([]Where, 0, len(choices))
 	replay := finish(c, body)
-	s.Slot.Take(&replay.Case.calls, record.Replay)
+	replay.take(s.Slot, record.Replay)
 	recorded, replayed := nodesOf(failing.Case), nodesOf(replay.Case)
 	for index := range max(len(recorded), len(replayed)) {
 		before, after := requestAt(recorded, index), requestAt(replayed, index)
