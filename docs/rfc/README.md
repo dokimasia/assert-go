@@ -17,3 +17,5 @@ they record why not.
 | [0009](0009-the-history-seam-and-the-linearizability-checker-in-go.md) | The history seam and the linearizability checker in Go | Accepted |
 | [0010](0010-the-isolation-checks-in-go.md) | The isolation checks in Go | Accepted |
 | [0011](0011-machines-the-task-scheduler-and-campaigns-in-go.md) | Machines, the task scheduler and campaigns in Go | Accepted |
+| [0012](0012-definition-6-in-go.md) | Definition 6.0.0 in Go | Accepted |
+| [0013](0013-resuming-the-check-of-a-growing-history.md) | Resuming the check of a growing history | Accepted |
