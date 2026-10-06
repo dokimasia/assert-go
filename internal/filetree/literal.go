@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"maps"
+	"math"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -78,19 +79,37 @@ type entryLiteral struct {
 // MarshalJSON allocates the paths in order, the literal of each entry, and
 // the JSON that it returns.
 func (t Tree) MarshalJSON() ([]byte, error) {
+	return t.literal(ContentLimit)
+}
+
+// Encode returns the tree literal of t as an input states it, which [Decode]
+// reads back: the literal that [Tree.MarshalJSON] returns, with the whole
+// content of every file, however long.
+//
+// # Allocation contract
+//
+// Encode allocates what [Tree.MarshalJSON] allocates.
+func (t Tree) Encode() ([]byte, error) {
+	return t.literal(math.MaxInt)
+}
+
+// literal returns the tree literal of t, which states the content of a file
+// longer than limit by its digest and its size.
+func (t Tree) literal(limit int) ([]byte, error) {
 	out := treeLiteral{Type: treeType, Entries: make([]entryLiteral, 0, len(t))}
 	for _, path := range t.Paths() {
-		out.Entries = append(out.Entries, literalOf(path, t[path]))
+		out.Entries = append(out.Entries, literalOf(path, t[path], limit))
 	}
 	return json.Marshal(out)
 }
 
-// literalOf returns the literal of the entry e at path.
-func literalOf(path string, e Entry) entryLiteral {
+// literalOf returns the literal of the entry e at path, which states the
+// content of a file longer than limit by its digest and its size.
+func literalOf(path string, e Entry, limit int) entryLiteral {
 	l := entryLiteral{Path: path}
 	if e.Kind == File {
 		content := e.Content
-		if len(content) > ContentLimit {
+		if len(content) > limit {
 			l.Digest, l.Size = digest(content), len(content)
 		} else if utf8.ValidString(content) {
 			l.Text = &content

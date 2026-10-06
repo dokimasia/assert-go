@@ -69,6 +69,29 @@ func TestLiteral(t *testing.T) {
 		})
 	})
 
+	t.Run("Encode", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns the literal of every kind and form of entry, in path order", func(t *testing.T) {
+			t.Parallel()
+
+			got, err := everyKindTree.Encode()
+			assert.NoError(t, err, "the tree encodes")
+			assert.Equal(t, string(got), everyKind, "the tree literal")
+		})
+
+		t.Run("states the whole content of a file over the limit, which Decode reads back", func(t *testing.T) {
+			t.Parallel()
+
+			big := filetree.Tree{"big": fileOf(strings.Repeat("a", filetree.ContentLimit+1))}
+			raw, err := big.Encode()
+			assert.NoError(t, err, "the tree encodes")
+			got, err := filetree.Decode(raw)
+			assert.NoError(t, err, "the literal decodes")
+			assert.Equal(t, got, big, "the tree with the whole content")
+		})
+	})
+
 	t.Run("Decode", func(t *testing.T) {
 		t.Parallel()
 
@@ -210,6 +233,7 @@ func literalCases() []alloctest.Case {
 	raw := []byte(everyKind)
 	return []alloctest.Case{
 		{Name: "MarshalJSON", Call: func(assert.TB) { keptBytes, errKept = everyKindTree.MarshalJSON() }, Allocs: 13},
+		{Name: "Encode", Call: func(assert.TB) { keptBytes, errKept = everyKindTree.Encode() }, Allocs: 13},
 		{Name: "Decode", Call: func(assert.TB) { keptTree, errKept = filetree.Decode(raw) }, Allocs: 120},
 	}
 }

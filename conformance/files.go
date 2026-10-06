@@ -180,7 +180,7 @@ func writeGolden(dir, goldenDir string, raw json.RawMessage) error {
 func compareAfter(dir string, after json.RawMessage) error {
 	tree, err := filetree.Read(os.DirFS(dir), false)
 	// A tree of strings and modes always encodes.
-	got, _ := tree.MarshalJSON()
+	got, _ := tree.Encode()
 	if err != nil || !sameJSON(got, after) {
 		return fault.At(fault.New("the golden tree is %s, want %s", string(got), string(after)).Because(err),
 			fault.Field(afterMember))

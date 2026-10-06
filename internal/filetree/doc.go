@@ -12,8 +12,8 @@
 // [NewRecord] builds the record of a comparison that fails. [Write] writes a
 // tree into a directory as a workspace does, and [Update] makes a directory
 // equal a tree as an update of a golden tree does. [Tree.MarshalJSON] writes
-// the tree literal of a record, and [Decode] reads the tree literal of an
-// input.
+// the tree literal of a record, [Tree.Encode] writes the tree literal of an
+// input, and [Decode] reads the tree literal of an input.
 //
 // # Platforms
 //

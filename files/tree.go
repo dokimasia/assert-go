@@ -33,10 +33,11 @@ func (t Tree) internal() filetree.Tree {
 	return out
 }
 
-// MarshalJSON returns the tree literal of t. A file states its content as
-// text when the content is valid UTF-8, and as lowercase hexadecimal bytes
-// otherwise. A file that states no mode states executable when its owner may
-// execute it.
+// MarshalJSON returns the tree literal of t, which [Tree.UnmarshalJSON]
+// reads back. A file states its whole content, however long, as text when
+// the content is valid UTF-8, and as lowercase hexadecimal bytes otherwise.
+// A file that states no mode states executable when its owner may execute
+// it.
 //
 // # Errors
 //
@@ -53,7 +54,7 @@ func (t Tree) MarshalJSON() ([]byte, error) {
 	if err := internal.Check(); err != nil {
 		return nil, fault.In(marshalOp, err)
 	}
-	return internal.MarshalJSON()
+	return internal.Encode()
 }
 
 // UnmarshalJSON sets t to the tree that the tree literal data states.

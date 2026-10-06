@@ -5,6 +5,7 @@ package files_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -47,6 +48,20 @@ func TestTree(t *testing.T) {
 			assert.NoError(t, err, "the tree marshals")
 			assert.Equal(t, string(got), everyKind, "the tree literal, its entries in path order")
 		})
+
+		t.Run(
+			"states the whole content of a file over 65,536 bytes, which UnmarshalJSON reads back",
+			func(t *testing.T) {
+				t.Parallel()
+
+				big := files.Tree{"big": files.Text(strings.Repeat("a", 65537))}
+				raw, err := json.Marshal(big)
+				assert.NoError(t, err, "the tree marshals")
+				var got files.Tree
+				assert.NoError(t, json.Unmarshal(raw, &got), "the literal decodes")
+				assert.Equal(t, got, big, "the tree with the whole content")
+			},
+		)
 
 		t.Run("returns a fault at an entry that breaks a rule of a tree", func(t *testing.T) {
 			t.Parallel()
