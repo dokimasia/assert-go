@@ -24,6 +24,15 @@ const attrLine = "\x16=== ATTR  "
 // attribute fits.
 const lineBuffer = 4096
 
+// firstKey is the key of the record of a test's first call.
+const firstKey = "dokimi.assert.1"
+
+// embedding is a seat that embeds a test's seat, as a type that gives a
+// test a clock of its own does.
+type embedding struct {
+	*testing.T
+}
+
 // TestAttr checks the records that a test's seat writes through its Attr,
 // in a child process, whose switch the parent sets.
 func TestAttr(t *testing.T) {
@@ -54,6 +63,20 @@ func TestAttr(t *testing.T) {
 			record.Add(record.Of(second), call("true", "b"))
 			assert.Equal(t, first.attributes()[0][0], "dokimi.assert.1", "the first test's first number")
 			assert.Equal(t, second.attributes()[0][0], "dokimi.assert.1", "the second test's first number")
+		})
+		t.Run("returns the test's Calls for a seat that embeds the test's seat", func(t *testing.T) {
+			t.Parallel()
+			if !childtest.InChild(t) {
+				out := runChild(t, on)
+				for _, seq := range []string{"1", "2", "3"} {
+					got := strings.Count(out, attrLine+t.Name()+" dokimi.assert."+seq+" ")
+					assert.Equal(t, got, 1, "one record numbered "+seq)
+				}
+				return
+			}
+			record.Add(record.Of(t), call("true", "the test's call"))
+			record.Add(record.Of(embedding{t}), call("true", "the embedding seat's call"))
+			record.Add(record.Of(t), call("true", "the test's next call"))
 		})
 	})
 
@@ -98,19 +121,38 @@ func TestAttr(t *testing.T) {
 				assert.True(t, fits, "each line fits test2json's buffer")
 			}
 		})
-		t.Run("writes a rune per attribute for a test whose name fills the buffer", func(t *testing.T) {
+		t.Run("splits the record into ASCII values for a test whose name leaves room for less than a rune",
+			func(t *testing.T) {
+				t.Parallel()
+				if !childtest.InChild(t) {
+					runChild(t, on)
+					return
+				}
+				const contract = "é € 😀"
+				for room := 1; room < utf8.UTFMax; room++ {
+					seat := &attrs{name: strings.Repeat("n", lineBuffer-len(attrLine)-len("  \n")-len(firstKey)-room)}
+					record.Add(record.Of(seat), call("true", contract))
+					var joined strings.Builder
+					for _, a := range seat.attributes() {
+						assert.True(t, len(a[1]) <= room, "each value fits the room")
+						assert.Matches(t, a[1], `^[ -~]+$`, "each value is printable ASCII")
+						joined.WriteString(a[1])
+					}
+					got := decoded(t, joined.String())
+					assert.Equal(t, got["contract"], any(contract), "the joined record")
+				}
+			})
+		t.Run("writes the whole record in one attribute for a test whose name leaves no room", func(t *testing.T) {
 			t.Parallel()
 			if !childtest.InChild(t) {
 				runChild(t, on)
 				return
 			}
 			seat := &attrs{name: strings.Repeat("n", lineBuffer)}
-			record.Add(record.Of(seat), call("true", "c"))
+			record.Add(record.Of(seat), call("true", "é"))
 			written := seat.attributes()
-			assert.True(t, len(written) > 1, "more than one attribute")
-			for _, a := range written[:len(written)-1] {
-				assert.Length(t, a[1], utf8.UTFMax, "the room for the least runes")
-			}
+			assert.Length(t, written, 1, "one attribute")
+			assert.Equal(t, decoded(t, written[0][1])["contract"], any("é"), "the whole record")
 		})
 	})
 

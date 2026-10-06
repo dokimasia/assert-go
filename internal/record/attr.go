@@ -4,8 +4,12 @@
 package record
 
 import (
+	"fmt"
+	"io"
 	"strconv"
+	"strings"
 	"sync"
+	"unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -27,16 +31,22 @@ const (
 const keyPrefix = "dokimi.assert."
 
 // attrSeat is a test's seat, which writes attributes into the test's
-// output: testing.T, testing.B and testing.F.
+// output: testing.T, testing.B and testing.F, and a type that embeds one of
+// them.
 type attrSeat interface {
 	// Attr writes the attribute key with value.
 	Attr(key, value string)
 	// Name returns the test's name.
 	Name() string
+	// Output returns the writer of the test's output.
+	Output() io.Writer
 }
 
-// tests are the Calls of every test that recorded a call, by the test's
-// seat. The map keeps each entry for the life of the process.
+// tests are the Calls of every test that recorded a call, by the writer of
+// the test's output. Every seat of one run of a test returns that writer,
+// and so does a type that embeds the test's seat, so their calls take their
+// numbers in one sequence. A benchmark keeps its writer over its rounds. The
+// map keeps each entry for the life of the process.
 var tests sync.Map
 
 // testCalls returns the Calls of a test's seat while [On] reports true, and
@@ -49,20 +59,35 @@ func testCalls(seat any) *Calls {
 	if on, _ := On(); !on {
 		return nil
 	}
-	if c, ok := tests.Load(seat); ok {
+	output := t.Output()
+	if c, ok := tests.Load(output); ok {
 		return c.(*Calls)
 	}
-	c, _ := tests.LoadOrStore(seat, &Calls{state: writing, sink: t})
+	c, _ := tests.LoadOrStore(output, &Calls{state: writing, sink: t})
 	return c.(*Calls)
 }
 
 // write writes the record of call seq through the Attr of seat, under the
 // key dokimi.assert.<seq>. It splits a record whose line would not fit
-// test2json's buffer over consecutive attributes of the same key, at UTF-8
-// boundaries. A reader joins their values in order.
+// test2json's buffer over consecutive attributes of the same key, and a
+// reader joins their values in order. Each value is valid UTF-8, because
+// every split falls between two runes:
+//
+//   - A line with room for a rune of any length gets the runes that fit.
+//   - A line with room for fewer bytes than a rune can take gets the record
+//     with every rune beyond ASCII as a JSON escape, so that every byte is a
+//     rune.
+//   - A line without room for one byte gets the whole record, which
+//     test2json reports as output and not as an attribute.
 func write(seat attrSeat, seq int, text string) {
 	key := keyPrefix + strconv.Itoa(seq)
-	room := max(lineBuffer-attrFraming-attrSeparators-len(seat.Name())-len(key), utf8.UTFMax)
+	room := lineBuffer - attrFraming - attrSeparators - len(seat.Name()) - len(key)
+	switch {
+	case room < 1:
+		room = len(text)
+	case room < utf8.UTFMax:
+		text = escaped(text)
+	}
 	for len(text) > room {
 		cut := room
 		for !utf8.RuneStart(text[cut]) {
@@ -72,4 +97,22 @@ func write(seat attrSeat, seq int, text string) {
 		text = text[cut:]
 	}
 	seat.Attr(key, text)
+}
+
+// escaped returns the JSON text with every rune beyond ASCII as a JSON
+// escape: one \uXXXX, or a surrogate pair of two for a rune beyond the Basic
+// Multilingual Plane. The text states the same JSON value in ASCII alone,
+// because a rune beyond ASCII occurs only inside a JSON string.
+func escaped(text string) string {
+	var b strings.Builder
+	for _, r := range text {
+		if r < utf8.RuneSelf {
+			b.WriteRune(r)
+			continue
+		}
+		for _, unit := range utf16.AppendRune(nil, r) {
+			fmt.Fprintf(&b, `\u%04x`, unit)
+		}
+	}
+	return b.String()
 }

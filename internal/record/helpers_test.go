@@ -5,6 +5,8 @@ package record_test
 
 import (
 	"encoding/json"
+	"io"
+	"strings"
 	"sync"
 	"testing"
 
@@ -39,10 +41,17 @@ type body struct {
 type attrs struct {
 	// name is the test's name.
 	name string
+	// output is the test's output, which no call writes to.
+	output strings.Builder
 	// mu guards written.
 	mu sync.Mutex
 	// written are the attributes, each a key and a value.
 	written [][2]string
+}
+
+// Output returns the test's output.
+func (a *attrs) Output() io.Writer {
+	return &a.output
 }
 
 // Attr keeps the attribute key with value.

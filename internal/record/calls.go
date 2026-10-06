@@ -96,9 +96,10 @@ func (c *Calls) calls() *Calls {
 //
 //   - A seat of this module that embeds a Calls has its Calls, unless that
 //     Calls records nothing.
-//   - A test's seat, which declares Attr and Name as testing.T, testing.B
-//     and testing.F do, has a Calls of its own while [On] reports true. The
-//     package keeps the Calls of a test for the life of the process,
+//   - A test's seat, which declares Attr, Name and Output as testing.T,
+//     testing.B and testing.F do, has the Calls of its test while [On]
+//     reports true. A type that embeds the test's seat has the same Calls.
+//     The package keeps the Calls of a test for the life of the process,
 //     because a cleanup of the test can make calls until the test ends.
 //   - Any other seat has none.
 //
