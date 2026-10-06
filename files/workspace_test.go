@@ -23,6 +23,7 @@ func TestWorkspace(t *testing.T) {
 
 		t.Run("writes each entry, with 0644 and 0755 where the tree states no mode", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 
 			dir := files.Workspace(t, files.Tree{
 				"go.mod":  files.Text("module example.com/a\n"),
@@ -50,6 +51,7 @@ func TestWorkspace(t *testing.T) {
 
 		t.Run("writes a tree whose directory forbids its owner to write, which the test removes", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 
 			dir := files.Workspace(
 				t,

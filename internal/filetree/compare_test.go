@@ -33,6 +33,7 @@ func TestCompare(t *testing.T) {
 			name     string
 			want     filetree.Tree
 			contains bool
+			modes    bool
 			wantDiff []string
 		}{
 			{
@@ -77,18 +78,21 @@ func TestCompare(t *testing.T) {
 				name:     "returns a path of a file whose stated mode differs",
 				want:     filetree.Tree{"a.txt": fileWith("a\n", privateMode)},
 				contains: true,
+				modes:    true,
 				wantDiff: []string{"a.txt"},
 			},
 			{
 				name:     "returns a path of a directory whose stated mode differs",
 				want:     filetree.Tree{"docs": dirWith(0o700)},
 				contains: true,
+				modes:    true,
 				wantDiff: []string{"docs"},
 			},
 			{
 				name:     "returns a path of a file whose execute bit differs where the wanted file states no mode",
 				want:     filetree.Tree{"a.txt": {Kind: filetree.File, Content: "a\n", Mode: filetree.OwnerExecute}},
 				contains: true,
+				modes:    true,
 				wantDiff: []string{"a.txt"},
 			},
 			{
@@ -106,6 +110,9 @@ func TestCompare(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
+				if tt.modes {
+					mustRecordModes(t)
+				}
 				assert.Equal(t, filetree.Differing(tt.want, read, tt.contains), tt.wantDiff, "the paths that differ")
 			})
 		}

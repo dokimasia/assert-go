@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert/conformance"
 	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/filetree"
 )
 
 // builtID is the id of a vector or a case that a test builds.
@@ -189,6 +191,34 @@ func TestHelpers(t *testing.T) {
 
 // noSeed is the reason of a seed that is no decimal number.
 const noSeed = "the seed is no decimal number of 64 bits"
+
+// modeMember matches a member of a tree literal that states a mode or an
+// executable file.
+var modeMember = regexp.MustCompile(`"mode"\s*:|"executable"\s*:\s*true`)
+
+// mustRecordModes skips t on a platform whose file systems record no
+// permission bits, where a tree reads no mode and no execute bit.
+func mustRecordModes(t *testing.T) {
+	t.Helper()
+	if err := filetree.ModesUnrecorded(); err != nil {
+		t.Skip(err)
+	}
+}
+
+// mustStore skips t for a files vector that a platform whose file systems
+// record no permission bits cannot store, as the definition's rules of
+// conformance state: a vector of has-mode, and one that states a mode or an
+// executable file. A files vector is one that states a workspace.
+func mustStore(t *testing.T, v conformance.Vector) {
+	t.Helper()
+	var files struct {
+		Workspace json.RawMessage `json:"workspace"`
+	}
+	_ = json.Unmarshal(v.Raw, &files)
+	if files.Workspace != nil && (v.Kind == conformance.HasMode || modeMember.Match(v.Raw)) {
+		mustRecordModes(t)
+	}
+}
 
 // inVector returns the path of a fault at segs inside the vector or the
 // case that a test builds.

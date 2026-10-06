@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/filetree"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/store"
 )
@@ -81,6 +82,16 @@ func entryText(tb testing.TB, changes map[string]any, removed ...string) string 
 	text, err := json.Marshal(fields)
 	assert.NoError(tb, err, "the fields are JSON")
 	return string(text)
+}
+
+// mustRecordModes skips t on a platform whose file systems record no
+// permission bits, such as Windows, which reads a file's mode from its
+// read-only attribute and honours no mode of a directory.
+func mustRecordModes(t *testing.T) {
+	t.Helper()
+	if err := filetree.ModesUnrecorded(); err != nil {
+		t.Skip(err)
+	}
 }
 
 // sameChoices reports whether a and b are the same choices in order.

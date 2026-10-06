@@ -61,6 +61,7 @@ func TestCompare(t *testing.T) {
 
 		t.Run("reports a record of tree-equal at the caller's line", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 
 			want := files.Tree{"a.txt": files.Text("b\n"), "current": files.Link("a.txt")}
 			seat := &matchertest.Seat{}
@@ -85,6 +86,7 @@ func TestCompare(t *testing.T) {
 
 		t.Run("states the mode of an entry read where the wanted entry states one", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 
 			seat := &matchertest.Seat{}
 			files.Equal(seat, mapped, files.Tree{
@@ -98,6 +100,7 @@ func TestCompare(t *testing.T) {
 
 		t.Run("renders the record with the sentence that the package registers", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 
 			r := assert.NewRecorder()
 			files.Equal(r, mapped, files.Tree{"a.txt": files.Text("a\n"), "current": files.Link("a.txt")},
@@ -222,6 +225,7 @@ func TestCompare(t *testing.T) {
 
 		t.Run("reports a change of a mode", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 
 			dir := files.Workspace(t, files.Tree{"a.txt": files.Text("a\n")})
 			seat := &matchertest.Seat{}

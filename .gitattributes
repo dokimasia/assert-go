@@ -1,0 +1,4 @@
+# Text files check out with LF line endings on every platform, so that the
+# golden files, the stored cases and the vendored definition match the bytes
+# that the tests read and the digests that the manifest states.
+* text=auto eol=lf

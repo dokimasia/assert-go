@@ -103,8 +103,11 @@
 //   - [PathAbsent], [IsFile], [IsDir], [LinksTo], [HasContent] and [HasMode]
 //     check a path of the workspace.
 //
-// The runner does not skip a vector, so it needs a platform that records
-// permission bits and creates symbolic links.
+// The runner does not skip a vector. On a platform whose file systems record
+// no permission bits, the package's tests skip the vectors that the
+// definition's rules of conformance skip there: each vector of has-mode, and
+// each one that states a mode or an executable file. The tests need a
+// platform that creates symbolic links.
 //
 // # Errors
 //

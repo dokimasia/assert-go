@@ -69,6 +69,7 @@ func TestTree(t *testing.T) {
 
 		t.Run("reports a record of golden-match-tree at the caller's line for a golden tree that differs",
 			func(t *testing.T) {
+				mustRecordModes(t)
 				t.Chdir(t.TempDir())
 				goldenTree(t, filetree.Tree{
 					"api.go":      {Kind: filetree.File, Content: "package api\n\nfunc Old() {}\n"},
@@ -96,6 +97,7 @@ func TestTree(t *testing.T) {
 			})
 
 		t.Run("fails a missing golden tree with want nil and the output's entries", func(t *testing.T) {
+			mustRecordModes(t)
 			t.Chdir(t.TempDir())
 			s := &matchertest.Seat{}
 			golden.MatchTree(s, "api", api, checking)
@@ -116,6 +118,7 @@ func TestTree(t *testing.T) {
 		})
 
 		t.Run("writes a missing golden tree and passes while updating", func(t *testing.T) {
+			mustRecordModes(t)
 			t.Chdir(t.TempDir())
 			r := assert.NewRecorder()
 			golden.MatchTree(r, "api", api, updating)
@@ -124,6 +127,7 @@ func TestTree(t *testing.T) {
 		})
 
 		t.Run("rewrites a golden tree that differs without its extra entries while updating", func(t *testing.T) {
+			mustRecordModes(t)
 			t.Chdir(t.TempDir())
 			outside := filepath.Join(t.TempDir(), "keep.txt")
 			assert.NoError(t, os.WriteFile(outside, []byte("kept"), goldenPerm), "a file outside is written")
@@ -140,6 +144,7 @@ func TestTree(t *testing.T) {
 		})
 
 		t.Run("leaves an equal golden tree as it is while updating", func(t *testing.T) {
+			mustRecordModes(t)
 			t.Chdir(t.TempDir())
 			goldenTree(
 				t,
@@ -188,6 +193,11 @@ func TestTree(t *testing.T) {
 				name: "ends with a fault for a golden tree that cannot be read", give: "api", output: api,
 				setup: func(t *testing.T) {
 					t.Helper()
+					if runtime.GOOS == "windows" {
+						t.Skip(
+							"Windows opens the root of a file system on a file as the file, which reads as no directory",
+						)
+					}
 					assert.NoError(t, os.MkdirAll(filepath.Dir(apiDir), 0o755), "the conventional directory is made")
 					assert.NoError(t, os.WriteFile(apiDir, []byte("a file"), goldenPerm), "a file is the golden tree")
 				},

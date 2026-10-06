@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/filetree"
 )
 
 // Whether a run may rewrite its golden files. Named rather than
@@ -22,6 +23,15 @@ const (
 
 // goldenPerm is the mode of a golden file that a test writes.
 const goldenPerm = 0o644
+
+// mustRecordModes skips t on a platform whose file systems record no
+// permission bits, where a tree reads no mode and no execute bit.
+func mustRecordModes(t *testing.T) {
+	t.Helper()
+	if err := filetree.ModesUnrecorded(); err != nil {
+		t.Skip(err)
+	}
+}
 
 // read returns the content of a golden file.
 func read(t *testing.T, path string) string {

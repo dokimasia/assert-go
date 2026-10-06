@@ -74,6 +74,7 @@ func TestSubject(t *testing.T) {
 
 		t.Run("returns a rewrites-files that fails on a file that its owner may not read", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 			dir := files.Workspace(t, files.Tree{"a.txt": files.Text("a").WithMode(0o200)})
 			assert.ErrorIs(t, conformance.Subjects["rewrites-files"]().Files(dir), fs.ErrPermission,
 				"the subject fails on the read")

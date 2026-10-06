@@ -172,6 +172,7 @@ func TestDirectory(t *testing.T) {
 
 		t.Run("writes the file with mode 0o644 less the umask", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 			dir := t.TempDir()
 			_, err := store.Save(dir, pinned())
 			assert.NoError(t, err, "the entry is written")
@@ -240,6 +241,7 @@ func TestDirectory(t *testing.T) {
 
 		t.Run("returns the error of a directory that cannot be written", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 			if os.Geteuid() == 0 {
 				t.Skip("root writes into a read-only directory")
 			}

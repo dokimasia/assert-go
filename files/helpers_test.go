@@ -12,6 +12,7 @@ import (
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/files"
 	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/filetree"
 )
 
 // The values that a measured call returns, kept so that the compiler keeps
@@ -37,6 +38,15 @@ const (
 
 // longName is a name longer than any file system accepts in one entry.
 var longName = strings.Repeat("n", 300)
+
+// mustRecordModes skips tb on a platform whose file systems record no
+// permission bits, where a tree reads no mode and no execute bit.
+func mustRecordModes(tb testing.TB) {
+	tb.Helper()
+	if err := filetree.ModesUnrecorded(); err != nil {
+		tb.Skip(err)
+	}
+}
 
 // faultSeat is the seat of a test that keeps each fault of a call that ends
 // in one, and fails the test for nothing else that a seat of its own would

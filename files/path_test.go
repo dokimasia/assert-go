@@ -37,6 +37,7 @@ func TestPath(t *testing.T) {
 	tests := []struct {
 		name       string
 		call       func(tb assert.TB)
+		modes      bool
 		wantID     string
 		wantDetail map[string]any
 	}{
@@ -100,25 +101,25 @@ func TestPath(t *testing.T) {
 			wantID: "has-content", wantDetail: map[string]any{"want": "", "got": nil, "kind": "directory"},
 		},
 		{
-			name: "HasMode passes at a file of the mode",
+			name: "HasMode passes at a file of the mode", modes: true,
 			call: func(tb assert.TB) { files.HasMode(tb, at("keys/id"), privateMode, "private") },
 		},
 		{
-			name: "HasMode passes at a directory of the mode",
+			name: "HasMode passes at a directory of the mode", modes: true,
 			call: func(tb assert.TB) { files.HasMode(tb, at("keys"), 0o700, "private") },
 		},
 		{
-			name:   "HasMode fails at a file of another mode",
+			name: "HasMode fails at a file of another mode", modes: true,
 			call:   func(tb assert.TB) { files.HasMode(tb, at("a.txt"), privateMode, "private") },
 			wantID: "has-mode", wantDetail: map[string]any{"want": privateMode, "got": fileMode, "kind": "file"},
 		},
 		{
-			name:   "HasMode fails at a link, which has no mode",
+			name: "HasMode fails at a link, which has no mode", modes: true,
 			call:   func(tb assert.TB) { files.HasMode(tb, at("current"), fileMode, "private") },
 			wantID: "has-mode", wantDetail: map[string]any{"want": fileMode, "got": nil, "kind": "link"},
 		},
 		{
-			name:   "HasMode fails where nothing is",
+			name: "HasMode fails where nothing is", modes: true,
 			call:   func(tb assert.TB) { files.HasMode(tb, at("b.txt"), fileMode, "private") },
 			wantID: "has-mode", wantDetail: map[string]any{"want": fileMode, "got": nil, "kind": nil},
 		},
@@ -126,6 +127,9 @@ func TestPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			if tt.modes {
+				mustRecordModes(t)
+			}
 			seat := &matchertest.Seat{}
 			tt.call(seat)
 			records := seat.Records()
@@ -197,9 +201,11 @@ func BenchmarkPath(b *testing.B) {
 }
 
 // pathCases returns a passing call of each assertion of one path, with its
-// allocation ceiling, measured.
+// allocation ceiling, measured. HasMode passes only where the file systems
+// record permission bits.
 func pathCases(tb testing.TB) []alloctest.Case {
 	tb.Helper()
+	mustRecordModes(tb)
 	dir := files.Workspace(tb, pathTree)
 	at := func(name string) string { return filepath.Join(dir, name) }
 	absent, file, keys, current := at("b.txt"), at("a.txt"), at("keys"), at("current")

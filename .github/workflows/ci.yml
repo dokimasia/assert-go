@@ -29,11 +29,42 @@ jobs:
         run: go install "go.thesmos.sh/ergon/cmd/ergon@${ERGON_VERSION}"
       - run: ergon bootstrap
       - run: ergon check
+  # Vet, the build and the race tests run on every supported OS, because the
+  # trees of files and the stores of properties read and write the file
+  # system of the platform. The other jobs check properties of the source
+  # that do not depend on the runner's OS, so they run on Linux only.
+  vet-build:
+    name: Vet + Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go install "go.thesmos.sh/ergon/cmd/ergon@${ERGON_VERSION}"
+      - run: ergon lint vet
+      - run: ergon build
   # The assertions run subjects, attempts and leak checks on goroutines of
   # their own, and the seats are shared between them, so every test also
   # runs under the race detector.
-  race:
-    runs-on: ubuntu-latest
+  test:
+    name: Test (race, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7

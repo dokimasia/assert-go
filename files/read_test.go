@@ -4,6 +4,7 @@
 package files_test
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -40,15 +41,15 @@ func TestRead(t *testing.T) {
 		}{
 			{
 				name: "ends with a fault where nothing is", path: "b.txt",
-				wantReason: `no file is at the path "` + filepath.Join(dir, "b.txt") + `"`,
+				wantReason: fmt.Sprintf("no file is at the path %q", filepath.Join(dir, "b.txt")),
 			},
 			{
 				name: "ends with a fault at a directory", path: "docs",
-				wantReason: `no file is at the path "` + filepath.Join(dir, "docs") + `"`,
+				wantReason: fmt.Sprintf("no file is at the path %q", filepath.Join(dir, "docs")),
 			},
 			{
 				name: "ends with a fault at a link to a file", path: "current",
-				wantReason: `no file is at the path "` + filepath.Join(dir, "current") + `"`,
+				wantReason: fmt.Sprintf("no file is at the path %q", filepath.Join(dir, "current")),
 			},
 			{
 				name: "ends with a fault for a path that cannot be read", path: longName,

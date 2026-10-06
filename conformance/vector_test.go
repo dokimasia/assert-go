@@ -121,6 +121,7 @@ func TestVector(t *testing.T) {
 			}
 			t.Run("returns nil for "+string(v.Kind)+" vector "+v.ID, func(t *testing.T) {
 				t.Parallel()
+				mustStore(t, v)
 				if err := v.Check(t.TempDir()); err != nil {
 					t.Fatal(err)
 				}
@@ -153,6 +154,7 @@ func TestVectorEnv(t *testing.T) {
 				continue
 			}
 			t.Run("returns nil for "+string(v.Kind)+" vector "+v.ID, func(t *testing.T) {
+				mustStore(t, v)
 				dir := t.TempDir()
 				t.Chdir(dir)
 				if err := v.Check(dir); err != nil {
