@@ -6,6 +6,7 @@ package stateful
 import (
 	"math"
 	"runtime"
+	"runtime/debug"
 	"slices"
 
 	"go.dokimi.dev/assert/internal/prop/choice"
@@ -37,12 +38,21 @@ const (
 	panicked ending = 3
 )
 
-// turn is how a task's turn ended, and the value of a task's panic.
+// maxFrames is the most frames of a task's goroutine that a turn keeps of
+// the task's panic.
+const maxFrames = 64
+
+// turn is how a task's turn ended, and where the task raised its panic.
 type turn struct {
 	// how is how the turn ended.
 	how ending
 	// value is the value of the task's panic.
 	value any
+	// pcs are the frames of the task's goroutine at the panic.
+	pcs []uintptr
+	// stack is the stack of the task's goroutine at the panic, as
+	// runtime/debug.Stack formats it.
+	stack []byte
 }
 
 // task is a spawned task.
@@ -71,7 +81,8 @@ type task struct {
 //
 // The scheduler registers a cleanup with its case, which ends every task
 // that waits for a release, so every goroutine of a case has ended once the
-// case has.
+// case has. A task that panics as it ends, in a deferred call, fails the
+// case with its panic.
 //
 // # Concurrency
 //
@@ -104,7 +115,7 @@ type Scheduler struct {
 // it registers with the case.
 func NewScheduler(c *prop.Case, strategy Strategy) *Scheduler {
 	s := &Scheduler{c: (*engine.Case)(c), strategy: strategy, back: make(chan turn)}
-	c.Cleanup(s.end)
+	c.Cleanup(s.cleanUp)
 	return s
 }
 
@@ -150,12 +161,14 @@ func (s *Scheduler) Yield() {
 // next. A task that ends its goroutine, as a fatal record, a rejection or a
 // draw that ends the case does, makes Run end every other task and then end
 // its own goroutine the same way. A task that panics makes Run end every
-// other task and then raise the panic again.
+// other task and then raise the panic again. The case keeps a panic that
+// Run raises again with the place where the task raised it.
 //
 // # Panics
 //
 // Run panics when a task calls it on its own scheduler, and raises the
-// panic of a task.
+// panic of a task: of the task that panicked in its turn, or of the first
+// task that panicked as Run ended it.
 //
 // # Allocation contract
 //
@@ -180,11 +193,12 @@ func (s *Scheduler) Run() {
 		case yielded:
 			s.ready = append(s.ready, t)
 		case exited:
-			s.end()
+			s.raise(s.end())
 			runtime.Goexit()
 		case panicked:
 			s.end()
-			panic(r.value)
+			kept := r
+			s.raise(&kept)
 		}
 	}
 }
@@ -240,13 +254,15 @@ func (s *Scheduler) release(t *task) turn {
 }
 
 // start runs the task t on its goroutine once the scheduler releases it,
-// and sends how its last turn ended. A task that the scheduler ends before
-// its first release runs nothing.
+// and sends how its last turn ended, with where the task raised a panic. A
+// task that the scheduler ends before its first release runs nothing.
 func (s *Scheduler) start(t *task) {
 	r := turn{how: exited}
 	defer func() {
 		if v := recover(); v != nil {
-			r = turn{how: panicked, value: v}
+			var pcs [maxFrames]uintptr
+			n := runtime.Callers(1, pcs[:])
+			r = turn{how: panicked, value: v, pcs: slices.Clone(pcs[:n]), stack: debug.Stack()}
 		}
 		s.back <- r
 	}()
@@ -257,12 +273,33 @@ func (s *Scheduler) start(t *task) {
 }
 
 // end ends every task that waits for a release, a task that an ending task
-// spawns included, and returns once each has ended.
-func (s *Scheduler) end() {
+// spawns included, and returns once each has ended. It returns the turn of
+// the first task that panicked as it ended, in a deferred call, and nil
+// when none did.
+func (s *Scheduler) end() *turn {
+	var first *turn
 	for len(s.ready) > 0 {
 		t := s.ready[0]
 		s.ready = s.ready[1:]
 		t.resume <- false
-		<-s.back
+		if r := <-s.back; r.how == panicked && first == nil {
+			kept := r
+			first = &kept
+		}
+	}
+	return first
+}
+
+// cleanUp ends every task that waits for a release when the case ends, and
+// raises again the panic of the first task that panicked as it ended.
+func (s *Scheduler) cleanUp() {
+	s.raise(s.end())
+}
+
+// raise raises the panic of the turn r again, on the calling goroutine,
+// with the place where the task raised it, and does nothing for nil.
+func (s *Scheduler) raise(r *turn) {
+	if r != nil {
+		s.c.Raise(r.value, r.pcs, r.stack)
 	}
 }

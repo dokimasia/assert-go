@@ -4,6 +4,7 @@
 package stateful_test
 
 import (
+	"runtime"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -203,6 +204,64 @@ func TestScheduler(t *testing.T) {
 			}, 0, 0)
 			assert.Equal(t, log.all(), suffixed("b1", "b ended"), "b ends in its yield")
 			assert.Equal(t, e.Panic, any("broken counter"), "the task's panic fails the case")
+		})
+
+		t.Run("raises the panic of a task that panics as Run ends it", func(t *testing.T) {
+			t.Parallel()
+			e := scheduled(stateful.Uniform(), func(c *prop.Case, s *stateful.Scheduler) {
+				s.Spawn(func() {
+					defer func() { panic("teardown") }()
+					s.Yield()
+				})
+				s.Spawn(func() { c.Assume(false) })
+				s.Run()
+			}, 0, 0)
+			assert.Equal(t, []any{e.Status, e.Panic}, []any{engine.CaseFailed, "teardown"},
+				"the panic of the ended task fails the case that the other task rejected")
+		})
+
+		t.Run("keeps the place where each task raised its panic", func(t *testing.T) {
+			t.Parallel()
+			raisedAt := func(task func()) assert.Where {
+				return scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+					s.Spawn(task)
+					s.Run()
+				}).Identity.Where
+			}
+			_, file, line, _ := runtime.Caller(0)
+			first := raisedAt(func() { panic("first") })
+			second := raisedAt(func() { panic("second") })
+			assert.Equal(
+				t,
+				[]assert.Where{first, second},
+				[]assert.Where{
+					{File: file, Line: line + 1},
+					{File: file, Line: line + 2},
+				},
+				"the line of each task's panic",
+			)
+		})
+	})
+
+	t.Run("NewScheduler", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("raises the panic of a task that panics as the case ends it", func(t *testing.T) {
+			t.Parallel()
+			e := scheduled(stateful.Uniform(), func(c *prop.Case, s *stateful.Scheduler) {
+				source := c.Rand()
+				for range engine.MaxChoices - 1 {
+					source.Uint64()
+				}
+				s.Spawn(func() {
+					defer func() { panic("teardown") }()
+					s.Yield()
+				})
+				s.Spawn(func() {})
+				s.Run()
+			})
+			assert.Equal(t, []any{e.Status, e.Panic}, []any{engine.CaseFailed, "teardown"},
+				"the release past the cap ends the case, and the cleanup raises the ended task's panic")
 		})
 	})
 }
