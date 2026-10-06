@@ -26,6 +26,8 @@ import (
 //   - A nil Hash with a stated Equal hashes every state alike. The memo of
 //     the search then compares the states of every configuration of one set
 //     of calls, which is slower by orders of magnitude on a long history.
+//     The first check of a history against such a model notes the cause in
+//     the log of its seat.
 //
 // Equal must be exact. The search merges two configurations whose states
 // Equal reports equal, so an equality coarser than the model's meaning turns

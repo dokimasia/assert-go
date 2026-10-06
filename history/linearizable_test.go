@@ -4,6 +4,7 @@
 package history_test
 
 import (
+	"fmt"
 	"runtime"
 	"slices"
 	"sync"
@@ -121,6 +122,26 @@ func TestLinearizable(t *testing.T) {
 				[]any{history.Undecided, []any{"b"}, 4, 3}, "the partition of b, with the steps of a and of b")
 		})
 
+		t.Run("notes a model of Equal and no Hash once per history, in the log of the seat", func(t *testing.T) {
+			t.Parallel()
+			equal := func(a, b int) bool { return a == b }
+			hashless := history.Model[int]{Init: register.Init, Step: register.Step, Equal: equal}
+			hashed := history.Model[int]{
+				Init: register.Init, Step: register.Step, Equal: equal, Hash: func(s int) uint64 { return uint64(s) },
+			}
+			seat := &loggingSeat{Recorder: assert.NewRecorder()}
+			first, second := linearizableRead(), linearizableRead()
+			history.Linearizable(seat, first, hashless, contract)
+			history.Linearizable(seat, first, hashless, contract)
+			history.Linearizable(seat, second, hashed, contract)
+			history.Linearizable(seat, second, register, contract)
+			assert.False(t, seat.Failed(), "the history is linearizable under each model")
+			assert.Length(t, seat.notes(), 1, "the note of the first check of the first history")
+			assert.Contains(t, seat.notes()[0], "states Equal and no Hash", "the note names the cause")
+			history.Linearizable(seat, second, hashless, contract)
+			assert.Length(t, seat.notes(), 2, "and the note of the first such check of the second history")
+		})
+
 		t.Run("sends the sentence of the record through Fatalf to a seat without Report", func(t *testing.T) {
 			t.Parallel()
 			seat := &fatalSeat{}
@@ -232,12 +253,38 @@ func TestLinearizable(t *testing.T) {
 
 // passingRead is a history in which client 0 writes 1 and client 1 then
 // reads 1.
-var passingRead = func() *history.History {
+var passingRead = linearizableRead()
+
+// linearizableRead returns a history of its own in which client 0 writes 1
+// and client 1 then reads 1.
+func linearizableRead() *history.History {
 	h := history.New()
 	recordOK(h, 0, write, writeOne, nil, "x")
 	recordOK(h, 1, read, nil, 1, "x")
 	return h
-}()
+}
+
+// loggingSeat is a recorder with a log, which keeps the notes of a check.
+type loggingSeat struct {
+	*assert.Recorder
+
+	mu   sync.Mutex
+	logs []string
+}
+
+// Logf keeps the text of a note.
+func (s *loggingSeat) Logf(format string, args ...any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.logs = append(s.logs, fmt.Sprintf(format, args...))
+}
+
+// notes returns the notes that the seat keeps, in call order.
+func (s *loggingSeat) notes() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.logs)
+}
 
 // threePartitions returns a history of three partitions. Two writes of a
 // run at once, and a read of 3 follows them. A write of b and then a read of

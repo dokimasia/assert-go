@@ -26,6 +26,11 @@ const callerFrames = 64
 // panics, or ends the goroutine that runs it.
 var ErrModel = errors.New("history: a function of a model panics or ends its goroutine")
 
+// hashlessNote is the note of a check whose model states Equal and no Hash.
+const hashlessNote = linearizableOp + ": the model states Equal and no Hash, so the search hashes every " +
+	"state alike and compares each state with every state of the same calls. A Hash that agrees with Equal " +
+	"lets the search compare the states of one hash alone."
+
 // Linearizable checks that every partition of the history h has an order of
 // its calls that keeps the history's precedence and that the model m
 // accepts, and fails tb with one record of the assertion linearizable when
@@ -58,6 +63,12 @@ var ErrModel = errors.New("history: a function of a model panics or ends its gor
 // An [assert.Reporter] seat receives the record. Any other seat receives the
 // record's sentence through Fatalf. The call record of a recorded run states
 // the detail in the history's JSON form.
+//
+// A model that states Equal and no Hash makes the search compare the states
+// of every configuration of one set of calls, which is slower by orders of
+// magnitude on a long history. The first check of a history against such a
+// model writes a note that states the cause into the log of a seat that has
+// a log, whatever its verdict.
 //
 // # Errors
 //
@@ -92,6 +103,9 @@ func Linearizable[S any](tb assert.TB, h *History, m Model[S], contract string, 
 			fault.New("Final states %T for a model whose states are of type %v", c.final, reflect.TypeFor[S]())))
 		return
 	}
+	if m.Equal != nil && m.Hash == nil && h.noteHashless() {
+		matcher.Note(tb, hashlessNote)
+	}
 	d, err := check(h, m.operations(), c)
 	if err != nil {
 		run.Fault(matcher.Fatal, linearizableID, contract, err)
@@ -109,6 +123,17 @@ func Linearizable[S any](tb assert.TB, h *History, m Model[S], contract string, 
 	run.FailRun(matcher.Fatal, assert.Failure{
 		Assertion: linearizableID, Contract: contract, Detail: d.fields(), Where: where,
 	}, d)
+}
+
+// noteHashless reports whether no check of h has noted a model that states
+// Equal and no Hash, and records that one has.
+func (h *History) noteHashless() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	first := !h.hashless
+	h.hashless = true
+	return first
 }
 
 // check returns the detail of the check of h through the model's functions
