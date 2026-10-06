@@ -6,6 +6,7 @@ package prop_test
 import (
 	"errors"
 	"math"
+	"runtime"
 	"testing"
 	"time"
 
@@ -206,6 +207,10 @@ func TestOption(t *testing.T) {
 
 		t.Run("ends a shrink on the platform clock under a seat's controlled clock", func(t *testing.T) {
 			t.Parallel()
+			if runtime.GOOS == "windows" {
+				t.Skip("Windows advances the platform clock at each timer interrupt, up to 15.6 ms apart, " +
+					"so a shrink runs before the clock passes a deadline 1 ns away")
+			}
 			rec := assert.NewRecorder().WithClock(assert.NewControlled(today))
 			prop.ForAll(rec, contract, failsAtLeast(10000, 1001, big), prop.Seed(7), prop.ShrinkTime(time.Nanosecond))
 			got := rec.Failures()[0].Detail[counterexampleField]

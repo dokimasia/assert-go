@@ -27,6 +27,10 @@ import (
 // to other values than it records.
 const decodedReason = "the stored case decodes to other values than it records, and the run tested those"
 
+// unlistable is the name of a store that no file system lists on any
+// platform: it contains a NUL byte, which no file system accepts in a name.
+const unlistable = "no\x00store"
+
 // TestStore checks what a run reads from its store and writes to it, and
 // the claim that keeps two properties of a test from sharing one store. A
 // run in a test binary that a mutation run instrumented writes no entry, so
@@ -307,10 +311,8 @@ func TestStore(t *testing.T) {
 
 		t.Run("fails the run at once for a store that cannot be read", func(t *testing.T) {
 			t.Parallel()
-			file := filepath.Join(t.TempDir(), "file")
-			write(t, file, "")
 			seat := newTestSeat(t.Name())
-			dir := filepath.Join(file, "store")
+			dir := filepath.Join(t.TempDir(), unlistable)
 			prop.ForAll(seat, contract, failsFrom(900), prop.Seed(7), prop.Store(dir))
 			expectOnlyFault(t, seat.Faults(), fault.Error{
 				Op:     forAllOp,

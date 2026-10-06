@@ -38,6 +38,10 @@ const (
 	writable = 0o755
 )
 
+// unlistable is the name of a store that no file system lists on any
+// platform: it contains a NUL byte, which no file system accepts in a name.
+const unlistable = "no\x00store"
+
 // TestDirectory checks how a run reads its store and writes an entry.
 func TestDirectory(t *testing.T) {
 	t.Parallel()
@@ -128,13 +132,12 @@ func TestDirectory(t *testing.T) {
 			assert.Equal(t, f.Reason, "the file cannot be read", "the reason")
 		})
 
-		t.Run("returns the error of a directory that cannot be read", func(t *testing.T) {
+		t.Run("returns the error of a store that cannot be listed", func(t *testing.T) {
 			t.Parallel()
-			path := filepath.Join(t.TempDir(), "file")
-			write(t, filepath.Dir(path), "file", "")
+			path := filepath.Join(t.TempDir(), unlistable)
 			_, err := store.Load(path, contract)
 			cause := assert.ErrorAs[*fs.PathError](t, err, "the file system's error")
-			assert.Equal(t, cause.Path, path, "the file that is no directory")
+			assert.Equal(t, cause.Path, path, "the name that no file system accepts")
 			assert.Equal(t, assert.ErrorAs[*fault.Error](t, err, "a fault").Reason, "the store cannot be listed",
 				"the reason")
 		})
