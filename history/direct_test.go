@@ -4,10 +4,12 @@
 package history_test
 
 import (
+	"runtime"
 	"testing"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/history"
+	"go.dokimi.dev/assert/internal/matchertest"
 )
 
 // TestDirect checks the six anomalies that a check finds in the
@@ -149,5 +151,51 @@ func TestDirect(t *testing.T) {
 			transact(h, 1, history.OK, readOf("x", 1))
 			assert.Nil(t, isolationOf(history.Serializable, h), "the unknown transaction committed")
 		})
+
+		t.Run("reports an internal inconsistency at a key that two maps of equal entries state", func(t *testing.T) {
+			t.Parallel()
+			h := history.New()
+			transact(h, 0, history.OK, appendOf(numbered(), 1), readOf(numbered()))
+			assert.Equal(t, isolationOf(history.Serializable, h)[anomalyField], any(history.InternalInconsistency),
+				"the read of the one key lacks the transaction's append")
+		})
+
+		t.Run("reports the read list as read after the transaction's later appends", func(t *testing.T) {
+			t.Parallel()
+			h := history.New()
+			transact(h, 0, history.OK, appendOf("x", 1))
+			transact(h, 1, history.OK, readOf("x", 1), appendOf("x", 2), appendOf("x", 3), readOf("x", 1, 3))
+			got := isolationOf(history.Serializable, h)
+			assert.Equal(t, got[explanationField], any([]history.Evidence{history.Observation{
+				Anomaly: history.InternalInconsistency, Calls: []int{2}, Key: "x", Reads: [][]any{{1, 3}},
+				Expected: []any{1, 2, 3}, Whole: true,
+			}}), "the appends leave the first read's list as the read returned it")
+		})
 	})
+}
+
+// TestDirectBytes checks that the bytes that the check of one transaction's
+// appends allocates grow with the number of the appends, and not with its
+// square. It counts the allocations of the whole process, so it does not run
+// in parallel.
+func TestDirectBytes(t *testing.T) {
+	small, large := appendBytes(1000), appendBytes(4000)
+	assert.True(t, large < 6*small, "four times the appends allocate less than six times the bytes")
+}
+
+// appendBytes returns the bytes that a check of a history of one committed
+// transaction of n appends to one key allocates.
+func appendBytes(n int) uint64 {
+	ops := make([]any, n)
+	for i := range ops {
+		ops[i] = appendOf("x", i)
+	}
+	h := history.New()
+	h.Invoke(0, "txn", ops).OK(ops)
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	history.Serializable(&matchertest.Seat{}, h, "one transaction")
+	runtime.ReadMemStats(&after)
+	return after.TotalAlloc - before.TotalAlloc
 }

@@ -58,8 +58,7 @@ func resumed[S any](h *History, ops operations[S], c config, d *deadline, cp *Ch
 		cp.history, cp.events = h, len(events)
 	}
 	cp.search = nil
-	var e ending[S]
-	s.run(func(end ending[S]) { e = end })
+	e := s.runApart()
 	if e.err != nil {
 		return detail[S]{}, e.err
 	}

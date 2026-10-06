@@ -48,11 +48,14 @@ func (g *graph) duplicateAppend() *finding {
 
 // knowledge is what a transaction knows of a key's list: the whole list once
 // it has read it, and before a read only that the list ends with its own
-// appends. values are the values it knows, with their identities.
+// appends. values are the values it knows, with their identities. owned
+// reports whether values and ids are the knowledge's own, which an append
+// grows in place, and not the lists of a read, which no append changes.
 type knowledge struct {
 	whole  bool
 	values []any
 	ids    []int32
+	owned  bool
 }
 
 // internalInconsistency returns the first read of a transaction that
@@ -80,11 +83,11 @@ func (g *graph) internal(number int32) *finding {
 	for position, m := range t.microOperations {
 		k, touched := known[m.keyID]
 		if !m.read {
-			known[m.keyID] = knowledge{
-				whole:  k.whole,
-				values: append(slices.Clip(k.values), m.value),
-				ids:    append(slices.Clip(k.ids), m.valueID),
+			if !k.owned {
+				k.values, k.ids, k.owned = slices.Clip(k.values), slices.Clip(k.ids), true
 			}
+			k.values, k.ids = append(k.values, m.value), append(k.ids, m.valueID)
+			known[m.keyID] = k
 			continue
 		}
 		future := g.futureOf(number, position)

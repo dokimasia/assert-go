@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -17,6 +18,16 @@ import (
 
 // contract is the contract of every check that the tests run.
 const contract = "the register is linearizable"
+
+// numbered returns a new map of the integers 0 to 15 to their decimal text,
+// which iterates its entries in an order that the runtime chooses anew.
+func numbered() map[int]string {
+	m := make(map[int]string, 16)
+	for i := range 16 {
+		m[i] = strconv.Itoa(i)
+	}
+	return m
+}
 
 // The values past the members of each enumeration.
 const (

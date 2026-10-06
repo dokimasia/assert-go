@@ -23,8 +23,9 @@ const (
 	// queueCaseAllocs are the allocations of the measured case, a whole
 	// replayed case of 100 sequential steps of a queue with its spec, which
 	// checks the history 101 times, each check continuing the search of the
-	// one before it, measured: about 14 for each check.
-	queueCaseAllocs = 1437
+	// one before it on a goroutine of its own, measured: about 15 for each
+	// check.
+	queueCaseAllocs = 1538
 )
 
 // digit is the generator of the inputs that the tests' actions draw.

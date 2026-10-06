@@ -4,6 +4,7 @@
 package history
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"sync"
@@ -65,7 +66,8 @@ func New() *History {
 // keys that the call touches, and a call without keys touches every key.
 //
 // Two keys are one key when their typed literals are equal, so the int 1 and
-// the float 1.0 are two keys, and the ints 1 and int64(1) are one.
+// the float 1.0 are two keys, and the ints 1 and int64(1) are one. Two maps
+// of equal entries are one key, whatever order their entries iterate in.
 //
 // # Allocation contract
 //
@@ -85,7 +87,7 @@ func (h *History) Invoke(client int, operation string, args []any, keys ...any) 
 			panic(fmt.Sprintf("history: Invoke(%d, %q) states the key %T, which no typed literal states",
 				client, operation, key))
 		}
-		ids[i] = string(raw)
+		ids[i] = identity(raw)
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -110,6 +112,23 @@ func (h *History) Invoke(client int, operation string, args []any, keys ...any) 
 	h.ids = append(h.ids, ids)
 	h.open[client] = index
 	return Call{history: h, index: index}
+}
+
+// entriesMember is the member of a typed literal that lists the entries of a
+// map whose keys are no strings, in the order that the map iterates them.
+var entriesMember = []byte(`"entries"`)
+
+// identity returns the identity of a key or a value whose typed literal is
+// raw: raw itself, and for a literal that lists the entries of a map, the
+// canonical text of the literal's value, which states the entries in one
+// order, so two equal maps have one identity. A canonical text never starts
+// with the brace that every typed literal starts with.
+func identity(raw []byte) string {
+	if !bytes.Contains(raw, entriesMember) {
+		return string(raw)
+	}
+	v, _ := literal.Decode(raw)
+	return literal.Canonical(v)
 }
 
 // Events returns the recorded events in recording order, without a gap: the

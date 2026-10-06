@@ -247,6 +247,17 @@ func TestSearch(t *testing.T) {
 				opts: []history.Option{history.Workers(2)},
 				want: specFault(nil, "the spec's Initial ends its goroutine"),
 			},
+			{
+				name: "returns the fault of a Next that ends its goroutine on one worker, whose caller goes on",
+				spec: history.Spec[int]{Initial: register.Initial, Next: endsOnRead},
+				want: specFault(atRead, `the spec's Next ends its goroutine on "read"`),
+			},
+			{
+				name: "returns the fault of a Next that ends its goroutine in a search that Resume keeps",
+				spec: history.Spec[int]{Initial: register.Initial, Next: endsOnRead},
+				opts: []history.Option{history.Whole(), history.Resume(&history.Checkpoint[int]{})},
+				want: specFault(atRead, `the spec's Next ends its goroutine on "read"`),
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

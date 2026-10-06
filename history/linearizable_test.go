@@ -20,15 +20,17 @@ import (
 )
 
 // linearizableAllocs are the allocations of a passing check of the register
-// over a write and a read, measured.
-const linearizableAllocs = 38
+// over a write and a read, measured, the goroutine that runs the search
+// included.
+const linearizableAllocs = 39
 
 // The allocations of a write that a history records and of the check that
-// continues the search of the check before it, measured, and the writes
-// after which the case starts a history of its own, so that a benchmark of
-// many iterations keeps its history short.
+// continues the search of the check before it, measured, the goroutine that
+// runs the search included, and the writes after which the case starts a
+// history of its own, so that a benchmark of many iterations keeps its
+// history short.
 const (
-	resumedAllocs = 10
+	resumedAllocs = 11
 	resumedWrites = 1000
 )
 

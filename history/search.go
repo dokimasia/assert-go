@@ -6,6 +6,7 @@ package history
 import (
 	"cmp"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -133,6 +134,10 @@ type entry struct {
 // The grown search then continues from the order that it found, and takes
 // the steps that a search of every call takes from that order on.
 type search[S any] struct {
+	// apart waits for the goroutine that runApart runs the search on.
+	apart sync.WaitGroup
+	// result is how the search that runApart ran ended.
+	result ending[S]
 	// ops are the spec's functions, with the defaults of Equal and Hash.
 	ops operations[S]
 	// calls are the partition's calls, in event order.
@@ -356,6 +361,24 @@ func (s *search[S]) run(deliver func(ending[S])) {
 	}
 	e = s.scan()
 	ended = true
+}
+
+// runApart runs the search, as run does, on a goroutine of its own, and
+// returns how it ended. A function of the spec that ends its goroutine, as
+// t.FailNow does, ends that goroutine and not the caller's, which receives
+// the fault of the kind ErrSpec.
+func (s *search[S]) runApart() ending[S] {
+	s.apart.Add(1)
+	go s.runAndRelease()
+	s.apart.Wait()
+	return s.result
+}
+
+// runAndRelease runs the search, as run does, keeps how it ended in result,
+// and then releases the caller of runApart.
+func (s *search[S]) runAndRelease() {
+	defer s.apart.Done()
+	s.run(func(e ending[S]) { s.result = e })
 }
 
 // scan scans the entries until every known call is linearized, or no order

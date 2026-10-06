@@ -148,10 +148,11 @@ func (ids *identities) of(v any) (int32, error) {
 	if !ok {
 		return 0, fault.Of(ErrTransaction, "%T is no value that a typed literal states", v)
 	}
-	id, known := ids.byText[string(raw)]
+	text := identity(raw)
+	id, known := ids.byText[text]
 	if !known {
 		id = int32(len(ids.byText))
-		ids.byText[string(raw)] = id
+		ids.byText[text] = id
 	}
 	if cached {
 		ids.byValue[v] = id

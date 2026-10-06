@@ -85,11 +85,11 @@ const hashlessNote = linearizableOp + ": the spec states Equal and no Hash, so t
 // # Allocation contract
 //
 // A check allocates its calls, its partitions and the memo of each search,
-// and the states that the spec returns. A passing check of a register over
-// two sequential calls allocates 38 times. A check that continues the search
-// of the check before it allocates for the calls since that check alone: a
-// write of the register that a history records and the check after it
-// allocate 10 times together.
+// the goroutine of each search, and the states that the spec returns. A
+// passing check of a register over two sequential calls allocates 39 times.
+// A check that continues the search of the check before it allocates for the
+// calls since that check alone: a write of the register that a history
+// records and the check after it allocate 11 times together.
 func Linearizable[S any](tb assert.TB, h *History, s Spec[S], contract string, opts ...Option) {
 	tb.Helper()
 	run := matcher.Begin(tb)
@@ -172,8 +172,7 @@ func check[S any](h *History, ops operations[S], c config) (detail[S], error) {
 		parts = []partition{{keys: []any{}, calls: calls}}
 	}
 	if c.final != nil && len(parts) == 0 {
-		var e ending[S]
-		newSearch(ops, partition{}, c, d).run(func(end ending[S]) { e = end })
+		e := newSearch(ops, partition{}, c, d).runApart()
 		return detail[S]{outcome: Passed, final: e.states}, e.err
 	}
 	endingOf, stop := searches(ops, parts, c, d)
@@ -211,14 +210,12 @@ func check[S any](h *History, ops operations[S], c config) (detail[S], error) {
 // partition order, and returns endingOf, which returns how the search of the
 // partition i ended once it has, and stop, which cancels the searches still
 // running, takes the partitions that no worker started, and waits for the
-// workers. On one worker, endingOf runs the search on the caller's
-// goroutine.
+// workers. On one worker, endingOf runs the search on a goroutine of its own
+// and waits for it.
 func searches[S any](ops operations[S], parts []partition, c config, d *deadline) (func(int) ending[S], func()) {
 	if c.workers == 1 {
 		return func(i int) ending[S] {
-			var e ending[S]
-			newSearch(ops, parts[i], c, d).run(func(end ending[S]) { e = end })
-			return e
+			return newSearch(ops, parts[i], c, d).runApart()
 		}, func() {}
 	}
 	type finished struct {

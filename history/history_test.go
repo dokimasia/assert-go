@@ -61,6 +61,17 @@ func TestHistory(t *testing.T) {
 				assert.Equal(t, h.Events()[2], want, "the invocation")
 			})
 
+		t.Run("keeps two maps of equal entries one key, whatever order their entries iterate in", func(t *testing.T) {
+			t.Parallel()
+			h := history.New()
+			for v := range 8 {
+				recordOK(h, 0, write, []any{v + 1}, nil, numbered())
+			}
+			recordOK(h, 0, read, nil, 0, numbered())
+			got := detailOf(h, register)
+			assert.Equal(t, got[partitionsField], any(1), "every call is in the partition of the one key")
+		})
+
 		t.Run("records into the zero History as into a new one", func(t *testing.T) {
 			t.Parallel()
 			var h history.History
