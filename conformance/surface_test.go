@@ -21,6 +21,7 @@ import (
 	"go.dokimi.dev/assert/bench"
 	"go.dokimi.dev/assert/conformance"
 	"go.dokimi.dev/assert/expect"
+	"go.dokimi.dev/assert/files"
 	"go.dokimi.dev/assert/golden"
 	"go.dokimi.dev/assert/history"
 	"go.dokimi.dev/assert/internal/fault"
@@ -494,6 +495,17 @@ var pinned = map[conformance.ID]any{
 	"scheduler.run":     (*stateful.Scheduler).Run,
 	"scheduler.uniform": stateful.Uniform,
 	"scheduler.pct":     stateful.PCT,
+
+	"tree":             files.Tree{},
+	"entry":            files.Entry{},
+	"files.workspace":  files.Workspace,
+	"files.read":       files.Read,
+	"files.text":       files.Text,
+	"files.bytes":      files.Bytes,
+	"files.executable": files.Executable,
+	"files.directory":  files.Dir,
+	"files.link":       files.Link,
+	"entry.with-mode":  files.Entry.WithMode,
 }
 
 // TestSurfaceTable compares the pin map with the naming table: the map

@@ -490,7 +490,7 @@ func TestVerdict(t *testing.T) {
 				t.Parallel()
 				if !childtest.InChild(t) {
 					out := runChild(t, record.Variable+"=1")
-					want := "\x16=== ATTR  " + t.Name() + ` dokimi.assert.1 {"definition":"5.0.0","seq":1,"assertion":"true",` +
+					want := "\x16=== ATTR  " + t.Name() + ` dokimi.assert.1 {"definition":"5.1.0","seq":1,"assertion":"true",` +
 						`"contract":"the child's call","verdict":"pass","aborting":true,"where":{"file":"verdict_test.go"`
 					if !strings.Contains(out, want) {
 						t.Fatalf("the child wrote %q, want the attribute %q", out, want)

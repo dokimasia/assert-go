@@ -8,7 +8,6 @@ import (
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/history"
-	"go.dokimi.dev/assert/internal/fault"
 )
 
 // isolationContract is the contract of the check of an isolation vector.
@@ -46,15 +45,5 @@ func checkIsolation(raw json.RawMessage, level func(assert.TB, *history.History,
 	rec := assert.NewRecorder()
 	level(rec, h, isolationContract)
 	// A recorder keeps the call record of every call.
-	c := callsOf(rec)[0]
-	switch v.Expect {
-	case expectFail:
-		return compareFailure(c, v.Detail)
-	case expectPass:
-		if c.Verdict != expectPass {
-			return fault.At(fault.New("the check ends as %s, want pass", c.Verdict), fault.Field(expectMember))
-		}
-		return nil
-	}
-	return fault.At(fault.New("the vector expects %q, neither pass nor fail", v.Expect), fault.Field(expectMember))
+	return compareVerdict(callsOf(rec)[0], v.Expect, v.Detail)
 }

@@ -46,7 +46,6 @@ const (
 
 // The members of a machines vector that the path of a fault names.
 const (
-	subjectMember  = "subject"
 	setupMember    = "setup"
 	strategyMember = "strategy"
 )

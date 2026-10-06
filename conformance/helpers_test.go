@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert/conformance"
@@ -16,6 +17,17 @@ import (
 
 // builtID is the id of a vector or a case that a test builds.
 const builtID = "built-by-the-test"
+
+// kinds are the twenty-nine kinds of a vector.
+var kinds = []conformance.VectorKind{
+	conformance.Decoding, conformance.Generation, conformance.Shrinking, conformance.Coverage,
+	conformance.Bridge, conformance.Token, conformance.Behaviour, conformance.Store, conformance.Shapes,
+	conformance.Inverse, conformance.Draws, conformance.Fixtures, conformance.Forms, conformance.CallRecords,
+	conformance.Seam, conformance.Linearizable, conformance.Serializable, conformance.SnapshotIsolation,
+	conformance.Machines, conformance.TreeEqual, conformance.TreeContains, conformance.TreeUnchanged,
+	conformance.GoldenMatchTree, conformance.PathAbsent, conformance.IsFile, conformance.IsDir,
+	conformance.LinksTo, conformance.HasContent, conformance.HasMode,
+}
 
 // The generators and the literals that the tests of several kinds build
 // their vectors from.
@@ -83,6 +95,7 @@ const (
 	seedAt      = "seed"
 	settingsAt  = "settings"
 	shapeAt     = "shape"
+	subjectAt   = "subject"
 	typeAt      = "type"
 	valueAt     = "value"
 )
@@ -97,13 +110,6 @@ func TestHelpers(t *testing.T) {
 	t.Run("Check", func(t *testing.T) {
 		t.Parallel()
 
-		kinds := []conformance.VectorKind{
-			conformance.Decoding, conformance.Generation, conformance.Shrinking, conformance.Coverage,
-			conformance.Bridge, conformance.Token, conformance.Behaviour, conformance.Store, conformance.Shapes,
-			conformance.Inverse, conformance.Draws, conformance.Fixtures, conformance.Forms, conformance.CallRecords,
-			conformance.Seam, conformance.Linearizable, conformance.Serializable, conformance.SnapshotIsolation,
-			conformance.Machines,
-		}
 		for _, kind := range kinds {
 			t.Run("returns a fault at the id for a "+string(kind)+" vector that is no JSON object", func(t *testing.T) {
 				t.Parallel()
@@ -156,6 +162,20 @@ func TestHelpers(t *testing.T) {
 				give:       decoded(digitGenerator, `[7]`, `[7]`, widget),
 				wantPath:   inVector(fault.Field(valueAt), fault.Field(typeAt)),
 				wantReason: unknownWidget,
+			},
+			{
+				name:       "returns a fault at the expectation of a vector that expects neither pass nor fail",
+				kind:       conformance.PathAbsent,
+				give:       filesVector(aFile, pathArgs("b.txt"), "maybe"),
+				wantPath:   inVector(fault.Field(expectAt)),
+				wantReason: `the vector expects "maybe", neither pass nor fail`,
+			},
+			{
+				name:       "returns a fault at the expectation of a pass for a call that fails",
+				kind:       conformance.PathAbsent,
+				give:       filesVector(aFile, pathArgs("a.txt"), "pass"),
+				wantPath:   inVector(fault.Field(expectAt)),
+				wantReason: "the check ends as fail, want pass",
 			},
 		}
 		for _, tt := range tests {
@@ -220,6 +240,32 @@ func decoded(generator, choices, recorded, value string) string {
 // which states detail.
 func behaving(body, settings, detail string) string {
 	return fmt.Sprintf(`{"body":%s,"settings":%s,"detail":%s}`, body, settings, detail)
+}
+
+// The tree literals of the workspaces of the files vectors that the tests
+// build.
+const (
+	// noFiles is the tree of no entries.
+	noFiles = `{"type":"tree","entries":[]}`
+	// aFile is the tree of the file a.txt, of the text a.
+	aFile = `{"type":"tree","entries":[{"path":"a.txt","text":"a"}]}`
+)
+
+// filesVector returns a files vector of the workspace and the arguments,
+// each a JSON text, that expects expect.
+func filesVector(workspace, args, expect string) string {
+	return fmt.Sprintf(`{"workspace":%s,"args":%s,"expect":%q}`, workspace, args, expect)
+}
+
+// pathArgs returns the arguments of a files vector: the typed literal of the
+// path, and after it the typed literals after.
+func pathArgs(path string, after ...string) string {
+	return "[" + strings.Join(append([]string{stringOf(path)}, after...), ",") + "]"
+}
+
+// stringOf returns the typed literal of the string s.
+func stringOf(s string) string {
+	return fmt.Sprintf(`{"type":"string","value":%q}`, s)
 }
 
 // failedDetail returns the detail of the run of bigBody under seven, of the

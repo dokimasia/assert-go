@@ -9,6 +9,9 @@
 // document, a generator's output. The file is the assertion, and a
 // diff against it is the failure.
 //
+// [MatchTree] compares a tree of files, such as the directory that a
+// generator writes, with a golden directory in the same way.
+//
 // # Updating
 //
 // A golden file is rewritten by passing [ShouldUpdate] as the update
@@ -40,11 +43,14 @@
 // want and the output as got, both scrubbed. A missing file or field
 // states want as nil. The sentence is the diff that an Equal failure
 // shows, so a golden failure reads like every other failure in this
-// module: the contract first, then what differed.
+// module: the contract first, then what differed. A failure of
+// golden-match-tree states the trees of the entries that differ, as the
+// comparisons of package files state them.
 //
 // A golden file that cannot be read or written, a golden JSON file that
-// is no object, and a value that is no JSON end the call with a fault,
-// whose call record states the verdict error.
+// is no object, a value that is no JSON, and a tree that cannot be read
+// or written end the call with a fault, whose call record states the
+// verdict error.
 //
 // # Allocation contracts
 //
@@ -55,7 +61,8 @@
 //
 // # Dependency position
 //
-// Imports go.dokimi.dev/assert, its internal fault and matcher, and the
-// standard library's bytes, encoding/json, errors, flag, fmt, io, os,
-// path/filepath, regexp, strconv, strings and sync.
+// Imports go.dokimi.dev/assert, its internal fault, filetree and matcher,
+// and the standard library's bytes, cmp, encoding/json, errors, flag, fmt,
+// io, io/fs, os, path/filepath, regexp, runtime, strconv, strings, sync and
+// unicode/utf8.
 package golden

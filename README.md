@@ -110,7 +110,8 @@ satisfies a bare call.
 |---|---|
 | `go.dokimi.dev/assert` | 50 assertions and a 15-method chain, stopping at the first failure |
 | `go.dokimi.dev/assert/expect` | the same, recording and continuing |
-| `go.dokimi.dev/assert/golden` | comparison against a recorded file, with scrubbers for content that changes each run |
+| `go.dokimi.dev/assert/golden` | comparison against a recorded file or tree of files, with scrubbers for content that changes each run |
+| `go.dokimi.dev/assert/files` | trees of files for a test, and the assertions on the files that code reads and writes |
 | `go.dokimi.dev/assert/bench` | ceilings on latency, allocations and bytes per benchmark iteration |
 | `go.dokimi.dev/assert/prop` | property checks over generated inputs, the generators, and the bridge to `go test -fuzz` |
 | `go.dokimi.dev/assert/history` | the record of concurrent calls, the driver of the clients, and the checks that a record is linearizable, serializable, or has snapshot isolation |
@@ -132,6 +133,43 @@ Scrubbers replace content that differs between runs, on both sides of
 the comparison, so the parts that should be stable are the parts
 compared. `ScrubTimestamps`, `ScrubHashes`, `ScrubRunIDs` and
 `ScrubJSONFields` are supplied; a `Scrubber` is a `func(string) string`.
+
+`golden.MatchTree` compares a tree of files, such as the directory that a
+generator writes, with a golden directory under `testdata/golden`, and
+`-update` rewrites the directory. It does not read the modes of the golden
+tree, because a checkout writes modes by the umask of whoever checks it
+out. It compares the execute bit of each file, the one bit that git
+records.
+
+## Files
+
+`files.Workspace` writes a tree into a directory of the test's own. The
+comparisons of trees read a directory through `os.DirFS`, or a tree in
+memory through `fstest.MapFS`:
+
+```go
+dir := files.Workspace(t, files.Tree{
+    "go.mod": files.Text("module example.com/a\n"),
+    "a/a.go": files.Text("package a\n\nfunc Old() {}\n"),
+})
+assert.NoError(t, rename.Run(dir, "a.Old", "New"), "the rename succeeds")
+files.Equal(t, os.DirFS(dir), files.Tree{
+    "go.mod": files.Text("module example.com/a\n"),
+    "a/a.go": files.Text("package a\n\nfunc New() {}\n"),
+}, "the rename rewrites the declaration")
+```
+
+Where a tree states no mode, a workspace sets 0644 on a file and 0755 on
+an executable file and on a directory, so it writes the same tree under
+any umask. A comparison compares a mode only where the wanted entry states
+one with `WithMode`, and otherwise the owner's execute bit of a file. It
+follows no link: a link is an entry with its target. A failure lists the
+first 64 paths that differ, and prints each entry as the `files`
+expression that states it.
+
+The assertions of one path, such as `files.HasMode`, check the entry at a
+path of the operating system. `files.Read` returns the content of a file,
+so the text assertions apply to it.
 
 ## Benchmark ceilings
 
@@ -487,6 +525,21 @@ the relation, except where the relation requires a failure.
 | `golden.Match` | Output matches the golden file resolved against the conventional directory. |
 | `golden.MatchAt` | Output matches the golden file at a given path. |
 | `golden.MatchJSONField` | Output matches one named field of a golden JSON object. |
+| `golden.MatchTree` | A tree of files matches the golden tree resolved against the conventional directory. The comparison reads no mode of the golden tree, and compares execute bits. |
+
+### Files
+
+| Name | What it states |
+|---|---|
+| `files.Equal` | A tree read from a file system has the entries of a stated tree, no more and no fewer, each as the stated entry states it. |
+| `files.Contains` | A tree read from a file system has every entry of a stated tree, each as the stated entry states it. It may have more. |
+| `files.Unchanged` | A callable leaves the tree in a file system as it found it, modes included. |
+| `files.Absent` | Nothing is at a path, a link whose target is missing included. |
+| `files.IsFile` | A file is at a path. A link to a file is a link. |
+| `files.IsDir` | A directory is at a path. A link to a directory is a link. |
+| `files.LinksTo` | A symbolic link with a stated target is at a path. |
+| `files.HasContent` | A file whose bytes equal stated text or bytes is at a path. |
+| `files.HasMode` | A file or a directory whose nine permission bits equal a stated mode is at a path. |
 
 ### Benchmarks
 
@@ -553,13 +606,17 @@ holds itself to it on every run:
   task scheduler finds, the traces that a run follows or refuses, and the
   step that a flaky run's divergence names, shared with every other
   implementation.
+- **Files.** 57 vectors state the verdict and the record of each
+  assertion that reads files over a workspace, and the golden tree that
+  an update leaves, shared with every other implementation.
 
 A corpus case states its arguments as data, or names a behaviour that
 each implementation builds, such as a callable that panics. The cases
-cover 39 of the 60 assertions outside `prop`. No case can state an error
+cover 39 of the 70 assertions outside `prop`. No case can state an error
 value, a golden file, a benchmark, a predicate or a history, so those
-assertions are checked for presence and tested here, and the history
-vectors cover `linearizable`, `serializable` and `snapshot-isolation`.
+assertions are checked for presence and tested here. The history vectors
+cover `linearizable`, `serializable` and `snapshot-isolation`, and the
+files vectors cover the ten assertions that read files.
 The vectors cover 38 of the 40 property assertions: `prop-for-all` and
 every property form but `prop-max-allocs` and
 `prop-max-allocs-with-setup`, whose allocation counts no vector can state.

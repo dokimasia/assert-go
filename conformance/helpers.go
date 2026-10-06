@@ -99,6 +99,23 @@ func decodeValues(raw []json.RawMessage) ([]any, error) {
 	return out, nil
 }
 
+// compareVerdict returns how c, the call record of a check, differs from the
+// outcome expect of a vector: a pass, or a failure with the detail stated,
+// which compareFailure compares. It returns a fault at expect for an outcome
+// of neither.
+func compareVerdict(c call, expect string, stated map[string]json.RawMessage) error {
+	switch expect {
+	case expectFail:
+		return compareFailure(c, stated)
+	case expectPass:
+		if c.Verdict != expectPass {
+			return fault.At(fault.New("the check ends as %s, want pass", c.Verdict), fault.Field(expectMember))
+		}
+		return nil
+	}
+	return fault.At(fault.New("the vector expects %q, neither pass nor fail", expect), fault.Field(expectMember))
+}
+
 // compareDetail returns how reported, the detail of a failure, differs
 // from stated, the fields that a vector states as typed literals, or nil
 // when each stated field has the stated value. whose names what reported

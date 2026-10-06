@@ -16,7 +16,6 @@ import (
 const (
 	setupAt    = "setup"
 	strategyAt = "strategy"
-	subjectAt  = "subject"
 	outcomeAt  = "outcome"
 )
 

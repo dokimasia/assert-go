@@ -33,6 +33,9 @@ const (
 	// History records the calls of concurrent clients and checks that the
 	// history is linearizable.
 	History Surface = "../history"
+	// Files builds trees of files, and checks the files that the code under
+	// test reads and writes.
+	Files Surface = "../files"
 )
 
 // subpackages maps the name that the definition gives a subpackage to
@@ -43,6 +46,7 @@ var subpackages = map[string]Surface{
 	"bench":   Bench,
 	"prop":    Prop,
 	"history": History,
+	"files":   Files,
 }
 
 // Subpackage returns the surface of the subpackage that an assertion's

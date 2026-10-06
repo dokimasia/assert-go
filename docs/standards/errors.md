@@ -114,6 +114,10 @@ type Error struct {
   `Reporter` receives a failure's record. Any other seat receives the
   writer's text of the fault through `Fatalf`. The call record of a
   recorded run states the verdict `error` and the same text.
+- A helper that is no assertion, such as `files.Workspace` and
+  `files.Read`, ends its call with a fault through `matcher.End`. The
+  seat receives the fault as it receives the fault of an assertion, and
+  no call record states the call.
 
 ## Panics
 
@@ -152,6 +156,10 @@ type Error struct {
   `Next` reports false, and `Loop` after `RunParallel`. Each message
   starts with the package and names the call. `RunParallel` raises a
   body's panic again on the caller's goroutine.
+- `Entry.WithMode` of `files` panics for a mode with a bit beyond the
+  nine permission bits, and for an entry that is no file and no
+  directory. Its message starts with the package and names the call:
+  `files: WithMode(0o1000) states a bit beyond the nine permission bits`.
 - No other code panics on purpose.
 - A `recover` exists only where a panic is what the code observes: an
   assertion about panics, the end of a property's case, a body of
@@ -187,6 +195,9 @@ type Writer interface {
   `matcher.RegisterSentence` in its `init` function, because `matcher`
   does not import `prop`. `history` registers the sentences of
   `linearizable`, `serializable` and `snapshot-isolation` the same way.
+  `files` registers the sentence of `tree-equal`, `tree-contains` and
+  `tree-unchanged`, and `golden` the sentence of `golden-match-tree`, both
+  from `internal/filetree`.
   The table of sentences is complete before any test starts, so the
   writer reads it without a lock.
 - `matcher.Note` writes a note's text into the log of a seat that has

@@ -4,15 +4,20 @@
 package conformance
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
 	"sync"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/filetree"
 )
 
 // ErrOwn is what a subject returns when it fails on its own terms,
@@ -84,6 +89,9 @@ type Subject struct {
 	Induce func()
 	// Read is one reading of the subject of poisoned.
 	Read func() error
+	// Files reads or writes the files of the tree in dir, as the callable
+	// that tree-unchanged calls.
+	Files func(dir string) error
 }
 
 // Subjects builds each behaviour of the definition's subjects table, by
@@ -123,6 +131,10 @@ var Subjects = map[string]func() *Subject{
 	"sorts":               function(sorted),
 	"wraps-in-a-and-b":    function(func(x any) any { return "a" + x.(string) + "b" }),
 	"ascending":           ascending,
+	"leaves-files-alone":  onFiles(leavesFilesAlone),
+	"rewrites-files":      onFiles(rewritesFiles),
+	"writes-a-file":       onFiles(writesAFile),
+	"writes-a-large-file": onFiles(writesALargeFile),
 }
 
 // signedOf returns x, a value of a signed integer type, as an int64.
@@ -389,4 +401,59 @@ func sorted(x any) any {
 // first is not greater than the second.
 func ascending() *Subject {
 	return &Subject{Ordered: func(first, second any) bool { return signedOf(first) <= signedOf(second) }}
+}
+
+// newFileMode is the mode that a subject creates a file with.
+const newFileMode = 0o644
+
+// onFiles returns the builder of a subject that reads or writes the files of
+// a tree through f.
+func onFiles(f func(dir string) error) func() *Subject {
+	return func() *Subject { return &Subject{Files: f} }
+}
+
+// eachFile calls do with the path of each file of the tree in dir, in
+// lexical order, and returns the first error of the walk or of do. It
+// follows no link.
+func eachFile(dir string, do func(path string) error) error {
+	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || !d.Type().IsRegular() {
+			return err
+		}
+		return do(path)
+	})
+}
+
+// leavesFilesAlone reads every file of the tree in dir, and writes nothing.
+func leavesFilesAlone(dir string) error {
+	return eachFile(dir, func(path string) error {
+		_, err := os.ReadFile(path)
+		return err
+	})
+}
+
+// rewritesFiles writes every file of the tree in dir again, with the bytes
+// that the file has.
+func rewritesFiles(dir string) error {
+	return eachFile(dir, func(path string) error {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		// A file that exists keeps its mode.
+		return os.WriteFile(path, content, 0)
+	})
+}
+
+// writesAFile writes the file new.txt, with the text new, at the root of the
+// tree in dir.
+func writesAFile(dir string) error {
+	return os.WriteFile(filepath.Join(dir, "new.txt"), []byte("new"), newFileMode)
+}
+
+// writesALargeFile writes the file large.bin at the root of the tree in dir:
+// one byte of the letter a more than a record states in full.
+func writesALargeFile(dir string) error {
+	content := bytes.Repeat([]byte("a"), filetree.ContentLimit+1)
+	return os.WriteFile(filepath.Join(dir, "large.bin"), content, newFileMode)
 }

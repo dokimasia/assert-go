@@ -30,8 +30,8 @@ const (
 var writeSkew = fmt.Sprintf(`[{"invoke":0,"client":0,"operation":"txn","args":[%s,%s],"keys":[%s,%s]},`+
 	`{"invoke":1,"client":1,"operation":"txn","args":[%s,%s],"keys":[%s,%s]},`+
 	`{"ok":0,"output":{"type":"list","items":[%s,%s]}},{"ok":1,"output":{"type":"list","items":[%s,%s]}}]`,
-	microOperation("read", "x", nullLiteral), microOperation("append", "y", oneLiteral), keyOf("x"), keyOf("y"),
-	microOperation("read", "y", nullLiteral), microOperation("append", "x", twoLiteral), keyOf("y"), keyOf("x"),
+	microOperation("read", "x", nullLiteral), microOperation("append", "y", oneLiteral), stringOf("x"), stringOf("y"),
+	microOperation("read", "y", nullLiteral), microOperation("append", "x", twoLiteral), stringOf("y"), stringOf("x"),
 	microOperation("read", "x", emptyLiteral), microOperation("append", "y", oneLiteral),
 	microOperation("read", "y", emptyLiteral), microOperation("append", "x", twoLiteral))
 
@@ -129,10 +129,5 @@ func isolated(script, expect, detail string) string {
 // microOperation returns the typed literal of the micro-operation of
 // function on the string key with value, a typed literal.
 func microOperation(function, key, value string) string {
-	return fmt.Sprintf(`{"type":"list","items":[{"type":"string","value":%q},%s,%s]}`, function, keyOf(key), value)
-}
-
-// keyOf returns the typed literal of the string key.
-func keyOf(key string) string {
-	return fmt.Sprintf(`{"type":"string","value":%q}`, key)
+	return fmt.Sprintf(`{"type":"list","items":[%s,%s,%s]}`, stringOf(function), stringOf(key), value)
 }

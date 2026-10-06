@@ -10,13 +10,16 @@ import (
 	"slices"
 	"strings"
 
+	"go.dokimi.dev/assert/files"
 	"go.dokimi.dev/assert/internal/fault"
 )
 
 // vectorGlobs match the vector files of the vendored definition: those of
-// the history, of the property engine and of machines. The corpus glob of
-// the assertions matches none of them.
-var vectorGlobs = [...]string{"spec/corpus/history/*.json", "spec/corpus/prop/*.json", "spec/corpus/stateful/*.json"}
+// the assertions that read files, of the history, of the property engine and
+// of machines. The corpus glob of the assertions matches none of them.
+var vectorGlobs = [...]string{
+	"spec/corpus/files/*.json", "spec/corpus/history/*.json", "spec/corpus/prop/*.json", "spec/corpus/stateful/*.json",
+}
 
 // The members of a corpus case, of a vector and of the specs inside one,
 // that the path of a fault names.
@@ -49,6 +52,7 @@ const (
 	settingsMember  = "settings"
 	shapeMember     = "shape"
 	storedMember    = "stored"
+	subjectMember   = "subject"
 	subjectsMember  = "subjects"
 	tokenMember     = "token"
 	valueMember     = "value"
@@ -83,8 +87,9 @@ const (
 )
 
 // VectorKind is the kind of a vector of the definition: of the property
-// engine, or of the history and its checker. Its spelling is the name of the
-// file that states the vectors of the kind.
+// engine, of the history and its checker, of machines, or of an assertion
+// that reads files. Its spelling is the name of the file that states the
+// vectors of the kind.
 type VectorKind string
 
 const (
@@ -135,15 +140,48 @@ const (
 	// settings and a trace, and states the detail of the run or the refusal
 	// of the trace.
 	Machines VectorKind = "machines"
+	// TreeEqual compares the tree of a workspace with a stated tree through
+	// files.Equal, and states the verdict and the detail of its record.
+	TreeEqual VectorKind = "tree-equal"
+	// TreeContains compares the tree of a workspace with a stated tree
+	// through files.Contains, and states the verdict and the detail of its
+	// record.
+	TreeContains VectorKind = "tree-contains"
+	// TreeUnchanged calls a subject on the tree of a workspace through
+	// files.Unchanged, and states the verdict and the detail of its record.
+	TreeUnchanged VectorKind = "tree-unchanged"
+	// GoldenMatchTree compares the tree of a workspace with a golden tree
+	// through golden.MatchTree, and states the verdict, the detail of its
+	// record, and the golden tree that an update leaves.
+	GoldenMatchTree VectorKind = "golden-match-tree"
+	// PathAbsent checks a path of a workspace through files.Absent, and
+	// states the verdict and the detail of its record.
+	PathAbsent VectorKind = "path-absent"
+	// IsFile checks a path of a workspace through files.IsFile, and states
+	// the verdict and the detail of its record.
+	IsFile VectorKind = "is-file"
+	// IsDir checks a path of a workspace through files.IsDir, and states the
+	// verdict and the detail of its record.
+	IsDir VectorKind = "is-dir"
+	// LinksTo checks a path of a workspace through files.LinksTo, and states
+	// the verdict and the detail of its record.
+	LinksTo VectorKind = "links-to"
+	// HasContent checks a path of a workspace through files.HasContent, and
+	// states the verdict and the detail of its record.
+	HasContent VectorKind = "has-content"
+	// HasMode checks a path of a workspace through files.HasMode, and states
+	// the verdict and the detail of its record.
+	HasMode VectorKind = "has-mode"
 )
 
 // runner runs the JSON of one vector against this implementation, and
 // returns a fault of how the outputs differ from the ones that the vector
 // states, with a path inside the vector. A behaviour vector, a recording
-// vector and a machines vector write their stored cases to dir.
+// vector and a machines vector write their stored cases to dir, a files
+// vector its workspace, and a golden-match-tree vector its golden tree.
 type runner func(raw json.RawMessage, dir string) error
 
-// runners maps each of the nineteen kinds to its runner.
+// runners maps each of the twenty-nine kinds to its runner.
 var runners = map[VectorKind]runner{
 	Decoding:          checkDecoding,
 	Generation:        checkGeneration,
@@ -164,9 +202,19 @@ var runners = map[VectorKind]runner{
 	Serializable:      checkSerializable,
 	SnapshotIsolation: checkSnapshotIsolation,
 	Machines:          checkMachines,
+	TreeEqual:         checkFiles(treeCall(files.Equal)),
+	TreeContains:      checkFiles(treeCall(files.Contains)),
+	TreeUnchanged:     checkFiles(unchangedCall),
+	GoldenMatchTree:   checkFiles(goldenCall),
+	PathAbsent:        checkFiles(kindCall(files.Absent)),
+	IsFile:            checkFiles(kindCall(files.IsFile)),
+	IsDir:             checkFiles(kindCall(files.IsDir)),
+	LinksTo:           checkFiles(linksToCall),
+	HasContent:        checkFiles(hasContentCall),
+	HasMode:           checkFiles(hasModeCall),
 }
 
-// Valid reports whether k is one of the nineteen kinds. It allocates
+// Valid reports whether k is one of the twenty-nine kinds. It allocates
 // nothing.
 func (k VectorKind) Valid() bool {
 	_, ok := runners[k]
@@ -181,7 +229,9 @@ func (k VectorKind) Valid() bool {
 // # Concurrency
 //
 // [Vector.Check] reads a Vector and changes nothing in it. Checks run
-// concurrently when each has a directory of its own.
+// concurrently when each has a directory of its own, except the checks of
+// golden-match-tree vectors, whose directory is the working directory of the
+// process.
 type Vector struct {
 	// Kind is the vector's kind.
 	Kind VectorKind
@@ -194,13 +244,13 @@ type Vector struct {
 // Vectors returns every vector of the vendored definition, the files in
 // the order of their names and each file's cases in order. A vector takes
 // the kind that its file states, and [Vector.Check] refuses a kind outside
-// the nineteen.
+// the twenty-nine.
 //
 // # Allocation contract
 //
-// Vectors allocates 1,315 times on the vendored definition: the names that
-// the three globs return, the open file and the copy of each of the
-// nineteen files, the two structs that each file decodes into with their
+// Vectors allocates 1,579 times on the vendored definition: the names that
+// the four globs return, the open file and the copy of each of the
+// twenty-nine files, the two structs that each file decodes into with their
 // lists of cases, a copy of each case's JSON, each case's id, and the growth
 // of the list that it returns. The JSON decoder's pooled state, which a
 // garbage collection or a move of the goroutine to another processor leaves
@@ -235,15 +285,19 @@ func Vectors() []Vector {
 // Check runs v against this implementation. It returns how the outputs
 // differ from the ones that v states, or nil when they match. A behaviour
 // vector, a recording vector and a machines vector write their stored cases
-// to dir, an empty directory.
+// to dir, an empty directory, and a files vector writes its workspace there.
+// golden.MatchTree resolves the name of a golden tree against the working
+// directory of the process, so a golden-match-tree vector writes its golden
+// tree below dir, which must be the working directory.
 //
 // # Errors
 //
 // It returns a fault whose path starts at the vector's ID and leads through
 // the vector's JSON to the part at fault. That part is an input that does
 // not parse or that the vocabulary does not state, or an output that
-// differs from the run. A vector of a kind outside the nineteen has a fault
-// at its ID alone.
+// differs from the run. A vector of a kind outside the twenty-nine has a
+// fault at its ID alone, and so does a golden-match-tree vector whose dir is
+// not the working directory.
 //
 // # Allocation contract
 //

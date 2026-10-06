@@ -17,10 +17,12 @@ import (
 
 // vectorCount is the number of vectors of the vendored definition: 26
 // behaviour, 11 bridge, 12 coverage, 49 decoding, 4 draws, 34 fixtures, 74
-// forms, 32 generation, 43 inverse, 30 linearizable, 14 machines, 6
-// recording, 12 seam, 19 serializable, 54 shapes, 36 shrinking, 19
-// snapshot-isolation, 21 store and 17 token vectors.
-const vectorCount = 513
+// forms, 32 generation, 7 golden-match-tree, 6 has-content, 5 has-mode, 43
+// inverse, 4 is-dir, 4 is-file, 30 linearizable, 5 links-to, 14 machines, 4
+// path-absent, 6 recording, 12 seam, 19 serializable, 54 shapes, 36
+// shrinking, 19 snapshot-isolation, 21 store, 17 token, 5 tree-contains, 13
+// tree-equal and 4 tree-unchanged vectors.
+const vectorCount = 570
 
 // firstVector is the id of the first case of behaviour.json, the file whose
 // name sorts first.
@@ -35,10 +37,10 @@ const emptyToken = `{"choices":[],"token":"prop1:"}`
 const (
 	// validAllocs are the allocations of Valid.
 	validAllocs = 0
-	// vectorsAllocs are the allocations of Vectors: the 1,315 of its
+	// vectorsAllocs are the allocations of Vectors: the 1,579 of its
 	// contract, the two that the JSON decoder's pooled state adds, and one
 	// that a collection during the count adds when it empties the pool.
-	vectorsAllocs = 1318
+	vectorsAllocs = 1582
 	// checkAllocs are the allocations of Check on emptyToken: the struct
 	// that the vector decodes into, and the token that Encode returns.
 	checkAllocs = 2
@@ -56,15 +58,8 @@ func TestVector(t *testing.T) {
 	t.Run("Valid", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("reports true for each of the nineteen kinds", func(t *testing.T) {
+		t.Run("reports true for each of the twenty-nine kinds", func(t *testing.T) {
 			t.Parallel()
-			kinds := []conformance.VectorKind{
-				conformance.Decoding, conformance.Generation, conformance.Shrinking, conformance.Coverage,
-				conformance.Bridge, conformance.Token, conformance.Behaviour, conformance.Store,
-				conformance.Shapes, conformance.Inverse, conformance.Draws, conformance.Fixtures,
-				conformance.Forms, conformance.CallRecords, conformance.Seam, conformance.Linearizable,
-				conformance.Serializable, conformance.SnapshotIsolation, conformance.Machines,
-			}
 			for _, k := range kinds {
 				if !k.Valid() {
 					t.Fatalf("Valid of %q reports false", k)
@@ -119,6 +114,11 @@ func TestVector(t *testing.T) {
 		t.Parallel()
 
 		for _, v := range vectors {
+			// TestVectorEnv checks a golden-match-tree vector, whose directory
+			// is the working directory of the process.
+			if v.Kind == conformance.GoldenMatchTree {
+				continue
+			}
 			t.Run("returns nil for "+string(v.Kind)+" vector "+v.ID, func(t *testing.T) {
 				t.Parallel()
 				if err := v.Check(t.TempDir()); err != nil {
@@ -127,7 +127,7 @@ func TestVector(t *testing.T) {
 			})
 		}
 
-		t.Run("returns a fault at the vector's id for a vector of a kind outside the nineteen", func(t *testing.T) {
+		t.Run("returns a fault at the vector's id for a vector of a kind outside the twenty-nine", func(t *testing.T) {
 			t.Parallel()
 			expectFault(t, check(t, "fuzzing", emptyToken), inVector(), `"fuzzing" is no vector kind`)
 		})
@@ -137,6 +137,29 @@ func TestVector(t *testing.T) {
 			err := check(t, conformance.Token, `{"choices":[],"token":"prop1:AAA"}`)
 			expectFault(t, err, inVector(fault.Field("token")), "the token is prop1:, want prop1:AAA")
 		})
+	})
+}
+
+// TestVectorEnv runs every golden-match-tree vector against this
+// implementation. golden.MatchTree resolves the name of a golden tree
+// against the working directory of the process, and each case changes it to
+// the vector's directory, so the cases run one at a time. Written with
+// testing rather than with this library, because a verdict is not written
+// with the subject.
+func TestVectorEnv(t *testing.T) {
+	t.Run("Check", func(t *testing.T) {
+		for _, v := range conformance.Vectors() {
+			if v.Kind != conformance.GoldenMatchTree {
+				continue
+			}
+			t.Run("returns nil for "+string(v.Kind)+" vector "+v.ID, func(t *testing.T) {
+				dir := t.TempDir()
+				t.Chdir(dir)
+				if err := v.Check(dir); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
 	})
 }
 
@@ -161,7 +184,7 @@ func BenchmarkVector(b *testing.B) {
 		for c.Loop() {
 			got = conformance.Token.Valid()
 		}
-		assert.True(b, got, "token is one of the nineteen kinds")
+		assert.True(b, got, "token is one of the twenty-nine kinds")
 	})
 
 	b.Run("Vectors", func(b *testing.B) {

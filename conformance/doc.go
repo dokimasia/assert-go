@@ -87,6 +87,25 @@
 // trace's refusal. [Overlay] states how this library runs the concurrent
 // section of a machine.
 //
+// # Files
+//
+// [Vectors] returns the vectors of the ten assertions that read files as
+// well. The runner writes the tree literal of a vector's workspace into a
+// directory below the vector's own, as [go.dokimi.dev/assert/files.Workspace]
+// writes a tree, runs the assertion on a recorder, and compares the verdict
+// and the detail of its call record:
+//
+//   - [TreeEqual] and [TreeContains] compare the workspace with a stated
+//     tree, and [TreeUnchanged] calls a behaviour of [Subjects] on it.
+//   - [GoldenMatchTree] writes the vector's golden tree below the vector's
+//     directory, which must be the working directory of the process, and
+//     compares the golden tree that an update leaves.
+//   - [PathAbsent], [IsFile], [IsDir], [LinksTo], [HasContent] and [HasMode]
+//     check a path of the workspace.
+//
+// The runner does not skip a vector, so it needs a platform that records
+// permission bits and creates symbolic links.
+//
 // # Errors
 //
 // [Vector.Check], [Case.Check] and [Case.Decoded] return a fault whose path
@@ -104,10 +123,10 @@
 //
 // # Dependency position
 //
-// Imports the standard library, this module's assert, expect, history, prop
-// and stateful packages, the fault and literal packages, and the internal
-// packages of the property engine: choice, coverage, engine, matching,
-// shape, store and token. Only tests import it. Besides its own tests, the
+// Imports the standard library, this module's assert, expect, files, golden,
+// history, prop and stateful packages, the fault, filetree and literal
+// packages, and the internal packages of the property engine: choice,
+// coverage, engine, matching, shape, store and token. Only tests import it. Besides its own tests, the
 // store tests of prop import it to compare the version of a stored case
 // with [Version].
 package conformance

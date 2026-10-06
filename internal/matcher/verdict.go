@@ -210,16 +210,10 @@ func (r Running) Fault(mode Mode, assertion, contract string, err error) {
 	r.end(err)
 }
 
-// end ends the call with err, a fault: it passes err to a seat that
-// satisfies [FaultReporter], and sends the writer's text of err to any
-// other seat through Fatalf.
+// end ends the call with err, a fault, as [End] ends a call.
 func (r Running) end(err error) {
 	r.seat.Helper()
-	if reporter, ok := r.seat.(FaultReporter); ok {
-		reporter.ReportFault(err, true)
-		return
-	}
-	r.seat.Fatalf("%s", writer.Fault(err))
+	End(r.seat, err)
 }
 
 // switched reports whether the process's switch of recording states a

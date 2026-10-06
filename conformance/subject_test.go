@@ -6,14 +6,18 @@ package conformance_test
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"testing"
+	"time"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/conformance"
+	"go.dokimi.dev/assert/files"
 )
 
 // TestSubject checks the table of built behaviours against the
@@ -54,6 +58,25 @@ func TestSubject(t *testing.T) {
 				conformance.Subjects["reads-handle"]().Ctx(absent, nil),
 				"an absent handle gives no reason",
 			)
+		})
+
+		t.Run("returns a rewrites-files that writes each file below the directory again", func(t *testing.T) {
+			t.Parallel()
+			dir := files.Workspace(t, files.Tree{"docs/a.md": files.Text("# a\n")})
+			path := filepath.Join(dir, "docs", "a.md")
+			past := time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
+			assert.NoError(t, os.Chtimes(path, past, past), "the file is dated in the past")
+			assert.NoError(t, conformance.Subjects["rewrites-files"]().Files(dir), "the subject writes the files")
+			info, err := os.Stat(path)
+			assert.NoError(t, err, "the file is there")
+			assert.True(t, info.ModTime().After(past), "the subject writes the file again")
+		})
+
+		t.Run("returns a rewrites-files that fails on a file that its owner may not read", func(t *testing.T) {
+			t.Parallel()
+			dir := files.Workspace(t, files.Tree{"a.txt": files.Text("a").WithMode(0o200)})
+			assert.ErrorIs(t, conformance.Subjects["rewrites-files"]().Files(dir), fs.ErrPermission,
+				"the subject fails on the read")
 		})
 
 		t.Run("returns a settles-after that fails twice before it passes", func(t *testing.T) {

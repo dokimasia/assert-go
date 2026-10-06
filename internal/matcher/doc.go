@@ -15,7 +15,8 @@
 // registers through [RegisterSentence] for its assertions. A [Reporter]
 // takes a failure's record instead of its text, and a [FaultReporter] takes
 // a fault. [Note] writes a note into the log of a seat, and [NoteFault]
-// notes a fault that does not end its call.
+// notes a fault that does not end its call. [End] ends a call that reports
+// no verdict, such as a call of a helper that prepares a test, with a fault.
 //
 // # Comparison rules
 //
