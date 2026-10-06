@@ -33,10 +33,6 @@ func HonoursCancellation(seat Seat, mode Mode, fn func(ctx context.Context) erro
 	cancel()
 
 	err := fn(ctx)
-	if err == nil {
-		Fail(seat, mode, "honours-cancellation", msg, map[string]any{"got": nil})
-		return
-	}
 	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 		Fail(seat, mode, "honours-cancellation", msg, map[string]any{"got": err})
 		return
@@ -71,10 +67,6 @@ func HonoursDeadline(seat Seat, mode Mode, fn func(ctx context.Context) error, m
 	defer cancel()
 
 	err := fn(ctx)
-	if err == nil {
-		Fail(seat, mode, "honours-deadline", msg, map[string]any{"got": nil})
-		return
-	}
 	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 		Fail(seat, mode, "honours-deadline", msg, map[string]any{"got": err})
 		return

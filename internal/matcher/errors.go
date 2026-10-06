@@ -88,10 +88,10 @@ func ErrorAs[T any](seat Seat, mode Mode, err error, msg string) T {
 	seat.Helper()
 
 	var target T
-	if !errors.As(err, &target) {
+	if errors.As(err, &target) {
+		Pass(seat, mode, "err-as", msg)
+	} else {
 		Fail(seat, mode, "err-as", msg, map[string]any{"want": target, "got": err})
-		return target
 	}
-	Pass(seat, mode, "err-as", msg)
 	return target
 }

@@ -71,6 +71,13 @@ func TestBehaviour(t *testing.T) {
 		) {
 			matcher.CompletesWithin(s, matcher.Fatal, within, fn, msg)
 		})
+
+		t.Run("writes the record of a passing call", func(t *testing.T) {
+			t.Parallel()
+			checkPassRecord(t, "completes-within", func(seat matcher.Seat) {
+				matcher.CompletesWithin(seat, matcher.Fatal, time.Minute, matchertest.IgnoresCtx, allocContract)
+			})
+		})
 	})
 
 	t.Run("CompletesWithin passes a subject that takes the whole duration on the seat's clock", func(t *testing.T) {

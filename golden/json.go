@@ -24,15 +24,16 @@ const jsonIndent = "  "
 
 // maxNumberDigits bounds the numbers that the comparison states without an
 // exponent: those below 10^1000 and at least 10^-1001 in magnitude. Every
-// other number keeps an exponent, so the text of 1e999999999 stays short.
+// other number keeps an exponent, so the text of 1e999999999 has 11
+// characters.
 const maxNumberDigits = 1000
 
 // errTrailing is the cause of a value that is followed by more data.
 var errTrailing = errors.New("golden: the JSON value is followed by more data")
 
 // files are the locks of the golden JSON files that this test process
-// compares, by absolute path. [MatchJSONField] holds a file's lock from
-// its read to its write.
+// compares, by absolute path. [MatchJSONField] locks a file from its read
+// to its write.
 var files sync.Map
 
 // MatchJSONField compares got against one named field of the JSON
@@ -86,7 +87,7 @@ func MatchJSONField(tb assert.TB, path, field string, got []byte, update bool, s
 	mine := scrub(encodeExact(value), scrubbers)
 
 	defer lock(path)()
-	document, ok := c.readObject(field, mine, update)
+	document, ok := c.readObject()
 	if !ok {
 		return
 	}
@@ -123,35 +124,31 @@ func lock(path string) func() {
 	if abs, err := filepath.Abs(path); err == nil {
 		path = abs
 	}
-	held, ok := files.Load(path)
+	stored, ok := files.Load(path)
 	if !ok {
-		held, _ = files.LoadOrStore(path, new(sync.Mutex))
+		stored, _ = files.LoadOrStore(path, new(sync.Mutex))
 	}
-	mu := held.(*sync.Mutex)
+	mu := stored.(*sync.Mutex)
 	mu.Lock()
 	return mu.Unlock
 }
 
 // readObject reads the JSON object of the golden file of c, with the text of
 // each field, and reports whether the call continues. It returns an empty
-// object for a missing file while update is true. For a missing file without
-// update, it reports the failure of field, with got as mine.
-func (c call) readObject(field, mine string, update bool) (map[string]json.RawMessage, bool) {
+// object for a missing file.
+func (c call) readObject() (map[string]json.RawMessage, bool) {
 	c.tb.Helper()
 
 	raw, err := os.ReadFile(c.path)
 	if os.IsNotExist(err) {
-		if !update {
-			c.fail(map[string]any{"want": nil, "got": mine, "field": field})
-			return nil, false
-		}
 		return map[string]json.RawMessage{}, true
 	}
 	var document map[string]json.RawMessage
 	if err == nil {
 		err = json.Unmarshal(raw, &document)
 	}
-	if err != nil || document == nil {
+	// Unmarshal leaves document nil for every file but one of a JSON object.
+	if document == nil {
 		c.fault(err, "the golden file cannot be read as a JSON object")
 		return nil, false
 	}

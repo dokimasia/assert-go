@@ -5,6 +5,7 @@ package matcher_test
 
 import (
 	"os"
+	"runtime"
 	"runtime/debug"
 	"testing"
 
@@ -25,15 +26,37 @@ func TestMaxAllocs(t *testing.T) {
 	matchertest.RunMaxAllocs(t, func(s *matchertest.Seat, fn func(), ceiling uint64, msg string) {
 		matcher.MaxAllocs(s, matcher.Fatal, fn, ceiling, msg)
 	})
+
+	t.Run("writes the record of a passing call", func(t *testing.T) {
+		checkPassRecord(t, "max-allocs", func(seat matcher.Seat) {
+			matcher.MaxAllocs(seat, matcher.Fatal, func() {}, 0, allocContract)
+		})
+	})
 }
 
 // TestMaxAllocsWithSetup does not run in parallel: its count covers the
-// whole process.
+// whole process, and a case sets GOMAXPROCS.
 func TestMaxAllocsWithSetup(t *testing.T) {
 	matchertest.RunMaxAllocsWithSetup(t,
 		func(s *matchertest.Seat, setup func() *[]byte, fn func(*[]byte), ceiling uint64, msg string) {
 			matcher.MaxAllocsWithSetup(s, matcher.Fatal, setup, fn, ceiling, msg)
 		})
+
+	t.Run("writes the record of a passing call", func(t *testing.T) {
+		checkPassRecord(t, "max-allocs-with-setup", func(seat matcher.Seat) {
+			matcher.MaxAllocsWithSetup(seat, matcher.Fatal, func() int { return 0 }, func(int) {}, 0, allocContract)
+		})
+	})
+
+	t.Run("sets GOMAXPROCS to 1 while it counts, and restores it", func(t *testing.T) {
+		defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(2))
+		procs := 0
+		matcher.MaxAllocsWithSetup(&matchertest.Seat{}, matcher.Fatal, func() int { return 0 },
+			func(int) { procs = max(procs, runtime.GOMAXPROCS(0)) }, 0, allocContract)
+		if got := runtime.GOMAXPROCS(0); procs != 1 || got != 2 {
+			t.Fatalf("the calls ran with GOMAXPROCS of at most %d and left it at %d, want 1 and 2", procs, got)
+		}
+	})
 }
 
 // buildWith returns build information that records gcflags as its
@@ -59,6 +82,11 @@ func TestOptimisationsOff(t *testing.T) {
 		{"reports false for build information without -gcflags", &debug.BuildInfo{}, false},
 		{"reports false for flags that change neither", buildWith("-m -e"), false},
 		{"reports false for a flag whose name starts with l", buildWith("-lang=go1.26"), false},
+		{
+			"reports false for -N and -l in a setting other than -gcflags",
+			&debug.BuildInfo{Settings: []debug.BuildSetting{{Key: "-ldflags", Value: "-N -l"}}},
+			false,
+		},
 		{"reports true for optimisation off", buildWith("-N"), true},
 		{"reports true for inlining off", buildWith("-l"), true},
 		{"reports true for both, for every package, as a debugger builds", buildWith("all=-N -l"), true},

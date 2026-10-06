@@ -102,15 +102,14 @@ func site() Where {
 // CallerWhere allocates once: the iterator over the frames of pcs.
 func CallerWhere(pcs []uintptr) Where {
 	frames := runtime.CallersFrames(pcs)
-	for {
-		frame, more := frames.Next()
+	for more := true; more; {
+		var frame runtime.Frame
+		frame, more = frames.Next()
 		if callers(frame) {
 			return Where{File: frame.File, Line: frame.Line}
 		}
-		if !more {
-			return Where{}
-		}
 	}
+	return Where{}
 }
 
 // callers reports whether frame is the caller's code.

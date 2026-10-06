@@ -59,6 +59,30 @@ func TestTrace(t *testing.T) {
 			assert.Equal(t, got, want, "the steps of the entries")
 		})
 
+		// The action of the drain fails its case, and the run shrinks nothing,
+		// so the counterexample is the case of the entries.
+		t.Run("follows the step entries that prop.Draws states, with a client and the drain", func(t *testing.T) {
+			t.Parallel()
+			m := machineOf(&runLog{}, put, flush)
+			m.Actions[1].Drain = true
+			m.Actions[1].Run = func(c *prop.Case, _ int, _ any) { c.Report(assert.Failure{Assertion: flush}, true) }
+			rec := assert.NewRecorder()
+			prop.ForAll(rec, "the drain flushes", func(c *prop.Case) { stateful.Steps(c, m, tasks(c)...) },
+				prop.Seed(seed), prop.Shrink(0),
+				prop.Draws(`[{"step": "put", "client": 0}, {"step": "flush", "drain": true}]`))
+
+			failures := rec.Failures()
+			assert.Length(t, failures, 1, "the case of the entries fails at the drain")
+			var steps []prop.Step
+			for _, e := range failures[0].Detail["counterexample"].([]prop.Entry) {
+				if s, ok := e.(prop.Step); ok {
+					steps = append(steps, s)
+				}
+			}
+			assert.Equal(t, steps, []prop.Step{{Action: put, Client: 0}, {Action: flush, Client: -1, Drain: true}},
+				"the steps of the entries")
+		})
+
 		tests := []struct {
 			name    string
 			body    func(c *prop.Case)

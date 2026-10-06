@@ -21,6 +21,14 @@ func TestOrder(t *testing.T) {
 		) {
 			matcher.Pairwise(s, matcher.Fatal, items, pred, msg)
 		})
+
+		t.Run("writes the record of a passing call", func(t *testing.T) {
+			t.Parallel()
+			ascending := func(earlier, later int) bool { return earlier < later }
+			checkPassRecord(t, "pairwise", func(seat matcher.Seat) {
+				matcher.Pairwise(seat, matcher.Fatal, []int{1, 2}, ascending, allocContract)
+			})
+		})
 	})
 }
 

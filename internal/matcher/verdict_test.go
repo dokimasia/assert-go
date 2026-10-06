@@ -267,6 +267,15 @@ func TestVerdict(t *testing.T) {
 				t.Fatalf("the record states aborting %v, want true", got)
 			}
 		})
+		t.Run("writes an error of the recording surface as not aborting", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newKeepingSeat()
+			matcher.Fault(seat, matcher.Soft, "prop-for-all", "the claim is true", fault.New("the seed is no number"))
+			if got := seat.lines(t)[0]["aborting"]; got != false {
+				t.Fatalf("the record states aborting %v, want false", got)
+			}
+		})
 	})
 
 	t.Run("Begin", func(t *testing.T) {
@@ -374,6 +383,16 @@ func TestVerdict(t *testing.T) {
 				t.Fatalf("the record states aborting %v, want true", got)
 			}
 		})
+		t.Run("writes the pass of a run on the recording surface as not aborting", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newKeepingSeat()
+			matcher.Begin(seat).PassRun(matcher.Soft, "prop-for-all", "the claim is true", matcher.Where{},
+				json.RawMessage(`{"outcome":"passed"}`))
+			if got := seat.lines(t)[0]["aborting"]; got != false {
+				t.Fatalf("the record states aborting %v, want false", got)
+			}
+		})
 	})
 
 	t.Run("FailRun", func(t *testing.T) {
@@ -404,6 +423,16 @@ func TestVerdict(t *testing.T) {
 			matcher.Begin(seat).FailRun(matcher.Soft, f, json.RawMessage(`{"outcome":"falsified"}`))
 			if got := seat.lines(t)[0]["aborting"]; got != false {
 				t.Fatalf("the record states aborting %v, want false", got)
+			}
+		})
+		t.Run("writes the failure of a run on the aborting surface as aborting", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newKeepingSeat()
+			f := matcher.Failure{Assertion: "prop-for-all", Contract: "the claim is true"}
+			matcher.Begin(seat).FailRun(matcher.Fatal, f, json.RawMessage(`{"outcome":"falsified"}`))
+			if got := seat.lines(t)[0]["aborting"]; got != true {
+				t.Fatalf("the record states aborting %v, want true", got)
 			}
 		})
 	})

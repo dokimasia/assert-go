@@ -47,6 +47,12 @@ type tagged struct {
 // body is a string of another type than string.
 type body string
 
+// silent is a value whose String method writes no text.
+type silent struct{}
+
+// String returns the empty string.
+func (silent) String() string { return "" }
+
 // letters returns the ten lines a to j, with the line of index changed to
 // its upper case.
 func letters(index int) string {
@@ -133,6 +139,15 @@ func TestWriter(t *testing.T) {
 					Detail:    map[string]any{"want": 2},
 				},
 				want: "the count is right: want 2",
+			},
+			{
+				name: "lists the fields of an equality record without want",
+				give: matcher.Failure{
+					Assertion: "equal",
+					Contract:  "the count is right",
+					Detail:    map[string]any{"got": 2},
+				},
+				want: "the count is right: got 2",
 			},
 			{
 				name: "writes a value that contains itself with the cycle marked",
@@ -236,6 +251,24 @@ func TestWriter(t *testing.T) {
 				want:     "\t[0]: -map[self:<cycle>] +1\n",
 			},
 			{
+				name:     "writes a place that want alone has, whose text is empty",
+				giveWant: []any{silent{}},
+				giveGot:  []any{},
+				want:     "\t[0]: -\n",
+			},
+			{
+				name:     "writes a place that got alone has, whose text is empty",
+				giveWant: []any{},
+				giveGot:  []any{silent{}},
+				want:     "\t[0]: +\n",
+			},
+			{
+				name:     "writes a nil element of an interface type as nil",
+				giveWant: []any{nil},
+				giveGot:  []any{1},
+				want:     "\t[0]: -<nil> +1\n",
+			},
+			{
 				name:     "writes a value of an unexported field without its methods",
 				giveWant: tagged{t: 1},
 				giveGot:  tagged{t: 2},
@@ -252,6 +285,18 @@ func TestWriter(t *testing.T) {
 				giveWant: "a\nb",
 				giveGot:  "a\nc",
 				want:     "\t  a\n\t- b\n\t+ c\n",
+			},
+			{
+				name:     "writes a line diff of a text of one line against a text of more",
+				giveWant: "a",
+				giveGot:  "a\nb",
+				want:     "\t  a\n\t+ b\n",
+			},
+			{
+				name:     "writes a line diff of a text of more than one line against a text of one",
+				giveWant: "a\nb",
+				giveGot:  "a",
+				want:     "\t  a\n\t- b\n",
 			},
 			{
 				name:     "writes the path of a line diff on a line of its own",

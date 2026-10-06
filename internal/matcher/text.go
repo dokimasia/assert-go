@@ -115,9 +115,9 @@ func portable(expr string) (*regexp.Regexp, error) {
 		} else if !inClass && c == '.' {
 			b.WriteString(lineTerminatorFree)
 			continue
-		} else if !inClass && c == '[' {
+		} else if c == '[' {
 			inClass = true
-		} else if inClass && c == ']' {
+		} else if c == ']' {
 			inClass = false
 		}
 		b.WriteByte(c)

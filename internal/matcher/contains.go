@@ -28,11 +28,8 @@ import (
 func Contains(seat Seat, mode Mode, haystack, needle any, msg string, opts ...Option) {
 	seat.Helper()
 
-	found, supported := contained(haystack, needle, rulesOf(opts))
-	if !supported {
-		Fail(seat, mode, "contains", msg, map[string]any{"haystack": haystack, "needle": needle})
-		return
-	}
+	// contained reports false for a haystack of a type without containment.
+	found, _ := contained(haystack, needle, rulesOf(opts))
 	if !found {
 		Fail(seat, mode, "contains", msg, map[string]any{"haystack": haystack, "needle": needle})
 		return

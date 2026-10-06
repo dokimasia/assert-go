@@ -382,6 +382,15 @@ func TestOption(t *testing.T) {
 				},
 			},
 			{
+				name: "fails the test at a draw that takes a step entry of client 0",
+				give: `[{"step": "put", "client": 0}]`,
+				want: fault.Error{
+					Op:     forAllOp,
+					Path:   fault.Path{fault.Field("Draws"), fault.Index(0), fault.Field("label")},
+					Reason: `the draw labelled "value" takes the step entry of "put"`,
+				},
+			},
+			{
 				name: "fails the run at once at the value of an entry that is no typed literal",
 				give: `[{"label": "value", "value": {"type": "int", "value": 4}},` +
 					` {"label": "value", "value": {"type": "widget"}}]`,

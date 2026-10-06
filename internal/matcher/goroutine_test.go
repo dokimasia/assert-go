@@ -6,6 +6,7 @@ package matcher_test
 import (
 	"errors"
 	"math"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -31,6 +32,15 @@ const (
 // leakMsg is the caller's message of the leak check over deep stacks.
 const leakMsg = "the worker stops"
 
+// The deep goroutines that every reading of a check finds, and the most that
+// the check of their leak allocates. Their stacks take 1.3 MiB, and 2.2 MiB
+// under the race detector, so their dump outgrows the first buffer of
+// 1 MiB, and the check grows one buffer to 2 or 4 MiB.
+const (
+	leakedGoroutines = 80
+	maxCheckBytes    = 32 << 20
+)
+
 // TestGoroutine reads the goroutines of the whole process, so neither it
 // nor its cases run in parallel. See [matchertest.RunNoGoroutineLeaks].
 func TestGoroutine(t *testing.T) {
@@ -38,38 +48,90 @@ func TestGoroutine(t *testing.T) {
 		matchertest.RunNoGoroutineLeaks(t, func(s *matchertest.Seat, msg string) func() {
 			return matcher.NoGoroutineLeaks(s, matcher.Fatal, msg)
 		})
+
+		t.Run("writes the record of a passing check", func(t *testing.T) {
+			checkPassRecord(t, "no-task-leaks", func(seat matcher.Seat) {
+				matcher.NoGoroutineLeaks(seat, matcher.Fatal, leakMsg)()
+			})
+		})
 	})
 
 	t.Run("NoGoroutineLeaks ends without a verdict on stacks that outgrow 64 MiB", func(t *testing.T) {
 		seat := newKeepingSeat()
 		check := matcher.NoGoroutineLeaks(seat, matcher.Fatal, leakMsg)
-
-		var ready, ended sync.WaitGroup
-		release := make(chan struct{})
-		ready.Add(deepGoroutines)
-		for range deepGoroutines {
-			ended.Go(func() {
-				m := uint64(math.MaxUint64)
-				deepStack(m, m, m, m, m, m, m, m, m, m, deepFrames, &ready, release)
-			})
-		}
-		ready.Wait()
+		end := runDeep(t, deepGoroutines)
 		check()
-		close(release)
-		ended.Wait()
+		end()
 
-		if fatals := seat.Fatals(); len(fatals) != 1 {
-			t.Fatalf("reported %q, want one report that the stacks do not fit", fatals)
+		checkStacksFault(t, seat)
+	})
+
+	t.Run("NoGoroutineLeaks ends without a verdict on stacks that outgrow 64 MiB at its call", func(t *testing.T) {
+		seat := newKeepingSeat()
+		end := runDeep(t, deepGoroutines)
+		check := matcher.NoGoroutineLeaks(seat, matcher.Fatal, leakMsg)
+		end()
+		check()
+
+		checkStacksFault(t, seat)
+	})
+
+	// A check that read each dump into a buffer of its own would allocate
+	// 2 MiB at each of its 100 readings.
+	t.Run("NoGoroutineLeaks reads the dumps of a check into one buffer", func(t *testing.T) {
+		seat := &matchertest.Seat{}
+		check := matcher.NoGoroutineLeaks(seat, matcher.Soft, leakMsg)
+		end := runDeep(t, leakedGoroutines)
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		check()
+		runtime.ReadMemStats(&after)
+		end()
+
+		if records := seat.Records(); len(records) != 1 || records[0].Assertion != "no-task-leaks" {
+			t.Fatalf("reported %+v, want the leak of the deep goroutines", records)
 		}
-		if records := seat.Records(); len(records) != 0 {
-			t.Errorf("reported the records %+v for a check that states no verdict", records)
-		}
-		lines := seat.lines(t)
-		if len(lines) != 1 || lines[0]["verdict"] != "error" || lines[0]["contract"] != leakMsg ||
-			!strings.Contains(lines[0]["error"].(string), "the stacks of every goroutine fill 67108864 bytes") {
-			t.Errorf("wrote the call records %v, want one error of the check", lines)
+		if grown := after.TotalAlloc - before.TotalAlloc; grown > maxCheckBytes {
+			t.Errorf("the check allocated %d bytes, want at most %d", grown, maxCheckBytes)
 		}
 	})
+}
+
+// checkStacksFault checks that seat received the fault of a check whose
+// stacks do not fit, and the call record of the error alone.
+func checkStacksFault(t *testing.T, seat *keepingSeat) {
+	t.Helper()
+	if fatals := seat.Fatals(); len(fatals) != 1 {
+		t.Fatalf("reported %q, want one report that the stacks do not fit", fatals)
+	}
+	if records := seat.Records(); len(records) != 0 {
+		t.Errorf("reported the records %+v for a check that states no verdict", records)
+	}
+	lines := seat.lines(t)
+	if len(lines) != 1 || lines[0]["verdict"] != "error" || lines[0]["contract"] != leakMsg ||
+		!strings.Contains(lines[0]["error"].(string), "the stacks of every goroutine fill 67108864 bytes") {
+		t.Errorf("wrote the call records %v, want one error of the check", lines)
+	}
+}
+
+// runDeep starts n deep goroutines, waits until each is at the bottom of its
+// stack, and returns the function that ends them and waits for them.
+func runDeep(t *testing.T, n int) (end func()) {
+	t.Helper()
+	var ready, ended sync.WaitGroup
+	release := make(chan struct{})
+	ready.Add(n)
+	for range n {
+		ended.Go(func() {
+			m := uint64(math.MaxUint64)
+			deepStack(m, m, m, m, m, m, m, m, m, m, deepFrames, &ready, release)
+		})
+	}
+	ready.Wait()
+	return func() {
+		close(release)
+		ended.Wait()
+	}
 }
 
 // deepStack recurses frames deep, each frame with ten words of arguments

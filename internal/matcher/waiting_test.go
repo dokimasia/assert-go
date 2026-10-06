@@ -107,6 +107,31 @@ func TestWaiting(t *testing.T) {
 		}
 	})
 
+	// The attempt passes and hands its seat to a goroutine, which reports a
+	// failure on it after Eventually has read the attempt's outcome.
+	t.Run("Eventually ignores a failure that a goroutine reports on an ended attempt", func(t *testing.T) {
+		t.Parallel()
+
+		seat := &matchertest.Seat{}
+		trials := make(chan matcher.Seat, 1)
+		matcher.Eventually(seat, matcher.Fatal, matchertest.PatientTimeout, matchertest.ShortInterval,
+			func(trial matcher.Seat) { trials <- trial }, "the body settles")
+
+		reported := make(chan struct{})
+		go func() {
+			matcher.True(<-trials, matcher.Soft, false, matchertest.InnerReason)
+			close(reported)
+		}()
+		select {
+		case <-reported:
+		case <-time.After(matchertest.PatientTimeout):
+			t.Fatal("the late failure did not return")
+		}
+		if seat.Failed() {
+			t.Fatalf("reported %q for a body whose attempt passed", seat.First())
+		}
+	})
+
 	t.Run("Eventually panics on the caller with a panic of the body", func(t *testing.T) {
 		t.Parallel()
 

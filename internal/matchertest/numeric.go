@@ -44,8 +44,8 @@ func CloseToCases() []Case {
 			Assertion: "close-to",
 		},
 		{
-			Name:      "a value that is not a number reports",
-			Args:      []any{"1", 1.0, 0.5},
+			Name:      "a value that is not a number reports whatever the tolerance",
+			Args:      []any{"1", 1.0, math.Inf(1)},
 			Fails:     true,
 			Assertion: "close-to",
 		},

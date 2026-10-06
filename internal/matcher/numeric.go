@@ -62,7 +62,9 @@ func CloseTo(seat Seat, mode Mode, got any, want, tolerance float64, msg string)
 func InRange(seat Seat, mode Mode, got any, low, high float64, msg string) {
 	seat.Helper()
 
-	if math.IsNaN(low) || math.IsNaN(high) || low > high {
+	// A range whose low is above its high fails the comparison of the
+	// bounds below for every number.
+	if math.IsNaN(low) || math.IsNaN(high) {
 		Fail(seat, mode, "in-range", msg,
 			map[string]any{"got": got, "low": low, "high": high})
 		return

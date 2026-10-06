@@ -163,7 +163,7 @@ func OptimisationsOff(info *debug.BuildInfo) bool {
 // equals sign, and the flag's name is compared whole, so -lang is not -l.
 func disablesOptimisation(flags string) bool {
 	for field := range strings.FieldsSeq(flags) {
-		if pattern, flag, ok := strings.Cut(field, "="); ok && !strings.HasPrefix(pattern, "-") {
+		if pattern, flag, _ := strings.Cut(field, "="); !strings.HasPrefix(pattern, "-") {
 			field = flag
 		}
 		name, _, _ := strings.Cut(field, "=")

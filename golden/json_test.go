@@ -6,6 +6,7 @@ package golden_test
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/golden"
@@ -165,6 +167,30 @@ func TestJSON(t *testing.T) {
 				"the record states both numbers exactly")
 		})
 
+		t.Run("states zeros, negative numbers and fractions below one exactly", func(t *testing.T) {
+			t.Parallel()
+
+			path := writtenJSON(t, `{"n":[0,-1,0.5]}`)
+			s := &matchertest.Seat{}
+			golden.MatchJSONField(s, path, "n", []byte(`[0,1,0.25]`), checking)
+
+			assert.True(t, s.Failed(), "-1 does not match 1, and 0.5 does not match 0.25")
+			assert.Equal(t, s.Records()[0].Detail,
+				map[string]any{"want": "[\n  0,\n  -1,\n  0.5\n]", "got": "[\n  0,\n  1,\n  0.25\n]", "field": "n"},
+				"the record states each number exactly")
+		})
+
+		t.Run("states the error of a golden file that cannot be read as the cause of its fault", func(t *testing.T) {
+			t.Parallel()
+
+			s := &matchertest.Seat{}
+			golden.MatchJSONField(s, t.TempDir(), "one", []byte(`[1]`), checking)
+
+			faults := s.Faults()
+			assert.Length(t, faults, 1, "the call ends with one fault")
+			_ = assert.ErrorAs[*fs.PathError](t, faults[0], "the fault's cause is the error of reading the directory")
+		})
+
 		t.Run("passes a field whose numbers differ in their text alone", func(t *testing.T) {
 			t.Parallel()
 
@@ -256,6 +282,11 @@ func TestJSON(t *testing.T) {
 				giveValue: `not json`,
 			},
 			{
+				name:      "ends with a fault for an empty value",
+				givePath:  func(t *testing.T) string { t.Helper(); return writtenJSON(t, `{"one":[1]}`) },
+				giveValue: ``,
+			},
+			{
 				name:      "ends with a fault for a golden file that is no JSON object",
 				givePath:  func(t *testing.T) string { t.Helper(); return writtenJSON(t, `[1,2,3]`) },
 				giveValue: `[1]`,
@@ -296,6 +327,65 @@ func TestJSON(t *testing.T) {
 			})
 		}
 	})
+}
+
+// lockWait is how long a call on a golden file is given to read the file
+// while another call has the file's lock. A call that read it would do so
+// within microseconds.
+const lockWait = 100 * time.Millisecond
+
+// TestJSONEnv checks the calls of MatchJSONField on the paths that name one
+// golden file. Its case changes the working directory of the process, which
+// resolves a relative path, so it runs alone.
+func TestJSONEnv(t *testing.T) {
+	t.Run("MatchJSONField", func(t *testing.T) {
+		// The first call names the file by a relative path. Its scrubber runs
+		// on the golden value, under the lock of the file, and waits there.
+		// The second call names the file by its absolute path, and its
+		// scrubber may run on the golden value only once the first call ends.
+		t.Run("runs the calls on one golden file one at a time whatever path names it", func(t *testing.T) {
+			dir := t.TempDir()
+			t.Chdir(dir)
+			const name = "fields.json"
+			assert.NoError(t, os.WriteFile(name, []byte(`{"a":1,"b":2}`), goldenPerm), "the golden file is written")
+
+			locked, release, read := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			first, second := assert.NewRecorder(), assert.NewRecorder()
+			var calls sync.WaitGroup
+			calls.Go(func() {
+				golden.MatchJSONField(first, name, "a", []byte(`1`), checking,
+					onGolden(func() { close(locked); <-release }))
+			})
+			<-locked
+			calls.Go(func() {
+				golden.MatchJSONField(second, filepath.Join(dir, name), "b", []byte(`2`), checking,
+					onGolden(func() { close(read) }))
+			})
+			select {
+			case <-read:
+				t.Error("the second call read the golden file while the first had the file's lock")
+			case <-time.After(lockWait):
+			}
+			close(release)
+			calls.Wait()
+
+			assert.Equal(t, verdicts(t, first), []string{"pass"}, "the first call passes")
+			assert.Equal(t, verdicts(t, second), []string{"pass"}, "the second call passes")
+		})
+	})
+}
+
+// onGolden returns a scrubber that calls do on its second call, the one on
+// the golden value of a field, and leaves the text as it is.
+func onGolden(do func()) golden.Scrubber {
+	calls := 0
+	return func(s string) string {
+		calls++
+		if calls == 2 {
+			do()
+		}
+		return s
+	}
 }
 
 // TestJSONAllocs checks the allocation ceiling of a passing call of

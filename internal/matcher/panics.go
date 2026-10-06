@@ -34,7 +34,7 @@ func Panics(seat Seat, mode Mode, fn func(), msg string) (recovered any) {
 
 	if !panicked {
 		Fail(seat, mode, "throws", msg, nil)
-		return recovered
+		return nil
 	}
 	Pass(seat, mode, "throws", msg)
 	return recovered

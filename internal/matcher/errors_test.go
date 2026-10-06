@@ -24,6 +24,13 @@ func TestErrors(t *testing.T) {
 			func(s *matchertest.Seat, got any, msg string) {
 				matcher.NoError(s, matcher.Fatal, matchertest.AsError(got), msg)
 			})
+
+		t.Run("writes the record of a passing call", func(t *testing.T) {
+			t.Parallel()
+			checkPassRecord(t, "err-absent", func(seat matcher.Seat) {
+				matcher.NoError(seat, matcher.Fatal, nil, allocContract)
+			})
+		})
 	})
 
 	t.Run("HasError", func(t *testing.T) {
@@ -32,6 +39,13 @@ func TestErrors(t *testing.T) {
 			func(s *matchertest.Seat, got any, msg string) {
 				matcher.HasError(s, matcher.Fatal, matchertest.AsError(got), msg)
 			})
+
+		t.Run("writes the record of a passing call", func(t *testing.T) {
+			t.Parallel()
+			checkPassRecord(t, "err-present", func(seat matcher.Seat) {
+				matcher.HasError(seat, matcher.Fatal, matchertest.ErrSample, allocContract)
+			})
+		})
 	})
 
 	t.Run("ErrorIs", func(t *testing.T) {
@@ -40,6 +54,13 @@ func TestErrors(t *testing.T) {
 			func(s *matchertest.Seat, got, target any, msg string) {
 				matcher.ErrorIs(s, matcher.Fatal, matchertest.AsError(got), matchertest.AsError(target), msg)
 			})
+
+		t.Run("writes the record of a passing call", func(t *testing.T) {
+			t.Parallel()
+			checkPassRecord(t, "err-is", func(seat matcher.Seat) {
+				matcher.ErrorIs(seat, matcher.Fatal, matchertest.ErrSample, matchertest.ErrSample, allocContract)
+			})
+		})
 	})
 
 	t.Run("ErrorIsNot", func(t *testing.T) {
@@ -48,12 +69,27 @@ func TestErrors(t *testing.T) {
 			func(s *matchertest.Seat, got, target any, msg string) {
 				matcher.ErrorIsNot(s, matcher.Fatal, matchertest.AsError(got), matchertest.AsError(target), msg)
 			})
+
+		t.Run("writes the record of a passing call", func(t *testing.T) {
+			t.Parallel()
+			checkPassRecord(t, "err-is-not", func(seat matcher.Seat) {
+				matcher.ErrorIsNot(seat, matcher.Fatal, matchertest.ErrSample, matchertest.ErrOther, allocContract)
+			})
+		})
 	})
 
 	t.Run("ErrorAs", func(t *testing.T) {
 		t.Parallel()
 		matchertest.RunErrorAs(t, func(s *matchertest.Seat, err error, msg string) *matchertest.TypedError {
 			return matcher.ErrorAs[*matchertest.TypedError](s, matcher.Fatal, err, msg)
+		})
+
+		t.Run("writes the record of a passing call", func(t *testing.T) {
+			t.Parallel()
+			wrapped := matchertest.WrappedTyped()
+			checkPassRecord(t, "err-as", func(seat matcher.Seat) {
+				_ = matcher.ErrorAs[*matchertest.TypedError](seat, matcher.Fatal, wrapped, allocContract)
+			})
 		})
 	})
 }

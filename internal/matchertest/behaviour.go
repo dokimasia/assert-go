@@ -53,6 +53,14 @@ var ctxCases = []struct {
 	{name: "a subject that checks its context passes", fn: RespectsCtx},
 	{name: "a wrapped context error passes", fn: WrapsCtx},
 	{
+		name: "a subject that returns context.Canceled passes",
+		fn:   func(context.Context) error { return context.Canceled },
+	},
+	{
+		name: "a subject that returns context.DeadlineExceeded passes",
+		fn:   func(context.Context) error { return context.DeadlineExceeded },
+	},
+	{
 		name:   "a subject that ignores its context reports",
 		fn:     IgnoresCtx,
 		fails:  true,

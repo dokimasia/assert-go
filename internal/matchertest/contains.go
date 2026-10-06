@@ -159,6 +159,7 @@ func ContainsInOrderCases() []Case {
 			Args:      []any{42, []string{"4"}},
 			Fails:     true,
 			Assertion: "contains-in-order",
+			Detail:    map[string]any{"haystack": 42, "needle": "", "index": 0},
 		},
 	}
 }

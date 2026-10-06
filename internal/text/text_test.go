@@ -31,7 +31,14 @@ const (
 	// million or more: fmt's text, the copy of the arguments, the float as
 	// an argument, its directive and its text.
 	decimalAllocs = 5
+	// nestedAllocs are the allocations of a format with a map of slices,
+	// measured: the 5 of fmt, and 3 of the walk.
+	nestedAllocs = 8
 )
+
+// allocRuns is the number of calls whose allocations testing.AllocsPerRun
+// averages, as assert.MaxAllocs counts them.
+const allocRuns = 100
 
 // sink receives the text that a measured call returns.
 var sink string
@@ -70,6 +77,41 @@ func (label) String() string { return "label" }
 // tagged contains a label in an unexported field.
 type tagged struct {
 	l label
+}
+
+// pair is a struct of two ints, three parts of a walk.
+type pair struct {
+	A, B int
+}
+
+// wrapped is a struct whose field is a slice.
+type wrapped struct {
+	S []int
+}
+
+// holder has pointers below the top level, as the keys and the values of
+// maps, and a slice that contains itself.
+type holder struct {
+	Keys   map[*pair]int
+	Values map[int]*pair
+	Self   []any
+}
+
+// pointing has pointers to arrays of 70,000 parts as the keys and the values
+// of maps whose entries the walk visits.
+type pointing struct {
+	Keys   map[*[70000]uint8][]int
+	Values map[any]*[70000]uint8
+}
+
+// flat has maps and slices whose keys, values and elements contain no map,
+// slice or interface.
+type flat struct {
+	Counts map[string]int
+	Pairs  map[string]pair
+	Grid   map[string][2]int
+	Rows   [][2]int
+	Points []pair
 }
 
 // hidden contains a scalar of each kind in unexported fields, and a map
@@ -240,12 +282,123 @@ func TestText(t *testing.T) {
 				"the map, the key and 65,534 of its elements are the parts written")
 			assert.HasSuffix(t, got, " …]:]", "one mark in place of the rest, and no value")
 		})
+
+		// The map, then a key and a value for each entry: the value of the
+		// 32,768th entry is the 65,537th part.
+		t.Run(
+			"cuts a map of 33,000 entries after its 65,536th part and writes no entry after the cut",
+			func(t *testing.T) {
+				t.Parallel()
+				m := make(map[int]int, 33000)
+				for i := range 33000 {
+					m[i] = i
+				}
+				got := text.Sprintf("%v", m)
+				assert.Equal(t, strings.Count(got, ":"), 32768, "the entries written, each with its key")
+				assert.Contains(t, got, ":…", "a mark in place of the value of the last entry")
+			},
+		)
+
+		cut := []struct {
+			name string
+			give func() any
+		}{
+			{
+				name: "cuts a map of 30,000 interface keys, of 90,001 parts",
+				give: func() any {
+					m := make(map[any]int, 30000)
+					for i := range 30000 {
+						m[i] = i
+					}
+					return m
+				},
+			},
+			{name: "cuts a slice of 7,000 arrays of three pairs, of 70,001 parts", give: func() any {
+				return make([][3]pair, 7000)
+			}},
+			{name: "cuts a slice of 14,000 arrays of two slices, of 70,001 parts", give: func() any {
+				rows := make([][2][]int, 14000)
+				for i := range rows {
+					rows[i] = [2][]int{{0}, {0}}
+				}
+				return rows
+			}},
+			{name: "cuts a slice of 30,000 structs of a slice, of 90,001 parts", give: func() any {
+				items := make([]wrapped, 30000)
+				for i := range items {
+					items[i] = wrapped{S: []int{0}}
+				}
+				return items
+			}},
+		}
+		for _, tt := range cut {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				assert.Contains(t, text.Sprintf("%v", tt.give()), "…", "a mark in place of the parts past the 65,536th")
+			})
+		}
+
+		t.Run("returns what fmt.Sprintf returns for a value of exactly 65,536 parts", func(t *testing.T) {
+			t.Parallel()
+			labels := make([]label, 65535)
+			assert.Equal(t, text.Sprintf("%v", labels), fmt.Sprintf("%v", labels), "fmt's text, which calls String")
+		})
+
+		t.Run("returns what fmt.Sprintf returns for a map and a slice that a value contains twice", func(t *testing.T) {
+			t.Parallel()
+			m, s := map[string]any{"a": 1}, []any{1}
+			value := []any{m, m, s, s}
+			assert.Equal(t, text.Sprintf("%v", value), fmt.Sprintf("%v", value), "fmt's text, without a cycle")
+		})
+
+		t.Run("returns what fmt.Sprintf returns for pointers to large arrays in maps below the top level",
+			func(t *testing.T) {
+				t.Parallel()
+				var key, target [70000]uint8
+				value := pointing{
+					Keys:   map[*[70000]uint8][]int{&key: {1}},
+					Values: map[any]*[70000]uint8{"k": &target},
+				}
+				assert.Equal(t, text.Sprintf("%v", value), fmt.Sprintf("%v", value),
+					"fmt's text, which writes each pointer as its address")
+			})
+
+		t.Run("writes a pointer in a slice at the top level as its address", func(t *testing.T) {
+			t.Parallel()
+			s := []any{&pair{A: 1, B: 2}, nil}
+			s[1] = s
+			assert.Matches(t, text.Sprintf("%v", s), `^\[0x[0-9a-f]+ <cycle>\]$`, "the address and the cycle")
+		})
+
+		t.Run("writes a pointer in a map below the top level as its address", func(t *testing.T) {
+			t.Parallel()
+			h := holder{
+				Keys:   map[*pair]int{{A: 1, B: 2}: 1},
+				Values: map[int]*pair{1: {A: 1, B: 2}},
+				Self:   []any{nil},
+			}
+			h.Self[0] = h.Self
+			assert.Matches(t, text.Sprintf("%v", h),
+				`^\{Keys:map\[0x[0-9a-f]+:1\] Values:map\[1:0x[0-9a-f]+\] Self:\[<cycle>\]\}$`,
+				"the address of the key and of the value")
+		})
+
+		t.Run("leaves the arguments that it is given unchanged", func(t *testing.T) {
+			t.Parallel()
+			s := []any{nil}
+			s[0] = s
+			args := []any{s, 4194298.0}
+			_ = text.Sprintf("%v %v", args...)
+			_, list := args[0].([]any)
+			assert.True(t, list, "the slice is the first argument still")
+			assert.Equal(t, args[1], any(4194298.0), "the float is the second argument still")
+		})
 	})
 
 	t.Run("Fprintf", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("writes what Sprintf returns after what the builder holds", func(t *testing.T) {
+		t.Run("appends what Sprintf returns to the text of the builder", func(t *testing.T) {
 			t.Parallel()
 			m := map[string]any{"n": 1}
 			m["self"] = m
@@ -266,6 +419,22 @@ func TestTextAllocs(t *testing.T) {
 		"Sprintf of a struct allocates its walk and fmt's text")
 	assert.MaxAllocs(t, func() { sink = text.Sprintf("got %v", 4194298.0) }, decimalAllocs,
 		"Sprintf of a whole float allocates fmt's text, a copy of the arguments, the float, its directive and its text")
+	assert.MaxAllocs(t, func() { sink = text.Sprintf("got %v", 5.0) }, scalarAllocs,
+		"Sprintf of a whole float below a million allocates fmt's text")
+
+	flatValue := flat{
+		Counts: map[string]int{"day": 3},
+		Pairs:  map[string]pair{"a": {A: 1, B: 2}},
+		Grid:   map[string][2]int{"a": {1, 2}},
+		Rows:   [][2]int{{1, 2}},
+		Points: []pair{{A: 1, B: 2}},
+	}
+	fmtAllocs := uint64(testing.AllocsPerRun(allocRuns, func() { sink = fmt.Sprintf("%v", flatValue) }))
+	assert.MaxAllocs(t, func() { sink = text.Sprintf("%v", flatValue) }, fmtAllocs,
+		"Sprintf of maps and slices that contain no map, slice or interface allocates what fmt allocates")
+	nested := map[string][]int{"a": {1}}
+	assert.MaxAllocs(t, func() { sink = text.Sprintf("%v", nested) }, nestedAllocs,
+		"Sprintf of a map of slices allocates fmt's text and the path of its walk")
 	var b strings.Builder
 	b.Grow(64)
 	assert.MaxAllocs(t, func() { b.Reset(); b.Grow(64); text.Fprintf(&b, "the key %s states %d values", "min", 3) },

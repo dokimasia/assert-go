@@ -141,3 +141,15 @@ func (s *keepingSeat) lines(t *testing.T) []map[string]any {
 	}
 	return out
 }
+
+// checkPassRecord checks that call, a passing call of assertion, writes the
+// record of one pass of assertion on a seat that keeps call records.
+func checkPassRecord(t *testing.T, assertion string, call func(seat matcher.Seat)) {
+	t.Helper()
+	seat := newKeepingSeat()
+	call(seat)
+	lines := seat.lines(t)
+	if len(lines) != 1 || lines[0]["assertion"] != assertion || lines[0]["verdict"] != "pass" {
+		t.Fatalf("wrote %v, want the record of one pass of %s", lines, assertion)
+	}
+}

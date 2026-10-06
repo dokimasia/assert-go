@@ -74,8 +74,7 @@ func TestScrubber(t *testing.T) {
 		t.Run("replaces a run identifier", func(t *testing.T) {
 			t.Parallel()
 
-			const id = "run_abcdef0123456789"
-			assert.NotContains(t, golden.ScrubRunIDs()("id "+id), id,
+			assert.Equal(t, golden.ScrubRunIDs()("id run_abcdef0123456789"), "id SCRUBBED_RUN_ID",
 				"the run identifier is replaced")
 		})
 	})

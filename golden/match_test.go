@@ -4,6 +4,7 @@
 package golden_test
 
 import (
+	"flag"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -211,11 +212,21 @@ func TestMatch(t *testing.T) {
 }
 
 // TestMatchEnv checks the name that Match resolves against the
-// conventional directory. Each case changes the working directory of the
-// process to a temporary directory of its own, so the cases run one at a
-// time, and a golden file that a mutant of Match writes is written outside
-// the module.
+// conventional directory, and ShouldUpdate under the flag -update. Each
+// case changes the working directory of the process to a temporary
+// directory of its own, or the flag, so the cases run one at a time, and a
+// golden file that a mutant of Match writes is written outside the module.
 func TestMatchEnv(t *testing.T) {
+	t.Run("ShouldUpdate", func(t *testing.T) {
+		t.Run("returns true while -update is set", func(t *testing.T) {
+			previous := flag.Lookup("update").Value.String()
+			assert.NoError(t, flag.Set("update", "true"), "the flag is set")
+			t.Cleanup(func() { assert.NoError(t, flag.Set("update", previous), "the flag is restored") })
+
+			assert.True(t, golden.ShouldUpdate(), "the flag -update is set")
+		})
+	})
+
 	t.Run("Match", func(t *testing.T) {
 		t.Run("resolves the name against the conventional directory", func(t *testing.T) {
 			t.Chdir(t.TempDir())

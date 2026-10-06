@@ -32,8 +32,25 @@ func TestClockOf(t *testing.T) {
 	t.Run("returns the runtime clock for a seat without a clock", func(t *testing.T) {
 		t.Parallel()
 
-		if got := matcher.ClockOf(&bareSeat{}); got == nil {
-			t.Fatal("ClockOf() = nil, want the runtime clock")
+		if got := matcher.ClockOf(&bareSeat{}); got != (matcher.System{}) {
+			t.Fatalf("ClockOf() = %v, want the runtime clock", got)
+		}
+	})
+
+	t.Run("returns the runtime clock for a seat that supplies no clock", func(t *testing.T) {
+		t.Parallel()
+
+		if got := matcher.ClockOf(&clockedSeat{}); got != (matcher.System{}) {
+			t.Fatalf("ClockOf() = %v, want the runtime clock", got)
+		}
+	})
+
+	t.Run("returns the clock that a seat supplies", func(t *testing.T) {
+		t.Parallel()
+
+		clock := matcher.NewControlled(clockEpoch)
+		if got := matcher.ClockOf(&clockedSeat{clock: clock}); got != clock {
+			t.Fatalf("ClockOf() = %v, want the seat's clock", got)
 		}
 	})
 }

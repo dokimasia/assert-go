@@ -66,12 +66,8 @@ func Empty(seat Seat, mode Mode, got any, msg string) {
 func NotEmpty(seat Seat, mode Mode, got any, msg string) {
 	seat.Helper()
 
-	n, ok := lengthOf(got)
-	if !ok {
-		Fail(seat, mode, "not-empty", msg, nil)
-		return
-	}
-	if n == 0 {
+	// A value without a length has no item.
+	if n, _ := lengthOf(got); n == 0 {
 		Fail(seat, mode, "not-empty", msg, nil)
 		return
 	}
@@ -80,13 +76,10 @@ func NotEmpty(seat Seat, mode Mode, got any, msg string) {
 
 // lengthOf reads the length of anything that has one: the elements of an
 // array, slice or channel, the entries of a map, and the Unicode scalar
-// values of a string.
+// values of a string. A nil value has the kind [reflect.Invalid], and no
+// length.
 func lengthOf(v any) (int, bool) {
 	rv := reflect.ValueOf(v)
-	if !rv.IsValid() {
-		return 0, false
-	}
-
 	switch rv.Kind() {
 	case reflect.String:
 		return utf8.RuneCountInString(rv.String()), true

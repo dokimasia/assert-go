@@ -33,6 +33,7 @@ func HasPrefixCases() []Case {
 			Args:      []any{42, "4"},
 			Fails:     true,
 			Assertion: "has-prefix",
+			Detail:    map[string]any{"got": 42, "prefix": "4"},
 		},
 	}
 }
@@ -55,6 +56,7 @@ func HasSuffixCases() []Case {
 			Args:      []any{42, "2"},
 			Fails:     true,
 			Assertion: "has-suffix",
+			Detail:    map[string]any{"got": 42, "suffix": "2"},
 		},
 	}
 }
@@ -98,6 +100,18 @@ func MatchesCases() []Case {
 			Assertion: "matches",
 		},
 		{
+			Name:      "a dot after an escaped character matches no carriage return",
+			Args:      []any{".\r", `^\..$`},
+			Fails:     true,
+			Assertion: "matches",
+		},
+		{
+			Name:      "a dot after a class matches no carriage return",
+			Args:      []any{"a\r", `^[a].$`},
+			Fails:     true,
+			Assertion: "matches",
+		},
+		{
 			Name:      "a flag group is outside the subset and reports",
 			Args:      []any{"A", `(?i)a`},
 			Fails:     true,
@@ -133,6 +147,7 @@ func MatchesCases() []Case {
 			Args:      []any{42, `\d`},
 			Fails:     true,
 			Assertion: "matches",
+			Detail:    map[string]any{"got": 42, "pattern": `\d`},
 		},
 	}
 }
