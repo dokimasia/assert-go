@@ -94,9 +94,14 @@ func report(s *matchertest.Seat, assertion, msg string, detail map[string]any) {
 // same reports whether x and y are equal under opts, as the assertions of
 // internal/matcher compare them.
 func same(x, y any, opts []matcher.Option) bool {
+	return equality.Equal(reflect.ValueOf(x), reflect.ValueOf(y), rulesOf(opts))
+}
+
+// rulesOf returns the rules that opts state.
+func rulesOf(opts []matcher.Option) equality.Rules {
 	var r equality.Rules
 	for _, opt := range opts {
 		r = opt(r)
 	}
-	return equality.Equal(reflect.ValueOf(x), reflect.ValueOf(y), r)
+	return r
 }

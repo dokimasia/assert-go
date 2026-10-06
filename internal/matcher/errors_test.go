@@ -4,9 +4,11 @@
 package matcher_test
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
@@ -91,8 +93,53 @@ func TestErrors(t *testing.T) {
 				_ = matcher.ErrorAs[*matchertest.TypedError](seat, matcher.Fatal, wrapped, allocContract)
 			})
 		})
+
+		t.Run("returns an error of an interface type that does not embed error", func(t *testing.T) {
+			t.Parallel()
+			seat := &matchertest.Seat{}
+			got := matcher.ErrorAs[interface{ Timeout() bool }](seat, matcher.Fatal,
+				fmt.Errorf("outer: %w", timeoutError{}), allocContract)
+			if seat.Failed() || len(seat.Faults()) != 0 {
+				t.Fatalf(
+					"reported %q and the faults %v for a chain that has the interface",
+					seat.First(),
+					seat.Faults(),
+				)
+			}
+			if got == nil || !got.Timeout() {
+				t.Fatalf("returned %v, want the error of the chain", got)
+			}
+		})
+
+		t.Run("ends the call with a fault for a type that is no interface and does not implement error",
+			func(t *testing.T) {
+				t.Parallel()
+				seat := &matchertest.Seat{}
+				got := matcher.ErrorAs[int](seat, matcher.Fatal, matchertest.ErrSample, allocContract)
+				faults := seat.Faults()
+				if len(faults) != 1 || len(seat.Records()) != 0 {
+					t.Fatalf("reported the faults %v and the records %v, want one fault", faults, seat.Records())
+				}
+				var f *fault.Error
+				const reason = "the type int is no interface and does not implement error"
+				if !errors.As(faults[0], &f) || f.Op != "" || f.Kind != nil || f.Reason != reason {
+					t.Fatalf("reported %#v, want the fault %q", faults[0], reason)
+				}
+				if got != 0 {
+					t.Fatalf("returned %d, want the zero value", got)
+				}
+			})
 	})
 }
+
+// timeoutError is an error that reports a timeout, as a network error does.
+type timeoutError struct{}
+
+// Error returns the error's text.
+func (timeoutError) Error() string { return "matcher_test: the call timed out" }
+
+// Timeout reports that the error is a timeout.
+func (timeoutError) Timeout() bool { return true }
 
 // TestErrorsAllocs checks the allocation ceiling of a passing call of each
 // error assertion.

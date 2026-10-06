@@ -92,7 +92,9 @@ func HonoursDeadline(seat Seat, mode Mode, fn func(ctx context.Context) error, m
 // A subject that has not returned when the deadline passes fails then,
 // with got the time waited on the runtime clock, and the assertion
 // returns without it. A goroutine cannot be stopped from outside, so fn
-// runs on, and a leak check after this call reports it.
+// runs on, and a leak check after this call reports it. A subject that
+// ends its goroutine through runtime.Goexit never returns either, so it
+// fails when the deadline passes as well.
 //
 // Exactly one of fn and the deadline ends the wait. A panic in fn that
 // ends it panics again on the calling goroutine. A panic in fn after the
@@ -120,10 +122,12 @@ func CompletesWithin(seat Seat, mode Mode, within time.Duration, fn func(ctx con
 	go func() {
 		defer s.end()
 		_ = fn(ctx)
+		s.returned = true
 	}()
 
 	switch raised := (<-s.outcome).(type) {
-	case expired:
+	case expired, exited:
+		<-ctx.Done()
 		Fail(seat, mode, "completes-within", msg, map[string]any{
 			"want": within,
 			"got":  time.Since(waited).Round(time.Millisecond),
@@ -160,12 +164,19 @@ const (
 type subject struct {
 	state atomic.Int32
 	// outcome receives one value: the value that the subject panicked
-	// with, nil for a subject that returned, or expired.
+	// with, nil for a subject that returned, exited, or expired.
 	outcome chan any
+	// returned reports that the subject returned. Only the subject's
+	// goroutine reads and writes it.
+	returned bool
 }
 
 // expired is the outcome of a subject whose deadline passed first.
 type expired struct{}
+
+// exited is the outcome of a subject that ended its goroutine through
+// runtime.Goexit before its deadline, and so never returned.
+type exited struct{}
 
 // newSubject returns a subject that is running.
 func newSubject() *subject {
@@ -173,15 +184,20 @@ func newSubject() *subject {
 }
 
 // end runs deferred on the subject's goroutine. When the subject ends
-// first, it recovers the value that the subject panicked with, or nil, and
-// hands it to the caller. When the deadline passed first, it recovers
-// nothing, so a panic of the subject ends the program, as a panic on any
-// goroutine does.
+// first, it recovers the value that the subject panicked with, and hands
+// the caller that value, nil for a subject that returned, or exited for a
+// subject that neither panicked nor returned. When the deadline passed
+// first, it recovers nothing, so a panic of the subject ends the program,
+// as a panic on any goroutine does.
 func (s *subject) end() {
 	if !s.state.CompareAndSwap(running, finished) {
 		return
 	}
-	s.outcome <- recover()
+	raised := recover()
+	if raised == nil && !s.returned {
+		raised = exited{}
+	}
+	s.outcome <- raised
 }
 
 // expire ends the wait for a subject whose deadline passes first.

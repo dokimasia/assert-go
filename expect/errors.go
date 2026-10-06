@@ -73,6 +73,10 @@ func ErrorIsNot(tb assert.TB, err, target error, msg string) {
 // pointer type T that is nil, so check the result before reading
 // through it.
 //
+// T is an interface type or a type that implements error, as [errors.As]
+// requires of its target. Any other T ends the call with a fault that
+// fails the test.
+//
 // # Allocation contract
 //
 // A passing call allocates only the target that [errors.As] fills.

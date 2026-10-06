@@ -83,13 +83,13 @@ func RunEventually(t *testing.T, invoke EventuallyInvoke) {
 		seat := &Seat{}
 		invoke(seat, 0, ShortInterval, func() bool {
 			attempts++
-			return false
+			return true
 		}, contractMsg)
 
-		checkOutcome(t, seat, Case{})
 		if attempts == 0 {
 			t.Fatal("the body never ran")
 		}
+		checkOutcome(t, seat, Case{Fails: true, Assertion: "eventually"})
 	})
 }
 

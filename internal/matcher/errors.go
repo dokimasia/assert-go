@@ -3,7 +3,15 @@
 
 package matcher
 
-import "errors"
+import (
+	"errors"
+	"reflect"
+
+	"go.dokimi.dev/assert/internal/fault"
+)
+
+// errorType is the type of the interface error.
+var errorType = reflect.TypeFor[error]()
 
 // The error assertions take got as an error or nil, as a function of a
 // surface passes it. A chain passes its value, so got can be a value of
@@ -86,6 +94,10 @@ func ErrorIsNot(seat Seat, mode Mode, got any, target error, msg string) {
 //	    "Get reports a missing key")
 //	matcher.Equal(seat, matcher.Fatal, notFound.Key, "absent", "and names the key")
 //
+// T is an interface type or a type that implements error, as [errors.As]
+// requires of its target. Any other T ends the call with a fault, as
+// [Fault] ends it, and ErrorAs then returns the zero T.
+//
 // # Allocation contract
 //
 // A passing call allocates only the target that [errors.As] fills.
@@ -93,6 +105,10 @@ func ErrorAs[T any](seat Seat, mode Mode, err error, msg string) T {
 	seat.Helper()
 
 	var target T
+	if t := reflect.TypeFor[T](); t.Kind() != reflect.Interface && !t.Implements(errorType) {
+		Fault(seat, mode, "err-as", msg, fault.New("the type %v is no interface and does not implement error", t))
+		return target
+	}
 	if errors.As(err, &target) {
 		Pass(seat, mode, "err-as", msg)
 	} else {

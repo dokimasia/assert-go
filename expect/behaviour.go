@@ -60,8 +60,9 @@ func HonoursDeadline(tb assert.TB, fn func(ctx context.Context) error, msg strin
 //
 // fn runs on a goroutine of its own. A subject that is still running when
 // the deadline passes fails then and runs on, because a goroutine cannot
-// be stopped from outside. A panic in fn panics again on the calling
-// goroutine.
+// be stopped from outside. A subject that ends its goroutine through
+// runtime.Goexit never returns, so it fails when the deadline passes too. A
+// panic in fn panics again on the calling goroutine.
 //
 // The assertion spends real time, up to within.
 //

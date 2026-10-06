@@ -101,9 +101,10 @@ func ContainsInOrder(seat Seat, mode Mode, haystack any, needles []string, msg s
 //
 // Elements compare as [Equal] compares them under opts. Each element of
 // want is matched with an unmatched equal element of got, which is at most
-// len(got)·len(want) comparisons. Two empty slices compare as Equal
-// compares them, so a nil slice does not match an empty one unless opts
-// equate them.
+// len(got)·len(want) comparisons. Two empty slices match when both are nil
+// or neither is, so a nil slice does not match an empty one unless opts
+// equate empty values. The identity of the slices themselves never
+// matters, under [ByIdentity] too.
 //
 // # Allocation contract
 //
@@ -127,11 +128,11 @@ func permuted[T any](got, want []T, r equality.Rules) bool {
 	if len(got) != len(want) {
 		return false
 	}
-	g, w := reflect.ValueOf(got), reflect.ValueOf(want)
 	if len(got) == 0 {
-		return equality.Equal(g, w, r)
+		return (got == nil) == (want == nil) || r.EquateEmpty
 	}
 
+	g, w := reflect.ValueOf(got), reflect.ValueOf(want)
 	matched := make([]bool, len(got))
 	for j := range want {
 		at := -1

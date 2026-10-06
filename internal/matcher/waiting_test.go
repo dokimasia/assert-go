@@ -222,6 +222,26 @@ func TestWaiting(t *testing.T) {
 		}
 	})
 
+	// The body passes an hour after its attempt starts, which is past the
+	// deadline a millisecond after the start.
+	t.Run("Eventually fails a body that passes after its deadline", func(t *testing.T) {
+		t.Parallel()
+
+		clock := matcher.NewControlled(clockEpoch)
+		seat := &clockedSeat{clock: clock}
+		matcher.Eventually(seat, matcher.Fatal, time.Millisecond, time.Millisecond, func(matcher.Seat) {
+			clock.Advance(time.Hour)
+		}, "the body settles within a millisecond")
+
+		records := seat.Records()
+		if len(records) != 1 {
+			t.Fatalf("reported %d records, want 1", len(records))
+		}
+		if got := records[0].Detail; got["attempts"] != 1 || got["last"] != "" {
+			t.Fatalf("the record states %v, want 1 attempt and no last reason", got)
+		}
+	})
+
 	// An interval of zero waits a millisecond, so the attempts run at 0, 1,
 	// 2 and 3 ms, the last at the deadline.
 	t.Run("Eventually waits a millisecond for an interval of zero on the seat's clock", func(t *testing.T) {
@@ -289,6 +309,23 @@ func TestWaiting(t *testing.T) {
 
 		if records := seat.Records(); len(records) != 1 || records[0].Detail["attempts"] != 2 {
 			t.Fatalf("reported %v, want one record of 2 attempts", records)
+		}
+	})
+
+	// The predicate returns true an hour after its attempt starts, which is
+	// past the deadline 2 ms after the start.
+	t.Run("EventuallyTrue fails a predicate that returns true after its deadline", func(t *testing.T) {
+		t.Parallel()
+
+		clock := matcher.NewControlled(clockEpoch)
+		seat := &clockedSeat{clock: clock}
+		matcher.EventuallyTrue(seat, matcher.Fatal, 2*time.Millisecond, func() bool {
+			clock.Advance(time.Hour)
+			return true
+		}, "the predicate becomes true within 2 ms")
+
+		if records := seat.Records(); len(records) != 1 || records[0].Detail["attempts"] != 1 {
+			t.Fatalf("reported %v, want one record of 1 attempt", records)
 		}
 	})
 

@@ -67,6 +67,10 @@ func ErrorIsNot(tb TB, err, target error, msg string) {
 // On failure the test stops, so a caller reads the returned value only
 // after a match.
 //
+// T is an interface type or a type that implements error, as [errors.As]
+// requires of its target. Any other T ends the call with a fault that
+// fails the test.
+//
 // # Allocation contract
 //
 // A passing call allocates only the target that [errors.As] fills.

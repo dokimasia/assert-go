@@ -5,6 +5,7 @@ package matcher_test
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -112,6 +113,24 @@ func TestBehaviour(t *testing.T) {
 		want := map[string]any{"want": time.Minute, "got": time.Minute + time.Second}
 		if got := records[0].Detail; got["want"] != want["want"] || got["got"] != want["got"] {
 			t.Fatalf("the record states %v, want %v", got, want)
+		}
+	})
+
+	t.Run("CompletesWithin fails a subject that ends its goroutine when the deadline passes", func(t *testing.T) {
+		t.Parallel()
+
+		seat := &matchertest.Seat{}
+		matcher.CompletesWithin(seat, matcher.Fatal, matchertest.ShortTimeout, func(context.Context) error {
+			runtime.Goexit()
+			return nil
+		}, "the subject finishes in time")
+
+		records := seat.Records()
+		if len(records) != 1 {
+			t.Fatalf("reported %d records, want 1", len(records))
+		}
+		if got, _ := records[0].Detail["got"].(time.Duration); got < matchertest.ShortTimeout {
+			t.Fatalf("the record states %v waited, want at least the duration %v", got, matchertest.ShortTimeout)
 		}
 	})
 

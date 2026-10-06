@@ -20,7 +20,8 @@ import (
 //
 // fn receives a seat of its own, so an assertion inside it records an
 // attempt and not a failure of the test. fn runs at least once however
-// short the timeout. An interval below a millisecond waits a millisecond.
+// short the timeout, and an attempt that passes after the timeout fails the
+// call. An interval below a millisecond waits a millisecond.
 //
 // Eventually waits on the seat's clock, as
 // [go.dokimi.dev/assert.Eventually] describes.
@@ -45,7 +46,8 @@ func Eventually(tb assert.TB, timeout, interval time.Duration, fn func(tb assert
 //	}, "the key appears in the cache")
 //
 // The backoff starts at a millisecond and doubles up to a quarter of the
-// timeout. A timeout below 4 ms keeps it at a millisecond.
+// timeout. A timeout below 4 ms keeps it at a millisecond. A predicate that
+// returns true after the timeout fails the call.
 //
 // EventuallyTrue differs from [Eventually] in what it reports. A
 // predicate does not report a failure of its own, so the failure states

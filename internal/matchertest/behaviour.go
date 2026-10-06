@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -170,6 +171,17 @@ func RunCompletesWithin(t *testing.T, invoke WithinInvoke) {
 		seat := &Seat{}
 		invoke(seat, ShortTimeout, func(context.Context) error {
 			<-release
+			return nil
+		}, contractMsg)
+		checkOutcome(t, seat, Case{Fails: true, Assertion: "completes-within"})
+	})
+
+	t.Run("a subject that ends its goroutine reports at the deadline", func(t *testing.T) {
+		t.Parallel()
+
+		seat := &Seat{}
+		invoke(seat, ShortTimeout, func(context.Context) error {
+			runtime.Goexit()
 			return nil
 		}, contractMsg)
 		checkOutcome(t, seat, Case{Fails: true, Assertion: "completes-within"})

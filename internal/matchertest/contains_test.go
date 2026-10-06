@@ -11,10 +11,12 @@ import (
 )
 
 // permutes reports whether got and want contain the same elements, each as
-// often, by removing each element of got from a copy of want.
+// often, by removing each element of got from a copy of want. Two empty
+// slices match when both are nil or neither is, or when opts equate empty
+// values.
 func permutes(got, want []any, opts []matcher.Option) bool {
 	if len(got) == 0 && len(want) == 0 {
-		return same(got, want, opts)
+		return (got == nil) == (want == nil) || rulesOf(opts).EquateEmpty
 	}
 	pool := append([]any(nil), want...)
 	for _, g := range got {

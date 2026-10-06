@@ -205,6 +205,23 @@ func RunPermutation(t *testing.T, invoke PermutationInvoke) {
 			name: "a nil slice matches an empty one under EquateEmpty",
 			want: []any{}, opts: []matcher.Option{matcher.EquateEmpty()},
 		},
+		{
+			name: "two empty slices of their own pass by identity",
+			got:  make([]any, 0, 1), want: make([]any, 0, 1), opts: []matcher.Option{matcher.ByIdentity()},
+		},
+		{name: "two nil slices pass by identity", opts: []matcher.Option{matcher.ByIdentity()}},
+		{
+			name: "a nil slice does not match an empty one by identity",
+			want: []any{}, opts: []matcher.Option{matcher.ByIdentity()}, fails: true,
+		},
+		{
+			name: "an empty slice does not match a nil one by identity",
+			got:  []any{}, opts: []matcher.Option{matcher.ByIdentity()}, fails: true,
+		},
+		{
+			name: "a nil slice matches an empty one under EquateEmpty by identity",
+			want: []any{}, opts: []matcher.Option{matcher.ByIdentity(), matcher.EquateEmpty()},
+		},
 	}
 
 	relations := make([]relationCase, 0, len(cases))

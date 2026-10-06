@@ -68,19 +68,29 @@ func TestBehaviour(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), within)
 			defer cancel()
 
-			ended := make(chan any, 1)
+			type outcome struct {
+				raised   any
+				returned bool
+			}
+			ended := make(chan outcome, 1)
 			go func() {
-				defer func() { ended <- recover() }()
+				var o outcome
+				defer func() {
+					o.raised = recover()
+					ended <- o
+				}()
 				_ = fn(ctx)
+				o.returned = true
 			}()
 			select {
-			case raised := <-ended:
-				if raised != nil {
-					panic(raised)
+			case o := <-ended:
+				if o.raised != nil {
+					panic(o.raised)
 				}
-				if time.Since(started) <= within {
+				if o.returned && time.Since(started) <= within {
 					return
 				}
+				<-ctx.Done()
 			case <-ctx.Done():
 			}
 			s.Report(matcher.Failure{Assertion: "completes-within", Contract: msg}, true)
