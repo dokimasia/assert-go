@@ -27,6 +27,9 @@ const (
 	// replayAllocs are the allocations of a replay of one case that draws
 	// one integer.
 	replayAllocs = 9
+	// storedAllocs are the allocations of a run of one stored case that
+	// draws one integer and passes: the case, and the list of the runs.
+	storedAllocs = 10
 	// concludeAllocs are the allocations of concluding the bridged case of
 	// 10,000 for a body that fails from 1,001: the replay that confirms it,
 	// with the list of where it made its request, the runs of its shrink and
@@ -612,6 +615,46 @@ func TestRunner(t *testing.T) {
 		})
 	})
 
+	t.Run("RunStored", func(t *testing.T) {
+		t.Parallel()
+
+		atLeast5 := func(c *engine.Case) {
+			if engine.Draw(c, digit, drawn) >= 5 {
+				c.Report(assert.Failure{Assertion: "big"}, false)
+			}
+		}
+
+		t.Run("returns a pass that counts the stored cases", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Stored = [][]choice.Choice{integers(3), integers(4)}
+			got := engine.RunStored(atLeast5, s)
+			want := engine.Result{Outcome: engine.Passed, Cases: 2, Seed: referenceSeed}
+			assert.Equal(t, summary(got), want, "a pass of both")
+			assert.Length(t, got.Stored, 2, "the runs of both stored cases")
+		})
+
+		t.Run("returns the first failing stored case as found, with its token", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Stored = [][]choice.Choice{integers(3), integers(7), integers(9)}
+			got := engine.RunStored(atLeast5, s)
+			want := engine.Result{Outcome: engine.Counterexample, Cases: 1, Seed: referenceSeed}
+			assert.Equal(t, summary(got), want, "a counterexample after one valid case")
+			assert.Equal(t, drawValues(got.Failing.Case.Draws()), []any{7}, "the stored value, not shrunk")
+			assert.Equal(t, got.Token, "prop1:AAc", "the token of the stored case")
+			assert.Length(t, got.Stored, 2, "the runs up to the failing case")
+		})
+
+		t.Run("records the calls of each case under stored", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Stored = [][]choice.Choice{integers(3), integers(4)}
+			got := recordedRun(t, s, func(s engine.Settings) { engine.RunStored(ended(atLeast5), s) })
+			assert.Equal(t, got, []callRecord{{Run: 1, Phase: "stored"}, {Run: 2, Phase: "stored"}}, "both cases")
+		})
+	})
+
 	t.Run("Conclude", func(t *testing.T) {
 		t.Parallel()
 
@@ -666,16 +709,19 @@ func TestRunner(t *testing.T) {
 	})
 }
 
-// TestRunnerAllocs checks the allocation ceilings of a run, of a replay
-// and of concluding a bridged case, and that Valid allocates nothing.
+// TestRunnerAllocs checks the allocation ceilings of a run, of a replay, of
+// a run of the stored cases and of concluding a bridged case, and that
+// Valid allocates nothing.
 func TestRunnerAllocs(t *testing.T) {
 	small := engine.Integer(0, 1000)
 	body := func(c *engine.Case) { engine.Draw(c, small, drawn) }
 	s, seven := settled(), integers(7)
+	stored := settled(seven...)
 	big := fromThousand()
 	failing := engine.Bridge(big, largestBytes, engine.Settings{})
 	assert.MaxAllocs(t, func() { engine.Run(body, s) }, runAllocs, "a run of 100 cases")
 	assert.MaxAllocs(t, func() { engine.RunReplay(body, s, seven, record.Token) }, replayAllocs, "a replay of one case")
+	assert.MaxAllocs(t, func() { engine.RunStored(body, stored) }, storedAllocs, "a run of one stored case")
 	assert.MaxAllocs(t, func() { engine.Conclude(big, s, failing) }, concludeAllocs, "the conclusion of a case")
 	assert.MaxAllocs(t, func() { _ = engine.Vacuous.Valid() }, 0, "Valid allocates nothing")
 }
@@ -706,6 +752,17 @@ func BenchmarkRunner(b *testing.B) {
 			got = engine.RunReplay(body, s, seven, record.Token)
 		}
 		assert.Equal(b, got.Outcome, engine.Passed, "the replayed case passes")
+	})
+
+	b.Run("RunStored", func(b *testing.B) {
+		var got engine.Result
+		s := settled(integers(7)...)
+		c := bench.Start(b).MaxAllocs(storedAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.RunStored(body, s)
+		}
+		assert.Equal(b, got.Cases, 1, "the stored case passes")
 	})
 
 	b.Run("Conclude", func(b *testing.B) {

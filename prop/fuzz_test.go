@@ -4,10 +4,13 @@
 package prop_test
 
 import (
+	"bytes"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -18,6 +21,7 @@ import (
 	"go.dokimi.dev/assert/internal/literal"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/prop/choice"
+	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/internal/prop/store"
 	"go.dokimi.dev/assert/internal/record"
 	"go.dokimi.dev/assert/prop"
@@ -32,7 +36,13 @@ const (
 	childMode = "PROP_TEST_FUZZ_MODE"
 	// childStore is the directory of the store that FuzzChild uses.
 	childStore = "PROP_TEST_FUZZ_STORE"
+	// childFuzzing, when not empty, makes FuzzChild set the flag test.fuzz
+	// to its own name, as -fuzz sets it, for the call of Fuzz.
+	childFuzzing = "PROP_TEST_FUZZ_FLAG"
 )
+
+// fuzzFlag is the flag that names the fuzz targets of a binary that fuzzes.
+const fuzzFlag = "test.fuzz"
 
 // located matches a record of a run whose line starts with the file and the
 // line that testing puts before a log line.
@@ -40,26 +50,45 @@ var located = regexp.MustCompile(`\.go:\d+: the property holds`)
 
 // The modes of FuzzChild.
 const (
-	// failingMode fuzzes firstByteFrom100 from a seed that fails.
+	// failingMode fuzzes failsAtSentinel from a seed that fails.
 	failingMode = "failing"
-	// storedMode fuzzes firstByteFrom100 without a seed.
+	// storedMode fuzzes failsAtSentinel without a seed.
 	storedMode = "stored"
 	// passingMode fuzzes a body that never fails.
 	passingMode = "passing"
 	// twiceMode fuzzes a body that never fails, in two properties of one
 	// contract.
 	twiceMode = "twice"
-	// detachedMode fuzzes detached from a seed, a failure that no entry of
-	// the store can keep.
+	// detachedMode fuzzes detachedAtSentinel from the seed of the sentinel, a
+	// failure that no entry of the store can keep.
 	detachedMode = "detached"
 	// recordingMode fuzzes passesTrue from a seed.
 	recordingMode = "recording"
-	// rejectingMode fuzzes a body that rejects every input, from a seed.
+	// rejectingMode fuzzes a body that rejects the sentinel, from the seed
+	// of the sentinel.
 	rejectingMode = "rejecting"
+	// refutedMode fuzzes a body that fails for every input, from a seed.
+	refutedMode = "refuted"
 )
 
-// TestFuzz checks what Fuzz reports for a failing input and for the store
-// of its fuzz test. Fuzz takes a *testing.F, which only the testing
+// childSeed is the seed of each property of FuzzChild, so the cases that a
+// run without fuzzing generates are the same on every run.
+const childSeed = 7
+
+// sentinel is the first bytes of the byte string at which failsAtSentinel
+// fails: four bytes, which a run of 100 generated cases does not draw.
+var sentinel = []byte{0xde, 0xad, 0xbe, 0xef}
+
+// sentinelSeed is the input of the seed corpus that the bridge decodes to the
+// sentinel: its length, little-endian, and then its bytes.
+var sentinelSeed = append([]byte{byte(len(sentinel)), 0}, sentinel...)
+
+// sentinelChoice is the choice of the sentinel's byte string.
+var sentinelChoice = sequence(0xde, 0xad, 0xbe, 0xef)
+
+// TestFuzz checks the run of the property that Fuzz makes without fuzzing,
+// what it reports for a failing input, and the store of its fuzz test. Fuzz
+// takes a *testing.F, which only the testing
 // package constructs, so each case runs FuzzChild in a child process of
 // the test binary. The children run one at a time, because two children
 // of a coverage run that exit in the same nanosecond write one coverage
@@ -70,6 +99,68 @@ const (
 // builds the text it expects with the writer.
 func TestFuzz(t *testing.T) {
 	t.Run("Fuzz", func(t *testing.T) {
+		t.Run("fails the test with the counterexample of a run without fuzzing, before any input", func(t *testing.T) {
+			out, err := child(t, refutedMode, t.TempDir(), record.Variable+"=1")
+			assert.HasError(t, err, "the child fails")
+			call := childCall(t, out, "FuzzChild", 1)
+			detail, _ := call["detail"].(map[string]any)
+			assert.Equal(t, []any{call["assertion"], call["verdict"], counts(detail)},
+				[]any{"prop-for-all", "fail", []any{"counterexample", 0.0, 0.0}},
+				"the call of the test fails at the first generated case")
+			zero, _ := literal.Encode(0)
+			assert.Equal(t, drawnOf(detail), [][2]any{{drawn, jsonTree(t, string(zero))}}, "the smallest integer")
+			assert.NotContains(t, out, "FuzzChild/seed#0", "no input of the seed corpus runs")
+		})
+
+		t.Run("replays only the stored cases in a test binary that fuzzes", func(t *testing.T) {
+			out, err := child(t, storedMode, t.TempDir(), childFuzzing+"=1", record.Variable+"=1")
+			assert.NoError(t, err, "the child passes")
+			call := childCall(t, out, "FuzzChild", 1)
+			detail, _ := call["detail"].(map[string]any)
+			assert.Equal(t, []any{call["verdict"], counts(detail)}, []any{"pass", []any{"passed", 0.0, 0.0}},
+				"the call of the test generates no case")
+		})
+
+		t.Run("fails a second property of the same contract and store in a test binary that fuzzes",
+			func(t *testing.T) {
+				dir := t.TempDir()
+				out, err := child(t, twiceMode, dir, childFuzzing+"=1", record.Variable+"=1")
+				assert.HasError(t, err, "the child fails")
+				duplicated := &fault.Error{Op: fuzzOp, Path: fault.Path{fault.Field(dir)}, Reason: duplicateReason}
+				expectEnded(t, childCall(t, out, "FuzzChild", 2), duplicated)
+			})
+
+		t.Run("fails at once for a damaged file in the store of a test binary that fuzzes", func(t *testing.T) {
+			dir := t.TempDir()
+			write(t, filepath.Join(dir, "damaged.json"), "{")
+			out, err := child(t, passingMode, dir, childFuzzing+"=1", record.Variable+"=1")
+			assert.HasError(t, err, "the child fails")
+			expectEnded(t, childCall(t, out, "FuzzChild", 1), damagedFault(dir))
+		})
+
+		t.Run("logs the fault of a stored case that decodes to other values in a test binary that fuzzes",
+			func(t *testing.T) {
+				dir := t.TempDir()
+				recorded, _ := literal.Encode([]byte{8})
+				moved := store.Entry{
+					Definition:     "1.2.0",
+					Property:       contract,
+					Identity:       store.Identity{Assertion: big, Contract: fits},
+					Choices:        []choice.Choice{sequence(7)},
+					Counterexample: []store.Draw{{Label: drawn, Value: recorded}},
+					Found:          earlier,
+				}
+				save(t, dir, moved)
+				out, err := child(t, storedMode, dir, childFuzzing+"=1")
+				assert.NoError(t, err, "the child passes")
+				decoded := &fault.Error{
+					Op:     fuzzOp,
+					Path:   fault.Path{fault.Field(dir), fault.Field(moved.Name())},
+					Reason: decodedReason,
+				}
+				assert.Contains(t, out, matcher.RenderFault(decoded), "the fault at the entry's file")
+			})
+
 		t.Run("reports the shrunk case of a failing input through the input's test", func(t *testing.T) {
 			dir := t.TempDir()
 			out, err := child(t, failingMode, dir, record.Variable+"=1")
@@ -79,7 +170,7 @@ func TestFuzz(t *testing.T) {
 			detail, _ := call["detail"].(map[string]any)
 			assert.Equal(t, counts(detail), []any{"counterexample", 0.0, 0.0},
 				"a counterexample after no valid and no rejected case")
-			lit, _ := literal.Encode([]byte{100})
+			lit, _ := literal.Encode(sentinel)
 			assert.Equal(t, drawnOf(detail), [][2]any{{drawn, jsonTree(t, string(lit))}},
 				"the smallest failing byte string")
 			failure := map[string]any{"assertion": big, "contract": fits, "detail": map[string]any{}}
@@ -117,12 +208,12 @@ func TestFuzz(t *testing.T) {
 
 		t.Run("fails at once for a stored case that fails", func(t *testing.T) {
 			dir := t.TempDir()
-			lit, _ := literal.Encode([]byte{200})
+			lit, _ := literal.Encode(sentinel)
 			save(t, dir, store.Entry{
 				Definition:     "1.2.0",
 				Property:       contract,
 				Identity:       store.Identity{Assertion: big, Contract: fits},
-				Choices:        []choice.Choice{sequence(200)},
+				Choices:        []choice.Choice{sentinelChoice},
 				Counterexample: []store.Draw{{Label: drawn, Value: lit}},
 				Found:          earlier,
 			})
@@ -138,7 +229,7 @@ func TestFuzz(t *testing.T) {
 		t.Run("counts the stored cases that pass before a stored case that fails", func(t *testing.T) {
 			dir := t.TempDir()
 			passing, _ := literal.Encode([]byte{7})
-			lit, _ := literal.Encode([]byte{200})
+			lit, _ := literal.Encode(sentinel)
 			save(t, dir, store.Entry{
 				Definition:     "1.2.0",
 				Property:       contract,
@@ -151,7 +242,7 @@ func TestFuzz(t *testing.T) {
 				Definition:     "1.2.0",
 				Property:       contract,
 				Identity:       store.Identity{Assertion: big, Contract: fits},
-				Choices:        []choice.Choice{sequence(200)},
+				Choices:        []choice.Choice{sentinelChoice},
 				Counterexample: []store.Draw{{Label: drawn, Value: lit}},
 				Found:          earlier.Add(time.Hour),
 			})
@@ -189,16 +280,7 @@ func TestFuzz(t *testing.T) {
 			write(t, filepath.Join(dir, "damaged.json"), "{")
 			out, err := child(t, passingMode, dir, record.Variable+"=1")
 			assert.HasError(t, err, "the child fails")
-			damaged := &fault.Error{
-				Op:   fuzzOp,
-				Path: fault.Path{fault.Field(dir)},
-				Err: &fault.Error{
-					Path:   fault.Path{fault.Field("damaged.json")},
-					Kind:   store.ErrDamaged,
-					Reason: "the file is not one JSON object",
-				},
-			}
-			expectEnded(t, childCall(t, out, "FuzzChild", 1), damaged)
+			expectEnded(t, childCall(t, out, "FuzzChild", 1), damagedFault(dir))
 		})
 
 		t.Run("logs the fault of a file of a later format", func(t *testing.T) {
@@ -274,7 +356,7 @@ func TestFuzz(t *testing.T) {
 				[]any{1.0, 1.0, "stored", "true"}, "the call of the stored case under the call of the test")
 			detail, _ := test["detail"].(map[string]any)
 			assert.Equal(t, []any{test["verdict"], test["aborting"], detail[casesField], detail[rejectedField]},
-				[]any{"pass", true, 1.0, 0.0}, "the call of the test passes and counts the stored case")
+				[]any{"pass", true, 100.0, 0.0}, "the call of the test passes, and counts the stored case in 100")
 		})
 	})
 }
@@ -289,44 +371,55 @@ func FuzzPassing(f *testing.F) {
 
 // FuzzChild runs Fuzz in a child process of TestFuzz, in the mode that
 // PROP_TEST_FUZZ_MODE names, with the store that PROP_TEST_FUZZ_STORE
-// names. It skips outside a child process.
+// names, and the seed childSeed. It skips outside a child process.
 func FuzzChild(f *testing.F) {
 	mode := os.Getenv(childMode)
 	if mode == "" {
 		f.Skip("runs in a child process of TestFuzz")
 	}
-	stored := prop.Store(os.Getenv(childStore))
+	if os.Getenv(childFuzzing) != "" {
+		// The testing package reads the flag again after the fuzz tests, so
+		// the child clears it before then. Setting a flag that the package
+		// registered fails for no value.
+		_ = flag.Set(fuzzFlag, "^FuzzChild$")
+		f.Cleanup(func() { _ = flag.Set(fuzzFlag, "") })
+	}
+	stored, seeded := prop.Store(os.Getenv(childStore)), prop.Seed(childSeed)
 	if mode == passingMode {
-		prop.Fuzz(f, contract, draws(prop.Bytes()), stored)
+		prop.Fuzz(f, contract, draws(prop.Bytes()), stored, seeded)
 		return
 	}
 	if mode == twiceMode {
-		prop.Fuzz(f, contract, draws(prop.Bytes()), stored)
-		prop.Fuzz(f, contract, draws(prop.Bytes()), stored)
+		prop.Fuzz(f, contract, draws(prop.Bytes()), stored, seeded)
+		prop.Fuzz(f, contract, draws(prop.Bytes()), stored, seeded)
 		return
 	}
 	if mode == detachedMode {
-		f.Add([]byte{3})
-		prop.Fuzz(f, contract, detached, stored)
+		f.Add(sentinelSeed)
+		prop.Fuzz(f, contract, detachedAtSentinel, stored, seeded)
 		return
 	}
 	if mode == recordingMode {
 		f.Add([]byte{5})
-		prop.Fuzz(f, contract, passesTrue, stored)
+		prop.Fuzz(f, contract, passesTrue, stored, seeded)
 		return
 	}
 	if mode == rejectingMode {
-		f.Add([]byte{1})
+		f.Add(sentinelSeed)
 		prop.Fuzz(f, contract, func(c *prop.Case) {
-			c.Draw(prop.Bytes(), drawn)
-			c.Assume(false)
-		}, stored)
+			c.Assume(!bytes.Equal(c.Draw(prop.Bytes(), drawn), sentinel))
+		}, stored, seeded)
+		return
+	}
+	if mode == refutedMode {
+		f.Add([]byte{1})
+		prop.Fuzz(f, contract, failsAtLeast(9, 0, every), stored, seeded)
 		return
 	}
 	if mode == failingMode {
-		f.Add([]byte{1, 0, 200})
+		f.Add(sentinelSeed)
 	}
-	prop.Fuzz(f, contract, firstByteFrom100, stored)
+	prop.Fuzz(f, contract, failsAtSentinel, stored, seeded)
 }
 
 // passesTrue is the body that draws a byte string and passes a call of
@@ -336,12 +429,24 @@ func passesTrue(c *prop.Case) {
 	assert.True(c, true, "the input passes")
 }
 
-// firstByteFrom100 is the body that draws a byte string, and ends the case
-// at a first byte of 100 or more with a record whose identity an entry
-// keeps.
-func firstByteFrom100(c *prop.Case) {
-	v := c.Draw(prop.Bytes(), drawn)
-	if len(v) > 0 && v[0] >= 100 {
+// detachedAtSentinel is the body that draws a byte string, and fails the
+// case at the sentinel from a goroutine of its own, a failure that no entry
+// of the store can keep.
+func detachedAtSentinel(c *prop.Case) {
+	if !bytes.Equal(c.Draw(prop.Bytes(), drawn), sentinel) {
+		return
+	}
+	go c.Errorf("detached")
+	for len((*engine.Case)(c).Failures()) == 0 {
+		runtime.Gosched()
+	}
+}
+
+// failsAtSentinel is the body that draws a byte string, and ends the case
+// at a string that starts with the sentinel with a record whose identity an
+// entry keeps.
+func failsAtSentinel(c *prop.Case) {
+	if bytes.HasPrefix(c.Draw(prop.Bytes(), drawn), sentinel) {
 		c.Report(assert.Failure{Assertion: big, Contract: fits}, true)
 	}
 }
@@ -353,8 +458,8 @@ func firstByteFrom100(c *prop.Case) {
 func child(t *testing.T, mode, dir string, env ...string) (string, error) {
 	t.Helper()
 	vars := []string{
-		childMode + "=" + mode, childStore + "=" + dir, seedVariable + "=", profileVariable + "=", replayVariable + "=",
-		budgetVariable + "=",
+		childMode + "=" + mode, childStore + "=" + dir, childFuzzing + "=", seedVariable + "=", profileVariable + "=",
+		replayVariable + "=", budgetVariable + "=",
 	}
 	return childtest.Run(t, "FuzzChild", append(vars, env...)...)
 }
@@ -376,6 +481,20 @@ func expectEnded(t *testing.T, call map[string]any, err error) {
 	t.Helper()
 	assert.Equal(t, []any{call["verdict"], call["error"]}, []any{"error", matcher.RenderFault(err)},
 		"a call that ended with the fault")
+}
+
+// damagedFault returns the fault of Fuzz for the file damaged.json of the
+// store dir, which holds no JSON object.
+func damagedFault(dir string) *fault.Error {
+	return &fault.Error{
+		Op:   fuzzOp,
+		Path: fault.Path{fault.Field(dir)},
+		Err: &fault.Error{
+			Path:   fault.Path{fault.Field("damaged.json")},
+			Kind:   store.ErrDamaged,
+			Reason: "the file is not one JSON object",
+		},
+	}
 }
 
 // drawnOf returns the label and the value of each draw of the

@@ -4,6 +4,7 @@
 package prop
 
 import (
+	"flag"
 	"fmt"
 	"testing"
 
@@ -14,23 +15,32 @@ import (
 // fuzzOp is the operation of Fuzz, which names its faults.
 const fuzzOp = "prop.Fuzz"
 
-// Fuzz registers body as the fuzz target of f. Each input's bytes decode
-// into the choices of one case by the definition's bridge rules, so every
-// input is a valid case. A body that draws one byte string without a
-// maximum size reads its length from the first two bytes, little-endian,
-// and the string from the bytes after them, up to the last.
+// Fuzz checks the property that body states on f, and registers body as the
+// fuzz target of f, so one declaration checks the property under go test and
+// serves the fuzzer under go test -fuzz.
 //
-// Before it registers the target, Fuzz replays the property's stored cases,
-// oldest first, from the store of the fuzz test, as [ForAll] replays them,
-// and fails f with the record of the first that fails, as found. go test
-// without -fuzz then runs the stored cases and the seed corpus: the entries
-// that f.Add states and the files under testdata/fuzz/<FuzzName>. The
-// bridge decodes each entry of the seed corpus as it decodes a fuzzer's
+// In a test binary that does not fuzz, which the flag test.fuzz states, Fuzz
+// first runs the property on f as [ForAll] runs it, with the same record,
+// store and options, and fails f as ForAll fails its seat. A failing run
+// registers no target. Fuzz runs no campaign, also under the campaign
+// profile. go test then runs the seed corpus: the entries that f.Add states
+// and the files under testdata/fuzz/<FuzzName>.
+//
+// In a test binary that fuzzes, Fuzz replays only the property's stored
+// cases, oldest first, from the store of the fuzz test, and fails f with the
+// record of the first that fails, as found. The record of the call on f
+// counts the stored cases that ran, the failing one's predecessors included,
+// and states the calls of each under the phase stored. Fuzz logs the fault
+// of each stored case that decodes to other values than its entry records,
+// as ForAll does. [Replay], DOKIMI_ASSERT_PROP_REPLAY, [Draws], [Cases] and
+// [Require] apply to the run without fuzzing alone.
+//
+// Each input's bytes decode into the choices of one case by the definition's
+// bridge rules, so every input is a valid case. A body that draws one byte
+// string without a maximum size reads its length from the first two bytes,
+// little-endian, and the string from the bytes after them, up to the last.
+// The bridge decodes each entry of the seed corpus as it decodes a fuzzer's
 // input, so an entry states the bytes of a case's choices and not a value.
-// The record of the call on f counts the stored cases that ran, the
-// failing one's predecessors included, and its record states the calls of
-// each under the phase stored. Fuzz logs the fault of each stored case that
-// decodes to other values than its entry records, as ForAll does.
 //
 // A failing input's case is replayed, shrunk and explained as [ForAll]
 // does with a failing case. Fuzz writes the counterexample to the store,
@@ -45,9 +55,6 @@ const fuzzOp = "prop.Fuzz"
 // fuzzing machinery calls the target through reflect, so no frame of the
 // caller's code is on the stack.
 //
-// [Replay], DOKIMI_ASSERT_PROP_REPLAY, [Draws], [Cases] and [Require] apply
-// to ForAll and the property forms alone.
-//
 // Fuzz ends the call on f with a fault, without registering the target, for
 // each fault for which ForAll ends its call without a run.
 func Fuzz(f *testing.F, contract string, body func(*Case), opts ...Option) {
@@ -58,8 +65,29 @@ func Fuzz(f *testing.F, contract string, body func(*Case), opts ...Option) {
 		run.Fault(matcher.Fatal, forAllID, contract, err)
 		return
 	}
-	if !claim(f, p.dir, contract) {
-		p.fault(f, run, duplicate(p.op, p.dir, contract))
+	if fuzzing() {
+		p.replayStored(f, run, body)
+	} else {
+		p.run(f, run, body)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		p.input(inputSeat{T: t}, bodyOf(t.Context(), body), data)
+	})
+}
+
+// fuzzing reports whether the test binary fuzzes. The testing package
+// registers the flag test.fuzz in every test binary, and -fuzz sets it.
+func fuzzing() bool {
+	return flag.Lookup("test.fuzz").Value.String() != ""
+}
+
+// replayStored replays the stored cases of the property p on f, as the call
+// run, and reports the run, as [Fuzz] states for a test binary that fuzzes.
+// A report that does not pass ends the call on f.
+func (p property) replayStored(f *testing.F, run matcher.Running, body func(*Case)) {
+	f.Helper()
+	if !claim(f, p.dir, p.contract) {
+		p.fault(f, run, duplicate(p.op, p.dir, p.contract))
 		return
 	}
 	stored, err := p.load()
@@ -74,14 +102,7 @@ func Fuzz(f *testing.F, contract string, body func(*Case), opts ...Option) {
 	for _, err := range p.storeFaults(stored, r) {
 		matcher.NoteFault(f, err)
 	}
-	if r.Outcome != engine.Passed {
-		p.report(f, run, r)
-		return
-	}
 	p.report(f, run, r)
-	f.Fuzz(func(t *testing.T, data []byte) {
-		p.input(inputSeat{T: t}, bodyOf(t.Context(), body), data)
-	})
 }
 
 // input runs the case that data decodes to as a call of the property on
