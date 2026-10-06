@@ -198,15 +198,27 @@ func TestMatch(t *testing.T) {
 		})
 	})
 
-	t.Run("Match", func(t *testing.T) {
+	t.Run("ShouldUpdate", func(t *testing.T) {
 		t.Parallel()
 
-		// The case reads the path from the contract of the failure. t.Chdir
-		// changes the working directory of the whole process, so a case
-		// that calls it cannot run in parallel.
-		t.Run("resolves the name against the conventional directory", func(t *testing.T) {
+		t.Run("returns false unless the flag is passed", func(t *testing.T) {
 			t.Parallel()
 
+			assert.False(t, golden.ShouldUpdate(),
+				"this suite is not run with -update")
+		})
+	})
+}
+
+// TestMatchEnv checks the name that Match resolves against the
+// conventional directory. Each case changes the working directory of the
+// process to a temporary directory of its own, so the cases run one at a
+// time, and a golden file that a mutant of Match writes is written outside
+// the module.
+func TestMatchEnv(t *testing.T) {
+	t.Run("Match", func(t *testing.T) {
+		t.Run("resolves the name against the conventional directory", func(t *testing.T) {
+			t.Chdir(t.TempDir())
 			s := &matchertest.Seat{}
 			golden.Match(s, "resolved.txt", []byte("output"), checking)
 
@@ -217,25 +229,13 @@ func TestMatch(t *testing.T) {
 		})
 
 		t.Run("reports a record of golden-match", func(t *testing.T) {
-			t.Parallel()
-
+			t.Chdir(t.TempDir())
 			s := &matchertest.Seat{}
 			golden.Match(s, "resolved.txt", []byte("output"), checking)
 
 			records := s.Records()
 			assert.Length(t, records, 1, "the comparison reports one record")
 			assert.Equal(t, records[0].Assertion, "golden-match", "the record states the comparison")
-		})
-	})
-
-	t.Run("ShouldUpdate", func(t *testing.T) {
-		t.Parallel()
-
-		t.Run("returns false unless the flag is passed", func(t *testing.T) {
-			t.Parallel()
-
-			assert.False(t, golden.ShouldUpdate(),
-				"this suite is not run with -update")
 		})
 	})
 }
