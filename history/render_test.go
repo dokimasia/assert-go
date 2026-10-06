@@ -59,9 +59,9 @@ func TestRender(t *testing.T) {
 			h := history.New()
 			recordOK(h, 0, "swap", []any{1, 2}, nil, "y", "x")
 			recordOK(h, 0, "swap", []any{3, 4}, nil, "x")
-			m := history.Model[int]{
-				Init: register.Init,
-				Step: func(_ int, op history.Op) []int {
+			m := history.Spec[int]{
+				Initial: register.Initial,
+				Next: func(_ int, op history.Operation) []int {
 					if op.Args[0] == 1 {
 						return []int{5, 6}
 					}
@@ -207,7 +207,7 @@ func TestRender(t *testing.T) {
 
 // sentenceOf checks h against m on a recorder under opts, and returns the
 // sentence of the record of the check.
-func sentenceOf(h *history.History, m history.Model[int], opts ...history.Option) string {
+func sentenceOf(h *history.History, m history.Spec[int], opts ...history.Option) string {
 	rec := assert.NewRecorder()
 	history.Linearizable(rec, h, m, contract, opts...)
 	return matcher.Render(rec.Failures()[0])

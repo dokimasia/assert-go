@@ -46,7 +46,7 @@ type History struct {
 	process map[int]int
 	// processes is the number of processes so far.
 	processes int
-	// hashless records that a check of the history noted a model that states
+	// hashless records that a check of the history noted a spec that states
 	// Equal and no Hash, which a history notes once.
 	hashless bool
 }

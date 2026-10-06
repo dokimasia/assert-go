@@ -21,7 +21,7 @@ const weightCases = 20
 
 // TestMachine checks the contract of a machine and its actions that Steps
 // enforces: the machines that state no machine, the default weight, and
-// the model that checks nothing.
+// the spec that checks nothing.
 func TestMachine(t *testing.T) {
 	t.Parallel()
 
@@ -75,7 +75,7 @@ func TestMachine(t *testing.T) {
 			}
 		})
 
-		t.Run("checks nothing for a model without Init and Step, and passes the zero state", func(t *testing.T) {
+		t.Run("checks nothing for a spec without Initial and Next, and passes the zero state", func(t *testing.T) {
 			t.Parallel()
 			var states []int
 			e := replayed(func(c *prop.Case) {
@@ -88,15 +88,15 @@ func TestMachine(t *testing.T) {
 			assert.Equal(t, states, []int{0, 0, 0}, "the zero state after setup, the step and the settle")
 		})
 
-		t.Run("checks the history against a model that states Step alone, which states no model", func(t *testing.T) {
+		t.Run("checks the history against a spec that states Next alone, which states no spec", func(t *testing.T) {
 			t.Parallel()
 			e := replayed(func(c *prop.Case) {
 				stateful.Steps(c, stateful.Machine[int]{
-					Model:   history.Model[int]{Step: counter.Step},
+					Spec:    history.Spec[int]{Next: counter.Next},
 					Actions: []stateful.Action[int]{incrementOf(new(int), 0)},
 				})
 			})
-			refused := fault.In("history.Linearizable", fault.New("the model states no Init or no Step"))
+			refused := fault.In("history.Linearizable", fault.New("the spec states no Initial or no Next"))
 			want := []assert.Failure{{Contract: matcher.RenderFault(refused), Where: e.Case.Failures()[0].Where}}
 			assert.Equal(t, e.Case.Failures(), want, "the fault of the check, as a record without an assertion")
 		})

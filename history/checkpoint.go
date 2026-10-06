@@ -10,7 +10,7 @@ package history
 //
 // A machine's check after each step keeps its search in a Checkpoint, so
 // each check searches the calls since the check before it. Over a case of n
-// sequential calls, the model's Step runs once for each call.
+// sequential calls, the spec's Next runs once for each call.
 //
 // # Concurrency
 //

@@ -11,7 +11,7 @@ import (
 )
 
 // TestCheckpoint checks which checks continue the search that a checkpoint
-// keeps, through the steps that the model counts, and that each check
+// keeps, through the steps that the spec counts, and that each check
 // reports what a search of the whole history reports.
 func TestCheckpoint(t *testing.T) {
 	t.Parallel()
@@ -115,33 +115,33 @@ func TestCheckpoint(t *testing.T) {
 			assert.Equal(t, steps, 4, "two steps for each search of the write and the read")
 		})
 
-		t.Run("keeps no search after a function of the model panics", func(t *testing.T) {
+		t.Run("keeps no search after a function of the spec panics", func(t *testing.T) {
 			t.Parallel()
 			steps := 0
 			panicking := true
-			m := history.Model[int]{Init: register.Init, Step: func(s int, op history.Op) []int {
+			m := history.Spec[int]{Initial: register.Initial, Next: func(s int, op history.Operation) []int {
 				if panicking {
 					panic(boom)
 				}
 				steps++
-				return register.Step(s, op)
+				return register.Next(s, op)
 			}}
 			h := writes(2)
 			var cp history.Checkpoint[int]
 			got := faultOf(t, h, m, history.Whole(), history.Resume(&cp))
-			assert.ErrorIs(t, got, history.ErrModel, "the step of the first write panics")
+			assert.ErrorIs(t, got, history.ErrSpec, "the step of the first write panics")
 			panicking = false
 			recordOK(h, 0, write, writeOne, nil)
 			assert.Nil(t, resumedDetail(h, m, &cp), "three writes pass")
 			assert.Equal(t, steps, 3, "the search of every call steps all three")
 		})
 
-		t.Run("calls Init for a history without calls, and continues from its state", func(t *testing.T) {
+		t.Run("calls Initial for a history without calls, and continues from its state", func(t *testing.T) {
 			t.Parallel()
-			inits, steps := 0, 0
+			initials, steps := 0, 0
 			m := counted(&steps)
-			m.Init = func() int {
-				inits++
+			m.Initial = func() int {
+				initials++
 				return 0
 			}
 			h := history.New()
@@ -149,7 +149,7 @@ func TestCheckpoint(t *testing.T) {
 			assert.Nil(t, resumedDetail(h, m, &cp), "a history without calls passes")
 			recordOK(h, 0, read, nil, 0)
 			assert.Nil(t, resumedDetail(h, m, &cp), "the read of the initial state passes")
-			assert.Equal(t, []int{inits, steps}, []int{1, 1}, "one Init, and the step of the read")
+			assert.Equal(t, []int{initials, steps}, []int{1, 1}, "one Initial, and the step of the read")
 		})
 	})
 }
@@ -157,17 +157,17 @@ func TestCheckpoint(t *testing.T) {
 // resumedDetail checks h against m under Whole, Resume of cp and opts on a
 // recorder, and returns the detail of the record of the check, or nil for a
 // check that passed.
-func resumedDetail(h *history.History, m history.Model[int], cp *history.Checkpoint[int],
+func resumedDetail(h *history.History, m history.Spec[int], cp *history.Checkpoint[int],
 	opts ...history.Option,
 ) map[string]any {
 	return detailOf(h, m, append([]history.Option{history.Whole(), history.Resume(cp)}, opts...)...)
 }
 
-// counted returns the register, whose Step adds one to steps for each step.
-func counted(steps *int) history.Model[int] {
-	return history.Model[int]{Init: register.Init, Step: func(s int, op history.Op) []int {
+// counted returns the register, whose Next adds one to steps for each step.
+func counted(steps *int) history.Spec[int] {
+	return history.Spec[int]{Initial: register.Initial, Next: func(s int, op history.Operation) []int {
 		*steps++
-		return register.Step(s, op)
+		return register.Next(s, op)
 	}}
 }
 

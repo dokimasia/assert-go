@@ -141,8 +141,8 @@ type Error struct {
   client or a negative time. Its message starts with the package and
   names the call. `Concurrently` raises a body's panic again on the
   caller's goroutine.
-- A named model of `conformance` panics on an operation that it does not
-  define, and the check reports the panic as a fault of its model.
+- A named spec of `conformance` panics on an operation that it does not
+  define, and the check reports the panic as a fault of its spec.
 - `Steps` panics for a machine that states no machine: an action with a
   negative weight or without `Run`, and two actions with one name. An
   option of `stateful` panics for a count below its minimum, `Tasks` for
@@ -163,7 +163,7 @@ type Error struct {
 - No other code panics on purpose.
 - A `recover` exists only where a panic is what the code observes: an
   assertion about panics, the end of a property's case, a body of
-  `Concurrently`, a goroutine of `RunParallel`, a function of the model in
+  `Concurrently`, a goroutine of `RunParallel`, a function of the spec in
   `Linearizable`, a task of the task scheduler, whose panic `Run` raises
   again, and a call of the history that the seam runner of `conformance`
   makes to read the entry that a script refuses.

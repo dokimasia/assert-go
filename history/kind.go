@@ -17,7 +17,7 @@ const (
 	// effect.
 	OK Kind = 2 // ok
 	// Fail is the completion of a call that returned an error, took no
-	// effect, and returned nothing that a model checks.
+	// effect, and returned nothing that a spec checks.
 	Fail Kind = 3 // fail
 	// Unknown is the completion of a call that ended without an outcome,
 	// such as a timeout, a lost reply or a crash.

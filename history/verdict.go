@@ -10,11 +10,11 @@ package history
 type Verdict uint8
 
 const (
-	// Passed is a check whose every partition has an order of its calls that
-	// the model accepts. It reports no record.
+	// Passed is a check whose every partition has a linearization that the
+	// spec accepts. It reports no record.
 	Passed Verdict = 0 // passed
 	// Violated is a check whose search of a partition tried every order within
-	// its limits and found none that the model accepts.
+	// its limits and found no linearization that the spec accepts.
 	Violated Verdict = 1 // violated
 	// Undecided is a check whose search of a partition used up a limit, and
 	// none of whose partitions is violated.

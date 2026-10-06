@@ -52,12 +52,12 @@ func callsOf(events []Event, ids [][]string, from int) ([]call, bool) {
 		if e.Kind != Invoke || (end >= 0 && events[end].Kind == Fail) {
 			continue
 		}
-		op := Op{Operation: e.Operation, Args: e.Args}
-		span := Span{Call: from + i, Completion: -1, Process: e.Process, Op: op}
+		op := Operation{Name: e.Operation, Args: e.Args}
+		span := Span{Call: from + i, Completion: -1, Process: e.Process, Operation: op}
 		if end >= 0 {
 			span.Completion = from + end
 			if events[end].Kind == OK {
-				span.Op.Known, span.Op.Output = true, events[end].Output
+				span.Operation.Known, span.Operation.Output = true, events[end].Output
 			}
 		}
 		calls = append(calls, call{span: span, keys: e.Keys, ids: ids[i]})
@@ -141,7 +141,7 @@ func concurrency(calls []call) int {
 	var changes []change
 	for _, c := range calls {
 		changes = append(changes, change{event: c.span.Call, open: 1})
-		if c.span.Op.Known {
+		if c.span.Operation.Known {
 			changes = append(changes, change{event: c.span.Completion, open: -1})
 		}
 	}

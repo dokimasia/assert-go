@@ -10,26 +10,26 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// Machine is a model of a subject and the actions that the steps of a case
-// take on it. S is the type of the model's state.
+// Machine is the sequential specification of a subject and the actions that
+// the steps of a case take on it. S is the type of the spec's state.
 //
 // The functions of a machine and of its actions receive a state of the
-// model: the first of the states that the last check of the history left.
-// A machine without a model receives the zero S.
+// spec: the first of the states that the last check of the history left. A
+// machine without a spec receives the zero S.
 //
 // Those states follow what the subject returned, and a replay of a case
 // requests the same choices only when its steps list the same actions and
 // its requests state the same bounds. When a subject can return other
 // results on a replay, as one that refuses a call for room or commits a
 // batch in the background does, Enabled and Input read a state of the
-// machine's own in place of the model's: one that only the inputs of its
+// machine's own in place of the spec's: one that only the inputs of its
 // steps change. Otherwise a replay can take other steps than the case took,
 // and the run ends as flaky.
 type Machine[S any] struct {
-	// Model is the sequential model that the history of the steps is checked
-	// against after every step, with every call in one partition. A Model
-	// that states neither Init nor Step checks nothing.
-	Model history.Model[S]
+	// Spec is the sequential specification that the history of the steps is
+	// checked against after every step, with every call in one partition. A
+	// Spec that states neither Initial nor Next checks nothing.
+	Spec history.Spec[S]
 	// Actions are the actions of the machine, in order, the simpler first.
 	// No two of them have one name.
 	Actions []Action[S]
@@ -88,8 +88,8 @@ func (m Machine[S]) validate() {
 	}
 }
 
-// modelled reports whether the machine has a model to check the history
+// specified reports whether the machine has a spec to check the history
 // against.
-func (m Machine[S]) modelled() bool {
-	return m.Model.Init != nil || m.Model.Step != nil
+func (m Machine[S]) specified() bool {
+	return m.Spec.Initial != nil || m.Spec.Next != nil
 }

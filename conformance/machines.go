@@ -34,7 +34,7 @@ const (
 	// counter-refuses-every-third refuses: each increment whose number,
 	// counted over the cases of a run, is a multiple of it.
 	refusal = 3
-	// limit is the count of the model below which counter-refuses-every-third
+	// limit is the count of the spec below which counter-refuses-every-third
 	// enables its increment.
 	limit = 3
 	// setupClients is the clients of a vector's setup that states none.
@@ -282,12 +282,12 @@ func (r *ring) get() any {
 }
 
 // queueSubject runs the queue machine over a ring of a drawn capacity: put
-// of a drawn value, and get, over the model of a bounded queue.
+// of a drawn value, and get, over the spec of a bounded queue.
 func queueSubject(c *prop.Case, o machineOptions, losesOnWrap bool) {
 	capacity := c.Draw(capacities, "capacity")
 	q := &ring{slots: make([]int, capacity), losesOnWrap: losesOnWrap}
 	stateful.Steps(c, stateful.Machine[[]int]{
-		Model: boundedQueue(capacity),
+		Spec: boundedQueue(capacity),
 		Actions: []stateful.Action[[]int]{{
 			Name:  "put",
 			Input: func(c *prop.Case, _ []int) any { return c.Draw(queued, "v") },
@@ -305,20 +305,20 @@ func queueSubject(c *prop.Case, o machineOptions, losesOnWrap bool) {
 	}, o.steps...)
 }
 
-// boundedQueue returns the model of a queue of at most capacity values: put
-// appends its value while the queue has room, and get returns
-// the oldest value and removes it, and leaves an empty queue empty. It
-// models the calls of the queue subjects, each of which completes, whose put
-// reports the room that the model counts, and whose get of an empty queue
-// returns nil.
-func boundedQueue(capacity int) history.Model[[]int] {
-	return history.Model[[]int]{
-		Init: func() []int { return []int{} },
-		Step: func(state []int, op history.Op) [][]int {
-			if op.Operation == "put" && len(state) == capacity {
+// boundedQueue returns the spec of a queue of at most capacity values: put
+// appends its value while the queue has room, and get returns the oldest
+// value and removes it, and leaves an empty queue empty. It specifies the
+// calls of the queue subjects, each of which completes, whose put reports
+// the room that the spec counts, and whose get of an empty queue returns
+// nil.
+func boundedQueue(capacity int) history.Spec[[]int] {
+	return history.Spec[[]int]{
+		Initial: func() []int { return []int{} },
+		Next: func(state []int, op history.Operation) [][]int {
+			if op.Name == "put" && len(state) == capacity {
 				return [][]int{state}
 			}
-			if op.Operation == "put" {
+			if op.Name == "put" {
 				return [][]int{append(slices.Clip(state), op.Args[0].(int))}
 			}
 			if len(state) == 0 {
@@ -332,20 +332,20 @@ func boundedQueue(capacity int) history.Model[[]int] {
 	}
 }
 
-// counterModel is the model of a counter whose increment returns the new
+// counterSpec is the spec of a counter whose increment returns the new
 // count, whose reset sets it to 0, and whose read returns the count. It
-// models the calls of the counter subjects that take effect: each call of
+// specifies the calls of the counter subjects that take effect: each call of
 // a subject completes, or fails and takes no effect.
-var counterModel = history.Model[int]{
-	Init: func() int { return 0 },
-	Step: func(state int, op history.Op) []int {
-		if op.Operation == "reset" {
+var counterSpec = history.Spec[int]{
+	Initial: func() int { return 0 },
+	Next: func(state int, op history.Operation) []int {
+		if op.Name == "reset" {
 			return []int{0}
 		}
-		if op.Operation == "read" && op.Output == any(state) {
+		if op.Name == "read" && op.Output == any(state) {
 			return []int{state}
 		}
-		if op.Operation != "read" && op.Output == any(state+1) {
+		if op.Name != "read" && op.Output == any(state+1) {
 			return []int{state + 1}
 		}
 		return nil
@@ -353,12 +353,12 @@ var counterModel = history.Model[int]{
 }
 
 // counterOverflows runs the counter machine over a counter whose increment
-// to overflow sets the count to 0: increment and reset, over the model of a
+// to overflow sets the count to 0: increment and reset, over the spec of a
 // counter.
 func counterOverflows(c *prop.Case, o machineOptions) {
 	count := 0
 	stateful.Steps(c, stateful.Machine[int]{
-		Model: counterModel,
+		Spec: counterSpec,
 		Actions: []stateful.Action[int]{{
 			Name: "increment",
 			Run: func(c *prop.Case, client int, _ any) {
@@ -378,15 +378,15 @@ func counterOverflows(c *prop.Case, o machineOptions) {
 }
 
 // refusingCounter runs the counter machine over a counter that refuses
-// every refusal-th increment of a run: increment, enabled while the model's
-// count is below limit, and read, over the model of a counter. increments
+// every refusal-th increment of a run: increment, enabled while the spec's
+// count is below limit, and read, over the spec of a counter. increments
 // counts the increments of the run since the last refusal. A refused
 // increment fails with errRefused, leaves the count, and sets increments
 // to 0.
 func refusingCounter(c *prop.Case, o machineOptions, increments *int) {
 	count := 0
 	stateful.Steps(c, stateful.Machine[int]{
-		Model: counterModel,
+		Spec: counterSpec,
 		Actions: []stateful.Action[int]{{
 			Name:    "increment",
 			Enabled: func(state int) bool { return state < limit },
@@ -417,7 +417,7 @@ type storedPut struct {
 	key, value int
 }
 
-// storeLosesOnCrash runs the store machine without a model: put into a
+// storeLosesOnCrash runs the store machine without a spec: put into a
 // buffer, flush of the buffer into the durable values as a drain action
 // enabled while the buffer is not empty, and crash, which empties the
 // buffer. Its settle check fails with the identity lost-write for a key
@@ -466,13 +466,13 @@ func storeLosesOnCrash(c *prop.Case, o machineOptions) {
 }
 
 // sharedCounter runs the counter machine on clients, as tasks of a scheduler
-// of the setup's strategy: increment, over the model of a counter. The racy
+// of the setup's strategy: increment, over the spec of a counter. The racy
 // increment yields between its read of the count and its write.
 func sharedCounter(c *prop.Case, o machineOptions, racy bool) {
 	s := stateful.NewScheduler(c, o.strategy)
 	count := 0
 	stateful.Steps(c, stateful.Machine[int]{
-		Model: counterModel,
+		Spec: counterSpec,
 		Actions: []stateful.Action[int]{{
 			Name: "increment",
 			Run: func(c *prop.Case, client int, _ any) {

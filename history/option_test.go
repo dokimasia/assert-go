@@ -137,12 +137,12 @@ func TestOption(t *testing.T) {
 			assert.Equal(t, finalOf(h, register, history.Whole()), []int{1}, "the write and the read in one order")
 		})
 
-		t.Run("returns the fault of an Init that panics on a history without calls", func(t *testing.T) {
+		t.Run("returns the fault of an Initial that panics on a history without calls", func(t *testing.T) {
 			t.Parallel()
-			m := history.Model[int]{Init: func() int { panic(boom) }, Step: register.Step}
+			m := history.Spec[int]{Initial: func() int { panic(boom) }, Next: register.Next}
 			got := faultOf(t, history.New(), m, history.Final(new([]int)))
 			expectFault(t, got, fault.Error{
-				Op: linearizableOp, Kind: history.ErrModel, Reason: "the model's Init panics with boom",
+				Op: linearizableOp, Kind: history.ErrSpec, Reason: "the spec's Initial panics with boom",
 			})
 		})
 	})
@@ -189,7 +189,7 @@ func TestOption(t *testing.T) {
 
 // finalOf checks h against m on a recorder under opts and Final, and
 // returns the states that the check stored, which start as an empty list.
-func finalOf[S any](h *history.History, m history.Model[S], opts ...history.Option) []S {
+func finalOf[S any](h *history.History, m history.Spec[S], opts ...history.Option) []S {
 	states := []S{}
 	history.Linearizable(assert.NewRecorder(), h, m, contract, append(opts, history.Final(&states))...)
 	return states

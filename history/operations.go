@@ -16,39 +16,39 @@ import (
 // check.
 var stringSeed = maphash.MakeSeed()
 
-// operations are the functions of a model that a search calls, with the
+// operations are the functions of a spec that a search calls, with the
 // defaults of Equal and Hash. equal and hash take pointers to states that
 // are on the heap already, so a comparison copies no state there.
 type operations[S any] struct {
-	// init returns the state before any call.
-	init func() S
-	// step returns the states that a call may leave from a state.
-	step func(state S, op Op) []S
+	// initial returns the state before any call.
+	initial func() S
+	// next returns the states that a call may leave from a state.
+	next func(state S, op Operation) []S
 	// equal reports whether two states are interchangeable.
 	equal func(a, b *S) bool
-	// hash returns the hash of a state, and is nil for a model that states
+	// hash returns the hash of a state, and is nil for a spec that states
 	// Equal alone, whose states all hash alike.
 	hash func(state *S) uint64
 	// cost returns the steps of the budget that a step from a state counts
-	// for, and is nil for a model whose every step counts for one.
+	// for, and is nil for a spec whose every step counts for one.
 	cost func(state S) int
 }
 
-// operations returns the functions that a search calls for m. A nil Equal
+// operations returns the functions that a search calls for s. A nil Equal
 // compares states as assert.Equal compares them, and a nil Hash beside it
 // hashes them alike: directly for a state of a basic type, such as int or
-// string, and through reflection for a state of any other type. A model that
+// string, and through reflection for a state of any other type. A spec that
 // states Equal alone has no hash.
-func (m Model[S]) operations() operations[S] {
-	ops := operations[S]{init: m.Init, step: m.Step, cost: m.cost}
-	if m.Equal == nil {
+func (s Spec[S]) operations() operations[S] {
+	ops := operations[S]{initial: s.Initial, next: s.Next, cost: s.cost}
+	if s.Equal == nil {
 		ops.equal, ops.hash = standard[S]()
 	} else {
-		equal := m.Equal
+		equal := s.Equal
 		ops.equal = func(a, b *S) bool { return equal(*a, *b) }
 	}
-	if m.Hash != nil {
-		hash := m.Hash
+	if s.Hash != nil {
+		hash := s.Hash
 		ops.hash = func(state *S) uint64 { return hash(*state) }
 	}
 	return ops

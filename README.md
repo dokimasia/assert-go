@@ -131,7 +131,7 @@ assert.Equal(t, want, any(store.ErrDuplicate), "the check wants the duplicate er
 | `go.dokimi.dev/assert/bench` | ceilings on latency, allocations and bytes per benchmark iteration |
 | `go.dokimi.dev/assert/prop` | property checks over generated inputs, the generators, and the bridge to `go test -fuzz` |
 | `go.dokimi.dev/assert/history` | the record of concurrent calls, the driver of the clients, and the checks that a record is linearizable, serializable, or has snapshot isolation |
-| `go.dokimi.dev/assert/stateful` | machines that take the steps of a property's case against a model of their subject, and the task scheduler |
+| `go.dokimi.dev/assert/stateful` | machines that take the steps of a property's case against the sequential specification of their subject, and the task scheduler |
 | `go.dokimi.dev/assert/conformance` | this library checked against the standard |
 
 ## Golden files
@@ -293,9 +293,11 @@ and runs as an ordinary run, without writing to the store.
 ## Histories
 
 A store, a queue or a cache that two or more clients use at once is
-correct when every call appears to take effect at one instant inside its
-own interval. A test records each call in a `history.History`, and checks the
-history against a sequential model of the subject:
+linearizable when every call appears to take effect at one instant inside
+its own interval: the calls have an order that respects their real-time
+order and that the object's sequential specification accepts. A test
+records each call in a `history.History`, and checks the history against a
+`history.Spec` of the subject:
 
 ```go
 func TestRegisterIsLinearizable(t *testing.T) {
@@ -311,14 +313,16 @@ func TestRegisterIsLinearizable(t *testing.T) {
         }
         return nil, nil
     })
-    history.Linearizable(t, h, history.Model[int]{
-        Init: func() int { return 0 },
-        Step: func(s int, op history.Op) []int {
-            if op.Operation == "write" {
+    history.Linearizable(t, h, history.Spec[int]{
+        Initial: func() int { return 0 },
+        Next: func(s int, op history.Operation) []int {
+            switch op.Name {
+            case "write":
                 return []int{op.Args[0].(int)}
-            }
-            if !op.Known || op.Output == s {
-                return []int{s}
+            case "read":
+                if op.Returned(s) {
+                    return []int{s}
+                }
             }
             return nil
         },
@@ -326,21 +330,26 @@ func TestRegisterIsLinearizable(t *testing.T) {
 }
 ```
 
-The keys after the arguments of `Invoke` name what a call touches, and
-the check searches the calls of each key on their own. A call whose
-outcome is unknown, such as a timeout, completes with `Unknown`, and the
-check lets it take effect at any later point, or never. The standard
-fixes the search and its budget of 10,000,000 model steps per partition,
-so one history gets one verdict in each implementation. A search that
-uses up its budget fails as undecided, and the record states the limit
-that stopped it.
+`Next` returns the states that may follow a state when an operation takes
+effect, and none when the spec rejects it. `op.Returned(s)` reports
+whether the call may have returned `s`: always for a call whose output is
+unknown, and otherwise when its output equals `s`.
 
-`history.ModelFrom` builds the model from the subject itself, and then
-the check finds a call that was not atomic. `history.FromIntervals`
-builds a history from calls that a log recorded with a start and an end.
+The keys after the arguments of `Invoke` name what a call touches, and
+the check searches the calls of each partition on their own: two calls
+that share a key are in one partition. A call whose outcome is unknown,
+such as a timeout, completes with `Unknown`, and the check lets it take
+effect at any later point, or never. The standard fixes the search and
+its budget of 10,000,000 steps of the spec per partition, so one history
+gets one verdict in each implementation. A search that uses up its budget
+fails as undecided, and the record states the limit that stopped it.
+
+`history.SpecFrom` builds the spec from the subject itself, and then the
+check finds a call that was not atomic. `history.FromIntervals` builds a
+history from calls that a log recorded with a start and an end.
 
 `history.Serializable` and `history.HasSnapshotIsolation` check a store
-of transactions without a model. Each transaction is one call of the
+of transactions without a spec. Each transaction is one call of the
 operation `"txn"`, whose arguments are its micro-operations: an append of
 a value to a key's list, or a read of a key's whole list. Every value is
 appended to its key once:
@@ -372,9 +381,9 @@ the cycle and the evidence of each dependency.
 ## Machines
 
 `stateful.Steps` takes the steps of a machine in a property's case. The
-machine states a model of the subject and the actions that a step takes,
-and every decision of the steps is a choice of the case, so a failing case
-shrinks to the steps that the failure needs:
+machine states the sequential specification of the subject and the actions
+that a step takes, and every decision of the steps is a choice of the
+case, so a failing case shrinks to the steps that the failure needs:
 
 ```go
 func TestQueue(t *testing.T) {
@@ -382,7 +391,7 @@ func TestQueue(t *testing.T) {
         q := NewQueue()
         written := 0
         stateful.Steps(c, stateful.Machine[[]int]{
-            Model: history.Model[[]int]{Init: func() []int { return nil }, Step: queueStep},
+            Spec: history.Spec[[]int]{Initial: func() []int { return nil }, Next: queueNext},
             Actions: []stateful.Action[[]int]{{
                 Name:  "put",
                 Input: func(*prop.Case, []int) any { written++; return written },
@@ -404,7 +413,7 @@ func TestQueue(t *testing.T) {
 ```
 
 After each step, `history.Linearizable` checks the case's history against
-the model, with every call in one partition. With `Clients` of 2 or more,
+the spec, with every call in one partition. With `Clients` of 2 or more,
 a case lists the steps of a concurrent section and then runs them on its
 clients at once. The clients run on threads by default, and each case
 then runs up to four times. Under `stateful.Tasks`, they run as tasks of a
@@ -580,7 +589,7 @@ the relation, except where the relation requires a failure.
 
 | Name | What it states |
 |---|---|
-| `history.Linearizable` | Every partition of a recorded history has an order of its calls that keeps the history's precedence and that the model accepts. A search that uses up its budget or its memo limit is undecided, and fails. |
+| `history.Linearizable` | The calls of each partition of a recorded history have a linearization: an order that respects their real-time order and that the spec accepts. Two calls that share a key are in one partition. A search that uses up its budget or its memo limit is undecided, and fails. |
 | `history.Serializable` | The list-append transactions of a history exhibit no anomaly that serializability forbids, among the dependencies that their reads reveal. |
 | `history.HasSnapshotIsolation` | The list-append transactions of a history exhibit no anomaly that snapshot isolation forbids: every cycle of their dependencies has two adjacent read-write dependencies. |
 
@@ -617,7 +626,7 @@ holds itself to it on every run:
   every other implementation.
 - **Histories.** 80 vectors state the events that a history records, the
   history that `FromIntervals` builds from a log, the verdict, the steps
-  and the record of each check of a history against a named model, and
+  and the record of each check of a history against a named spec, and
   the verdict and the record of each isolation check of a history of
   transactions, shared with every other implementation.
 - **Machines.** 14 vectors state the steps that seven machine subjects

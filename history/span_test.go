@@ -32,14 +32,14 @@ func TestSpan(t *testing.T) {
 				name: "returns a known call with its completion and its output",
 				give: history.Span{
 					Call: 2, Completion: 5, Process: 1,
-					Op: history.Op{Operation: write, Args: []any{1}, Known: true, Output: "done"},
+					Operation: history.Operation{Name: write, Args: []any{1}, Known: true, Output: "done"},
 				},
 				want: `{"call":2,"completion":5,"process":1,"operation":"write","args":[{"type":"int","value":1}],` +
 					`"output":{"type":"string","value":"done"}}`,
 			},
 			{
 				name: "returns a known call whose output is null",
-				give: history.Span{Call: 0, Completion: 1, Op: history.Op{Operation: write, Known: true}},
+				give: history.Span{Call: 0, Completion: 1, Operation: history.Operation{Name: write, Known: true}},
 				want: `{"call":0,"completion":1,"process":0,"operation":"write","args":[],"output":{"type":"null"}}`,
 			},
 			{
@@ -48,13 +48,13 @@ func TestSpan(t *testing.T) {
 					Call:       2,
 					Completion: 3,
 					Process:    1,
-					Op:         history.Op{Operation: write, Args: []any{1}},
+					Operation:  history.Operation{Name: write, Args: []any{1}},
 				},
 				want: `{"call":2,"completion":3,"process":1,"operation":"write","args":[{"type":"int","value":1}]}`,
 			},
 			{
 				name: "returns a pending call without a completion and without an output",
-				give: history.Span{Call: 0, Completion: -1, Process: 0, Op: history.Op{Operation: read}},
+				give: history.Span{Call: 0, Completion: -1, Process: 0, Operation: history.Operation{Name: read}},
 				want: `{"call":0,"process":0,"operation":"read","args":[]}`,
 			},
 		}
@@ -77,7 +77,7 @@ var spanAllocs = []alloctest.Case{
 			s := history.Span{
 				Call:       2,
 				Completion: 5,
-				Op:         history.Op{Operation: write, Args: []any{1}, Known: true, Output: 7},
+				Operation:  history.Operation{Name: write, Args: []any{1}, Known: true, Output: 7},
 			}
 			_, _ = s.MarshalJSON()
 		},

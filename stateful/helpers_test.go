@@ -48,13 +48,13 @@ func (l *runLog) all() []string {
 	return slices.Clone(l.runs)
 }
 
-// logged returns an action named name without a model's state, whose run
+// logged returns an action named name without a spec's state, whose run
 // logs itself in log.
 func logged(name string, log *runLog) stateful.Action[int] {
 	return stateful.Action[int]{Name: name, Run: func(_ *prop.Case, client int, _ any) { log.add(name, client) }}
 }
 
-// machineOf returns a machine without a model of the actions named names,
+// machineOf returns a machine without a spec of the actions named names,
 // each logged in log.
 func machineOf(log *runLog, names ...string) stateful.Machine[int] {
 	m := stateful.Machine[int]{}
@@ -131,11 +131,11 @@ func drained(action string) engine.Entry {
 	return engine.Entry{Step: &engine.MachineStep{Action: action, Client: -1, Drain: true}}
 }
 
-// counter is the model of a counter whose increment returns the new count.
-var counter = history.Model[int]{
-	Init: func() int { return 0 },
-	Step: func(state int, op history.Op) []int {
-		if op.Known && op.Output != any(state+1) {
+// counter is the spec of a counter whose increment returns the new count.
+var counter = history.Spec[int]{
+	Initial: func() int { return 0 },
+	Next: func(state int, op history.Operation) []int {
+		if !op.Returned(state + 1) {
 			return nil
 		}
 		return []int{state + 1}

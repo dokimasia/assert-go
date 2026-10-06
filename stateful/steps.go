@@ -44,8 +44,8 @@ const unlimited = time.Duration(math.MaxInt64)
 //  6. Settle, and the invariant.
 //
 // The check runs [history.Linearizable] on the case's history and the
-// machine's model, with every call in one partition, and the next state is
-// the first of the states that the order it found leaves. Each check
+// machine's spec, with every call in one partition, and the next state is
+// the first of the states that the linearization it found leaves. Each check
 // continues the search of the check before it through [history.Resume], so
 // it searches the calls since that check, and reports what a search of the
 // whole history reports. A check that fails, violated or undecided, ends
@@ -105,7 +105,7 @@ type run[S any] struct {
 	trace  engine.Trace
 	traced bool
 	// states are the states that the last check left, and one zero S before
-	// a check and for a machine without a model.
+	// a check and for a machine without a spec.
 	states []S
 	// seat is the seat of the check, and checks are its options.
 	seat   seat

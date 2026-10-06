@@ -13,7 +13,7 @@ import (
 
 // The members of a linearizable vector that the paths of the tests name.
 const (
-	modelAt     = "model"
+	specAt      = "spec"
 	budgetAt    = "budget"
 	memoLimitAt = "memo-limit"
 	workersAt   = "workers"
@@ -47,11 +47,11 @@ const (
 // outputs the reference computes.
 const (
 	// memoOfOne is the vector of readsNull under a memo limit of 1.
-	memoOfOne = `{"model":"register","history":` + readsNull + `,"memo-limit":1,"expect":"fail",` +
+	memoOfOne = `{"spec":"register","history":` + readsNull + `,"memo-limit":1,"expect":"fail",` +
 		`"detail":{"outcome":"undecided","partitions":1,"steps":1,"partition":[{"type":"string","value":"x"}],` +
 		`"calls":2,"concurrency":1,"linearized":[],"states":[{"type":"null"}],"candidates":[],"limit":"memo"}}`
 	// oneWorker is the vector of readsNull on 1 worker.
-	oneWorker = `{"model":"register","history":` + readsNull + `,"workers":1,"expect":"fail",` +
+	oneWorker = `{"spec":"register","history":` + readsNull + `,"workers":1,"expect":"fail",` +
 		`"detail":{"outcome":"violated","partitions":1,"steps":2,"partition":[{"type":"string","value":"x"}],` +
 		`"calls":2,"concurrency":1,"linearized":[{"call":0,"completion":1,"process":0,"operation":"write",` +
 		`"args":[{"type":"int","value":1}],"output":{"type":"null"}}],"states":[{"type":"int","value":1}],` +
@@ -82,10 +82,10 @@ func TestLinearizable(t *testing.T) {
 			{name: "returns nil for a vector of a memo limit of 1", give: memoOfOne},
 			{name: "returns nil for a vector of 1 worker", give: oneWorker},
 			{
-				name:       "returns a fault at the model of a vector that names no model",
+				name:       "returns a fault at the spec of a vector that names no spec",
 				give:       checked("widget", readsNull, "", "fail", `{}`),
-				wantPath:   inVector(fault.Field(modelAt)),
-				wantReason: `"widget" is no named model`,
+				wantPath:   inVector(fault.Field(specAt)),
+				wantReason: `"widget" is no named spec`,
 			},
 			{
 				name:       "returns a fault at an entry of the history that states no call of the seam",
@@ -194,9 +194,9 @@ func TestLinearizable(t *testing.T) {
 	})
 }
 
-// checked returns a linearizable vector of the named model and the script,
+// checked returns a linearizable vector of the named spec and the script,
 // with the options, a JSON text of members that ends with a comma, the
 // expectation and the detail.
-func checked(model, script, options, expect, detail string) string {
-	return fmt.Sprintf(`{"model":%q,"history":%s,%s"expect":%q,"detail":%s}`, model, script, options, expect, detail)
+func checked(spec, script, options, expect, detail string) string {
+	return fmt.Sprintf(`{"spec":%q,"history":%s,%s"expect":%q,"detail":%s}`, spec, script, options, expect, detail)
 }

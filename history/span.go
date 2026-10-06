@@ -19,8 +19,8 @@ type Span struct {
 	Completion int
 	// Process is the process that made the call.
 	Process int
-	// Op is the call as the model sees it.
-	Op Op
+	// Operation is the call as the spec sees it.
+	Operation Operation
 }
 
 // spanJSON is a span in the history's JSON form.
@@ -44,12 +44,12 @@ type spanJSON struct {
 // MarshalJSON allocates the literal of each value, and what encoding/json
 // allocates for the span.
 func (s Span) MarshalJSON() ([]byte, error) {
-	out := spanJSON{Call: s.Call, Process: s.Process, Operation: s.Op.Operation, Args: literals(s.Op.Args)}
+	out := spanJSON{Call: s.Call, Process: s.Process, Operation: s.Operation.Name, Args: literals(s.Operation.Args)}
 	if s.Completion >= 0 {
 		out.Completion = &s.Completion
 	}
-	if s.Op.Known {
-		out.Output = literal.Detail(s.Op.Output)
+	if s.Operation.Known {
+		out.Output = literal.Detail(s.Operation.Output)
 	}
 	return json.Marshal(out)
 }

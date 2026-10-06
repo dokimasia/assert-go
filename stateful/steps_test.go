@@ -21,7 +21,7 @@ const (
 	// queueSteps is the number of sequential steps of the measured case.
 	queueSteps = 100
 	// queueCaseAllocs are the allocations of the measured case, a whole
-	// replayed case of 100 sequential steps of a queue with its model, which
+	// replayed case of 100 sequential steps of a queue with its spec, which
 	// checks the history 101 times, each check continuing the search of the
 	// one before it, measured: about 14 for each check.
 	queueCaseAllocs = 1437
@@ -66,7 +66,7 @@ func TestSteps(t *testing.T) {
 			count := 0
 			e := replayed(func(c *prop.Case) {
 				stateful.Steps(c, stateful.Machine[int]{
-					Model:     counter,
+					Spec:      counter,
 					Actions:   []stateful.Action[int]{incrementOf(&count, 0)},
 					Invariant: func(_ *prop.Case, state int) { states = append(states, state) },
 				})
@@ -110,7 +110,7 @@ func TestSteps(t *testing.T) {
 				Run:     func(*prop.Case, int, any) {},
 			}
 			e := replayed(func(c *prop.Case) {
-				stateful.Steps(c, stateful.Machine[int]{Model: forked, Actions: []stateful.Action[int]{
+				stateful.Steps(c, stateful.Machine[int]{Spec: forked, Actions: []stateful.Action[int]{
 					incrementOf(new(int), 0), low,
 				}})
 			}, 1, 1, 1, 0, 1, 1, 0)
@@ -207,7 +207,7 @@ func TestSteps(t *testing.T) {
 			count := 0
 			replayed(func(c *prop.Case) {
 				stateful.Steps(c, stateful.Machine[int]{
-					Model:     counter,
+					Spec:      counter,
 					Actions:   []stateful.Action[int]{incrementOf(&count, 0)},
 					Invariant: func(_ *prop.Case, state int) { calls = append(calls, "invariant", state) },
 					Settle:    func(_ *prop.Case, state int) { calls = append(calls, "settle", state) },
@@ -376,11 +376,11 @@ func varying(name string, calls, at int) stateful.Action[int] {
 	}
 }
 
-// forked is the model of a counter whose first increment may have taken it
+// forked is the spec of a counter whose first increment may have taken it
 // to 1 or to 10, and whose later increments add 1. It accepts every output.
-var forked = history.Model[int]{
-	Init: func() int { return 0 },
-	Step: func(state int, _ history.Op) []int {
+var forked = history.Spec[int]{
+	Initial: func() int { return 0 },
+	Next: func(state int, _ history.Operation) []int {
 		if state == 0 {
 			return []int{1, 10}
 		}
@@ -388,12 +388,12 @@ var forked = history.Model[int]{
 	},
 }
 
-// fifo is the model of a queue: put appends its argument, and get returns
+// fifo is the spec of a queue: put appends its argument, and get returns
 // the oldest value, or nil for an empty queue.
-var fifo = history.Model[[]int]{
-	Init: func() []int { return []int{} },
-	Step: func(state []int, op history.Op) [][]int {
-		if op.Operation == put {
+var fifo = history.Spec[[]int]{
+	Initial: func() []int { return []int{} },
+	Next: func(state []int, op history.Operation) [][]int {
+		if op.Name == put {
 			return [][]int{append(slices.Clip(state), op.Args[0].(int))}
 		}
 		if len(state) == 0 && op.Output == nil {
@@ -407,12 +407,12 @@ var fifo = history.Model[[]int]{
 }
 
 // queueCase is the body of the measured case: sequential steps of put and
-// get over a queue, with the model of a queue.
+// get over a queue, with the spec of a queue.
 var queueCase = bodyOf(func(c *prop.Case) {
 	var q []int
 	written := 0
 	stateful.Steps(c, stateful.Machine[[]int]{
-		Model: fifo,
+		Spec: fifo,
 		Actions: []stateful.Action[[]int]{{
 			Name:  put,
 			Input: func(*prop.Case, []int) any { written++; return written },
@@ -453,7 +453,7 @@ func TestStepsAllocs(t *testing.T) {
 }
 
 // BenchmarkSteps measures a case of 100 sequential steps of a queue with
-// its model, which checks the history 101 times.
+// its spec, which checks the history 101 times.
 func BenchmarkSteps(b *testing.B) {
 	b.Run("Steps", func(b *testing.B) {
 		var got engine.Execution

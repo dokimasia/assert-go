@@ -1,23 +1,25 @@
 // Copyright ThesmOS B.V. 2026
 // SPDX-License-Identifier: MIT
 
-// Package stateful runs a machine's steps inside a property's case: a model
-// of a subject, actions over it, and the task scheduler that releases the
-// tasks of a subject in an order that the case decides.
+// Package stateful runs a machine's steps inside a property's case: the
+// sequential specification of a subject, actions over it, and the task
+// scheduler that releases the tasks of a subject in an order that the case
+// decides.
 //
-// A [Machine] lists its actions in order, the simpler first, and states a
-// sequential model of the subject. [Steps] takes the steps of a case, and
-// records every decision as a choice of the case, so a failing case shrinks
-// to the steps that the failure needs and replays from its token:
+// A [Machine] lists its actions in order, the simpler first, and states the
+// sequential specification of the subject. [Steps] takes the steps of a
+// case, and records every decision as a choice of the case, so a failing
+// case shrinks to the steps that the failure needs and replays from its
+// token:
 //
 //	func TestQueue(t *testing.T) {
 //		prop.ForAll(t, "the queue keeps its values in order", func(c *prop.Case) {
 //			q := NewQueue(4)
 //			written := 0
 //			stateful.Steps(c, stateful.Machine[[]int]{
-//				Model: history.Model[[]int]{
-//					Init: func() []int { return nil },
-//					Step: queueStep,
+//				Spec: history.Spec[[]int]{
+//					Initial: func() []int { return nil },
+//					Next:    queueNext,
 //				},
 //				Actions: []stateful.Action[[]int]{{
 //					Name:  "put",
@@ -38,10 +40,10 @@
 //		})
 //	}
 //
-// After every step, a machine with a model checks the case's history with
+// After every step, a machine with a spec checks the case's history with
 // [history.Linearizable], with every call in one partition, and the next
-// step reads the first of the states that the order it found leaves. Each
-// check continues the search of the check before it through
+// step reads the first of the states that the linearization it found
+// leaves. Each check continues the search of the check before it through
 // [history.Resume], so it searches the calls of the steps since that check.
 // A counterexample lists each step as a [prop.Step] among the values that
 // the case drew.

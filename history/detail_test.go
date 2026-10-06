@@ -40,11 +40,16 @@ func TestDetail(t *testing.T) {
 				callsField:       2,
 				concurrencyField: 1,
 				linearizedField: []history.Span{
-					{Call: 0, Completion: 1, Op: history.Op{Operation: write, Args: writeOne, Known: true}},
+					{Call: 0, Completion: 1, Operation: history.Operation{Name: write, Args: writeOne, Known: true}},
 				},
 				statesField: []int{1},
 				candidatesField: []history.Span{
-					{Call: 2, Completion: 3, Process: 1, Op: history.Op{Operation: read, Known: true, Output: 0}},
+					{
+						Call:       2,
+						Completion: 3,
+						Process:    1,
+						Operation:  history.Operation{Name: read, Known: true, Output: 0},
+					},
 				},
 				limitField: nil,
 			}

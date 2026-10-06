@@ -125,7 +125,7 @@ const (
 	// Seam records a script or intervals through the history, and states the
 	// events or the entry that the history refuses.
 	Seam VectorKind = "seam"
-	// Linearizable checks a history against a named model, and states the
+	// Linearizable checks a history against a named spec, and states the
 	// verdict and the detail of its record.
 	Linearizable VectorKind = "linearizable"
 	// Serializable checks a history of list-append transactions for the

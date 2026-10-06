@@ -27,7 +27,7 @@ func (c Call) OK(output any) {
 }
 
 // Fail records that the call returned err, took no effect, and returned
-// nothing that a model checks, such as a refused connection. An error that
+// nothing that a spec checks, such as a refused connection. An error that
 // states what the subject observed is an output for [Call.OK]: a
 // compare-and-set that refuses because the value differs returns false.
 //

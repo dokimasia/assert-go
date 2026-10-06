@@ -25,7 +25,7 @@ func TestCheck(t *testing.T) {
 		t.Run("fails the case with the record of linearizable at Steps for a rejected step", func(t *testing.T) {
 			t.Parallel()
 			e := replayed(func(c *prop.Case) {
-				stateful.Steps(c, stateful.Machine[int]{Model: counter, Actions: []stateful.Action[int]{
+				stateful.Steps(c, stateful.Machine[int]{Spec: counter, Actions: []stateful.Action[int]{
 					incrementOf(new(int), 1),
 				}})
 			}, 1, 1, 0, 0)
@@ -47,7 +47,7 @@ func TestCheck(t *testing.T) {
 				}}
 			}
 			e := replayed(func(c *prop.Case) {
-				stateful.Steps(c, stateful.Machine[int]{Model: counter, Actions: []stateful.Action[int]{
+				stateful.Steps(c, stateful.Machine[int]{Spec: counter, Actions: []stateful.Action[int]{
 					keyed("a"), keyed("b"),
 				}})
 			}, 1, 1, 1, 0, 1, 1, 0)
@@ -60,7 +60,7 @@ func TestCheck(t *testing.T) {
 			prop.ForAll(rec, "the counter counts", func(c *prop.Case) {
 				count := 0
 				stateful.Steps(c, stateful.Machine[int]{
-					Model: counter, Actions: []stateful.Action[int]{incrementOf(&count, 0)},
+					Spec: counter, Actions: []stateful.Action[int]{incrementOf(&count, 0)},
 				}, stateful.Max(3))
 			}, prop.Seed(seed), prop.Cases(5))
 			assert.False(t, rec.Failed(), "the run passes")

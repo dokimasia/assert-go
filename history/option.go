@@ -33,8 +33,8 @@ type Option struct {
 }
 
 // Budget sets the steps that the search of one partition may spend,
-// 10,000,000 by default. A step is one call of the model's Step, and a step
-// of a model that [ModelFrom] returns counts for the calls that it applies.
+// 10,000,000 by default. A step is one call of the spec's Next, and a step
+// of a spec that [SpecFrom] returns counts for the calls that it applies.
 // The search takes no step that would pass the budget, and ends as
 // [Undecided] with [LimitSteps]. It panics for fewer than 1 step.
 func Budget(steps int) Option {
@@ -80,7 +80,7 @@ func TimeLimit(d time.Duration) Option {
 
 // Workers sets the number of partitions that are searched at once, 1 by
 // default. A check on more workers reports what a check on one reports. It
-// calls the model's functions on several goroutines at once, so they must be
+// calls the spec's functions on several goroutines at once, so they must be
 // safe for that. It panics for n below 1.
 func Workers(n int) Option {
 	if n < 1 {
@@ -93,8 +93,8 @@ func Workers(n int) Option {
 }
 
 // Whole makes the check search the whole history as one partition, whatever
-// keys its calls declare. A model that states one state of the whole
-// subject, as the model of a machine does, needs every call in one search.
+// keys its calls declare. A spec that states one state of the whole
+// subject, as the spec of a machine does, needs every call in one search.
 func Whole() Option {
 	return Option{set: func(c config) config {
 		c.whole = true
@@ -103,13 +103,14 @@ func Whole() Option {
 }
 
 // Final makes the check store in states, for a check that passes, the states
-// that the first order the search found leaves: the initial state for a
-// history without calls, and the states after the order of its calls for a
-// history of one partition. A check of more partitions, and a check that
-// does not pass, stores nil. [Whole] puts every call in one partition.
+// that the first linearization the search found leaves: the initial state
+// for a history without calls, and the states after the linearization of
+// its calls for a history of one partition. A check of more partitions, and
+// a check that does not pass, stores nil. [Whole] puts every call in one
+// partition.
 //
-// S must be the type of the model's states. A check whose model has states
-// of another type ends the call with a fault.
+// S must be the type of the spec's states. A check whose spec has states of
+// another type ends the call with a fault.
 func Final[S any](states *[]S) Option {
 	return Option{set: func(c config) config {
 		c.final = states
@@ -128,13 +129,13 @@ func Final[S any](states *[]S) Option {
 // its final states. In any other case the check searches every call. A
 // check that does not pass keeps no search in cp. A nil cp changes nothing.
 //
-// Pass the same model to every check that passes cp. The kept search
-// contains the states that the model of the earlier checks left.
+// Pass the same spec to every check that passes cp. The kept search
+// contains the states that the spec of the earlier checks left.
 //
 // A check with Resume searches the whole history as one partition, and
 // states [Whole]. A check without Whole ends the call with a fault, and so
-// does a check whose model has states of another type than S. A check with
-// Resume calls the model's Init for a history without calls too.
+// does a check whose spec has states of another type than S. A check with
+// Resume calls the spec's Initial for a history without calls too.
 func Resume[S any](cp *Checkpoint[S]) Option {
 	if cp == nil {
 		return Option{}

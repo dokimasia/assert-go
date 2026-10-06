@@ -26,15 +26,15 @@ func (s *seat) Report(f assert.Failure, _ bool) {
 	s.failure = &f
 }
 
-// check checks the case's history against the machine's model, with every
-// call in one partition, and keeps the states that the order the check found
-// leaves. A check that fails ends the case with its record. A machine
-// without a model checks nothing.
+// check checks the case's history against the machine's spec, with every
+// call in one partition, and keeps the states that the linearization the
+// check found leaves. A check that fails ends the case with its record. A
+// machine without a spec checks nothing.
 func (r *run[S]) check() {
-	if !r.m.modelled() {
+	if !r.m.specified() {
 		return
 	}
-	history.Linearizable(&r.seat, r.c.History(), r.m.Model, contract, r.checks...)
+	history.Linearizable(&r.seat, r.c.History(), r.m.Spec, contract, r.checks...)
 	if f := r.seat.failure; f != nil {
 		r.c.Report(*f, true)
 	}

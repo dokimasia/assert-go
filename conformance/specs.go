@@ -13,34 +13,34 @@ import (
 	"go.dokimi.dev/assert/internal/literal"
 )
 
-// emptyValue is the value of a key that the key-value model does not store.
+// emptyValue is the value of a key that the key-value spec does not store.
 const emptyValue = ""
 
-// Models builds each model of the definition's models section, by its name.
-// A state is a decoded value: the register's value, the key-value map as
+// Specs builds each spec of the definition's specs section, by its name. A
+// state is a decoded value: the register's value, the key-value map as
 // [literal.Pairs] in the order its keys were stored, and the queue and the
 // set as a []any in order. Two values compare by their canonical texts.
 //
-// Every model accepts a call whose outcome is unknown in every state, checks
+// Every spec accepts a call whose outcome is unknown in every state, checks
 // no output of a write, a put, an append, an enqueue or an add, and panics on
 // an operation that it does not define, which the check reports as a fault.
 // The key-value map and the set compare their states in any order, and hash
 // them alike.
-var Models = map[string]history.Model[any]{
-	"register":     {Init: func() any { return nil }, Step: register},
-	"cas-register": {Init: func() any { return nil }, Step: casRegister},
+var Specs = map[string]history.Spec[any]{
+	"register":     {Initial: func() any { return nil }, Next: register},
+	"cas-register": {Initial: func() any { return nil }, Next: casRegister},
 	"key-value": {
-		Init: func() any { return literal.Pairs{} }, Step: keyValue, Equal: sameCanonical, Hash: hashCanonical,
+		Initial: func() any { return literal.Pairs{} }, Next: keyValue, Equal: sameCanonical, Hash: hashCanonical,
 	},
-	"queue":          {Init: func() any { return []any{} }, Step: queue},
-	"set":            {Init: func() any { return []any{} }, Step: set, Equal: sameSet, Hash: hashSet},
-	"lossy-register": {Init: func() any { return nil }, Step: lossyRegister},
+	"queue":          {Initial: func() any { return []any{} }, Next: queue},
+	"set":            {Initial: func() any { return []any{} }, Next: set, Equal: sameSet, Hash: hashSet},
+	"lossy-register": {Initial: func() any { return nil }, Next: lossyRegister},
 }
 
-// undefined returns the panic value of an operation that the model named
-// model does not define.
-func undefined(model string, op history.Op) string {
-	return fmt.Sprintf("conformance: the %s model has no operation %q", model, op.Operation)
+// undefined returns the panic value of op, an operation that the spec of
+// the name does not define.
+func undefined(name string, op history.Operation) string {
+	return fmt.Sprintf("conformance: the %s spec has no operation %q", name, op.Name)
 }
 
 // sameCanonical reports whether a and b, two decoded values, have one
@@ -51,10 +51,10 @@ func sameCanonical(a, b any) bool {
 }
 
 // readRegister steps a register's read, which outputs the state and changes
-// nothing. It panics on any other operation of the model named model.
-func readRegister(state any, op history.Op, model string) []any {
-	if op.Operation != "read" {
-		panic(undefined(model, op))
+// nothing. It panics on any other operation of the spec of the name.
+func readRegister(state any, op history.Operation, name string) []any {
+	if op.Name != "read" {
+		panic(undefined(name, op))
 	}
 	if !op.Known || sameCanonical(op.Output, state) {
 		return []any{state}
@@ -64,8 +64,8 @@ func readRegister(state any, op history.Op, model string) []any {
 
 // register steps the register: a write stores its value, and a read outputs
 // it.
-func register(state any, op history.Op) []any {
-	if op.Operation == "write" {
+func register(state any, op history.Operation) []any {
+	if op.Name == "write" {
 		return []any{op.Args[0]}
 	}
 	return readRegister(state, op, "register")
@@ -75,8 +75,8 @@ func register(state any, op history.Op) []any {
 // whether the state equals from, and stores to when it does. A cas whose
 // outcome is unknown takes effect when the state equals from, and leaves the
 // state otherwise.
-func casRegister(state any, op history.Op) []any {
-	switch op.Operation {
+func casRegister(state any, op history.Operation) []any {
+	switch op.Name {
 	case "write":
 		return register(state, op)
 	case "cas":
@@ -94,8 +94,8 @@ func casRegister(state any, op history.Op) []any {
 
 // lossyRegister steps the register whose write may be lost: a write leaves
 // the new value, then the old one.
-func lossyRegister(state any, op history.Op) []any {
-	if op.Operation == "write" {
+func lossyRegister(state any, op history.Operation) []any {
+	if op.Name == "write" {
 		return []any{op.Args[0], state}
 	}
 	return readRegister(state, op, "lossy-register")
@@ -104,11 +104,11 @@ func lossyRegister(state any, op history.Op) []any {
 // keyValue steps the map from keys to strings, each of which starts empty.
 // get(k) outputs the value under k, put(k, v) stores v under k, and
 // append(k, s) stores the value under k followed by s.
-func keyValue(state any, op history.Op) []any {
+func keyValue(state any, op history.Operation) []any {
 	pairs := state.(literal.Pairs)
 	name := op.Args[0]
 	held := lookup(pairs, name)
-	switch op.Operation {
+	switch op.Name {
 	case "get":
 		if !op.Known || sameCanonical(op.Output, held) {
 			return []any{state}
@@ -153,9 +153,9 @@ func withValue(pairs literal.Pairs, name, value any) literal.Pairs {
 
 // queue steps the queue: enqueue(v) adds v at the tail, and dequeue() removes
 // the head and outputs it, or outputs null when the queue is empty.
-func queue(state any, op history.Op) []any {
+func queue(state any, op history.Operation) []any {
 	items := state.([]any)
-	switch op.Operation {
+	switch op.Name {
 	case "enqueue":
 		return []any{append(slices.Clip(items), op.Args[0])}
 	case "dequeue":
@@ -177,11 +177,11 @@ func queue(state any, op history.Op) []any {
 // add(v) adds v when it is absent, and remove(v) and contains(v) output
 // whether v is present. A remove whose outcome is unknown removes v when it
 // is present.
-func set(state any, op history.Op) []any {
+func set(state any, op history.Operation) []any {
 	items := state.([]any)
 	value := op.Args[0]
 	present := slices.ContainsFunc(items, func(held any) bool { return sameCanonical(value, held) })
-	switch op.Operation {
+	switch op.Name {
 	case "add":
 		if present {
 			return []any{state}

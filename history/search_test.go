@@ -15,9 +15,9 @@ import (
 )
 
 // The time limit of the tests of the clock, and the operations of their
-// model.
+// spec.
 const (
-	// timeLimit is the time limit of a check whose model waits past it.
+	// timeLimit is the time limit of a check whose spec waits past it.
 	timeLimit = 50 * time.Millisecond
 	// wait is the operation whose step waits past the time limit.
 	wait = "wait"
@@ -30,7 +30,7 @@ const (
 )
 
 // TestSearch checks the search of a partition through the record of a
-// check: its frontier, its limits, its clock, and the faults of a model.
+// check: its frontier, its limits, its clock, and the faults of a spec.
 func TestSearch(t *testing.T) {
 	t.Parallel()
 
@@ -44,17 +44,20 @@ func TestSearch(t *testing.T) {
 				written := history.Span{
 					Call:       0,
 					Completion: 1,
-					Op:         history.Op{Operation: write, Args: writeOne, Known: true},
+					Operation:  history.Operation{Name: write, Args: writeOne, Known: true},
 				}
 				readZero := history.Span{
-					Call: 2, Completion: 3, Process: 1, Op: history.Op{Operation: read, Known: true, Output: 0},
+					Call:       2,
+					Completion: 3,
+					Process:    1,
+					Operation:  history.Operation{Name: read, Known: true, Output: 0},
 				}
 				assert.Equal(t, []any{got[linearizedField], got[statesField], got[candidatesField]},
 					[]any{[]history.Span{written}, []int{1}, []history.Span{readZero}},
 					"the write, the state 1 that it leaves, and the read of 0 that 1 rejects")
 			})
 
-		t.Run("reports the candidates that the model rejected before a limit stopped the search", func(t *testing.T) {
+		t.Run("reports the candidates that the spec rejected before a limit stopped the search", func(t *testing.T) {
 			t.Parallel()
 			h := history.New()
 			five := h.Invoke(0, read, nil, "x")
@@ -62,7 +65,11 @@ func TestSearch(t *testing.T) {
 			five.OK(5)
 			one.OK(nil)
 			got := detailOf(h, register, history.Budget(1))
-			readFive := history.Span{Call: 0, Completion: 2, Op: history.Op{Operation: read, Known: true, Output: 5}}
+			readFive := history.Span{
+				Call:       0,
+				Completion: 2,
+				Operation:  history.Operation{Name: read, Known: true, Output: 5},
+			}
 			assert.Equal(t, []any{got[linearizedField], got[statesField], got[candidatesField], got[stepsField]},
 				[]any{[]history.Span{}, []int{0}, []history.Span{readFive}, 1},
 				"the initial state rejects the read, and the write would pass the budget")
@@ -70,7 +77,7 @@ func TestSearch(t *testing.T) {
 
 		t.Run("keeps apart two configurations of one set of calls whose states differ", func(t *testing.T) {
 			t.Parallel()
-			m := history.Model[int]{Init: register.Init, Step: register.Step, Equal: sameInt}
+			m := history.Spec[int]{Initial: register.Initial, Next: register.Next, Equal: sameInt}
 			got := detailOf(parityWrites(), m)
 			assert.Equal(t, got[stepsField], any(6), "the state 1 after 3 then 1 is new beside the state 3")
 		})
@@ -97,7 +104,7 @@ func TestSearch(t *testing.T) {
 		t.Run("keeps apart two configurations of one set of calls whose lists of states differ in length",
 			func(t *testing.T) {
 				t.Parallel()
-				m := history.Model[int]{Init: register.Init, Step: growing, Equal: sameInt}
+				m := history.Spec[int]{Initial: register.Initial, Next: growing, Equal: sameInt}
 				got := detailOf(parityWrites(), m)
 				assert.Equal(
 					t,
@@ -201,63 +208,63 @@ func TestSearch(t *testing.T) {
 		atRead := fault.Path{fault.Field(callsField), fault.Index(2)}
 		atWrite := fault.Path{fault.Field(callsField), fault.Index(0)}
 		tests := []struct {
-			name  string
-			model history.Model[int]
-			opts  []history.Option
-			want  fault.Error
+			name string
+			spec history.Spec[int]
+			opts []history.Option
+			want fault.Error
 		}{
 			{
-				name:  "returns the fault of an Init that panics",
-				model: history.Model[int]{Init: func() int { panic(boom) }, Step: register.Step},
-				want:  modelFault(nil, "the model's Init panics with boom"),
+				name: "returns the fault of an Initial that panics",
+				spec: history.Spec[int]{Initial: func() int { panic(boom) }, Next: register.Next},
+				want: specFault(nil, "the spec's Initial panics with boom"),
 			},
 			{
-				name:  "returns the fault of a Step that panics, at the call that it steps",
-				model: history.Model[int]{Init: register.Init, Step: panicsOnRead},
-				want:  modelFault(atRead, `the model's Step panics on "read" with boom`),
+				name: "returns the fault of a Next that panics, at the call that it steps",
+				spec: history.Spec[int]{Initial: register.Initial, Next: panicsOnRead},
+				want: specFault(atRead, `the spec's Next panics on "read" with boom`),
 			},
 			{
-				name:  "returns the fault of an Equal that panics, at the call whose states it compares",
-				model: history.Model[int]{Init: register.Init, Step: spreading(0, 1, 3).Step, Equal: panicsOnEqual},
-				want:  modelFault(atWrite, `the model's Equal panics on "write" with boom`),
+				name: "returns the fault of an Equal that panics, at the call whose states it compares",
+				spec: history.Spec[int]{Initial: register.Initial, Next: spreading(0, 1, 3).Next, Equal: panicsOnEqual},
+				want: specFault(atWrite, `the spec's Equal panics on "write" with boom`),
 			},
 			{
 				name: "returns the fault of a Hash that panics, at the call whose state it hashes",
-				model: history.Model[int]{
-					Init: register.Init, Step: register.Step, Hash: func(int) uint64 { panic(boom) },
+				spec: history.Spec[int]{
+					Initial: register.Initial, Next: register.Next, Hash: func(int) uint64 { panic(boom) },
 				},
-				want: modelFault(atWrite, `the model's Hash panics on "write" with boom`),
+				want: specFault(atWrite, `the spec's Hash panics on "write" with boom`),
 			},
 			{
-				name:  "returns the fault of a Step that ends its goroutine, at the call that it steps",
-				model: history.Model[int]{Init: register.Init, Step: endsOnRead},
-				opts:  []history.Option{history.Workers(2)},
-				want:  modelFault(atRead, `the model's Step ends its goroutine on "read"`),
+				name: "returns the fault of a Next that ends its goroutine, at the call that it steps",
+				spec: history.Spec[int]{Initial: register.Initial, Next: endsOnRead},
+				opts: []history.Option{history.Workers(2)},
+				want: specFault(atRead, `the spec's Next ends its goroutine on "read"`),
 			},
 			{
-				name:  "returns the fault of an Init that ends its goroutine",
-				model: history.Model[int]{Init: func() int { runtime.Goexit(); return 0 }, Step: register.Step},
-				opts:  []history.Option{history.Workers(2)},
-				want:  modelFault(nil, "the model's Init ends its goroutine"),
+				name: "returns the fault of an Initial that ends its goroutine",
+				spec: history.Spec[int]{Initial: func() int { runtime.Goexit(); return 0 }, Next: register.Next},
+				opts: []history.Option{history.Workers(2)},
+				want: specFault(nil, "the spec's Initial ends its goroutine"),
 			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				expectFault(t, faultOf(t, violatedRead(), tt.model, tt.opts...), tt.want)
+				expectFault(t, faultOf(t, violatedRead(), tt.spec, tt.opts...), tt.want)
 			})
 		}
 	})
 }
 
-// waiting is the model of one value, initially 0, whose wait and spread wait
+// waiting is the spec of one value, initially 0, whose wait and spread wait
 // past the time limit on a timer of the platform clock, which the limit
 // reads. A wait leaves the state, a spread leaves the states 0 to 1,999, and
 // every state rejects a read.
-var waiting = history.Model[int]{
-	Init: func() int { return 0 },
-	Step: func(s int, op history.Op) []int {
-		switch op.Operation {
+var waiting = history.Spec[int]{
+	Initial: func() int { return 0 },
+	Next: func(s int, op history.Operation) []int {
+		switch op.Name {
 		case wait:
 			<-time.After(2 * timeLimit)
 			return []int{s}
@@ -275,13 +282,13 @@ var waiting = history.Model[int]{
 
 // lossy is the register whose write may be lost: it leaves the written value
 // and the value before it. A read is the register's read.
-var lossy = history.Model[int]{
-	Init: register.Init,
-	Step: func(s int, op history.Op) []int {
-		if op.Operation == write {
+var lossy = history.Spec[int]{
+	Initial: register.Initial,
+	Next: func(s int, op history.Operation) []int {
+		if op.Name == write {
 			return []int{op.Args[0].(int), s}
 		}
-		return register.Step(s, op)
+		return register.Next(s, op)
 	},
 }
 
@@ -301,7 +308,7 @@ func complete(c *prop.Case, call history.Call) {
 // outcomeOf checks h against m under Whole, Final and opts on a recorder, and
 // returns the detail of each record of the check and the states that it
 // stored.
-func outcomeOf(h *history.History, m history.Model[int], opts ...history.Option) ([]map[string]any, []int) {
+func outcomeOf(h *history.History, m history.Spec[int], opts ...history.Option) ([]map[string]any, []int) {
 	var final []int
 	rec := assert.NewRecorder()
 	all := append([]history.Option{history.Whole(), history.Final(&final)}, opts...)
@@ -321,9 +328,9 @@ func sameInt(a, b int) bool {
 
 // growing steps the register, and keeps the old value beside a greater
 // value that a write leaves over a value other than the initial one.
-func growing(s int, op history.Op) []int {
-	if op.Operation != write {
-		return register.Step(s, op)
+func growing(s int, op history.Operation) []int {
+	if op.Name != write {
+		return register.Next(s, op)
 	}
 	v := op.Args[0].(int)
 	if s != 0 && v > s {
@@ -332,26 +339,26 @@ func growing(s int, op history.Op) []int {
 	return []int{v}
 }
 
-// modelFault returns the fault of the kind ErrModel of a check at path for
+// specFault returns the fault of the kind ErrSpec of a check at path for
 // reason.
-func modelFault(path fault.Path, reason string) fault.Error {
-	return fault.Error{Op: linearizableOp, Path: path, Kind: history.ErrModel, Reason: reason}
+func specFault(path fault.Path, reason string) fault.Error {
+	return fault.Error{Op: linearizableOp, Path: path, Kind: history.ErrSpec, Reason: reason}
 }
 
 // panicsOnRead steps the register, and panics on a read.
-func panicsOnRead(s int, op history.Op) []int {
-	if op.Operation == read {
+func panicsOnRead(s int, op history.Operation) []int {
+	if op.Name == read {
 		panic(boom)
 	}
-	return register.Step(s, op)
+	return register.Next(s, op)
 }
 
 // endsOnRead steps the register, and ends its goroutine on a read.
-func endsOnRead(s int, op history.Op) []int {
-	if op.Operation == read {
+func endsOnRead(s int, op history.Operation) []int {
+	if op.Name == read {
 		runtime.Goexit()
 	}
-	return register.Step(s, op)
+	return register.Next(s, op)
 }
 
 // panicsOnEqual panics, as an Equal that cannot compare two states does.

@@ -25,7 +25,7 @@ func init() {
 // text writer sends to a seat without a Report method. It states the
 // contract, the outcome with the reported partition and the limit, and then
 // the counts, the frontier's order of calls, its states and the calls that
-// the model rejected there, each on a line of its own.
+// the spec rejected there, each on a line of its own.
 func sentence(f assert.Failure) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s: %v in the partition of %s", f.Contract, f.Detail[outcomeField],
@@ -185,16 +185,16 @@ func writeSpans(b *strings.Builder, label string, spans any) {
 		if i > 0 {
 			b.WriteString("; ")
 		}
-		fmt.Fprintf(b, "call %d %s(", s.Call, s.Op.Operation)
-		for j, arg := range s.Op.Args {
+		fmt.Fprintf(b, "call %d %s(", s.Call, s.Operation.Name)
+		for j, arg := range s.Operation.Args {
 			if j > 0 {
 				b.WriteString(", ")
 			}
 			text.Fprintf(b, "%#v", arg)
 		}
 		b.WriteString(")")
-		if s.Op.Known {
-			text.Fprintf(b, " → %#v", s.Op.Output)
+		if s.Operation.Known {
+			text.Fprintf(b, " → %#v", s.Operation.Output)
 		} else {
 			b.WriteString(", outcome unknown")
 		}

@@ -27,12 +27,12 @@ const (
 	tailEntry = 1
 )
 
-// The model's functions, as the fault of one that panics names it.
+// The spec's functions, as the fault of one that panics names it.
 const (
-	initFunction  = "Init"
-	stepFunction  = "Step"
-	equalFunction = "Equal"
-	hashFunction  = "Hash"
+	initialFunction = "Initial"
+	nextFunction    = "Next"
+	equalFunction   = "Equal"
+	hashFunction    = "Hash"
 )
 
 // deadline is the time limit of one check, which every search of the check
@@ -53,7 +53,7 @@ func (d *deadline) passed() bool {
 }
 
 // ending is how the search of one partition ended: its verdict, its steps
-// and its frontier, or the fault of one of the model's functions.
+// and its frontier, or the fault of one of the spec's functions.
 type ending[S any] struct {
 	// verdict is the partition's verdict.
 	verdict Verdict
@@ -63,12 +63,12 @@ type ending[S any] struct {
 	linearized []int
 	// states are the frontier's states.
 	states []S
-	// candidates are the positions of the calls that the model rejected at
+	// candidates are the positions of the calls that the spec rejected at
 	// the frontier.
 	candidates []int
 	// limit is the limit that stopped an undecided search.
 	limit Limit
-	// err is the fault of a model's function that panicked or ended the
+	// err is the fault of a spec's function that panicked or ended the
 	// goroutine, and nil for a search that ended.
 	err error
 }
@@ -133,7 +133,7 @@ type entry struct {
 // The grown search then continues from the order that it found, and takes
 // the steps that a search of every call takes from that order on.
 type search[S any] struct {
-	// ops are the model's functions, with the defaults of Equal and Hash.
+	// ops are the spec's functions, with the defaults of Equal and Hash.
 	ops operations[S]
 	// calls are the partition's calls, in event order.
 	calls []call
@@ -195,13 +195,13 @@ type search[S any] struct {
 	linearized []int
 	// frontier are the frontier's states.
 	frontier extent
-	// candidates are the positions of the calls that the model rejected at
+	// candidates are the positions of the calls that the spec rejected at
 	// the frontier so far.
 	candidates []int
 	// atFrontier reports whether the current configuration is the frontier.
 	atFrontier bool
 
-	// calling is the model's function that the search calls.
+	// calling is the spec's function that the search calls.
 	calling string
 	// stepped is the position of the call that the search steps, and -1
 	// before the first step.
@@ -243,7 +243,7 @@ func (s *search[S]) fits(more int, limits config) bool {
 }
 
 // grow adds more to a search that passed: calls that its history recorded
-// after every event that the search read. The search then reads the model's
+// after every event that the search read. The search then reads the spec's
 // functions ops and the deadline d, the deadline before its next step.
 func (s *search[S]) grow(ops operations[S], more []call, limits config, d *deadline) {
 	s.ops, s.deadline, s.final = ops, d, limits.final != nil
@@ -265,7 +265,7 @@ func (s *search[S]) add(first int) {
 	var entries []entry
 	for i, c := range calls {
 		entries = append(entries, entry{event: c.span.Call, position: first + i, invokes: true})
-		if c.span.Op.Known {
+		if c.span.Operation.Known {
 			entries = append(entries, entry{event: c.span.Completion, position: first + i})
 			s.open++
 		}
@@ -310,7 +310,7 @@ func (s *search[S]) add(first int) {
 // and the completion of that call follows the invocation.
 func (s *search[S]) retarget(first int) {
 	for _, f := range s.stack {
-		if s.calls[f.position].span.Op.Known && s.next[s.completion[f.position]] == tailEntry {
+		if s.calls[f.position].span.Operation.Known && s.next[s.completion[f.position]] == tailEntry {
 			s.next[s.completion[f.position]] = first
 		}
 	}
@@ -335,9 +335,9 @@ func (s *search[S]) widen() {
 
 // run searches the partition and passes how the search ended to deliver, on
 // every path out of it: the verdict and the frontier, or the fault of a
-// model's function that panicked or ended the goroutine. A search that grew
+// spec's function that panicked or ended the goroutine. A search that grew
 // continues from the order that it found, and a new one starts at the
-// model's initial state. After a function that ends the goroutine, as
+// spec's initial state. After a function that ends the goroutine, as
 // t.FailNow does, the goroutine ends once deliver returns.
 func (s *search[S]) run(deliver func(ending[S])) {
 	var e ending[S]
@@ -349,8 +349,8 @@ func (s *search[S]) run(deliver func(ending[S])) {
 		deliver(e)
 	}()
 	if len(s.store) == 0 {
-		s.calling = initFunction
-		s.store = append(s.store, s.ops.init())
+		s.calling = initialFunction
+		s.store = append(s.store, s.ops.initial())
 		s.states = extent{n: 1}
 		s.frontier = s.states
 	}
@@ -359,7 +359,7 @@ func (s *search[S]) run(deliver func(ending[S])) {
 }
 
 // scan scans the entries until every known call is linearized, or no order
-// that the model accepts is left, or a limit stops it.
+// that the spec accepts is left, or a limit stops it.
 func (s *search[S]) scan() ending[S] {
 	entry := s.next[headEntry]
 	for s.open > 0 {
@@ -400,12 +400,12 @@ func (s *search[S]) ending(v Verdict, limit Limit) ending[S] {
 	}
 }
 
-// linearize linearizes the call at position when the model accepts it and
+// linearize linearizes the call at position when the spec accepts it and
 // the configuration that it leads to is new. It reports whether it did, and
 // the limit that stopped the search.
 func (s *search[S]) linearize(position int) (bool, Limit) {
 	s.stepped = position
-	sum, limit := s.step(s.calls[position].span.Op)
+	sum, limit := s.step(s.calls[position].span.Operation)
 	if limit != 0 {
 		return false, limit
 	}
@@ -440,7 +440,7 @@ func (s *search[S]) linearize(position int) (bool, Limit) {
 // without two equal states, with their hashes in hashes, and returns the sum
 // of the hashes. It reports the limit that stops the search before a step:
 // the budget, or the deadline.
-func (s *search[S]) step(op Op) (uint64, Limit) {
+func (s *search[S]) step(op Operation) (uint64, Limit) {
 	s.scratch, s.hashes = s.scratch[:0], s.hashes[:0]
 	var sum uint64
 	current := s.store[s.states.at : s.states.at+s.states.n]
@@ -459,8 +459,8 @@ func (s *search[S]) step(op Op) (uint64, Limit) {
 			s.clockAt = s.steps + clockSteps
 		}
 		s.steps += cost
-		s.calling = stepFunction
-		next := s.ops.step(current[i], op)
+		s.calling = nextFunction
+		next := s.ops.next(current[i], op)
 		for j := range next {
 			var hash uint64
 			if s.ops.hash != nil {
@@ -573,7 +573,7 @@ func (s *search[S]) backtrack() int {
 // lift takes the entries of the call at position out of the scan.
 func (s *search[S]) lift(position int) {
 	s.unlink(s.invocation[position])
-	if s.calls[position].span.Op.Known {
+	if s.calls[position].span.Operation.Known {
 		s.unlink(s.completion[position])
 		s.open--
 	}
@@ -582,7 +582,7 @@ func (s *search[S]) lift(position int) {
 // unlift puts the entries of the call at position back, in the reverse order
 // of lift.
 func (s *search[S]) unlift(position int) {
-	if s.calls[position].span.Op.Known {
+	if s.calls[position].span.Operation.Known {
 		s.relink(s.completion[position])
 		s.open++
 	}
@@ -602,20 +602,20 @@ func (s *search[S]) relink(entry int) {
 	s.prev[s.next[entry]] = entry
 }
 
-// fault returns the fault of the model's function that the search called
+// fault returns the fault of the spec's function that the search called
 // when it panicked with v, or ended the goroutine for a nil v. The fault
 // names the call that the search stepped.
 func (s *search[S]) fault(v any) error {
 	if s.stepped < 0 {
 		if v == nil {
-			return fault.In(linearizableOp, fault.Of(ErrModel, "the model's %s ends its goroutine", s.calling))
+			return fault.In(linearizableOp, fault.Of(ErrSpec, "the spec's %s ends its goroutine", s.calling))
 		}
-		return fault.In(linearizableOp, fault.Of(ErrModel, "the model's %s panics with %v", s.calling, v))
+		return fault.In(linearizableOp, fault.Of(ErrSpec, "the spec's %s panics with %v", s.calling, v))
 	}
 	c := s.calls[s.stepped].span
-	err := fault.Of(ErrModel, "the model's %s ends its goroutine on %q", s.calling, c.Op.Operation)
+	err := fault.Of(ErrSpec, "the spec's %s ends its goroutine on %q", s.calling, c.Operation.Name)
 	if v != nil {
-		err = fault.Of(ErrModel, "the model's %s panics on %q with %v", s.calling, c.Op.Operation, v)
+		err = fault.Of(ErrSpec, "the spec's %s panics on %q with %v", s.calling, c.Operation.Name, v)
 	}
 	return fault.In(linearizableOp, fault.At(err, fault.Field(callsField), fault.Index(c.Call)))
 }

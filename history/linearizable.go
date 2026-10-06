@@ -22,32 +22,34 @@ const linearizableOp = "history.Linearizable"
 // searched in.
 const callerFrames = 64
 
-// ErrModel is the kind of the fault of a check whose model's function
-// panics, or ends the goroutine that runs it.
-var ErrModel = errors.New("history: a function of a model panics or ends its goroutine")
+// ErrSpec is the kind of the fault of a check whose spec's function panics,
+// or ends the goroutine that runs it.
+var ErrSpec = errors.New("history: a function of a spec panics or ends its goroutine")
 
-// hashlessNote is the note of a check whose model states Equal and no Hash.
-const hashlessNote = linearizableOp + ": the model states Equal and no Hash, so the search hashes every " +
+// hashlessNote is the note of a check whose spec states Equal and no Hash.
+const hashlessNote = linearizableOp + ": the spec states Equal and no Hash, so the search hashes every " +
 	"state alike and compares each state with every state of the same calls. A Hash that agrees with Equal " +
 	"lets the search compare the states of one hash alone."
 
-// Linearizable checks that every partition of the history h has an order of
-// its calls that keeps the history's precedence and that the model m
-// accepts, and fails tb with one record of the assertion linearizable when
-// the check does not pass. The record's contract is contract, and its
-// location is the call of Linearizable.
+// Linearizable checks that the calls of each partition of the history h have
+// a linearization that the spec s accepts: an order that respects their
+// real-time order and that s accepts as a sequence. It fails tb with one
+// record of the assertion linearizable when the check does not pass. The
+// record's contract is contract, and its location is the call of
+// Linearizable.
 //
 // The check removes the calls that failed. A call that completed as [OK] is
 // known, and takes effect between its invocation and its completion. A call
 // whose outcome is unknown, and a pending call, takes effect at some point
-// after its invocation, or never. Two calls that share a key are in one
+// after its invocation, or never. Call a precedes call b in real time when
+// a completed before b was invoked. Two calls that share a key are in one
 // partition, and a call without keys puts every call into one partition.
 // The check searches the partitions in the order of their first invocation,
-// each from the model's initial state, with the search that the definition
+// each from the spec's initial state, with the search that the definition
 // fixes. It reports the first violated partition, and otherwise the first
 // undecided one. The options state its limits and its workers, and [Whole]
 // and [Final] search every call as one partition and store the states that
-// a passing order leaves. [Resume] continues the search of an earlier check
+// a linearization leaves. [Resume] continues the search of an earlier check
 // of the same history.
 //
 // The record's detail states the ten fields of the definition:
@@ -57,7 +59,7 @@ const hashlessNote = linearizableOp + ": the model states Equal and no Hash, so 
 //   - partition, a []any of the keys of the reported partition, and empty
 //     for a partition of every key.
 //   - linearized and candidates, a []Span each, and states, a []S: the
-//     frontier's order of calls, its states, and the calls that the model
+//     frontier's order of calls, its states, and the calls that the spec
 //     rejected there.
 //   - limit, a [Limit] for an undecided check, and nil for a violated one.
 //
@@ -65,31 +67,30 @@ const hashlessNote = linearizableOp + ": the model states Equal and no Hash, so 
 // record's sentence through Fatalf. The call record of a recorded run states
 // the detail in the history's JSON form.
 //
-// A model that states Equal and no Hash makes the search compare the states
+// A spec that states Equal and no Hash makes the search compare the states
 // of every configuration of one set of calls, which is slower by orders of
 // magnitude on a long history. The first check of a history against such a
-// model writes a note that states the cause into the log of a seat that has
+// spec writes a note that states the cause into the log of a seat that has
 // a log, whatever its verdict.
 //
 // # Errors
 //
-// The check ends the call with a fault for a nil history, for a model
-// without Init or without Step, for [Final] and [Resume] of states of
-// another type than the model's, and for Resume without [Whole]. It ends
-// the call with a fault of the kind
-// [ErrModel] when a function of the model panics or ends the goroutine, and
-// the fault names the call that the search stepped. A panic in a partition
-// that one worker would not search ends nothing.
+// The check ends the call with a fault for a nil history, for a spec without
+// Initial or without Next, for [Final] and [Resume] of states of another
+// type than the spec's, and for Resume without [Whole]. It ends the call
+// with a fault of the kind [ErrSpec] when a function of the spec panics or
+// ends the goroutine, and the fault names the call that the search stepped.
+// A panic in a partition that one worker would not search ends nothing.
 //
 // # Allocation contract
 //
 // A check allocates its calls, its partitions and the memo of each search,
-// and the states that the model returns. A passing check of a register over
+// and the states that the spec returns. A passing check of a register over
 // two sequential calls allocates 38 times. A check that continues the search
 // of the check before it allocates for the calls since that check alone: a
 // write of the register that a history records and the check after it
 // allocate 10 times together.
-func Linearizable[S any](tb assert.TB, h *History, m Model[S], contract string, opts ...Option) {
+func Linearizable[S any](tb assert.TB, h *History, s Spec[S], contract string, opts ...Option) {
 	tb.Helper()
 	run := matcher.Begin(tb)
 	c := configure(opts)
@@ -97,20 +98,20 @@ func Linearizable[S any](tb assert.TB, h *History, m Model[S], contract string, 
 		run.Fault(matcher.Fatal, linearizableID, contract, fault.In(linearizableOp, fault.New("the history is nil")))
 		return
 	}
-	if m.Init == nil || m.Step == nil {
+	if s.Initial == nil || s.Next == nil {
 		run.Fault(matcher.Fatal, linearizableID, contract,
-			fault.In(linearizableOp, fault.New("the model states no Init or no Step")))
+			fault.In(linearizableOp, fault.New("the spec states no Initial or no Next")))
 		return
 	}
 	final, typed := c.final.(*[]S)
 	if c.final != nil && !typed {
 		run.Fault(matcher.Fatal, linearizableID, contract, fault.In(linearizableOp,
-			fault.New("Final states %T for a model whose states are of type %v", c.final, reflect.TypeFor[S]())))
+			fault.New("Final states %T for a spec whose states are of type %v", c.final, reflect.TypeFor[S]())))
 		return
 	}
 	if _, resumable := c.resume.(*Checkpoint[S]); c.resume != nil && !resumable {
 		run.Fault(matcher.Fatal, linearizableID, contract, fault.In(linearizableOp,
-			fault.New("Resume states %T for a model whose states are of type %v", c.resume, reflect.TypeFor[S]())))
+			fault.New("Resume states %T for a spec whose states are of type %v", c.resume, reflect.TypeFor[S]())))
 		return
 	}
 	if c.resume != nil && !c.whole {
@@ -118,10 +119,10 @@ func Linearizable[S any](tb assert.TB, h *History, m Model[S], contract string, 
 			fault.New("Resume continues the search of one partition, and the check states no Whole")))
 		return
 	}
-	if m.Equal != nil && m.Hash == nil && h.noteHashless() {
+	if s.Equal != nil && s.Hash == nil && h.noteHashless() {
 		matcher.Note(tb, hashlessNote)
 	}
-	d, err := check(h, m.operations(), c)
+	d, err := check(h, s.operations(), c)
 	if err != nil {
 		run.Fault(matcher.Fatal, linearizableID, contract, err)
 		return
@@ -140,7 +141,7 @@ func Linearizable[S any](tb assert.TB, h *History, m Model[S], contract string, 
 	}, d)
 }
 
-// noteHashless reports whether no check of h has noted a model that states
+// noteHashless reports whether no check of h has noted a spec that states
 // Equal and no Hash, and records that one has.
 func (h *History) noteHashless() bool {
 	h.mu.Lock()
@@ -151,10 +152,10 @@ func (h *History) noteHashless() bool {
 	return first
 }
 
-// check returns the detail of the check of h through the model's functions
+// check returns the detail of the check of h through the spec's functions
 // ops under c: the first violated partition, else the first undecided one,
 // else a pass. A pass states its final states when c asks for them and the
-// check searched one partition or none. It returns the fault of a model's
+// check searched one partition or none. It returns the fault of a spec's
 // function that panicked in a partition that one worker would search.
 func check[S any](h *History, ops operations[S], c config) (detail[S], error) {
 	d := &deadline{}

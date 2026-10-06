@@ -28,9 +28,9 @@ const (
 	concurrencyField = "concurrency"
 	// linearizedField is the frontier's order of calls, a []Span.
 	linearizedField = "linearized"
-	// statesField is the frontier's states, a slice of the model's states.
+	// statesField is the frontier's states, a slice of the spec's states.
 	statesField = "states"
-	// candidatesField is the calls that the model rejected at the frontier, a
+	// candidatesField is the calls that the spec rejected at the frontier, a
 	// []Span.
 	candidatesField = "candidates"
 	// limitField is the limit that stopped an undecided search, a [Limit].
@@ -60,7 +60,7 @@ type detail[S any] struct {
 	linearized []Span
 	// states are the frontier's states.
 	states []S
-	// candidates are the calls that the model rejected at the frontier.
+	// candidates are the calls that the spec rejected at the frontier.
 	candidates []Span
 	// limit is the limit that stopped an undecided search, and zero for a
 	// violated one.

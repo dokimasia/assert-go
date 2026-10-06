@@ -34,6 +34,6 @@
 // Imports the standard library and internal/align, which aligns the
 // elements of two slices. internal/matcher imports it for every assertion
 // that compares values, and for the text of a failure of one. The package
-// history imports it for the states of a model, which the memo of its
-// search compares and hashes.
+// history imports it for the states of a spec, which the memo of its search
+// compares and hashes, and for the output of an operation.
 package equality

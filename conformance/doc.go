@@ -65,8 +65,8 @@
 //     compares the events in the history's JSON form, or the entry that the
 //     history refuses.
 //   - [Linearizable] checks a recorded script through
-//     [go.dokimi.dev/assert/history.Linearizable] against a model of
-//     [Models], which builds the six named models of the definition, and
+//     [go.dokimi.dev/assert/history.Linearizable] against a spec of
+//     [Specs], which builds the six named specs of the definition, and
 //     compares the detail of the record. A passing check reports no record,
 //     so the runner checks the steps of a pass through two more checks
 //     under a budget of the steps and of one step less.

@@ -20,7 +20,7 @@ const linearizableContract = "the history of the vector is linearizable"
 // The members of a linearizable vector and of its detail that the path of a
 // fault names, beside the members of every vector.
 const (
-	modelMember      = "model"
+	specMember       = "spec"
 	historyMember    = "history"
 	budgetMember     = "budget"
 	memoLimitMember  = "memo-limit"
@@ -39,7 +39,7 @@ type undecidedDetail struct {
 }
 
 // checkLinearizable records the history of a linearizable vector, checks it
-// with [history.Linearizable] against the named model of [Models] on a
+// with [history.Linearizable] against the named spec of [Specs] on a
 // recorder, under the vector's options, and compares the outcome with the
 // one that the vector states. A failing vector compares each field of the
 // detail of the call record with the vector's.
@@ -51,7 +51,7 @@ type undecidedDetail struct {
 // each partition, so this fixes the steps of a pass over one partition.
 func checkLinearizable(raw json.RawMessage, _ string) error {
 	var v struct {
-		Model     string                     `json:"model"`
+		Spec      string                     `json:"spec"`
 		History   []json.RawMessage          `json:"history"`
 		Budget    *int                       `json:"budget"`
 		MemoLimit *int64                     `json:"memo-limit"`
@@ -62,9 +62,9 @@ func checkLinearizable(raw json.RawMessage, _ string) error {
 	if err := decode(raw, &v); err != nil {
 		return err
 	}
-	model, named := Models[v.Model]
+	spec, named := Specs[v.Spec]
 	if !named {
-		return fault.At(fault.New("%q is no named model", v.Model), fault.Field(modelMember))
+		return fault.At(fault.New("%q is no named spec", v.Spec), fault.Field(specMember))
 	}
 	h, err := historyOf(v.History)
 	if err != nil {
@@ -74,13 +74,13 @@ func checkLinearizable(raw json.RawMessage, _ string) error {
 	if err != nil {
 		return err
 	}
-	c := checked(h, model, opts...)
+	c := checked(h, spec, opts...)
 	switch v.Expect {
 	case expectFail:
 		return compareFailure(c, v.Detail)
 	case expectPass:
 		return comparePass(c, v.Detail, func(budget int) call {
-			return checked(h, model, append(slices.Clip(opts), history.Budget(budget))...)
+			return checked(h, spec, append(slices.Clip(opts), history.Budget(budget))...)
 		})
 	}
 	return fault.At(fault.New("the vector expects %q, neither pass nor fail", v.Expect), fault.Field(expectMember))
@@ -112,11 +112,11 @@ func checkOptions(budget *int, memoLimit *int64, workers *int) ([]history.Option
 	return opts, nil
 }
 
-// checked checks h against m under opts on a recorder, and returns the call
+// checked checks h against s under opts on a recorder, and returns the call
 // record of the check.
-func checked(h *history.History, m history.Model[any], opts ...history.Option) call {
+func checked(h *history.History, s history.Spec[any], opts ...history.Option) call {
 	rec := assert.NewRecorder()
-	history.Linearizable(rec, h, m, linearizableContract, opts...)
+	history.Linearizable(rec, h, s, linearizableContract, opts...)
 	// A recorder keeps the call record of every call.
 	return callsOf(rec)[0]
 }

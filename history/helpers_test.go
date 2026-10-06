@@ -27,7 +27,7 @@ const (
 	invalidRelation history.Relation = 4
 )
 
-// The operations of the models of the tests.
+// The operations of the specs of the tests.
 const (
 	write = "write"
 	read  = "read"
@@ -59,16 +59,16 @@ const (
 // linearizableOp is the operation of the faults of a check.
 const linearizableOp = "history.Linearizable"
 
-// register is the model of one value, initially 0. write(v) leaves v, and
+// register is the spec of one value, initially 0. write(v) leaves v, and
 // read() outputs the value and leaves it. A read whose outcome is unknown
 // accepts any value.
-var register = history.Model[int]{
-	Init: func() int { return 0 },
-	Step: func(s int, op history.Op) []int {
-		if op.Operation == write {
+var register = history.Spec[int]{
+	Initial: func() int { return 0 },
+	Next: func(s int, op history.Operation) []int {
+		if op.Name == write {
 			return []int{op.Args[0].(int)}
 		}
-		if !op.Known || op.Output == s {
+		if op.Returned(s) {
 			return []int{s}
 		}
 		return nil
@@ -107,7 +107,10 @@ func TestHelpers(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				data, err := history.Span{Completion: -1, Op: history.Op{Operation: write, Args: tt.give}}.MarshalJSON()
+				data, err := history.Span{
+					Completion: -1,
+					Operation:  history.Operation{Name: write, Args: tt.give},
+				}.MarshalJSON()
 				assert.NoError(t, err, "a span marshals")
 				var got struct {
 					Args json.RawMessage `json:"args"`
@@ -127,7 +130,7 @@ func recordOK(h *history.History, client int, operation string, args []any, outp
 
 // detailOf checks h against m on a recorder under opts, and returns the
 // detail of the record of the check, or nil for a check that passed.
-func detailOf[S any](h *history.History, m history.Model[S], opts ...history.Option) map[string]any {
+func detailOf[S any](h *history.History, m history.Spec[S], opts ...history.Option) map[string]any {
 	rec := assert.NewRecorder()
 	history.Linearizable(rec, h, m, contract, opts...)
 	failures := rec.Failures()
@@ -139,7 +142,7 @@ func detailOf[S any](h *history.History, m history.Model[S], opts ...history.Opt
 
 // faultOf checks h against m on a seat of internal/matchertest under opts,
 // and returns the fault that ends the check, which tb requires.
-func faultOf[S any](tb testing.TB, h *history.History, m history.Model[S], opts ...history.Option) *fault.Error {
+func faultOf[S any](tb testing.TB, h *history.History, m history.Spec[S], opts ...history.Option) *fault.Error {
 	tb.Helper()
 	seat := &matchertest.Seat{}
 	history.Linearizable(seat, h, m, contract, opts...)
@@ -337,13 +340,13 @@ func writeSkew() *history.History {
 	return h
 }
 
-// spreading returns the model whose write leaves states, from any state,
-// and whose read every state rejects. Its initial state is init.
-func spreading[S any](init S, states ...S) history.Model[S] {
-	return history.Model[S]{
-		Init: func() S { return init },
-		Step: func(_ S, op history.Op) []S {
-			if op.Operation == write {
+// spreading returns the spec whose write leaves states, from any state, and
+// whose read every state rejects. Its initial state is initial.
+func spreading[S any](initial S, states ...S) history.Spec[S] {
+	return history.Spec[S]{
+		Initial: func() S { return initial },
+		Next: func(_ S, op history.Operation) []S {
+			if op.Name == write {
 				return states
 			}
 			return nil

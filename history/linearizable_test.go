@@ -131,12 +131,15 @@ func TestLinearizable(t *testing.T) {
 				[]any{history.Undecided, []any{"b"}, 4, 3}, "the partition of b, with the steps of a and of b")
 		})
 
-		t.Run("notes a model of Equal and no Hash once per history, in the log of the seat", func(t *testing.T) {
+		t.Run("notes a spec of Equal and no Hash once per history, in the log of the seat", func(t *testing.T) {
 			t.Parallel()
 			equal := func(a, b int) bool { return a == b }
-			hashless := history.Model[int]{Init: register.Init, Step: register.Step, Equal: equal}
-			hashed := history.Model[int]{
-				Init: register.Init, Step: register.Step, Equal: equal, Hash: func(s int) uint64 { return uint64(s) },
+			hashless := history.Spec[int]{Initial: register.Initial, Next: register.Next, Equal: equal}
+			hashed := history.Spec[int]{
+				Initial: register.Initial,
+				Next:    register.Next,
+				Equal:   equal,
+				Hash:    func(s int) uint64 { return uint64(s) },
 			}
 			seat := &loggingSeat{Recorder: assert.NewRecorder()}
 			first, second := linearizableRead(), linearizableRead()
@@ -144,7 +147,7 @@ func TestLinearizable(t *testing.T) {
 			history.Linearizable(seat, first, hashless, contract)
 			history.Linearizable(seat, second, hashed, contract)
 			history.Linearizable(seat, second, register, contract)
-			assert.False(t, seat.Failed(), "the history is linearizable under each model")
+			assert.False(t, seat.Failed(), "the history is linearizable under each spec")
 			assert.Length(t, seat.notes(), 1, "the note of the first check of the first history")
 			assert.Contains(t, seat.notes()[0], "states Equal and no Hash", "the note names the cause")
 			history.Linearizable(seat, second, hashless, contract)
@@ -163,45 +166,45 @@ func TestLinearizable(t *testing.T) {
 		tests := []struct {
 			name    string
 			history *history.History
-			model   history.Model[int]
+			spec    history.Spec[int]
 			want    string
 		}{
-			{name: "returns a fault for a nil history", model: register, want: "the history is nil"},
+			{name: "returns a fault for a nil history", spec: register, want: "the history is nil"},
 			{
-				name:    "returns a fault for a model without Init",
+				name:    "returns a fault for a spec without Initial",
 				history: violatedRead(),
-				model:   history.Model[int]{Step: register.Step},
-				want:    "the model states no Init or no Step",
+				spec:    history.Spec[int]{Next: register.Next},
+				want:    "the spec states no Initial or no Next",
 			},
 			{
-				name:    "returns a fault for a model without Step",
+				name:    "returns a fault for a spec without Next",
 				history: violatedRead(),
-				model:   history.Model[int]{Init: register.Init},
-				want:    "the model states no Init or no Step",
+				spec:    history.Spec[int]{Initial: register.Initial},
+				want:    "the spec states no Initial or no Next",
 			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				expectFault(t, faultOf(t, tt.history, tt.model), fault.Error{Op: linearizableOp, Reason: tt.want})
+				expectFault(t, faultOf(t, tt.history, tt.spec), fault.Error{Op: linearizableOp, Reason: tt.want})
 			})
 		}
 
-		t.Run("returns a fault for Final of states of another type than the model's", func(t *testing.T) {
+		t.Run("returns a fault for Final of states of another type than the spec's", func(t *testing.T) {
 			t.Parallel()
 			got := faultOf(t, violatedRead(), register, history.Final(new([]string)))
 			expectFault(t, got, fault.Error{
-				Op: linearizableOp, Reason: "Final states *[]string for a model whose states are of type int",
+				Op: linearizableOp, Reason: "Final states *[]string for a spec whose states are of type int",
 			})
 		})
 
-		t.Run("returns a fault for Resume of states of another type than the model's", func(t *testing.T) {
+		t.Run("returns a fault for Resume of states of another type than the spec's", func(t *testing.T) {
 			t.Parallel()
 			cp := new(history.Checkpoint[string])
 			got := faultOf(t, violatedRead(), register, history.Whole(), history.Resume(cp))
 			expectFault(t, got, fault.Error{
 				Op:     linearizableOp,
-				Reason: "Resume states *history.Checkpoint[string] for a model whose states are of type int",
+				Reason: "Resume states *history.Checkpoint[string] for a spec whose states are of type int",
 			})
 		})
 
@@ -250,8 +253,8 @@ func TestLinearizable(t *testing.T) {
 			recordOK(h, 0, first, nil, nil, "a")
 			recordOK(h, 1, second, nil, nil, "b")
 			got := faultOf(t, h, panicsOnSecond([]int{0}), history.Workers(2))
-			expectFault(t, got, modelFault(fault.Path{fault.Field(callsField), fault.Index(2)},
-				`the model's Step panics on "second" with boom`))
+			expectFault(t, got, specFault(fault.Path{fault.Field(callsField), fault.Index(2)},
+				`the spec's Next panics on "second" with boom`))
 		})
 
 		t.Run("cancels a search that it no longer needs", func(t *testing.T) {
@@ -259,16 +262,16 @@ func TestLinearizable(t *testing.T) {
 			started := make(chan struct{})
 			var once sync.Once
 			var puts atomic.Int64
-			m := history.Model[int]{
-				Init: register.Init,
-				Step: func(s int, op history.Op) []int {
-					if op.Operation == put {
+			m := history.Spec[int]{
+				Initial: register.Initial,
+				Next: func(s int, op history.Operation) []int {
+					if op.Name == put {
 						once.Do(func() { close(started) })
 						puts.Add(1)
 						return []int{op.Args[0].(int)}
 					}
 					<-started
-					return register.Step(s, op)
+					return register.Next(s, op)
 				},
 			}
 			got := detailOf(cancelledHistory(), m, history.Budget(cancelledBudget), history.Workers(2))
@@ -330,13 +333,13 @@ func threePartitions() *history.History {
 	return h
 }
 
-// waitsForSecond returns the model whose step of first waits until the step
+// waitsForSecond returns the spec whose step of first waits until the step
 // of second has closed secondEnded, and which rejects both.
-func waitsForSecond(secondEnded chan struct{}) history.Model[int] {
-	return history.Model[int]{
-		Init: register.Init,
-		Step: func(_ int, op history.Op) []int {
-			if op.Operation == second {
+func waitsForSecond(secondEnded chan struct{}) history.Spec[int] {
+	return history.Spec[int]{
+		Initial: register.Initial,
+		Next: func(_ int, op history.Operation) []int {
+			if op.Name == second {
 				close(secondEnded)
 				return nil
 			}
@@ -346,13 +349,13 @@ func waitsForSecond(secondEnded chan struct{}) history.Model[int] {
 	}
 }
 
-// panicsOnSecond returns the model whose step of first leaves accepted,
+// panicsOnSecond returns the spec whose step of first leaves accepted,
 // which rejects the call for none, and whose step of second panics.
-func panicsOnSecond(accepted []int) history.Model[int] {
-	return history.Model[int]{
-		Init: register.Init,
-		Step: func(_ int, op history.Op) []int {
-			if op.Operation == second {
+func panicsOnSecond(accepted []int) history.Spec[int] {
+	return history.Spec[int]{
+		Initial: register.Initial,
+		Next: func(_ int, op history.Operation) []int {
+			if op.Name == second {
 				panic(boom)
 			}
 			return accepted
@@ -411,16 +414,16 @@ func queueHistory() *history.History {
 	return h
 }
 
-// queue is the model of a queue of ints, initially empty, head first, whose
+// queue is the spec of a queue of ints, initially empty, head first, whose
 // states the defaults compare through reflection. enqueue(v) adds v at the
 // tail, and dequeue() removes the head and outputs it.
-var queue = history.Model[[]int]{
-	Init: func() []int { return []int{} },
-	Step: func(s []int, op history.Op) [][]int {
-		if op.Operation == enqueue {
+var queue = history.Spec[[]int]{
+	Initial: func() []int { return []int{} },
+	Next: func(s []int, op history.Operation) [][]int {
+		if op.Name == enqueue {
 			return [][]int{append(slices.Clip(s), op.Args[0].(int))}
 		}
-		if len(s) > 0 && (!op.Known || op.Output == s[0]) {
+		if len(s) > 0 && op.Returned(s[0]) {
 			return [][]int{s[1:]}
 		}
 		return nil
@@ -481,7 +484,7 @@ func BenchmarkLinearizable(b *testing.B) {
 
 // spend measures the check of h against m under opts, which spends its
 // budget.
-func spend[S any](b *testing.B, h *history.History, m history.Model[S], opts ...history.Option) {
+func spend[S any](b *testing.B, h *history.History, m history.Spec[S], opts ...history.Option) {
 	b.Helper()
 	rec := assert.NewRecorder()
 	c := bench.Start(b)

@@ -23,8 +23,8 @@ type reading struct {
 }
 
 // TestOperations checks how a check compares and hashes the states of a
-// model: the defaults for a basic type and for any other type, and an Equal
-// and a Hash that the model states.
+// spec: the defaults for a basic type and for any other type, and an Equal
+// and a Hash that the spec states.
 func TestOperations(t *testing.T) {
 	t.Parallel()
 
@@ -93,7 +93,7 @@ func TestOperations(t *testing.T) {
 			})
 		}
 
-		t.Run("compares states with the Equal that the model states", func(t *testing.T) {
+		t.Run("compares states with the Equal that the spec states", func(t *testing.T) {
 			t.Parallel()
 			m := spreading(0, 1, 3)
 			m.Equal = sameParity
@@ -101,7 +101,7 @@ func TestOperations(t *testing.T) {
 			assert.Equal(t, got[statesField], any([]int{1}), "3 has the parity of 1, which comes first")
 		})
 
-		t.Run("hashes every state alike for a model that states Equal alone", func(t *testing.T) {
+		t.Run("hashes every state alike for a spec that states Equal alone", func(t *testing.T) {
 			t.Parallel()
 			m := register
 			m.Equal = sameParity
@@ -109,7 +109,7 @@ func TestOperations(t *testing.T) {
 			assert.Equal(t, got[stepsField], any(5), "the memo finds the configuration of 1 then 3 after 3 then 1")
 		})
 
-		t.Run("hashes states with the Hash that the model states beside the default comparison", func(t *testing.T) {
+		t.Run("hashes states with the Hash that the spec states beside the default comparison", func(t *testing.T) {
 			t.Parallel()
 			hashed := 0
 			m := register
@@ -117,7 +117,7 @@ func TestOperations(t *testing.T) {
 				hashed++
 				return uint64(s)
 			}
-			assert.Equal(t, detailOf(violatedRead(), m), detailOf(violatedRead(), register), "the record of the model")
+			assert.Equal(t, detailOf(violatedRead(), m), detailOf(violatedRead(), register), "the record of the spec")
 			assert.Equal(t, hashed, 1, "the one state that the write leaves")
 		})
 
@@ -132,7 +132,7 @@ func TestOperations(t *testing.T) {
 	})
 }
 
-// left checks the violated read against the model whose write leaves states,
+// left checks the violated read against the spec whose write leaves states,
 // and returns the number of states of the frontier, which the write leaves.
 func left[S any](states ...S) int {
 	got := detailOf(violatedRead(), spreading(*new(S), states...))
