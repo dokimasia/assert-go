@@ -4,6 +4,7 @@
 package assert_test
 
 import (
+	"fmt"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -137,6 +138,38 @@ func TestAssertion(t *testing.T) {
 			})
 	})
 
+	t.Run("NoError", func(t *testing.T) {
+		t.Parallel()
+		matchertest.RunOne(t, matchertest.NoErrorOfAnyCases(),
+			func(s *matchertest.Seat, got any, msg string) {
+				assert.That(s, got).NoError(msg)
+			})
+	})
+
+	t.Run("HasError", func(t *testing.T) {
+		t.Parallel()
+		matchertest.RunOne(t, matchertest.HasErrorOfAnyCases(),
+			func(s *matchertest.Seat, got any, msg string) {
+				assert.That(s, got).HasError(msg)
+			})
+	})
+
+	t.Run("ErrorIs", func(t *testing.T) {
+		t.Parallel()
+		matchertest.RunPair(t, matchertest.ErrorIsOfAnyCases(),
+			func(s *matchertest.Seat, got, target any, msg string) {
+				assert.That(s, got).ErrorIs(matchertest.AsError(target), msg)
+			})
+	})
+
+	t.Run("ErrorIsNot", func(t *testing.T) {
+		t.Parallel()
+		matchertest.RunPair(t, matchertest.ErrorIsNotOfAnyCases(),
+			func(s *matchertest.Seat, got, target any, msg string) {
+				assert.That(s, got).ErrorIsNot(matchertest.AsError(target), msg)
+			})
+	})
+
 	// The cases of That test the chain alone. The shared cases state what
 	// one assertion reports, and these state how the methods of one chain
 	// compose.
@@ -217,6 +250,8 @@ func assertionCases() []alloctest.Case {
 	var absent *int
 	present := new(int)
 	reading := 1.05
+	var succeeded error
+	wrapped := fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", matchertest.ErrSample))
 	return []alloctest.Case{
 		{Name: "That", Call: func(tb assert.TB) { chain = assert.That(tb, 7) }, Allocs: 1},
 		{Name: "Equal", Call: func(tb assert.TB) { assert.That(tb, 7).Equal(7, allocContract) }},
@@ -254,5 +289,13 @@ func assertionCases() []alloctest.Case {
 			Call:   func(tb assert.TB) { assert.That(tb, reading).InRange(0, 2, allocContract) },
 			Allocs: 1,
 		},
+		{Name: "NoError", Call: func(tb assert.TB) { assert.That(tb, succeeded).NoError(allocContract) }},
+		{Name: "HasError", Call: func(tb assert.TB) { assert.That(tb, wrapped).HasError(allocContract) }},
+		{Name: "ErrorIs", Call: func(tb assert.TB) {
+			assert.That(tb, wrapped).ErrorIs(matchertest.ErrSample, allocContract)
+		}},
+		{Name: "ErrorIsNot", Call: func(tb assert.TB) {
+			assert.That(tb, wrapped).ErrorIsNot(matchertest.ErrOther, allocContract)
+		}},
 	}
 }

@@ -44,13 +44,14 @@ expect.That(t, user).
     Length(3, "every field was populated")
 ```
 
-One run reports all three. Both packages carry the same assertions
-under the same names and share one comparison; a conformance test
-fails the build if they ever diverge.
+One run reports all three. Both packages declare the same members
+under the same names: the assertions, `Rejects`, the seats and the
+clocks. They share one comparison, and a conformance test fails the
+build when one package declares a member that the other lacks.
 
-Every assertion exists as a function. The fifteen that examine a value
-of any type, such as `Equal` and `Contains`, also exist as chain
-methods:
+Every assertion exists as a function. The nineteen that examine a value
+of any type, such as `Equal`, `Contains` and `ErrorIs`, also exist as
+chain methods:
 
 ```go
 assert.Equal(t, got, want, "the values match")
@@ -103,13 +104,14 @@ assert.Equal(t, got[0].Contract, "the key was already present",
 
 Assert on the returned failure records, which `Rejects` returns in call
 order. A subject that panics before the check's own assertion runs
-satisfies a bare call.
+satisfies a bare call. `expect.Rejects` records its failure and lets the
+test continue.
 
 ## Packages
 
 | Import | What it holds |
 |---|---|
-| `go.dokimi.dev/assert` | 50 assertions and a 15-method chain, stopping at the first failure |
+| `go.dokimi.dev/assert` | 50 assertions and a 19-method chain, stopping at the first failure |
 | `go.dokimi.dev/assert/expect` | the same, recording and continuing |
 | `go.dokimi.dev/assert/golden` | comparison against a recorded file or tree of files, with scrubbers for content that changes each run |
 | `go.dokimi.dev/assert/files` | trees of files for a test, and the assertions on the files that code reads and writes |
@@ -585,7 +587,7 @@ holds itself to it on every run:
   something that is implemented. Each function and method takes the
   number of arguments that the definition states. `NoGoroutineLeaks` is
   the one exception: it returns its check instead of taking the scope.
-- **Parity.** Both surfaces carry the same members.
+- **Parity.** Both surfaces declare the same members.
 - **Meaning.** 195 corpus cases state what an assertion must report,
   shared with every other implementation. Each case runs through every
   function and chain form of both surfaces. The record of a failing

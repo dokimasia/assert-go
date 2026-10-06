@@ -97,6 +97,66 @@ func ErrorIsNotCases() []Case {
 	}
 }
 
+// errorless is a value that is no error, which a chain can take.
+const errorless = 7
+
+// NoErrorOfAnyCases are the cases of NoErrorCases and the case of a value
+// that is no error, which every no-error assertion that takes any value,
+// such as a method of a chain, must produce. Drive them with [RunOne].
+func NoErrorOfAnyCases() []Case {
+	return append(NoErrorCases(), Case{
+		Name:      "a value that is no error reports it",
+		Args:      []any{errorless},
+		Fails:     true,
+		Assertion: "err-absent",
+		Detail:    map[string]any{"got": errorless},
+	})
+}
+
+// HasErrorOfAnyCases are the cases of HasErrorCases and the case of a
+// value that is no error, which every has-error assertion that takes any
+// value must produce. Drive them with [RunOne].
+func HasErrorOfAnyCases() []Case {
+	return append(HasErrorCases(), Case{
+		Name:      "a value that is no error reports",
+		Args:      []any{errorless},
+		Fails:     true,
+		Assertion: "err-present",
+	})
+}
+
+// ErrorIsOfAnyCases are the cases of ErrorIsCases and the case of a value
+// that is no error, which every error-identity assertion that takes any
+// value must produce. Drive them with [RunPair].
+func ErrorIsOfAnyCases() []Case {
+	return append(ErrorIsCases(), Case{
+		Name:      "a value that is no error reports both",
+		Args:      []any{errorless, ErrSample},
+		Fails:     true,
+		Assertion: "err-is",
+		Detail:    map[string]any{"want": ErrSample, "got": errorless},
+	}, Case{
+		Name:      "a value that is no error reports against a nil target",
+		Args:      []any{errorless, nil},
+		Fails:     true,
+		Assertion: "err-is",
+		Detail:    map[string]any{"got": errorless},
+	})
+}
+
+// ErrorIsNotOfAnyCases are the cases of ErrorIsNotCases and the case of a
+// value that is no error, which every error-distinctness assertion that
+// takes any value must produce. Drive them with [RunPair].
+func ErrorIsNotOfAnyCases() []Case {
+	return append(ErrorIsNotCases(), Case{
+		Name:      "a value that is no error reports it",
+		Args:      []any{errorless, ErrSample},
+		Fails:     true,
+		Assertion: "err-is-not",
+		Detail:    map[string]any{"got": errorless},
+	})
+}
+
 // AsError reads a case argument as an error, answering a nil error for
 // a nil argument.
 //

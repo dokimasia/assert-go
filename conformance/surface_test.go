@@ -36,23 +36,12 @@ import (
 // because a test written with a defective core can pass by the defect that
 // it should find.
 
-// abortingOnly names the members that the aborting surface declares and the
-// recording surface does not, each with the reason. A type of the naming
-// table's surface section needs no entry: the library declares it once for
-// both surfaces, as the table states.
-var abortingOnly = map[string]string{
-	"Rejects":       "drives a check to failure, which needs a seat that stops",
-	"Recorder":      "the seat both surfaces report through, declared once",
-	"NewRecorder":   "the seat both surfaces report through, declared once",
-	"NewControlled": "constructs the clock the table names, declared once",
-	"TB":            "the seat interface, declared once and used by both",
-}
-
 // TestSurface is the completeness gate. Every assertion of the definition
 // is present under the name that the naming table gives Go, with the
 // definition's arity, or the overlay declares it absent. Every member of
 // the aborting surface has a twin of the same name in the recording
-// surface, unless the naming table or abortingOnly excuses it.
+// surface, and the recording surface declares no member that the aborting
+// one lacks, so the two surfaces declare the same members.
 func TestSurface(t *testing.T) {
 	t.Parallel()
 
@@ -114,17 +103,7 @@ func TestSurface(t *testing.T) {
 		t.Run("returns a recording twin for every aborting member", func(t *testing.T) {
 			t.Parallel()
 
-			covered := slices.Collect(maps.Values(conformance.SurfaceNames()))
-
 			for _, name := range aborting {
-				if _, excused := abortingOnly[name]; excused {
-					continue
-				}
-				// The library declares a name of the table once for both
-				// surfaces, as the table states.
-				if slices.Contains(covered, name) {
-					continue
-				}
 				assert.Contains(t, recording, name,
 					"the recording surface declares "+name)
 			}
@@ -161,14 +140,12 @@ func TestSurface(t *testing.T) {
 			assert.Equal(t, f.Reason, "the file does not parse", "the reason")
 		})
 
-		t.Run("returns each excused member for the aborting surface alone", func(t *testing.T) {
+		t.Run("returns each silent member for both surfaces", func(t *testing.T) {
 			t.Parallel()
 
-			for name, why := range abortingOnly {
-				assert.Contains(t, aborting, name,
-					"the aborting surface declares "+name+", excused because it "+why)
-				assert.NotContains(t, recording, name,
-					"the recording surface omits "+name+", excused because it "+why)
+			for name, why := range silent {
+				assert.Contains(t, aborting, name, "the aborting surface declares "+name+", which "+why)
+				assert.Contains(t, recording, name, "the recording surface declares "+name+", which "+why)
 			}
 		})
 	})
@@ -188,7 +165,7 @@ func TestSurface(t *testing.T) {
 				assert.True(t, ok, "assertion "+string(id)+" names a package this library has")
 
 				surfaces := []conformance.Surface{surface}
-				if _, only := abortingOnly[member]; surface == conformance.Aborting && !only {
+				if surface == conformance.Aborting {
 					surfaces = append(surfaces, conformance.Recording)
 				}
 				want := a.Arity
@@ -571,15 +548,18 @@ func TestSurfaceTable(t *testing.T) {
 // rejected is the message every driven call passes.
 const rejected = "the input is one the member rejects"
 
-// silent names the members of the recording surface that report
-// nothing, so no input drives one to fail, with the reason.
+// silent names the functions of both surfaces that report nothing, so no
+// input drives one to fail, with the reason. A type of the naming table's
+// surface section reports nothing either, and needs no entry.
 var silent = map[string]string{
-	"Assertion":   "is the chain type, and the method drivers call its methods",
-	"That":        "starts a chain",
-	"Option":      "is the type of a comparison option",
-	"EquateEmpty": "returns a comparison option",
-	"EquateNaNs":  "returns a comparison option",
-	"ByIdentity":  "returns a comparison option",
+	"Assertion":     "is the chain type, and the method drivers call its methods",
+	"That":          "starts a chain",
+	"Option":        "is the type of a comparison option",
+	"EquateEmpty":   "returns a comparison option",
+	"EquateNaNs":    "returns a comparison option",
+	"ByIdentity":    "returns a comparison option",
+	"NewRecorder":   "constructs the recorder seat",
+	"NewControlled": "constructs the controlled clock",
 }
 
 // escaped is the slice that the MaxAllocs driver allocates, which escape
@@ -682,6 +662,7 @@ var recordingFunctions = map[string]func(tb assert.TB){
 		calls := 0
 		expect.Pure(tb, func() int { return calls }, func() { calls++ }, rejected)
 	},
+	"Rejects": func(tb assert.TB) { expect.Rejects(tb, rejected, func(assert.TB) {}) },
 	"RoundTrip": func(tb assert.TB) {
 		expect.RoundTrip(tb, func(int) (int, error) { return 0, io.EOF },
 			func(v int) (int, error) { return v, nil }, 1, rejected)
@@ -701,12 +682,16 @@ var recordingMethods = map[string]func(tb assert.TB){
 	"ContainsInOrder": func(tb assert.TB) { expect.That(tb, "abc").ContainsInOrder([]string{"c", "a"}, rejected) },
 	"Empty":           func(tb assert.TB) { expect.That(tb, "a").Empty(rejected) },
 	"Equal":           func(tb assert.TB) { expect.That(tb, 1).Equal(2, rejected) },
+	"ErrorIs":         func(tb assert.TB) { expect.That(tb, io.EOF).ErrorIs(fs.ErrNotExist, rejected) },
+	"ErrorIsNot":      func(tb assert.TB) { expect.That(tb, io.EOF).ErrorIsNot(io.EOF, rejected) },
+	"HasError":        func(tb assert.TB) { expect.That[error](tb, nil).HasError(rejected) },
 	"HasPrefix":       func(tb assert.TB) { expect.That(tb, "abc").HasPrefix("x", rejected) },
 	"HasSuffix":       func(tb assert.TB) { expect.That(tb, "abc").HasSuffix("x", rejected) },
 	"InRange":         func(tb assert.TB) { expect.That(tb, 5.0).InRange(0, 1, rejected) },
 	"Length":          func(tb assert.TB) { expect.That(tb, "ab").Length(3, rejected) },
 	"Matches":         func(tb assert.TB) { expect.That(tb, "abc").Matches("^x", rejected) },
 	"Nil":             func(tb assert.TB) { expect.That(tb, 1).Nil(rejected) },
+	"NoError":         func(tb assert.TB) { expect.That(tb, io.EOF).NoError(rejected) },
 	"NotContains":     func(tb assert.TB) { expect.That(tb, "abc").NotContains("b", rejected) },
 	"NotEmpty":        func(tb assert.TB) { expect.That(tb, "").NotEmpty(rejected) },
 	"NotEqual":        func(tb assert.TB) { expect.That(tb, 1).NotEqual(1, rejected) },
@@ -733,6 +718,7 @@ func TestSurfaceRecording(t *testing.T) {
 	}
 
 	names := conformance.Names()
+	typed := slices.Collect(maps.Values(conformance.SurfaceNames()))
 
 	var methods []string
 	for method := range reflect.TypeFor[*expect.Assertion[any]]().Methods() {
@@ -740,12 +726,8 @@ func TestSurfaceRecording(t *testing.T) {
 	}
 
 	t.Run("Members", func(t *testing.T) {
-		t.Run("returns the functions that the drivers and the excuses name", func(t *testing.T) {
-			named := slices.Concat(slices.Collect(maps.Keys(recordingFunctions)), slices.Collect(maps.Keys(silent)))
-			slices.Sort(named)
-			if !slices.Equal(named, members) {
-				t.Errorf("the surface declares %v, and the drivers and excuses name %v", members, named)
-			}
+		t.Run("returns the members that a driver, an excuse or the table names", func(t *testing.T) {
+			checkNamed(t, members, recordingFunctions, typed)
 		})
 
 		t.Run("matches each method of the chain with a driver", func(t *testing.T) {
@@ -876,12 +858,16 @@ var abortingMethods = map[string]func(tb assert.TB){
 	"ContainsInOrder": func(tb assert.TB) { assert.That(tb, "abc").ContainsInOrder([]string{"c", "a"}, rejected) },
 	"Empty":           func(tb assert.TB) { assert.That(tb, "a").Empty(rejected) },
 	"Equal":           func(tb assert.TB) { assert.That(tb, 1).Equal(2, rejected) },
+	"ErrorIs":         func(tb assert.TB) { assert.That(tb, io.EOF).ErrorIs(fs.ErrNotExist, rejected) },
+	"ErrorIsNot":      func(tb assert.TB) { assert.That(tb, io.EOF).ErrorIsNot(io.EOF, rejected) },
+	"HasError":        func(tb assert.TB) { assert.That[error](tb, nil).HasError(rejected) },
 	"HasPrefix":       func(tb assert.TB) { assert.That(tb, "abc").HasPrefix("x", rejected) },
 	"HasSuffix":       func(tb assert.TB) { assert.That(tb, "abc").HasSuffix("x", rejected) },
 	"InRange":         func(tb assert.TB) { assert.That(tb, 5.0).InRange(0, 1, rejected) },
 	"Length":          func(tb assert.TB) { assert.That(tb, "ab").Length(3, rejected) },
 	"Matches":         func(tb assert.TB) { assert.That(tb, "abc").Matches("^x", rejected) },
 	"Nil":             func(tb assert.TB) { assert.That(tb, 1).Nil(rejected) },
+	"NoError":         func(tb assert.TB) { assert.That(tb, io.EOF).NoError(rejected) },
 	"NotContains":     func(tb assert.TB) { assert.That(tb, "abc").NotContains("b", rejected) },
 	"NotEmpty":        func(tb assert.TB) { assert.That(tb, "").NotEmpty(rejected) },
 	"NotEqual":        func(tb assert.TB) { assert.That(tb, 1).NotEqual(1, rejected) },
@@ -896,8 +882,8 @@ var abortingMethods = map[string]func(tb assert.TB){
 //
 // The member list comes from the surface's source and the chain's method
 // set, so a member added without a driver fails here. A member that
-// reports nothing is excused by silent, by abortingOnly, or by a type of
-// the naming table's surface section.
+// reports nothing is excused by silent, or by a type of the naming table's
+// surface section.
 func TestSurfaceAborting(t *testing.T) {
 	members, err := conformance.Members(conformance.Aborting)
 	if err != nil {
@@ -913,20 +899,8 @@ func TestSurfaceAborting(t *testing.T) {
 	}
 
 	t.Run("Members", func(t *testing.T) {
-		t.Run("matches each reporting function with a driver", func(t *testing.T) {
-			var reporting []string
-			for _, name := range members {
-				_, quiet := silent[name]
-				_, only := abortingOnly[name]
-				_, driven := abortingFunctions[name]
-				if driven || (!quiet && !only && !slices.Contains(typed, name)) {
-					reporting = append(reporting, name)
-				}
-			}
-			driven := slices.Sorted(maps.Keys(abortingFunctions))
-			if !slices.Equal(driven, reporting) {
-				t.Errorf("the surface declares the reporting functions %v, and the drivers name %v", reporting, driven)
-			}
+		t.Run("returns the members that a driver, an excuse or the table names", func(t *testing.T) {
+			checkNamed(t, members, abortingFunctions, typed)
 		})
 
 		t.Run("matches each method of the chain with a driver", func(t *testing.T) {
@@ -939,6 +913,24 @@ func TestSurfaceAborting(t *testing.T) {
 
 	t.Run("Functions", func(t *testing.T) { drive(t, abortingFunctions, names, true) })
 	t.Run("Methods", func(t *testing.T) { drive(t, abortingMethods, names, true) })
+}
+
+// checkNamed requires that the members of a surface are exactly the
+// functions that drivers keys, the members that silent excuses, and the
+// types of the naming table's surface section that the surface declares.
+func checkNamed(t *testing.T, members []string, drivers map[string]func(tb assert.TB), typed []string) {
+	t.Helper()
+
+	named := slices.Concat(slices.Collect(maps.Keys(drivers)), slices.Collect(maps.Keys(silent)))
+	for _, name := range members {
+		if slices.Contains(typed, name) && !slices.Contains(named, name) {
+			named = append(named, name)
+		}
+	}
+	slices.Sort(named)
+	if !slices.Equal(named, members) {
+		t.Errorf("the surface declares %v, and the drivers, the excuses and the table name %v", members, named)
+	}
 }
 
 // drive calls each driver with a fresh seat. It requires a failure through

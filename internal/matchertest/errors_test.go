@@ -33,6 +33,41 @@ func TestErrors(t *testing.T) {
 		checkTable(t, "ErrorIsNotCases", matchertest.ErrorIsNotCases(), 2)
 	})
 
+	// Each table of an assertion over any value is the table of the
+	// function, and failing cases of a value that is no error.
+	tests := []struct {
+		name      string
+		give      []matchertest.Case
+		giveBase  []matchertest.Case
+		giveArity int
+	}{
+		{"NoErrorOfAnyCases", matchertest.NoErrorOfAnyCases(), matchertest.NoErrorCases(), 1},
+		{"HasErrorOfAnyCases", matchertest.HasErrorOfAnyCases(), matchertest.HasErrorCases(), 1},
+		{"ErrorIsOfAnyCases", matchertest.ErrorIsOfAnyCases(), matchertest.ErrorIsCases(), 2},
+		{"ErrorIsNotOfAnyCases", matchertest.ErrorIsNotOfAnyCases(), matchertest.ErrorIsNotCases(), 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			checkTable(t, tt.name, tt.give, tt.giveArity)
+
+			for i, base := range tt.giveBase {
+				if got := tt.give[i].Name; got != base.Name {
+					t.Fatalf("%s states %q as its case %d, want %q", tt.name, got, i, base.Name)
+				}
+			}
+			added := tt.give[len(tt.giveBase):]
+			if len(added) == 0 {
+				t.Fatalf("%s adds no case to the %d of the function", tt.name, len(tt.giveBase))
+			}
+			for _, tc := range added {
+				if _, isError := tc.Args[0].(error); isError || tc.Args[0] == nil || !tc.Fails {
+					t.Fatalf("%s adds %+v, want a failing case of a value that is no error", tt.name, tc)
+				}
+			}
+		})
+	}
+
 	t.Run("AsError", func(t *testing.T) {
 		t.Parallel()
 

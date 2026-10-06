@@ -20,9 +20,9 @@ func TestErrors(t *testing.T) {
 
 	t.Run("NoError", func(t *testing.T) {
 		t.Parallel()
-		matchertest.RunOne(t, matchertest.NoErrorCases(),
+		matchertest.RunOne(t, matchertest.NoErrorOfAnyCases(),
 			func(s *matchertest.Seat, got any, msg string) {
-				matcher.NoError(s, matcher.Fatal, matchertest.AsError(got), msg)
+				matcher.NoError(s, matcher.Fatal, got, msg)
 			})
 
 		t.Run("writes the record of a passing call", func(t *testing.T) {
@@ -35,9 +35,9 @@ func TestErrors(t *testing.T) {
 
 	t.Run("HasError", func(t *testing.T) {
 		t.Parallel()
-		matchertest.RunOne(t, matchertest.HasErrorCases(),
+		matchertest.RunOne(t, matchertest.HasErrorOfAnyCases(),
 			func(s *matchertest.Seat, got any, msg string) {
-				matcher.HasError(s, matcher.Fatal, matchertest.AsError(got), msg)
+				matcher.HasError(s, matcher.Fatal, got, msg)
 			})
 
 		t.Run("writes the record of a passing call", func(t *testing.T) {
@@ -50,9 +50,9 @@ func TestErrors(t *testing.T) {
 
 	t.Run("ErrorIs", func(t *testing.T) {
 		t.Parallel()
-		matchertest.RunPair(t, matchertest.ErrorIsCases(),
+		matchertest.RunPair(t, matchertest.ErrorIsOfAnyCases(),
 			func(s *matchertest.Seat, got, target any, msg string) {
-				matcher.ErrorIs(s, matcher.Fatal, matchertest.AsError(got), matchertest.AsError(target), msg)
+				matcher.ErrorIs(s, matcher.Fatal, got, matchertest.AsError(target), msg)
 			})
 
 		t.Run("writes the record of a passing call", func(t *testing.T) {
@@ -65,9 +65,9 @@ func TestErrors(t *testing.T) {
 
 	t.Run("ErrorIsNot", func(t *testing.T) {
 		t.Parallel()
-		matchertest.RunPair(t, matchertest.ErrorIsNotCases(),
+		matchertest.RunPair(t, matchertest.ErrorIsNotOfAnyCases(),
 			func(s *matchertest.Seat, got, target any, msg string) {
-				matcher.ErrorIsNot(s, matcher.Fatal, matchertest.AsError(got), matchertest.AsError(target), msg)
+				matcher.ErrorIsNot(s, matcher.Fatal, got, matchertest.AsError(target), msg)
 			})
 
 		t.Run("writes the record of a passing call", func(t *testing.T) {

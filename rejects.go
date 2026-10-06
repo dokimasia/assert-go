@@ -3,10 +3,7 @@
 
 package assert
 
-import (
-	"go.dokimi.dev/assert/internal/matcher"
-	"go.dokimi.dev/assert/internal/record"
-)
+import "go.dokimi.dev/assert/internal/matcher"
 
 // Rejects runs fn against an implementation that fn is meant to reject,
 // and stops the test when fn passes. It returns the failure records of fn,
@@ -45,8 +42,10 @@ import (
 // # Concurrency
 //
 // fn runs on a goroutine of its own and this call blocks until it
-// finishes. The seat fn receives ends that goroutine at fn's first
-// failure, so a check does not run past an assertion it already failed.
+// finishes. The seat fn receives ends that goroutine at fn's first failure
+// that stops, an assertion of this package or a call of Fatalf, so a check
+// does not run past an assertion it already failed. A failure of the
+// recording surface lets fn run on, and Rejects returns its record too.
 // The goroutine ends before the call returns, so a leak check around this
 // call reports nothing.
 //
@@ -57,27 +56,10 @@ import (
 //
 // # Allocation contract
 //
-// A passing call of a check that fails at a call of [True] allocates 9
+// A passing call of a check that fails at a call of [True] allocates 8
 // times, the check's failure and the returned copy of its records
 // included.
 func Rejects(tb TB, msg string, fn func(tb TB)) []Failure {
 	tb.Helper()
-
-	run := matcher.Begin(tb)
-	r := NewRecorder().WithGoexit()
-	record.Run(&r.calls, run.Slot(), nil)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		fn(r)
-	}()
-	<-done
-	run.Slot().Take(&r.calls, record.NoPhase)
-
-	if !r.Failed() {
-		run.Fail(matcher.Fatal, "rejects", msg, nil)
-		return r.Failures()
-	}
-	run.Pass(matcher.Fatal, "rejects", msg)
-	return r.Failures()
+	return matcher.Rejects(tb, matcher.Fatal, msg, func(s matcher.Seat) { fn(s) })
 }

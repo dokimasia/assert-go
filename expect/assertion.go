@@ -242,3 +242,56 @@ func (a *Assertion[T]) InRange(low, high float64, msg string) *Assertion[T] {
 	matcher.InRange(a.tb, matcher.Soft, a.got, low, high, msg)
 	return a
 }
+
+// NoError records a failure when the chained value is an error, or a value
+// of another type that is not nil. See [go.dokimi.dev/assert.NoError].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a nil error allocates nothing.
+func (a *Assertion[T]) NoError(msg string) *Assertion[T] {
+	a.tb.Helper()
+	matcher.NoError(a.tb, matcher.Soft, a.got, msg)
+	return a
+}
+
+// HasError records a failure when the chained value is no error: nil, or a
+// value of another type. See [go.dokimi.dev/assert.HasError].
+//
+// # Allocation contract
+//
+// A passing call on a chain of an error allocates nothing.
+func (a *Assertion[T]) HasError(msg string) *Assertion[T] {
+	a.tb.Helper()
+	matcher.HasError(a.tb, matcher.Soft, a.got, msg)
+	return a
+}
+
+// ErrorIs records a failure when the chained value is no error that
+// matches target under [errors.Is]. See [go.dokimi.dev/assert.ErrorIs].
+//
+//	expect.That(t, err).
+//	    ErrorIs(store.ErrMalformed, "Decode refuses the encoding").
+//	    ErrorIs(codec.ErrVersion, "and wraps the codec's error")
+//
+// # Allocation contract
+//
+// A passing call on a chain of a sentinel wrapped twice allocates nothing.
+func (a *Assertion[T]) ErrorIs(target error, msg string) *Assertion[T] {
+	a.tb.Helper()
+	matcher.ErrorIs(a.tb, matcher.Soft, a.got, target, msg)
+	return a
+}
+
+// ErrorIsNot records a failure when the chained value matches target under
+// [errors.Is], or is no error and not nil. See
+// [go.dokimi.dev/assert.ErrorIsNot].
+//
+// # Allocation contract
+//
+// A passing call on a chain of a sentinel wrapped twice allocates nothing.
+func (a *Assertion[T]) ErrorIsNot(target error, msg string) *Assertion[T] {
+	a.tb.Helper()
+	matcher.ErrorIsNot(a.tb, matcher.Soft, a.got, target, msg)
+	return a
+}

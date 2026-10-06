@@ -9,14 +9,15 @@
 //
 // Every call reports its verdict through [Pass], [Fail] or [Fault], which
 // write the call's record when its seat records calls. A call that runs a
-// body, such as [Eventually] or a property, starts with [Begin] and reports
-// through the [Running] it returns. The [Writer] turns each failure and
-// fault into the text that a seat receives, with the sentence that a package
-// registers through [RegisterSentence] for its assertions. A [Reporter]
-// takes a failure's record instead of its text, and a [FaultReporter] takes
-// a fault. [Note] writes a note into the log of a seat, and [NoteFault]
-// notes a fault that does not end its call. [End] ends a call that reports
-// no verdict, such as a call of a helper that prepares a test, with a fault.
+// body, such as [Eventually], [Rejects] or a property, starts with [Begin]
+// and reports through the [Running] it returns. The [Writer] turns each
+// failure and fault into the text that a seat receives, with the sentence
+// that a package registers through [RegisterSentence] for its assertions.
+// A [Reporter] takes a failure's record instead of its text, and a
+// [FaultReporter] takes a fault. [Note] writes a note into the log of a
+// seat, and [NoteFault] notes a fault that does not end its call. [End] ends
+// a call that reports no verdict, such as a call of a helper that prepares
+// a test, with a fault.
 //
 // # Comparison rules
 //

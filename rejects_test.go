@@ -9,20 +9,25 @@ import (
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/expect"
 	"go.dokimi.dev/assert/internal/alloctest"
+	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
 // rejection keeps the records that a call of Rejects returns.
 var rejection []assert.Failure
 
-// TestRejects checks the assertion that a check fails.
+// TestRejects runs the shared cases of the assertion that a check fails,
+// and the cases of the aborting surface.
 func TestRejects(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Rejects", func(t *testing.T) {
 		t.Parallel()
+		matchertest.RunRejects(t, func(s *matchertest.Seat, msg string, check func(matcher.Seat)) []matcher.Failure {
+			return assert.Rejects(s, msg, func(tb assert.TB) { check(tb) })
+		})
 
-		t.Run("returns the check's failure records in call order", func(t *testing.T) {
+		t.Run("returns the records of a check that states both surfaces, in call order", func(t *testing.T) {
 			t.Parallel()
 
 			got := assert.Rejects(t, "rejects 2 and 3", func(tb assert.TB) {
@@ -39,19 +44,7 @@ func TestRejects(t *testing.T) {
 			}
 		})
 
-		t.Run("returns no record for a check that fails through its seat's Fatalf alone", func(t *testing.T) {
-			t.Parallel()
-
-			got := assert.Rejects(t, "rejects a bare failure", func(tb assert.TB) {
-				tb.Fatalf("the check fails")
-			})
-
-			if len(got) != 0 {
-				t.Fatalf("returned %+v, want no record", got)
-			}
-		})
-
-		t.Run("reports a record of rejects when the driven check passes", func(t *testing.T) {
+		t.Run("reports a record of rejects through Fatalf when the driven check passes", func(t *testing.T) {
 			t.Parallel()
 
 			outer := &matchertest.Seat{}
@@ -111,20 +104,6 @@ func TestRejects(t *testing.T) {
 			}
 		})
 
-		t.Run("stops the body at its first failure", func(t *testing.T) {
-			t.Parallel()
-
-			reached := false
-			assert.Rejects(t, "stops at the first failure", func(tb assert.TB) {
-				assert.Equal(tb, 2, 1, "the value is one")
-				reached = true
-			})
-
-			if reached {
-				t.Fatal("the body ran past an assertion it had already failed")
-			}
-		})
-
 		t.Run("leaves no goroutine behind", func(t *testing.T) {
 			t.Parallel()
 
@@ -160,6 +139,6 @@ func BenchmarkRejects(b *testing.B) {
 func rejectsCases() []alloctest.Case {
 	check := func(tb assert.TB) { assert.True(tb, false, "the check fails") }
 	return []alloctest.Case{
-		{Name: "Rejects", Call: func(tb assert.TB) { rejection = assert.Rejects(tb, allocContract, check) }, Allocs: 9},
+		{Name: "Rejects", Call: func(tb assert.TB) { rejection = assert.Rejects(tb, allocContract, check) }, Allocs: 8},
 	}
 }

@@ -4,7 +4,7 @@ title: The Go assertion library
 author: Roy Klopper <roy.klopper@stealthscale.io>
 status: Accepted
 created: 2026-08-30
-updated: 2026-09-26
+updated: 2026-10-06
 discussion: none
 supersedes: none
 superseded-by: none
@@ -140,6 +140,13 @@ Each package writes its own methods instead. A method is a few lines
 that name the mode and call the core, so the duplicated code contains no
 comparison logic.
 
+The chain offers the 15 assertions that examine a value of any type, such
+as `Equal` and `Contains`, and the four error assertions `ErrorIs`,
+`ErrorIsNot`, `NoError` and `HasError`. `That` is generic over the value,
+and Go cannot restrict a method to a `T` of `error`, so an error method
+over a value that is no error fails, as `Length` fails over a value that
+has no length.
+
 ### The recording package mirrors the aborting one
 
 `expect` has one function for each function in `assert`, written beside
@@ -150,8 +157,10 @@ the same rule.
 Three checks keep the packages in step:
 
 - The conformance gate fails the build when either surface has a member
-  the other lacks. It names the members that exist only on the aborting
-  surface, such as `Rejects`, each with its reason.
+  the other lacks. `expect` declares the seat, the record and the clocks
+  as aliases of the types of `assert`, and the constructors and `Rejects`
+  as functions of its own, so a test that imports `expect` alone states
+  everything that a test of `assert` states.
 - The shared suites in `internal/matchertest` drive every case through
   the core, `assert` and `expect` alike. A wrapper that calls the wrong
   comparison fails a shared case.

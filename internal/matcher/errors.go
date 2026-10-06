@@ -5,7 +5,12 @@ package matcher
 
 import "errors"
 
-// NoError reports when err is not nil, naming the error it got.
+// The error assertions take got as an error or nil, as a function of a
+// surface passes it. A chain passes its value, so got can be a value of
+// another type, which fails each of them.
+
+// NoError reports when got is not nil: an error, which it names, or a value
+// that is no error.
 //
 // Use it for an operation that must succeed. Where the failure itself
 // is the subject, use [HasError] or [ErrorIs].
@@ -13,16 +18,16 @@ import "errors"
 // # Allocation contract
 //
 // A passing call allocates nothing.
-func NoError(seat Seat, mode Mode, err error, msg string) {
+func NoError(seat Seat, mode Mode, got any, msg string) {
 	seat.Helper()
-	if err != nil {
-		Fail(seat, mode, "err-absent", msg, map[string]any{"got": err})
+	if got != nil {
+		Fail(seat, mode, "err-absent", msg, map[string]any{"got": got})
 		return
 	}
 	Pass(seat, mode, "err-absent", msg)
 }
 
-// HasError reports when err is nil.
+// HasError reports when got is no error: nil, or a value of another type.
 //
 // It checks only that something failed. To check which failure it was,
 // use [ErrorIs].
@@ -30,42 +35,42 @@ func NoError(seat Seat, mode Mode, err error, msg string) {
 // # Allocation contract
 //
 // A passing call allocates nothing.
-func HasError(seat Seat, mode Mode, err error, msg string) {
+func HasError(seat Seat, mode Mode, got any, msg string) {
 	seat.Helper()
-	if err == nil {
+	if _, isError := got.(error); !isError {
 		Fail(seat, mode, "err-present", msg, nil)
 		return
 	}
 	Pass(seat, mode, "err-present", msg)
 }
 
-// ErrorIs reports when err does not match target under [errors.Is],
-// which walks the chain of wrapped causes, so a sentinel matches at any
-// depth of wrapping.
+// ErrorIs reports when got does not match target under [errors.Is], which
+// walks the chain of wrapped causes, so a sentinel matches at any depth of
+// wrapping. A value that is no error matches no target.
 //
 // # Allocation contract
 //
 // A passing call on a sentinel wrapped twice allocates nothing.
-func ErrorIs(seat Seat, mode Mode, err, target error, msg string) {
+func ErrorIs(seat Seat, mode Mode, got any, target error, msg string) {
 	seat.Helper()
-	if !errors.Is(err, target) {
-		Fail(seat, mode, "err-is", msg, map[string]any{"want": target, "got": err})
+	if err, isError := got.(error); got != nil && !isError || !errors.Is(err, target) {
+		Fail(seat, mode, "err-is", msg, map[string]any{"want": target, "got": got})
 		return
 	}
 	Pass(seat, mode, "err-is", msg)
 }
 
-// ErrorIsNot reports when err matches target under [errors.Is]. Use it
+// ErrorIsNot reports when got matches target under [errors.Is]. Use it
 // for two sentinels that a caller must tell apart, where an error of one
-// must not match the other.
+// must not match the other. A value that is no error fails too.
 //
 // # Allocation contract
 //
 // A passing call on a sentinel wrapped twice allocates nothing.
-func ErrorIsNot(seat Seat, mode Mode, err, target error, msg string) {
+func ErrorIsNot(seat Seat, mode Mode, got any, target error, msg string) {
 	seat.Helper()
-	if errors.Is(err, target) {
-		Fail(seat, mode, "err-is-not", msg, map[string]any{"got": err})
+	if err, isError := got.(error); got != nil && !isError || errors.Is(err, target) {
+		Fail(seat, mode, "err-is-not", msg, map[string]any{"got": got})
 		return
 	}
 	Pass(seat, mode, "err-is-not", msg)

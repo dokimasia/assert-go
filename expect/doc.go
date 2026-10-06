@@ -3,10 +3,11 @@
 
 // Package expect records test failures and lets the test continue.
 //
-// It declares the members of [go.dokimi.dev/assert] under the same names,
-// and compares values the same way. It differs in what happens on a
-// failure: this package reports through Errorf, so the test runs on and
-// later assertions report too.
+// It declares every member of [go.dokimi.dev/assert] under the same name,
+// and compares values the same way: each assertion, [Rejects], and the
+// seat, the record and the clocks as aliases of the types of that package.
+// It differs in what happens on a failure: this package reports through
+// Errorf, so the test runs on and later assertions report too.
 //
 // Use it where several properties of one value are worth seeing at once.
 // A chain here runs every method, so one run reports every property that
@@ -23,7 +24,8 @@
 // function as its counterpart in [go.dokimi.dev/assert], in the
 // recording mode where that one uses the aborting mode, so the two
 // compare values identically. A conformance test fails the build when
-// one surface declares a member that the other does not.
+// one surface declares a member that the other does not, so this package
+// declares at least what that one declares.
 //
 // # Allocation contracts
 //
@@ -47,6 +49,6 @@
 //
 // # Dependency position
 //
-// Imports go.dokimi.dev/assert for the seat, and internal/matcher for
-// the comparisons.
+// Imports go.dokimi.dev/assert for the seat and the types that this
+// package aliases, and internal/matcher for the comparisons.
 package expect
