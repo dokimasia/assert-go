@@ -135,7 +135,7 @@ func of[T any](reg *registry, using map[reflect.Type]engine.Generator[any]) (Gen
 		conv.store(reflect.ValueOf(&out).Elem(), v)
 		return out
 	}, func(value T) (any, error) {
-		return conv.encode(reflect.ValueOf(&value).Elem())
+		return conv.invert(reflect.ValueOf(&value).Elem())
 	})), nil
 }
 
@@ -256,6 +256,6 @@ func OfShape(text string) (Generator[any], error) {
 		conv.store(dst, v)
 		return dst.Interface()
 	}, func(v any) (any, error) {
-		return conv.encode(reflect.ValueOf(v))
+		return conv.invert(reflect.ValueOf(v))
 	})), nil
 }

@@ -92,7 +92,17 @@ func TestShape(t *testing.T) {
 			{
 				name:       "returns an error for two JSON values",
 				give:       `{} {}`,
-				wantReason: "the document states more than one JSON value",
+				wantReason: "the document states more than its JSON value",
+			},
+			{
+				name:       "returns an error for a closing bracket after the JSON value",
+				give:       `{"shape":"bool"}]`,
+				wantReason: "the document states more than its JSON value",
+			},
+			{
+				name:       "returns an error for text after the JSON value",
+				give:       `{"shape":"bool"}}garbage`,
+				wantReason: "the document states more than its JSON value",
 			},
 			{name: "returns an error for a document that is no object", give: `[]`, wantReason: "[] is no shape"},
 			{

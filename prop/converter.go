@@ -4,6 +4,7 @@
 package prop
 
 import (
+	"cmp"
 	"math/big"
 	"net/netip"
 	"reflect"
@@ -63,6 +64,73 @@ func (c converter) encode(src reflect.Value) (any, error) {
 		src = src.Elem()
 	}
 	return c.neutral(src)
+}
+
+// invert returns the neutral value of src, a value of the Go type that the
+// converter reads, as encode does. It returns a fault of the kind
+// engine.ErrCannotInvert for a src that refers to itself, as selfReferent
+// finds it, which no generator generates and whose conversion would not end.
+func (c converter) invert(src reflect.Value) (any, error) {
+	if err := selfReferent(src, map[reference]bool{}); err != nil {
+		return nil, err
+	}
+	return c.encode(src)
+}
+
+// reference is a pointer, a map or a slice that a walk of a value is
+// inside: the address it refers to, and its type.
+type reference struct {
+	// at is the address that the reference refers to.
+	at uintptr
+	// typ is the type of the reference.
+	typ reflect.Type
+}
+
+// selfReferent returns a fault of the kind engine.ErrCannotInvert at the
+// first pointer, map or slice in v that refers to a value that contains it,
+// and nil when v contains none. inside are the references of the values
+// that the walk is inside. The walk follows the exported fields of a struct,
+// and the keys and the values of a map, as the converters do.
+func selfReferent(v reflect.Value, inside map[reference]bool) error {
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Slice:
+		if v.IsNil() {
+			return nil
+		}
+		r := reference{at: v.Pointer(), typ: v.Type()}
+		if inside[r] {
+			return uninvertible("the value refers to a value that contains it")
+		}
+		inside[r] = true
+		defer delete(inside, r)
+	}
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		return selfReferent(v.Elem(), inside)
+	case reflect.Slice, reflect.Array:
+		for i := range v.Len() {
+			if err := selfReferent(v.Index(i), inside); err != nil {
+				return fault.At(err, fault.Index(i))
+			}
+		}
+	case reflect.Map:
+		for key, value := range v.Seq2() {
+			if err := cmp.Or(selfReferent(key, inside), selfReferent(value, inside)); err != nil {
+				return fault.At(err, fault.Key(key.Interface()))
+			}
+		}
+	case reflect.Struct:
+		for i := range v.NumField() {
+			f := v.Type().Field(i)
+			if !f.IsExported() {
+				continue
+			}
+			if err := selfReferent(v.Field(i), inside); err != nil {
+				return fault.At(err, fault.Field(f.Name))
+			}
+		}
+	}
+	return nil
 }
 
 // unchanged returns src as it is, the neutral value of a value of no Go type

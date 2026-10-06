@@ -137,7 +137,30 @@ type (
 	letterOf struct {
 		V rune `prop:"char"`
 	}
+	// loop is a struct whose pointer can refer to the struct itself.
+	loop struct {
+		Next *loop
+	}
+	// tangle is a struct whose list can contain the list itself.
+	tangle struct {
+		Branches []tangle
+	}
+	// web is a struct whose map can contain the map itself.
+	web struct {
+		Links map[string]web
+	}
 )
+
+// selfReference is the reason of the refusal of a value that refers to a
+// value that contains it.
+const selfReference = "the value refers to a value that contains it"
+
+// selfList returns a list whose one element is the list itself.
+func selfList() []any {
+	v := []any{nil}
+	v[0] = v
+	return v
+}
 
 func (lost) isPayment()  {}
 func (voided) isEvent()  {}
@@ -321,6 +344,36 @@ func TestConverter(t *testing.T) {
 				give:       func() error { return refusal(struct{ V status }{V: "lost"}) },
 				wantPath:   fault.Path{fault.Field("V")},
 				wantReason: "lost is none of the 3 values",
+			},
+			{
+				name: "refuses a value that refers to itself through a pointer, and states the field",
+				give: func() error {
+					v := &loop{}
+					v.Next = v
+					return refusal(v)
+				},
+				wantPath:   fault.Path{fault.Field("Next")},
+				wantReason: selfReference,
+			},
+			{
+				name: "refuses a list that contains itself, and states the path to it",
+				give: func() error {
+					v := tangle{Branches: make([]tangle, 1)}
+					v.Branches[0].Branches = v.Branches
+					return refusal(v)
+				},
+				wantPath:   fault.Path{fault.Field("Branches"), fault.Index(0), fault.Field("Branches")},
+				wantReason: selfReference,
+			},
+			{
+				name: "refuses a map that contains itself, and states the path to it",
+				give: func() error {
+					v := web{Links: map[string]web{}}
+					v.Links["self"] = v
+					return refusal(v)
+				},
+				wantPath:   fault.Path{fault.Field("Links"), fault.Key("self"), fault.Field("Links")},
+				wantReason: selfReference,
 			},
 		}
 		for _, tt := range refusals {
@@ -514,6 +567,13 @@ func TestConverter(t *testing.T) {
 				shape:      `{"shape":"literal","values":[{"type":"int","value":1}]}`,
 				give:       2,
 				wantReason: "2 is none of the 1 values",
+			},
+			{
+				name:       "refuses a list that contains itself, and states the index",
+				shape:      `{"shape":"list","of":{"shape":"char"}}`,
+				give:       selfList(),
+				wantPath:   fault.Path{fault.Index(0)},
+				wantReason: selfReference,
 			},
 		}
 		for _, tt := range refusals {

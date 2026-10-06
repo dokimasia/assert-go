@@ -220,7 +220,7 @@ func registerValues[T any](reg *registry, values ...T) {
 	for i := range values {
 		value := reflect.New(t).Elem()
 		value.Set(reflect.ValueOf(&values[i]).Elem())
-		neutral, err := conv.encode(value)
+		neutral, err := conv.invert(value)
 		if err != nil {
 			panic(fmt.Sprintf("prop: RegisterValues[%v]: value %d: %v", t, i, err))
 		}

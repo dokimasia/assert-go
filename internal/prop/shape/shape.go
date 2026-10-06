@@ -156,7 +156,8 @@ func ReadWith(document []byte, externals map[string]engine.Generator[any]) (engi
 }
 
 // parse returns the JSON value of document, with its numbers as
-// json.Number.
+// json.Number. The document states one JSON value, and nothing but space
+// after it.
 func parse(document []byte) (any, error) {
 	d := json.NewDecoder(bytes.NewReader(document))
 	d.UseNumber()
@@ -164,8 +165,8 @@ func parse(document []byte) (any, error) {
 	if err := d.Decode(&tree); err != nil {
 		return nil, unreadable("the document is no JSON").Because(err)
 	}
-	if d.More() {
-		return nil, unreadable("the document states more than one JSON value")
+	if rest := document[d.InputOffset():]; len(bytes.TrimLeft(rest, " \t\r\n")) > 0 {
+		return nil, unreadable("the document states more than its JSON value")
 	}
 	return tree, nil
 }
