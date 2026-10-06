@@ -52,7 +52,7 @@ func goroutineCases() []alloctest.Case {
 		{
 			Name:   "NoGoroutineLeaks",
 			Call:   func(tb assert.TB) { assert.NoGoroutineLeaks(tb, allocContract)() },
-			Allocs: 174,
+			Allocs: 175,
 		},
 	}
 }

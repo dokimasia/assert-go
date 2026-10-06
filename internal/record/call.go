@@ -12,7 +12,7 @@ import (
 
 // Definition is the version of the definition that this module implements,
 // which every call record states.
-const Definition = "5.2.0"
+const Definition = "6.0.0"
 
 // Verdict is how a call ended.
 type Verdict string

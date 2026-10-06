@@ -49,16 +49,47 @@ func OverCeiling(assertion string, counted bool) Case {
 	}
 }
 
+// allocatesOn returns a callable that allocates once on each call whose
+// number, from 0 for the call that warms it, allocating reports true for.
+func allocatesOn(allocating func(call int) bool) func() {
+	call := 0
+	return func() {
+		if allocating(call) {
+			allocateOnce()
+		}
+		call++
+	}
+}
+
+// halfTheCalls reports true for every even call from 2: 50 of the 100
+// counted calls, whose average of a half rounds up to 1.
+func halfTheCalls(call int) bool { return call%2 == 0 }
+
+// underHalfTheCalls reports true for the first 49 counted calls, whose
+// average rounds down to 0.
+func underHalfTheCalls(call int) bool { return call >= 1 && call <= 49 }
+
 // RunMaxAllocs drives invoke against every case an allocation ceiling
 // must produce. A case over its ceiling fails only in a build whose
 // allocation counts describe the code, which matcher.AllocationsCounted
 // reports.
 //
-// The cases do not run in parallel, because testing.AllocsPerRun panics
-// while a parallel test runs. The test that calls RunMaxAllocs does not
-// call t.Parallel either.
+// The count covers the whole process, so the cases do not run in parallel,
+// and the test that calls RunMaxAllocs does not call t.Parallel either.
 func RunMaxAllocs(t *testing.T, invoke MaxAllocsInvoke) {
 	t.Helper()
+
+	t.Run("a callable that allocates on 50 of the 100 counted calls fails a ceiling of 0", func(t *testing.T) {
+		seat := &Seat{}
+		invoke(seat, allocatesOn(halfTheCalls), 0, contractMsg)
+		checkOutcome(t, seat, OverCeiling("max-allocs", matcher.AllocationsCounted()))
+	})
+
+	t.Run("a callable that allocates on 49 of the 100 counted calls passes a ceiling of 0", func(t *testing.T) {
+		seat := &Seat{}
+		invoke(seat, allocatesOn(underHalfTheCalls), 0, contractMsg)
+		checkOutcome(t, seat, Case{})
+	})
 
 	t.Run("a callable that allocates nothing passes", func(t *testing.T) {
 		seat := &Seat{}
@@ -121,6 +152,20 @@ func RunMaxAllocs(t *testing.T, invoke MaxAllocsInvoke) {
 // either.
 func RunMaxAllocsWithSetup(t *testing.T, invoke MaxAllocsWithSetupInvoke) {
 	t.Helper()
+
+	t.Run("a callable that allocates on 50 of the 100 counted calls fails a ceiling of 0", func(t *testing.T) {
+		allocating := allocatesOn(halfTheCalls)
+		seat := &Seat{}
+		invoke(seat, fresh, func(*[]byte) { allocating() }, 0, contractMsg)
+		checkOutcome(t, seat, OverCeiling("max-allocs-with-setup", matcher.AllocationsCounted()))
+	})
+
+	t.Run("a callable that allocates on 49 of the 100 counted calls passes a ceiling of 0", func(t *testing.T) {
+		allocating := allocatesOn(underHalfTheCalls)
+		seat := &Seat{}
+		invoke(seat, fresh, func(*[]byte) { allocating() }, 0, contractMsg)
+		checkOutcome(t, seat, Case{})
+	})
 
 	t.Run("a setup that allocates leaves a callable that allocates nothing within a ceiling of 0", func(t *testing.T) {
 		seat := &Seat{}

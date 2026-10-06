@@ -8,7 +8,6 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
-	"testing"
 )
 
 // allocRuns is the number of calls that [MaxAllocs] and
@@ -26,18 +25,21 @@ const (
 	flagNoInlining     = "-l"
 )
 
-// MaxAllocs calls fn once to warm it, counts the heap allocations of
-// the next 100 calls, and reports when their average, rounded down,
-// exceeds ceiling. It counts as [testing.AllocsPerRun] counts.
+// MaxAllocs calls fn once to warm it and counts the heap allocations of
+// the next 100 calls. It reports when their average, rounded to the
+// nearest whole number, exceeds ceiling. A half rounds up, so a callable
+// that allocates on 50 of the 100 calls fails a ceiling of 0.
 //
 //	matcher.MaxAllocs(seat, matcher.Fatal, func() { _, _ = store.Get(ctx, id) }, 0,
-//	    "Get averages under one allocation per call once the store is warm")
+//	    "Get allocates nothing per call once the store is warm")
 //
 // In a build where [AllocationsCounted] reports false, it calls fn as
 // an ordinary build does and passes.
 //
-// testing.AllocsPerRun panics while a parallel test runs, so the test
-// that calls MaxAllocs does not call t.Parallel.
+// It counts as [testing.AllocsPerRun] counts, with GOMAXPROCS at 1 and one
+// reading of the counter before the 100 calls and one after them. The count
+// covers the whole process, so the test that calls MaxAllocs does not call
+// t.Parallel.
 //
 // # Allocation contract
 //
@@ -46,7 +48,7 @@ const (
 func MaxAllocs(seat Seat, mode Mode, fn func(), ceiling uint64, msg string) {
 	seat.Helper()
 
-	got := uint64(testing.AllocsPerRun(allocRuns, fn))
+	got := allocs(fn)
 	if AllocationsCounted() && got > ceiling {
 		Fail(seat, mode, "max-allocs", msg, map[string]any{"want": ceiling, "got": got})
 		return
@@ -57,8 +59,9 @@ func MaxAllocs(seat Seat, mode Mode, fn func(), ceiling uint64, msg string) {
 // MaxAllocsWithSetup calls setup, and fn on the input that setup returns,
 // once to warm both. It then counts the heap allocations of the next 100
 // calls of fn, each on an input that a call of setup builds outside the
-// count, and reports when their average, rounded down, exceeds ceiling.
-// It sets GOMAXPROCS to 1 while it counts, as [testing.AllocsPerRun] does.
+// count. It reports when their average, rounded to the nearest whole
+// number, exceeds ceiling. A half rounds up. It sets GOMAXPROCS to 1 while
+// it counts, as [testing.AllocsPerRun] does.
 //
 //	matcher.MaxAllocsWithSetup(seat, matcher.Fatal, freshStore, (*Store).Settle, 4,
 //	    "settling a store allocates at most four times")
@@ -84,9 +87,26 @@ func MaxAllocsWithSetup[T any](seat Seat, mode Mode, setup func() T, fn func(T),
 	Pass(seat, mode, "max-allocs-with-setup", msg)
 }
 
-// allocsAfter returns the heap allocations per call of fn, rounded down,
-// over allocRuns calls after one call that warms setup and fn. Each
-// counted call takes an input that a call of setup builds before the
+// allocs returns the heap allocations per call of fn over allocRuns calls
+// after one call that warms it, as [perCall] rounds them. It reads the
+// counter before the calls and after them.
+func allocs(fn func()) uint64 {
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
+
+	fn()
+	var stats runtime.MemStats
+	runtime.ReadMemStats(&stats)
+	before := stats.Mallocs
+	for range allocRuns {
+		fn()
+	}
+	runtime.ReadMemStats(&stats)
+	return perCall(stats.Mallocs - before)
+}
+
+// allocsAfter returns the heap allocations per call of fn over allocRuns
+// calls after one call that warms setup and fn, as [perCall] rounds them.
+// Each counted call takes an input that a call of setup builds before the
 // counter is read.
 func allocsAfter[T any](setup func() T, fn func(T)) uint64 {
 	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
@@ -102,7 +122,14 @@ func allocsAfter[T any](setup func() T, fn func(T)) uint64 {
 		runtime.ReadMemStats(&stats)
 		total += stats.Mallocs - before
 	}
-	return total / allocRuns
+	return perCall(total)
+}
+
+// perCall returns total, the heap allocations of allocRuns calls, as a count
+// per call: the average rounded to the nearest whole number, with a half
+// rounded up.
+func perCall(total uint64) uint64 {
+	return (2*total + allocRuns) / (2 * allocRuns)
 }
 
 // AllocationsCounted reports whether the running binary's allocation

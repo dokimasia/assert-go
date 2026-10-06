@@ -5,15 +5,17 @@ package assert
 
 import "go.dokimi.dev/assert/internal/matcher"
 
-// MaxAllocs calls fn once to warm it, counts the heap allocations of the
-// next 100 calls, and stops the test when their average, rounded down,
-// exceeds ceiling. The failure names the ceiling and the count.
+// MaxAllocs calls fn once to warm it and counts the heap allocations of the
+// next 100 calls. It stops the test when their average, rounded to the
+// nearest whole number, exceeds ceiling. The failure names the ceiling and
+// the count.
 //
 //	assert.MaxAllocs(t, func() { _, _ = store.Get(ctx, id) }, 0,
-//	    "Get averages under one allocation per call once the store is warm")
+//	    "Get allocates nothing per call once the store is warm")
 //
-// The rounding passes a ceiling of 0 for a function that allocates on
-// 99 of the 100 calls.
+// A half rounds up, so a function that allocates on 50 of the 100 calls
+// fails a ceiling of 0. A value that a pool's stock serves on one call and
+// that leaks on every other fails it too.
 //
 // It is the test form of the benchmark ceiling
 // [go.dokimi.dev/assert/bench.Contract.MaxAllocs], so the ordinary test
@@ -31,9 +33,8 @@ import "go.dokimi.dev/assert/internal/matcher"
 //
 // # Parallel tests
 //
-// It counts through [testing.AllocsPerRun], which panics while a
-// parallel test runs, so the test that calls MaxAllocs does not call
-// t.Parallel.
+// It counts the allocations of the whole process, with GOMAXPROCS at 1, so
+// the test that calls MaxAllocs does not call t.Parallel.
 //
 // # Allocation contract
 //
@@ -47,8 +48,9 @@ func MaxAllocs(tb TB, fn func(), ceiling uint64, msg string) {
 // MaxAllocsWithSetup calls setup, and fn on the input that setup returns,
 // once to warm both. It then counts the heap allocations of the next 100
 // calls of fn, each on an input that a call of setup builds outside the
-// count, and stops the test when their average, rounded down, exceeds
-// ceiling. The failure names the ceiling and the count.
+// count. It stops the test when their average, rounded to the nearest whole
+// number with a half rounded up, exceeds ceiling. The failure names the
+// ceiling and the count.
 //
 //	assert.MaxAllocsWithSetup(t, freshStore, (*Store).Settle, 4,
 //	    "settling a store allocates at most four times")

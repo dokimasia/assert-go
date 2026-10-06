@@ -107,9 +107,13 @@ this document applies to every package, the internal ones included.
   package `testing` alone. Their benchmarks report allocations through
   `testing.B`, and their `Test<Subject>Allocs` compares
   `testing.AllocsPerRun` with each ceiling.
-- A ceiling is the count that `testing.AllocsPerRun` measures: 0 for a
-  function that allocates nothing, and the measured count for any other.
-  A ceiling that rises states why in the commit message.
+- A ceiling is the count that its check measures: `testing.AllocsPerRun`
+  in the tests of `internal/matcher` and `internal/equality`, and
+  `expect.MaxAllocs`, which rounds the average to the nearest whole
+  number, everywhere else. It is 0 for a function that allocates nothing.
+  For any other function it is the higher of the counts of an ordinary
+  build and a coverage build. A ceiling that rises states why in the
+  commit message.
 - A ceiling is measured on a seat that writes no call record, such as a
   seat of `internal/matchertest`. An `assert.Recorder` records every
   call, so a ceiling of a call on a recorder includes its call record.

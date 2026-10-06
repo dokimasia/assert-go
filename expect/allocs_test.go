@@ -12,8 +12,8 @@ import (
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
-// TestMaxAllocs does not run in parallel: testing.AllocsPerRun panics
-// while a parallel test runs.
+// TestMaxAllocs does not run in parallel: its count covers the whole
+// process.
 func TestMaxAllocs(t *testing.T) {
 	matchertest.RunMaxAllocs(t, func(s *matchertest.Seat, fn func(), ceiling uint64, msg string) {
 		expect.MaxAllocs(s, fn, ceiling, msg)

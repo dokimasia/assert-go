@@ -362,18 +362,18 @@ func heavyFixture() {
 // longRun is the number of iterations in a case that states a ceiling
 // near zero. The runtime makes allocations of its own during a run, up to
 // 5.5 KB measured in a fresh process, and over this many iterations they
-// round down to zero per iteration. It is a multiple of 16, so [sparse]
-// makes exactly longRun/16 allocations in a run of this length.
+// round to zero per iteration. It is a multiple of 16, so [every] makes
+// exactly longRun/n allocations in a run of this length for an n of 2 or 16.
 const longRun = 160_000
 
-// sparse returns a body that makes one 24-byte allocation in every 16
-// calls. Over longRun iterations it measures 0.0625 allocations and 1.5
-// bytes per iteration.
-func sparse() func() {
+// every returns a body that makes one 24-byte allocation in every n calls.
+// Over longRun iterations, every(16) measures 0.0625 allocations and 1.5
+// bytes per iteration, and every(2) half an allocation and 12 bytes.
+func every(n int) func() {
 	calls := 0
 	return func() {
 		calls++
-		if calls%16 == 0 {
+		if calls%n == 0 {
 			sink = make([][]int, 1)
 		}
 	}
@@ -457,13 +457,23 @@ func TestContractCounting(t *testing.T) {
 	})
 
 	t.Run("End", func(t *testing.T) {
-		t.Run("rounds each count per iteration down before the comparison", func(t *testing.T) {
-			seat := run(longRun, func(c *bench.Contract) *bench.Contract {
-				return c.MaxAllocs(0).MaxBytes(1)
-			}, sparse())
+		t.Run("rounds the allocations per iteration to the nearest whole number", func(t *testing.T) {
+			seat := run(longRun, func(c *bench.Contract) *bench.Contract { return c.MaxAllocs(0) }, every(16))
 
-			assert.Equal(t, seat.First(), "",
-				"0.0625 allocations and 1.5 bytes per iteration meet ceilings of zero allocations and one byte")
+			assert.Equal(t, seat.First(), "", "0.0625 allocations per iteration round to zero")
+		})
+
+		t.Run("rounds half an allocation per iteration up", func(t *testing.T) {
+			seat := run(longRun, func(c *bench.Contract) *bench.Contract { return c.MaxAllocs(0) }, every(2))
+
+			want := []string{"bench-max-allocs " + verdictOf(matcher.AllocationsCounted())}
+			assert.Equal(t, seat.verdicts(t), want, "half an allocation per iteration rounds up to one")
+		})
+
+		t.Run("rounds the bytes per iteration down before the comparison", func(t *testing.T) {
+			seat := run(longRun, func(c *bench.Contract) *bench.Contract { return c.MaxBytes(1) }, every(16))
+
+			assert.Equal(t, seat.First(), "", "1.5 bytes per iteration round down to one byte")
 		})
 
 		t.Run("reads the end counters itself when the body leaves the loop early", func(t *testing.T) {
@@ -517,7 +527,7 @@ func TestContractCounting(t *testing.T) {
 		})
 
 		t.Run("publishes each count per iteration before rounding", func(t *testing.T) {
-			seat := run(longRun, func(c *bench.Contract) *bench.Contract { return c }, sparse())
+			seat := run(longRun, func(c *bench.Contract) *bench.Contract { return c }, every(16))
 
 			allocs, _ := seat.metric("allocs/op")
 			assert.InRange(t, allocs, 0.0625, 0.5, "the contract publishes 0.0625 allocations per iteration")

@@ -333,10 +333,13 @@ var pinned = map[conformance.ID]any{
 	"clocked":          (*assert.Clocked)(nil),
 	"assertion":        (*assert.Assertion[int])(nil),
 
-	"failure.assertion": assert.Failure{}.Assertion,
-	"failure.contract":  assert.Failure{}.Contract,
-	"failure.detail":    assert.Failure{}.Detail,
-	"seat.report":       assert.Reporter.Report,
+	"failure.assertion":    assert.Failure{}.Assertion,
+	"failure.contract":     assert.Failure{}.Contract,
+	"failure.detail":       assert.Failure{}.Detail,
+	"failure.want":         assert.Failure.Want,
+	"failure.got":          assert.Failure.Got,
+	"failure.case-failure": assert.Failure.CaseFailure,
+	"seat.report":          assert.Reporter.Report,
 
 	"seat.clock":               assert.Clocked.Clock,
 	"clock.now":                assert.Clock.Now,
@@ -707,9 +710,8 @@ var recordingMethods = map[string]func(tb assert.TB){
 // The member list comes from the surface's source and the chain's
 // method set, so a member added without a driver fails here.
 //
-// It does not run in parallel. The MaxAllocs driver calls
-// testing.AllocsPerRun, which panics while a parallel test runs, and the
-// MaxAllocsWithSetup driver counts the allocations of the whole process.
+// It does not run in parallel, because the MaxAllocs and MaxAllocsWithSetup
+// drivers count the allocations of the whole process.
 func TestSurfaceRecording(t *testing.T) {
 	members, err := conformance.Members(conformance.Recording)
 	if err != nil {

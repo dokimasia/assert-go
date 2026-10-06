@@ -107,6 +107,19 @@ order. A subject that panics before the check's own assertion runs
 satisfies a bare call. `expect.Rejects` records its failure and lets the
 test continue.
 
+A record's `Want` and `Got` return the fields `want` and `got` of its
+detail, and whether its assertion declares them. `CaseFailure` returns
+the record of a property's failing case:
+
+```go
+failure := got[0]
+if inner, ok := failure.CaseFailure(); ok {
+    failure = inner
+}
+want, _ := failure.Want()
+assert.Equal(t, want, any(store.ErrDuplicate), "the check wants the duplicate error")
+```
+
 ## Packages
 
 | Import | What it holds |
@@ -206,14 +219,16 @@ allocation ceiling in a test, so the ordinary test run checks it:
 ```go
 func TestGetAllocs(t *testing.T) {
     assert.MaxAllocs(t, func() { _, _ = store.Get(ctx, id) }, 0,
-        "Get averages under one allocation per call once the store is warm")
+        "Get allocates nothing per call once the store is warm")
 }
 ```
 
-It calls the function once to warm it and counts the next 100 calls,
-through `testing.AllocsPerRun`, so the test that calls it does not call
-`t.Parallel`. The average is rounded down. A ceiling of 0 then passes a
-function that allocates on 99 of the 100 calls.
+It calls the function once to warm it and counts the next 100 calls on
+one processor. The count covers the whole process, so the test that
+calls it does not call `t.Parallel`. The average is rounded to the
+nearest whole number, and a half rounds up. A ceiling of 0 then fails a
+function that allocates on 50 of the 100 calls, such as one that leaks a
+value of a pool whose stock served one call.
 
 `MaxAllocsWithSetup` counts a function whose input a setup builds before
 each call, such as a decoder that consumes its buffer. It counts the same
@@ -519,8 +534,8 @@ the relation, except where the relation requires a failure.
 
 | Name | What it states |
 |---|---|
-| `MaxAllocs` | A callable makes at most a stated number of heap allocations per call. One call warms it first, and the count is the average over the calls after it, rounded down. |
-| `MaxAllocsWithSetup` | A callable makes at most a stated number of heap allocations per call on an input that a setup builds before each call. The setup is not counted. One setup and one call warm both first, and the count is the average over the calls after them, rounded down. |
+| `MaxAllocs` | A callable makes at most a stated number of heap allocations per call. One call warms it first, and the count is the average over the calls after it, rounded to the nearest whole number, with a half rounded up. |
+| `MaxAllocsWithSetup` | A callable makes at most a stated number of heap allocations per call on an input that a setup builds before each call. The setup is not counted. One setup and one call warm both first, and the count is the average over the calls after them, rounded to the nearest whole number, with a half rounded up. |
 
 ### Golden files
 
@@ -551,7 +566,7 @@ the relation, except where the relation requires a failure.
 |---|---|
 | `bench.Contract.MaxLatency` | The p99 latency per iteration stays within a ceiling. |
 | `bench.Contract.MaxMean` | The mean latency per iteration stays within a ceiling. |
-| `bench.Contract.MaxAllocs` | The allocations per iteration stay within a ceiling. |
+| `bench.Contract.MaxAllocs` | The allocations per iteration stay within a ceiling. The count is the average over the measured iterations, rounded to the nearest whole number, with a half rounded up. |
 | `bench.Contract.MaxBytes` | The bytes allocated per iteration stay within a ceiling. |
 
 ### Properties

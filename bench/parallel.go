@@ -54,7 +54,8 @@ const benchtimeFlag = "test.benchtime"
 // [Contract.MaxLatency] bounds the p99 of the durations of every iteration
 // and [Contract.MaxMean] their mean. [Contract.MaxAllocs] and
 // [Contract.MaxBytes] bound the allocations and the bytes of the
-// measurement, divided by b.N and rounded down. testing's own ns/op is the
+// measurement, divided by b.N: the allocations rounded to the nearest
+// whole number, and the bytes rounded down. testing's own ns/op is the
 // time of the run divided by b.N, about the mean latency divided by
 // GOMAXPROCS.
 //

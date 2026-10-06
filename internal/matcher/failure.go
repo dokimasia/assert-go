@@ -12,6 +12,16 @@ import (
 	"go.dokimi.dev/assert/internal/record"
 )
 
+// The fields of a detail that the accessors of a failure record read.
+const (
+	// wantField is what an assertion required.
+	wantField = "want"
+	// gotField is what an assertion observed.
+	gotField = "got"
+	// failureField is the failure record of a property's failing case.
+	failureField = "failure"
+)
+
 // Failure is what a failing assertion reports.
 //
 // Assertion is the canonical id the definition names, Contract is the
@@ -23,6 +33,43 @@ type Failure struct {
 	Contract  string
 	Detail    map[string]any
 	Where     Where
+}
+
+// Want returns the field want of the record's detail, and whether the
+// record's assertion declares want. A declared want can be nil.
+//
+// # Allocation contract
+//
+// Want allocates nothing.
+func (f Failure) Want() (any, bool) {
+	want, declared := f.Detail[wantField]
+	return want, declared
+}
+
+// Got returns the field got of the record's detail, and whether the
+// record's assertion declares got. A declared got can be nil.
+//
+// # Allocation contract
+//
+// Got allocates nothing.
+func (f Failure) Got() (any, bool) {
+	got, declared := f.Detail[gotField]
+	return got, declared
+}
+
+// CaseFailure returns the failure record of the failing case, which the
+// field failure of a property's record contains, and whether the record
+// contains one: the minimal case of a counterexample, or the case that the
+// replay of a flaky run contradicted. A record of an assertion that
+// declares no failure, and a property's record whose failure is nil,
+// contain none.
+//
+// # Allocation contract
+//
+// CaseFailure allocates nothing.
+func (f Failure) CaseFailure() (Failure, bool) {
+	failure, contained := f.Detail[failureField].(Failure)
+	return failure, contained
 }
 
 // failureRecord is a failure record as the detail of a property's call

@@ -147,19 +147,20 @@ func (c *Contract) MaxMean(d time.Duration) *Contract {
 //
 // [Contract.Loop] reads the runtime's allocation counters before the
 // first iteration and after the last. [Contract.End] divides the
-// difference by the number of iterations and rounds the quotient down
-// before it compares it with the ceiling, as [testing.AllocsPerRun]
-// does. It publishes the quotient before rounding.
+// difference by the number of iterations and rounds the quotient to the
+// nearest whole number, a half up, before it compares it with the
+// ceiling. It publishes the quotient before rounding. A body that
+// allocates past the ceiling on half of its iterations or more fails it,
+// so a value that a pool's stock serves on one iteration and that leaks
+// on every other fails a ceiling of zero.
 //
 // The count leaves out the work passed to [Contract.Excluding] and the
 // contract's own bookkeeping. The counters are process-wide, so the count
 // includes the allocations that the runtime makes for itself while the
 // loop runs, such as for a garbage collection cycle. Fewer such
-// allocations than there are iterations do not change the rounded count.
-// A body that does not allocate meets a ceiling of zero in a run of more
-// iterations than the runtime made allocations. In a run of one
-// iteration, as -benchtime=1x gives, one runtime allocation fails a
-// ceiling of zero.
+// allocations than half the iterations do not change the rounded count.
+// In a run of one iteration, as -benchtime=1x gives, one runtime
+// allocation fails a ceiling of zero.
 //
 // A language implementation of this standard that cannot count
 // allocations declares a divergence. It does not approximate the count.
@@ -221,8 +222,10 @@ func (c *Contract) Warmup(n int) *Contract {
 // may allocate, and returns the receiver.
 //
 // [Contract.End] counts the bytes over the same window, with the same
-// exclusions and the same rounding, as the allocations of
-// [Contract.MaxAllocs]. It checks the ceiling in the same builds.
+// exclusions, as the allocations of [Contract.MaxAllocs], and rounds the
+// bytes per iteration down. Rounding down drops less than one byte per
+// iteration, so a value that leaks on nearly every iteration still adds
+// its size. It checks the ceiling in the same builds.
 //
 // # Allocation contract
 //
@@ -347,9 +350,10 @@ func (c *Contract) End() {
 	}
 	counted := matcher.AllocationsCounted()
 	if c.maxAllocs != unset {
+		rounded := math.Round(allocs)
 		c.check("bench-max-allocs", "the allocations per iteration are within their ceiling",
-			counted && math.Floor(allocs) > float64(c.maxAllocs),
-			map[string]any{"want": uint64(c.maxAllocs), "got": uint64(allocs)})
+			counted && rounded > float64(c.maxAllocs),
+			map[string]any{"want": uint64(c.maxAllocs), "got": uint64(rounded)})
 	}
 	if c.maxBytes != unset {
 		c.check("bench-max-bytes", "the bytes allocated per iteration are within their ceiling",

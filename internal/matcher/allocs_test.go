@@ -20,8 +20,8 @@ var (
 	off     bool
 )
 
-// TestMaxAllocs does not run in parallel: testing.AllocsPerRun panics
-// while a parallel test runs.
+// TestMaxAllocs does not run in parallel: its count covers the whole
+// process, and a case sets GOMAXPROCS.
 func TestMaxAllocs(t *testing.T) {
 	matchertest.RunMaxAllocs(t, func(s *matchertest.Seat, fn func(), ceiling uint64, msg string) {
 		matcher.MaxAllocs(s, matcher.Fatal, fn, ceiling, msg)
@@ -31,6 +31,16 @@ func TestMaxAllocs(t *testing.T) {
 		checkPassRecord(t, "max-allocs", func(seat matcher.Seat) {
 			matcher.MaxAllocs(seat, matcher.Fatal, func() {}, 0, allocContract)
 		})
+	})
+
+	t.Run("sets GOMAXPROCS to 1 while it counts, and restores it", func(t *testing.T) {
+		defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(2))
+		procs := 0
+		matcher.MaxAllocs(&matchertest.Seat{}, matcher.Fatal,
+			func() { procs = max(procs, runtime.GOMAXPROCS(0)) }, 0, allocContract)
+		if got := runtime.GOMAXPROCS(0); procs != 1 || got != 2 {
+			t.Fatalf("the calls ran with GOMAXPROCS of at most %d and left it at %d, want 1 and 2", procs, got)
+		}
 	})
 }
 

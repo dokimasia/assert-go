@@ -6,7 +6,8 @@ package expect
 import "go.dokimi.dev/assert"
 
 // Failure is what a failing assertion reports, the record of
-// [go.dokimi.dev/assert]. Both surfaces report the same record.
+// [go.dokimi.dev/assert]. Both surfaces report the same record. Want, Got
+// and CaseFailure read its fields, as that package's Failure states.
 type Failure = assert.Failure
 
 // Where is the call site a failure came from.

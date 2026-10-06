@@ -31,7 +31,7 @@ const shrinkAllocs = 479
 // of 512 draws, and the list of where the replay that confirms the failure
 // made its requests. No pass that starts after the budget is spent builds a
 // candidate.
-const spentAllocs = 4308
+const spentAllocs = 4309
 
 // TestShrink checks shrinking through whole runs: the minimal case of each
 // failure, the shared budget of runs and time, and the order of every

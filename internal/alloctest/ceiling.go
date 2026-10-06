@@ -27,8 +27,8 @@ type Case struct {
 // internal/matchertest of its own. It reports every case past its ceiling,
 // so one run states each ceiling that changed.
 //
-// testing.AllocsPerRun, which it counts with, panics while a parallel test
-// runs, so the test that calls it does not call t.Parallel.
+// [expect.MaxAllocs] counts the allocations of the whole process, so the
+// test that calls Check does not call t.Parallel.
 func Check(tb assert.TB, cases []Case) {
 	tb.Helper()
 	for _, c := range cases {

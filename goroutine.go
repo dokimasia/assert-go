@@ -41,7 +41,7 @@ import "go.dokimi.dev/assert/internal/matcher"
 //
 // # Allocation contract
 //
-// A call and a check that finds no labelled goroutine allocate at most 174
+// A call and a check that finds no labelled goroutine allocate at most 175
 // times in a process of a few goroutines, the goroutine profile among them.
 // The profile grows with the goroutines of the process and with their
 // stacks.

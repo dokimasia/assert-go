@@ -41,7 +41,7 @@ func sentence(f assert.Failure) string {
 	if entries, ok := f.Detail[counterexampleField].([]Entry); ok {
 		writeEntries(&b, entries)
 	}
-	if failure, ok := f.Detail[failureField].(assert.Failure); ok {
+	if failure, ok := f.CaseFailure(); ok {
 		writeFailure(&b, "failure", failure)
 	}
 	if choices, ok := f.Detail[choicesField].(string); ok {

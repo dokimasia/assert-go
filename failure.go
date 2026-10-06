@@ -10,6 +10,15 @@ import "go.dokimi.dev/assert/internal/matcher"
 // Every implementation of the definition reports the same record. The
 // writer renders the sentence that a person reads from the record, and
 // the definition leaves that sentence to each language.
+//
+// Want and Got return the fields want and got of the record's detail, and
+// CaseFailure returns the record of a property's failing case. Each also
+// reports whether the record contains what it returns:
+//
+//	if inner, ok := failure.CaseFailure(); ok {
+//	    failure = inner
+//	}
+//	want, _ := failure.Want()
 type Failure = matcher.Failure
 
 // Where is the call site a failure came from.

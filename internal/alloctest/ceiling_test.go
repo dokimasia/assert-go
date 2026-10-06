@@ -13,8 +13,8 @@ import (
 )
 
 // iterations is the number of iterations of a fake benchmark: enough that
-// the allocations the runtime makes for itself during a run round down to
-// none per iteration.
+// the allocations the runtime makes for itself during a run round to none
+// per iteration.
 const iterations = 1000
 
 // failingAllocs is the ceiling of a call that fails: a failure allocates its
@@ -47,8 +47,8 @@ func (b *fakeB) Loop() bool {
 func (*fakeB) ReportMetric(float64, string) {}
 
 // TestCeiling checks a table of ceilings in a test and in a benchmark. It
-// does not run in parallel: testing.AllocsPerRun panics while a parallel
-// test runs, and a contract counts the allocations of the whole process.
+// does not run in parallel: expect.MaxAllocs and a contract count the
+// allocations of the whole process.
 func TestCeiling(t *testing.T) {
 	passing := alloctest.Case{Name: "noop", Call: func(assert.TB) {}}
 	allocating := alloctest.Case{Name: "allocating", Call: func(assert.TB) { sink = make([]byte, 64) }}

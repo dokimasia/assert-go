@@ -73,8 +73,8 @@ how a concept is implemented once, and how code is documented.
   second capability is a second interface, as `Reporter` and
   `FaultReporter` are.
 - The core calls a test only through the seat, the clock and the
-  writer, and never depends on `testing.T`. It calls the package
-  `testing` for `AllocsPerRun` alone.
+  writer, and never depends on `testing.T`. It does not import the
+  package `testing`.
 
 ## Names
 
