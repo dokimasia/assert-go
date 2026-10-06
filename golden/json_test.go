@@ -141,6 +141,50 @@ func TestJSON(t *testing.T) {
 			assert.Equal(t, parse(t, path), map[string]any{"one": []any{1.0}}, "the file contains the field alone")
 		})
 
+		t.Run("writes a missing file in a missing directory and passes while updating", func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), "absent", "absent.json")
+			r := assert.NewRecorder()
+			golden.MatchJSONField(r, path, "one", []byte(`[1]`), updating)
+
+			assert.Equal(t, verdicts(t, r), []string{"pass"}, "updating a missing file passes")
+			assert.Equal(t, parse(t, path), map[string]any{"one": []any{1.0}}, "the file contains the field alone")
+		})
+
+		// The first call names the golden file. Its scrubber runs on the golden
+		// value, under the lock of the file, and waits there. The second call
+		// names the file through a link to it, and its scrubber may run on the
+		// golden value only once the first call ends.
+		t.Run("runs the calls on a golden file and on a link to it one at a time", func(t *testing.T) {
+			t.Parallel()
+
+			path := writtenJSON(t, `{"a":0,"b":0}`)
+			link := filepath.Join(t.TempDir(), "link.json")
+			assert.NoError(t, os.Symlink(path, link), "the link to the golden file is made")
+
+			locked, release, read := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			first, second := assert.NewRecorder(), assert.NewRecorder()
+			var calls sync.WaitGroup
+			calls.Go(func() {
+				golden.MatchJSONField(first, path, "a", []byte(`1`), updating,
+					onGolden(func() { close(locked); <-release }))
+			})
+			<-locked
+			calls.Go(func() {
+				golden.MatchJSONField(second, link, "b", []byte(`2`), updating, onGolden(func() { close(read) }))
+			})
+			select {
+			case <-read:
+				t.Error("the second call read the golden file while the first had the file's lock")
+			case <-time.After(lockWait):
+			}
+			close(release)
+			calls.Wait()
+
+			assert.Equal(t, parse(t, path), map[string]any{"a": 1.0, "b": 2.0}, "the file contains both updates")
+		})
+
 		t.Run("fails a missing file with a record whose want is nil", func(t *testing.T) {
 			t.Parallel()
 

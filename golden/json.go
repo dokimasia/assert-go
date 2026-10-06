@@ -32,9 +32,14 @@ const maxNumberDigits = 1000
 var errTrailing = errors.New("golden: the JSON value is followed by more data")
 
 // files are the locks of the golden JSON files that this test process
-// compares, by absolute path. [MatchJSONField] locks a file from its read
-// to its write.
+// compares, by the path of each file that [identity] returns.
+// [MatchJSONField] locks a file from its read to its write.
 var files sync.Map
+
+// paths are the locks of files by each absolute path that a call named, so
+// that a later call on a path follows no link. A path keeps the lock of the
+// file that it led to at its first call.
+var paths sync.Map
 
 // MatchJSONField compares got against one named field of the JSON
 // object at path, taken as given.
@@ -64,7 +69,10 @@ var files sync.Map
 // # Concurrency
 //
 // Calls on one golden file from tests of one process run one at a time,
-// from the read of the file to its write.
+// from the read of the file to its write. Two paths name one golden file
+// when they lead to it through links, such as a link to the file or to a
+// directory above it. A path keeps the file that it led to at the first
+// call on it.
 //
 // # Allocation contract
 //
@@ -124,13 +132,29 @@ func lock(path string) func() {
 	if abs, err := filepath.Abs(path); err == nil {
 		path = abs
 	}
-	stored, ok := files.Load(path)
+	stored, ok := paths.Load(path)
 	if !ok {
-		stored, _ = files.LoadOrStore(path, new(sync.Mutex))
+		shared, _ := files.LoadOrStore(identity(path), new(sync.Mutex))
+		stored, _ = paths.LoadOrStore(path, shared)
 	}
 	mu := stored.(*sync.Mutex)
 	mu.Lock()
 	return mu.Unlock
+}
+
+// identity returns the path that every path of the golden file at path, an
+// absolute path, resolves to: path with each link followed, and for a file
+// that does not exist yet, its directory's path with each link followed,
+// joined with its name. A file whose directory does not exist yet keeps
+// path.
+func identity(path string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
+		return filepath.Join(dir, filepath.Base(path))
+	}
+	return path
 }
 
 // readObject reads the JSON object of the golden file of c, with the text of
