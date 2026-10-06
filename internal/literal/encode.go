@@ -157,6 +157,9 @@ type written struct {
 type walk struct {
 	// parts counts the parts visited so far.
 	parts int
+	// level is the levels of objects and arrays that the literals around
+	// the value being walked nest.
+	level int
 }
 
 // spend counts n more parts, and reports whether the walk is still within
@@ -166,10 +169,19 @@ func (w *walk) spend(n int) bool {
 	return w.parts <= maxParts
 }
 
-// literalOf returns the literal of v, and false when v has none or the walk
-// passes maxParts.
+// fits reports whether n more parts can be within maxParts, so that a
+// collection whose every element is at least one part is refused before
+// its storage is allocated.
+func (w *walk) fits(n int) bool {
+	return w.parts+n <= maxParts
+}
+
+// literalOf returns the literal of v, and false when v has none, the walk
+// passes maxParts, or v is below more levels than any literal nests. The
+// last bound ends the walk of a value that contains itself within a few
+// dozen levels.
 func (w *walk) literalOf(v reflect.Value) (written, bool) {
-	if !w.spend(1) {
+	if !w.spend(1) || w.level > valueDepth {
 		return written{}, false
 	}
 	kind := v.Kind()
@@ -303,9 +315,12 @@ func (w *walk) listOf(v reflect.Value) (written, bool) {
 		}
 		return written{form: scalarLiteral{Type: typeBytes, Value: hex.EncodeToString(b)}, depth: 1}, true
 	}
+	if !w.fits(v.Len()) {
+		return written{}, false
+	}
 	items := make([]written, v.Len())
 	for i := range items {
-		item, ok := w.literalOf(v.Index(i))
+		item, ok := w.nested(v.Index(i), 2)
 		if !ok {
 			return written{}, false
 		}
@@ -335,13 +350,16 @@ func (w *walk) mapOf(v reflect.Value) (written, bool) {
 		// pair are the key's and the value's literals.
 		pair [2]written
 	}
+	if !w.fits(2 * v.Len()) {
+		return written{}, false
+	}
 	entries := make([]sorted, 0, v.Len())
 	for it := v.MapRange(); it.Next(); {
-		key, ok := w.literalOf(it.Key())
+		key, ok := w.nested(it.Key(), 3)
 		if !ok {
 			return written{}, false
 		}
-		value, ok := w.literalOf(it.Value())
+		value, ok := w.nested(it.Value(), 3)
 		if !ok {
 			return written{}, false
 		}
@@ -359,13 +377,16 @@ func (w *walk) mapOf(v reflect.Value) (written, bool) {
 // pairsOf returns the literal of a map that keeps its entries' order: its
 // entries, in that order.
 func (w *walk) pairsOf(p Pairs) (written, bool) {
+	if !w.fits(2 * len(p.Entries)) {
+		return written{}, false
+	}
 	pairs := make([][2]written, len(p.Entries))
 	for i, e := range p.Entries {
-		key, ok := w.literalOf(reflect.ValueOf(e.Key))
+		key, ok := w.nested(reflect.ValueOf(e.Key), 3)
 		if !ok {
 			return written{}, false
 		}
-		value, ok := w.literalOf(reflect.ValueOf(e.Value))
+		value, ok := w.nested(reflect.ValueOf(e.Value), 3)
 		if !ok {
 			return written{}, false
 		}
@@ -382,7 +403,7 @@ func (w *walk) structOf(v reflect.Value) (written, bool) {
 		if !field.IsExported() {
 			continue
 		}
-		lit, ok := w.literalOf(value)
+		lit, ok := w.nested(value, 3)
 		if !ok {
 			return written{}, false
 		}
@@ -395,13 +416,16 @@ func (w *walk) structOf(v reflect.Value) (written, bool) {
 // order. The literal nests its object, the list of fields, and each field's
 // list around its value's literal.
 func (w *walk) recordOf(r Record) (written, bool) {
+	if !w.fits(len(r.Fields)) {
+		return written{}, false
+	}
 	forms := make([][2]any, len(r.Fields))
 	depth := 2
 	for i, f := range r.Fields {
 		if !w.spend(len(f.Name)) {
 			return written{}, false
 		}
-		value, ok := w.literalOf(reflect.ValueOf(f.Value))
+		value, ok := w.nested(reflect.ValueOf(f.Value), 3)
 		if !ok {
 			return written{}, false
 		}
@@ -420,12 +444,21 @@ func (w *walk) variantOf(v Variant) (written, bool) {
 	if !v.HasPayload {
 		return written{form: bareVariant{Type: typeVariant, Name: v.Name}, depth: 1}, true
 	}
-	payload, ok := w.literalOf(reflect.ValueOf(v.Payload))
+	payload, ok := w.nested(reflect.ValueOf(v.Payload), 1)
 	if !ok {
 		return written{}, false
 	}
 	form := payloadVariant{Type: typeVariant, Name: v.Name, Payload: payload.form}
 	return written{form: form, depth: 1 + payload.depth}, true
+}
+
+// nested returns the literal of v, a part of a literal that nests v levels
+// deeper than the literal itself.
+func (w *walk) nested(v reflect.Value, levels int) (written, bool) {
+	w.level += levels
+	lit, ok := w.literalOf(v)
+	w.level -= levels
+	return lit, ok
 }
 
 // Encode returns the typed literal of v, and false when no typed literal

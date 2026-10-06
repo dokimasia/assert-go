@@ -31,6 +31,12 @@ const (
 	detailAllocs = 4
 	// plainAllocs are the allocations of Plain on an int.
 	plainAllocs = 4
+	// refusedAllocs are the allocations of Encode on a list of more parts
+	// than the bound: its walk, and no literal of the list.
+	refusedAllocs = 1
+	// cycleAllocs are the allocations of Encode on a map that contains
+	// itself, which ends at the level past the levels of a literal.
+	cycleAllocs = 103
 )
 
 // faulty is a value whose text cannot be marshalled.
@@ -335,6 +341,15 @@ func TestEncode(t *testing.T) {
 			{name: "returns false for a map whose key nests 60 levels", give: deepKey(30)},
 			{name: "returns false for a map nested 62 levels", give: map[string]any{"k": wrapped(29, nil)}},
 			{name: "returns false for a list of 65,537 parts", give: make([]int, 65536)},
+			{name: "returns false for a map of 32,768 entries, 65,537 parts or more", give: numbered(32768)},
+			{
+				name: "returns false for pairs of 32,768 entries, 65,537 parts or more",
+				give: literal.Pairs{Entries: make([]literal.Entry, 32768)},
+			},
+			{
+				name: "returns false for a record of 65,536 fields, 65,537 parts or more",
+				give: literal.Record{Fields: make([]literal.Field, 65536)},
+			},
 			{name: "returns false for a string of 65,537 parts", give: strings.Repeat("x", 65536)},
 			{name: "returns false for bytes of 65,537 parts", give: make([]byte, 65536)},
 			{name: "returns false for a text of 65,537 parts", give: longText(65536)},
@@ -505,6 +520,12 @@ func TestEncodeAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = literal.Opaque("func(int) bool") }, opaqueAllocs, "Opaque allocates its JSON")
 	assert.MaxAllocs(t, func() { _ = literal.Detail(boom) }, detailAllocs, "Detail allocates the text and its JSON")
 	assert.MaxAllocs(t, func() { _, _ = literal.Plain(number) }, plainAllocs, "Plain allocates the value")
+	var huge any = make([]int, 65536)
+	assert.MaxAllocs(t, func() { _, _ = literal.Encode(huge) }, refusedAllocs,
+		"Encode refuses a list of more parts than the bound before it allocates the list's literal")
+	var looped any = selfContaining()
+	assert.MaxAllocs(t, func() { _, _ = literal.Encode(looped) }, cycleAllocs,
+		"Encode refuses a map that contains itself once it nests past the levels of a literal")
 }
 
 // BenchmarkEncode measures Encode on a list of two integers, Opaque,
@@ -566,6 +587,15 @@ func wrapped(count int, inner any) any {
 		node = []any{node}
 	}
 	return node
+}
+
+// numbered returns a map of the integers from 0 to n - 1, each to itself.
+func numbered(n int) map[int]int {
+	m := make(map[int]int, n)
+	for i := range n {
+		m[i] = i
+	}
+	return m
 }
 
 // selfContaining returns a map whose one entry is the map itself.
