@@ -45,10 +45,12 @@ const unlimited = time.Duration(math.MaxInt64)
 //
 // The check runs [history.Linearizable] on the case's history and the
 // machine's model, with every call in one partition, and the next state is
-// the first of the states that the order it found leaves. A check that
-// fails, violated or undecided, ends the case with the record of
-// linearizable, whose contract states that the history of the machine's
-// steps is linearizable.
+// the first of the states that the order it found leaves. Each check
+// continues the search of the check before it through [history.Resume], so
+// it searches the calls since that check, and reports what a search of the
+// whole history reports. A check that fails, violated or undecided, ends
+// the case with the record of linearizable, whose contract states that the
+// history of the machine's steps is linearizable.
 //
 // The clients of a concurrent section run on threads, through
 // [history.Concurrently], and the case then runs up to [Repeat] times,
@@ -85,7 +87,7 @@ func Steps[S any](c *prop.Case, m Machine[S], opts ...Option) {
 	m.validate()
 	r := &run[S]{c: c, e: (*engine.Case)(c), m: m, cfg: configure(opts), states: make([]S, 1)}
 	r.seat.TB = c
-	r.checks = []history.Option{history.Whole(), history.Final(&r.states)}
+	r.checks = []history.Option{history.Whole(), history.Final(&r.states), history.Resume(&r.checkpoint)}
 	r.trace, r.traced = r.e.Trace()
 	r.steps()
 }
@@ -108,6 +110,9 @@ type run[S any] struct {
 	// seat is the seat of the check, and checks are its options.
 	seat   seat
 	checks []history.Option
+	// checkpoint keeps the search of the last check that passed, which the
+	// next check continues.
+	checkpoint history.Checkpoint[S]
 	// weights are the weights of the last index, kept for the next.
 	weights []uint64
 }

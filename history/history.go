@@ -125,12 +125,12 @@ func (h *History) Events() []Event {
 	return slices.Clone(h.events)
 }
 
-// recorded returns the events and the identities of their keys, each a copy
-// taken under the mutex.
-func (h *History) recorded() ([]Event, [][]string) {
+// recordedFrom returns the events from the index from on and the
+// identities of their keys, each a copy taken under the mutex.
+func (h *History) recordedFrom(from int) ([]Event, [][]string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return slices.Clone(h.events), slices.Clone(h.ids)
+	return slices.Clone(h.events[from:]), slices.Clone(h.ids[from:])
 }
 
 // complete records the completion of kind of the call whose invocation is at

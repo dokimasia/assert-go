@@ -47,7 +47,8 @@ const hashlessNote = linearizableOp + ": the model states Equal and no Hash, so 
 // fixes. It reports the first violated partition, and otherwise the first
 // undecided one. The options state its limits and its workers, and [Whole]
 // and [Final] search every call as one partition and store the states that
-// a passing order leaves.
+// a passing order leaves. [Resume] continues the search of an earlier check
+// of the same history.
 //
 // The record's detail states the ten fields of the definition:
 //
@@ -73,8 +74,9 @@ const hashlessNote = linearizableOp + ": the model states Equal and no Hash, so 
 // # Errors
 //
 // The check ends the call with a fault for a nil history, for a model
-// without Init or without Step, and for [Final] of states of another type
-// than the model's. It ends the call with a fault of the kind
+// without Init or without Step, for [Final] and [Resume] of states of
+// another type than the model's, and for Resume without [Whole]. It ends
+// the call with a fault of the kind
 // [ErrModel] when a function of the model panics or ends the goroutine, and
 // the fault names the call that the search stepped. A panic in a partition
 // that one worker would not search ends nothing.
@@ -83,7 +85,10 @@ const hashlessNote = linearizableOp + ": the model states Equal and no Hash, so 
 //
 // A check allocates its calls, its partitions and the memo of each search,
 // and the states that the model returns. A passing check of a register over
-// two sequential calls allocates 38 times.
+// two sequential calls allocates 38 times. A check that continues the search
+// of the check before it allocates for the calls since that check alone: a
+// write of the register that a history records and the check after it
+// allocate 10 times together.
 func Linearizable[S any](tb assert.TB, h *History, m Model[S], contract string, opts ...Option) {
 	tb.Helper()
 	run := matcher.Begin(tb)
@@ -101,6 +106,16 @@ func Linearizable[S any](tb assert.TB, h *History, m Model[S], contract string, 
 	if c.final != nil && !typed {
 		run.Fault(matcher.Fatal, linearizableID, contract, fault.In(linearizableOp,
 			fault.New("Final states %T for a model whose states are of type %v", c.final, reflect.TypeFor[S]())))
+		return
+	}
+	if _, resumable := c.resume.(*Checkpoint[S]); c.resume != nil && !resumable {
+		run.Fault(matcher.Fatal, linearizableID, contract, fault.In(linearizableOp,
+			fault.New("Resume states %T for a model whose states are of type %v", c.resume, reflect.TypeFor[S]())))
+		return
+	}
+	if c.resume != nil && !c.whole {
+		run.Fault(matcher.Fatal, linearizableID, contract, fault.In(linearizableOp,
+			fault.New("Resume continues the search of one partition, and the check states no Whole")))
 		return
 	}
 	if m.Equal != nil && m.Hash == nil && h.noteHashless() {
@@ -146,8 +161,11 @@ func check[S any](h *History, ops operations[S], c config) (detail[S], error) {
 	if c.timeLimit > 0 {
 		d.end = time.Now().Add(c.timeLimit)
 	}
-	events, ids := h.recorded()
-	calls := callsOf(events, ids)
+	if cp, resumable := c.resume.(*Checkpoint[S]); resumable {
+		return resumed(h, ops, c, d, cp)
+	}
+	events, ids := h.recordedFrom(0)
+	calls, _ := callsOf(events, ids, 0)
 	parts := partitionsOf(calls)
 	if c.whole && len(calls) > 0 {
 		parts = []partition{{keys: []any{}, calls: calls}}

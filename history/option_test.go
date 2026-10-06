@@ -147,6 +147,29 @@ func TestOption(t *testing.T) {
 		})
 	})
 
+	t.Run("Resume", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("keeps the search of a passing check, which the next check of a grown history continues",
+			func(t *testing.T) {
+				t.Parallel()
+				steps := 0
+				m := counted(&steps)
+				h := writes(5)
+				var cp history.Checkpoint[int]
+				assert.Nil(t, resumedDetail(h, m, &cp), "five writes pass")
+				recordOK(h, 0, read, nil, 5)
+				assert.Nil(t, resumedDetail(h, m, &cp), "the read of the last value passes")
+				assert.Equal(t, steps, 6, "five steps of the writes, and the step of the read")
+			})
+
+		t.Run("changes nothing for a nil checkpoint", func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, detailOf(violatedRead(), register, history.Resume[int](nil)),
+				detailOf(violatedRead(), register), "the record of the defaults, with no Whole required")
+		})
+	})
+
 	t.Run("Option", func(t *testing.T) {
 		t.Parallel()
 
@@ -172,9 +195,12 @@ func finalOf[S any](h *history.History, m history.Model[S], opts ...history.Opti
 	return states
 }
 
-// finalStates are the states that the option of the allocation ceiling of
-// Final keeps.
-var finalStates []int
+// The values that the options of the allocation ceilings of Final and
+// Resume keep.
+var (
+	finalStates []int
+	checkpoint  history.Checkpoint[int]
+)
 
 // TestOptionAllocs checks the allocation ceilings of the options.
 func TestOptionAllocs(t *testing.T) {
@@ -186,6 +212,7 @@ func TestOptionAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { kept = history.Workers(2) }, optionAllocs, "Workers allocates its setting")
 	assert.MaxAllocs(t, func() { kept = history.Whole() }, 0, "Whole states a setting that captures nothing")
 	assert.MaxAllocs(t, func() { kept = history.Final(&finalStates) }, optionAllocs, "Final allocates its setting")
+	assert.MaxAllocs(t, func() { kept = history.Resume(&checkpoint) }, optionAllocs, "Resume allocates its setting")
 	assert.NotEqual(t, kept, history.Option{}, "the kept option states a setting")
 }
 
@@ -206,6 +233,7 @@ func BenchmarkOption(b *testing.B) {
 		{name: "Workers", option: func() history.Option { return history.Workers(2) }, allocs: optionAllocs},
 		{name: "Whole", option: history.Whole},
 		{name: "Final", option: func() history.Option { return history.Final(&finalStates) }, allocs: optionAllocs},
+		{name: "Resume", option: func() history.Option { return history.Resume(&checkpoint) }, allocs: optionAllocs},
 	}
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {

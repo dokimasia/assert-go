@@ -40,9 +40,11 @@
 //
 // After every step, a machine with a model checks the case's history with
 // [history.Linearizable], with every call in one partition, and the next
-// step reads the first of the states that the order it found leaves. A
-// counterexample lists each step as a [prop.Step] among the values that the
-// case drew.
+// step reads the first of the states that the order it found leaves. Each
+// check continues the search of the check before it through
+// [history.Resume], so it searches the calls of the steps since that check.
+// A counterexample lists each step as a [prop.Step] among the values that
+// the case drew.
 //
 // # Concurrent sections
 //

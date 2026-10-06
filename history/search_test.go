@@ -11,6 +11,7 @@ import (
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/history"
 	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/prop"
 )
 
 // The time limit of the tests of the clock, and the operations of their
@@ -129,6 +130,74 @@ func TestSearch(t *testing.T) {
 			assert.Length(t, got[statesField], spreadStates, "the frontier lists every state of the spread")
 		})
 
+		t.Run("reports at each check of a growing history what a search of every call reports", func(t *testing.T) {
+			t.Parallel()
+			prop.ForAll(t, "a grown search reports what a search of every call reports", func(c *prop.Case) {
+				m := register
+				if c.Draw(prop.Boolean(), "lossy") {
+					m = lossy
+				}
+				h := history.New()
+				var cp history.Checkpoint[int]
+				open := map[int]history.Call{}
+				for range c.Draw(prop.Integer(1, 30), "events") {
+					client := c.Draw(prop.Integer(0, 2), "client")
+					call, busy := open[client]
+					switch {
+					case busy:
+						delete(open, client)
+						complete(c, call)
+					case c.Draw(prop.Boolean(), "writes"):
+						open[client] = h.Invoke(client, write, []any{c.Draw(prop.Integer(1, 2), "value")})
+					default:
+						open[client] = h.Invoke(client, read, nil)
+					}
+					whole, wholeFinal := outcomeOf(h, m)
+					grown, grownFinal := outcomeOf(h, m, history.Resume(&cp))
+					assert.Equal(c, grown, whole, "the grown search reports the record of the search of every call")
+					assert.Equal(c, grownFinal, wholeFinal, "the grown search leaves the same states")
+				}
+			}, prop.Seed(1), prop.Cases(300))
+		})
+
+		t.Run("continues a grown search into the calls before the growth, as a search of every call does",
+			func(t *testing.T) {
+				t.Parallel()
+				h := history.New()
+				one := h.Invoke(0, write, writeOne)
+				two := h.Invoke(1, write, []any{2})
+				one.OK(nil)
+				two.OK(nil)
+				var cp history.Checkpoint[int]
+				_, final := outcomeOf(h, register, history.Resume(&cp))
+				assert.Equal(t, final, []int{2}, "the first order writes 1 and then 2")
+				recordOK(h, 0, read, nil, 1)
+				_, final = outcomeOf(h, register, history.Resume(&cp))
+				assert.Equal(t, final, []int{1}, "the read of 1 takes the order that writes 2 and then 1")
+				recordOK(h, 0, read, nil, 3)
+				got, _ := outcomeOf(h, register, history.Resume(&cp))
+				want, _ := outcomeOf(h, register)
+				assert.Equal(t, got, want, "the violation of the read of 3, with the steps of the search of every call")
+			})
+
+		t.Run("finds a configuration that a grown search stored before its set of calls gained a word",
+			func(t *testing.T) {
+				t.Parallel()
+				h := writes(62)
+				one := h.Invoke(1, write, []any{7})
+				two := h.Invoke(2, write, []any{7})
+				one.OK(nil)
+				two.OK(nil)
+				var cp history.Checkpoint[int]
+				assert.Nil(t, resumedDetail(h, register, &cp), "64 writes pass")
+				recordOK(h, 0, read, nil, 9)
+				got := resumedDetail(h, register, &cp)
+				assert.Equal(t, got, detailOf(h, register, history.Whole()),
+					"the memo finds the two writes of 7 in their second order, as the search of every call does")
+				assert.Equal(t, []any{got[callsField], got[stepsField]}, []any{65, 67},
+					"64 steps of the writes, the read's step, and the two writes of 7 in their second order")
+			})
+
 		atRead := fault.Path{fault.Field(callsField), fault.Index(2)}
 		atWrite := fault.Path{fault.Field(callsField), fault.Index(0)}
 		tests := []struct {
@@ -202,6 +271,46 @@ var waiting = history.Model[int]{
 		}
 		return nil
 	},
+}
+
+// lossy is the register whose write may be lost: it leaves the written value
+// and the value before it. A read is the register's read.
+var lossy = history.Model[int]{
+	Init: register.Init,
+	Step: func(s int, op history.Op) []int {
+		if op.Operation == write {
+			return []int{op.Args[0].(int), s}
+		}
+		return register.Step(s, op)
+	},
+}
+
+// complete completes call by the case's choices: as Fail or Unknown, or as
+// OK with an output from 0 to 2, which a read reports and a write ignores.
+func complete(c *prop.Case, call history.Call) {
+	switch c.Draw(prop.Integer(0, 9), "outcome") {
+	case 0:
+		call.Fail(errRefused)
+	case 1:
+		call.Unknown(errRefused)
+	default:
+		call.OK(c.Draw(prop.Integer(0, 2), "output"))
+	}
+}
+
+// outcomeOf checks h against m under Whole, Final and opts on a recorder, and
+// returns the detail of each record of the check and the states that it
+// stored.
+func outcomeOf(h *history.History, m history.Model[int], opts ...history.Option) ([]map[string]any, []int) {
+	var final []int
+	rec := assert.NewRecorder()
+	all := append([]history.Option{history.Whole(), history.Final(&final)}, opts...)
+	history.Linearizable(rec, h, m, contract, all...)
+	var details []map[string]any
+	for _, f := range rec.Failures() {
+		details = append(details, f.Detail)
+	}
+	return details, final
 }
 
 // sameInt reports whether a equals b, as a stated Equal beside which the

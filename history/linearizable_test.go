@@ -23,6 +23,15 @@ import (
 // over a write and a read, measured.
 const linearizableAllocs = 38
 
+// The allocations of a write that a history records and of the check that
+// continues the search of the check before it, measured, and the writes
+// after which the case starts a history of its own, so that a benchmark of
+// many iterations keeps its history short.
+const (
+	resumedAllocs = 10
+	resumedWrites = 1000
+)
+
 // The size of the search that the checker cancels.
 const (
 	// cancelledWrites is the number of concurrent writes of the partition
@@ -183,6 +192,25 @@ func TestLinearizable(t *testing.T) {
 			got := faultOf(t, violatedRead(), register, history.Final(new([]string)))
 			expectFault(t, got, fault.Error{
 				Op: linearizableOp, Reason: "Final states *[]string for a model whose states are of type int",
+			})
+		})
+
+		t.Run("returns a fault for Resume of states of another type than the model's", func(t *testing.T) {
+			t.Parallel()
+			cp := new(history.Checkpoint[string])
+			got := faultOf(t, violatedRead(), register, history.Whole(), history.Resume(cp))
+			expectFault(t, got, fault.Error{
+				Op:     linearizableOp,
+				Reason: "Resume states *history.Checkpoint[string] for a model whose states are of type int",
+			})
+		})
+
+		t.Run("returns a fault for Resume without Whole", func(t *testing.T) {
+			t.Parallel()
+			got := faultOf(t, violatedRead(), register, history.Resume(new(history.Checkpoint[int])))
+			expectFault(t, got, fault.Error{
+				Op:     linearizableOp,
+				Reason: "Resume continues the search of one partition, and the check states no Whole",
 			})
 		})
 	})
@@ -406,9 +434,31 @@ var passingCheck = alloctest.Case{
 	Allocs: linearizableAllocs,
 }
 
-// TestLinearizableAllocs checks the allocation ceiling of a passing check.
+// resumedCheck returns the case of the allocation ceiling of a write that a
+// history of the case records, and of the check that continues the search of
+// the check before it.
+func resumedCheck() alloctest.Case {
+	h := history.New()
+	var cp history.Checkpoint[int]
+	writes := 0
+	return alloctest.Case{
+		Name: "Linearizable/Resume",
+		Call: func(tb assert.TB) {
+			if writes == resumedWrites {
+				h, cp, writes = history.New(), history.Checkpoint[int]{}, 0
+			}
+			writes++
+			recordOK(h, 0, write, writeOne, nil)
+			history.Linearizable(tb, h, register, contract, history.Whole(), history.Resume(&cp))
+		},
+		Allocs: resumedAllocs,
+	}
+}
+
+// TestLinearizableAllocs checks the allocation ceilings of a passing check,
+// and of a write and the check that continues the search before it.
 func TestLinearizableAllocs(t *testing.T) {
-	alloctest.Check(t, []alloctest.Case{passingCheck})
+	alloctest.Check(t, []alloctest.Case{passingCheck, resumedCheck()})
 }
 
 // BenchmarkLinearizable measures a passing check under its ceiling, and the
@@ -419,6 +469,7 @@ func TestLinearizableAllocs(t *testing.T) {
 func BenchmarkLinearizable(b *testing.B) {
 	b.Run("Linearizable", func(b *testing.B) {
 		b.Run("pass", func(b *testing.B) { alloctest.Measure(b, passingCheck) })
+		b.Run("resume", func(b *testing.B) { alloctest.Measure(b, resumedCheck()) })
 		b.Run("register", func(b *testing.B) {
 			spend(b, budgetHistory(), register)
 		})

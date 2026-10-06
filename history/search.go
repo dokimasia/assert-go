@@ -19,6 +19,14 @@ const clockSteps = 1024
 // the key of a configuration: the 64-bit FNV prime.
 const keyPrime = 1099511628211
 
+// The entries at the two ends of the scan: the head before the first entry
+// and the tail after the last. The entries of the calls follow them from
+// index 2 on, so a search that grows keeps both ends at their index.
+const (
+	headEntry = 0
+	tailEntry = 1
+)
+
 // The model's functions, as the fault of one that panics names it.
 const (
 	initFunction  = "Init"
@@ -97,6 +105,18 @@ type configuration struct {
 	next int
 }
 
+// entry is an entry of the scan before the search links it: the index of
+// its event, the position of its call, and whether it is the call's
+// invocation.
+type entry struct {
+	// event is the index of the entry's event.
+	event int
+	// position is the position of the entry's call.
+	position int
+	// invokes reports whether the entry is an invocation.
+	invokes bool
+}
+
 // search is the search of one partition, which the definition fixes: Wing
 // and Gong's scan of the entries, with a memo of the configurations that it
 // visited. The entries are the invocations of the partition's calls and the
@@ -108,6 +128,10 @@ type configuration struct {
 // and a frame refer to their states through an extent of it. A step leaves
 // its states in a buffer, and the search copies them to the store only for a
 // configuration that the memo lacks.
+//
+// A search that passed can grow by calls that its history recorded later.
+// The grown search then continues from the order that it found, and takes
+// the steps that a search of every call takes from that order on.
 type search[S any] struct {
 	// ops are the model's functions, with the defaults of Equal and Hash.
 	ops operations[S]
@@ -115,9 +139,11 @@ type search[S any] struct {
 	calls []call
 	// budget is the steps that the search may spend.
 	budget int
-	// capacity is the most configurations that the memo may store: the memo
-	// limit divided by the number of calls.
-	capacity int64
+	// memoLimit is the bits that the memo may count, and capacity the most
+	// configurations that the memo may store: the memo limit divided by the
+	// number of calls.
+	memoLimit int64
+	capacity  int64
 	// deadline is the check's deadline. The search reads it before its first
 	// step and every clockSteps steps after it.
 	deadline *deadline
@@ -128,8 +154,8 @@ type search[S any] struct {
 	// order leaves.
 	final bool
 
-	// next and prev link each entry to the entries beside it. The head is the
-	// entry len(position), and the tail the one after the head.
+	// next and prev link each entry to the entries beside it, from the head
+	// at headEntry to the tail at tailEntry.
 	next, prev []int
 	// position is the position of the call of each entry.
 	position []int
@@ -185,65 +211,134 @@ type search[S any] struct {
 // newSearch returns the search of p through ops under limits and the
 // deadline d.
 func newSearch[S any](ops operations[S], p partition, limits config, d *deadline) *search[S] {
-	type entry struct {
-		// event is the index of the entry's event.
-		event int
-		// position is the position of the entry's call.
-		position int
-		// invokes reports whether the entry is an invocation.
-		invokes bool
-	}
-	var entries []entry
-	open := 0
-	for position, c := range p.calls {
-		entries = append(entries, entry{event: c.span.Call, position: position, invokes: true})
-		if c.span.Op.Known {
-			entries = append(entries, entry{event: c.span.Completion, position: position})
-			open++
-		}
-	}
-	slices.SortFunc(entries, func(a, b entry) int { return cmp.Compare(a.event, b.event) })
-
-	head := len(entries)
+	entries := 2 + 2*len(p.calls)
 	s := &search[S]{
 		ops:        ops,
 		calls:      p.calls,
 		budget:     limits.budget,
-		capacity:   limits.memoLimit / int64(max(len(p.calls), 1)),
+		memoLimit:  limits.memoLimit,
 		deadline:   d,
 		final:      limits.final != nil,
-		next:       make([]int, head+2),
-		prev:       make([]int, head+2),
-		position:   make([]int, head),
-		invokes:    make([]bool, head),
-		invocation: make([]int, len(p.calls)),
-		completion: make([]int, len(p.calls)),
-		open:       open,
-		done:       make([]uint64, (len(p.calls)+63)>>6),
+		next:       make([]int, 2, entries),
+		prev:       make([]int, 2, entries),
+		position:   make([]int, 2, entries),
+		invokes:    make([]bool, 2, entries),
 		memo:       map[uint64]int{},
 		atFrontier: true,
 		stepped:    -1,
 	}
-	before := head
-	for i, e := range entries {
-		s.next[before], s.prev[i] = i, before
-		before = i
-		s.position[i], s.invokes[i] = e.position, e.invokes
+	s.next[headEntry], s.prev[tailEntry] = tailEntry, headEntry
+	s.add(0)
+	return s
+}
+
+// fits reports whether the search, grown by more calls under limits,
+// continues as a search of all the calls does: the limits state the budget
+// and the memo limit of the search, and the memo contains no more
+// configurations than the grown search may store.
+func (s *search[S]) fits(more int, limits config) bool {
+	capacity := limits.memoLimit / int64(max(len(s.calls)+more, 1))
+	return limits.budget == s.budget && limits.memoLimit == s.memoLimit &&
+		int64(len(s.configurations)) <= capacity
+}
+
+// grow adds more to a search that passed: calls that its history recorded
+// after every event that the search read. The search then reads the model's
+// functions ops and the deadline d, the deadline before its next step.
+func (s *search[S]) grow(ops operations[S], more []call, limits config, d *deadline) {
+	s.ops, s.deadline, s.final = ops, d, limits.final != nil
+	s.clockAt = s.steps
+	first := len(s.calls)
+	s.calls = append(s.calls, more...)
+	s.add(first)
+}
+
+// add adds the calls of the search from the position first on, which follow
+// the calls before them in event order. Their entries join the scan before
+// the tail, sorted by event, and the set of calls and the capacity of the
+// memo grow with them.
+func (s *search[S]) add(first int) {
+	calls := s.calls[first:]
+	s.invocation = append(s.invocation, make([]int, len(calls))...)
+	s.completion = append(s.completion, make([]int, len(calls))...)
+
+	var entries []entry
+	for i, c := range calls {
+		entries = append(entries, entry{event: c.span.Call, position: first + i, invokes: true})
+		if c.span.Op.Known {
+			entries = append(entries, entry{event: c.span.Completion, position: first + i})
+			s.open++
+		}
+	}
+	slices.SortFunc(entries, func(a, b entry) int { return cmp.Compare(a.event, b.event) })
+	if len(entries) > 0 {
+		s.retarget(len(s.position))
+	}
+	s.position = slices.Grow(s.position, len(entries))
+	s.invokes = slices.Grow(s.invokes, len(entries))
+	s.next = slices.Grow(s.next, len(entries))
+	s.prev = slices.Grow(s.prev, len(entries))
+	last := s.prev[tailEntry]
+	for _, e := range entries {
+		i := len(s.position)
+		s.position = append(s.position, e.position)
+		s.invokes = append(s.invokes, e.invokes)
+		s.next = append(s.next, tailEntry)
+		s.prev = append(s.prev, last)
+		s.next[last] = i
+		last = i
 		if e.invokes {
 			s.invocation[e.position] = i
 		} else {
 			s.completion[e.position] = i
 		}
 	}
-	s.next[before], s.prev[head+1] = head+1, before
-	return s
+	s.prev[tailEntry] = last
+
+	s.widen()
+	s.capacity = s.memoLimit / int64(max(len(s.calls), 1))
+}
+
+// retarget points each completion that the search took out of the scan while
+// the tail followed it at first, the entry that follows it once the scan
+// grows. A search that had every call from its start took such a completion
+// out while first followed it, so a backtrack puts it back before first.
+//
+// The entries out of the scan are those of the linearized calls. No
+// invocation among them was the last entry when the search took it out: the
+// scan takes an invocation out only while a known call is not linearized,
+// and the completion of that call follows the invocation.
+func (s *search[S]) retarget(first int) {
+	for _, f := range s.stack {
+		if s.calls[f.position].span.Op.Known && s.next[s.completion[f.position]] == tailEntry {
+			s.next[s.completion[f.position]] = first
+		}
+	}
+}
+
+// widen gives the set of linearized calls a bit for each call: it adds words
+// of no call to the current set, and to the set of each configuration in the
+// memo.
+func (s *search[S]) widen() {
+	words := (len(s.calls) + 63) >> 6
+	if words <= len(s.done) {
+		return
+	}
+	stride, wider := max(len(s.done)-1, 0), words-1
+	widened := make([]uint64, len(s.configurations)*wider)
+	for i := range s.configurations {
+		copy(widened[i*wider:], s.words[i*stride:(i+1)*stride])
+	}
+	s.words = widened
+	s.done = append(s.done, make([]uint64, words-len(s.done))...)
 }
 
 // run searches the partition and passes how the search ended to deliver, on
 // every path out of it: the verdict and the frontier, or the fault of a
-// model's function that panicked or ended the goroutine. After a function
-// that ends the goroutine, as t.FailNow does, the goroutine ends once
-// deliver returns.
+// model's function that panicked or ended the goroutine. A search that grew
+// continues from the order that it found, and a new one starts at the
+// model's initial state. After a function that ends the goroutine, as
+// t.FailNow does, the goroutine ends once deliver returns.
 func (s *search[S]) run(deliver func(ending[S])) {
 	var e ending[S]
 	ended := false
@@ -253,10 +348,12 @@ func (s *search[S]) run(deliver func(ending[S])) {
 		}
 		deliver(e)
 	}()
-	s.calling = initFunction
-	s.store = append(s.store, s.ops.init())
-	s.states = extent{n: 1}
-	s.frontier = s.states
+	if len(s.store) == 0 {
+		s.calling = initFunction
+		s.store = append(s.store, s.ops.init())
+		s.states = extent{n: 1}
+		s.frontier = s.states
+	}
 	e = s.scan()
 	ended = true
 }
@@ -264,8 +361,7 @@ func (s *search[S]) run(deliver func(ending[S])) {
 // scan scans the entries until every known call is linearized, or no order
 // that the model accepts is left, or a limit stops it.
 func (s *search[S]) scan() ending[S] {
-	head := len(s.position)
-	entry := s.next[head]
+	entry := s.next[headEntry]
 	for s.open > 0 {
 		if !s.invokes[entry] {
 			if len(s.stack) == 0 {
@@ -279,7 +375,7 @@ func (s *search[S]) scan() ending[S] {
 			return s.ending(Undecided, limit)
 		}
 		if accepted {
-			entry = s.next[head]
+			entry = s.next[headEntry]
 		} else {
 			entry = s.next[entry]
 		}
@@ -399,10 +495,16 @@ func (s *search[S]) left(state *S, hash uint64) bool {
 // already. It returns the states in the store and reports whether it stored
 // the configuration, and the limit that stops the search before a
 // configuration that would pass the memo limit.
+//
+// The key mixes the words of the set up to its last word with a call, so a
+// set keeps its key when the search grows by calls.
 func (s *search[S]) remember(sum uint64) (extent, bool, Limit) {
-	key := sum
+	key, mixed := sum, sum
 	for _, word := range s.done {
-		key = (key ^ word) * keyPrime
+		mixed = (mixed ^ word) * keyPrime
+		if word != 0 {
+			key = mixed
+		}
 	}
 	head, found := s.memo[key]
 	if !found {

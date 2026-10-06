@@ -117,6 +117,34 @@ func Final[S any](states *[]S) Option {
 	}}
 }
 
+// Resume makes the check continue the search that cp keeps, and keep its own
+// search in cp when it passes. A check continues the kept search when cp
+// keeps the search of a check of the same history that passed under the
+// same budget and memo limit, and the history has recorded events since
+// without completing a call that the kept search read as pending. The
+// continued search takes the steps that a search of every call takes after
+// the order that the kept search found, so the check reports what a search
+// of the whole history reports: its verdict, its steps, its frontier and
+// its final states. In any other case the check searches every call. A
+// check that does not pass keeps no search in cp. A nil cp changes nothing.
+//
+// Pass the same model to every check that passes cp. The kept search
+// contains the states that the model of the earlier checks left.
+//
+// A check with Resume searches the whole history as one partition, and
+// states [Whole]. A check without Whole ends the call with a fault, and so
+// does a check whose model has states of another type than S. A check with
+// Resume calls the model's Init for a history without calls too.
+func Resume[S any](cp *Checkpoint[S]) Option {
+	if cp == nil {
+		return Option{}
+	}
+	return Option{set: func(c config) config {
+		c.resume = cp
+		return c
+	}}
+}
+
 // config is what the options of one check state.
 type config struct {
 	// budget is the steps that one partition's search may spend.
@@ -132,6 +160,9 @@ type config struct {
 	// final is the *[]S of Final, which a passing check stores its states
 	// in, and nil without Final.
 	final any
+	// resume is the *Checkpoint[S] of Resume, whose search the check
+	// continues, and nil without Resume.
+	resume any
 }
 
 // configure returns the defaults with each option of opts applied in order.

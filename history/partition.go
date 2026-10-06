@@ -30,15 +30,20 @@ type partition struct {
 	calls []call
 }
 
-// callsOf returns the calls of events, in event order, without the calls
-// that failed. ids are the identities of each event's keys. A call is known
-// when it completed as OK, and its completion is -1 when it is pending.
-func callsOf(events []Event, ids [][]string) []call {
+// callsOf returns the calls that events invoke, in event order, without the
+// calls that failed. events are the events of a history from the index from
+// on, and ids are the identities of each event's keys. A call is known when
+// it completed as OK, and its completion is -1 when it is pending. It
+// reports false when one of events completes a call invoked before from.
+func callsOf(events []Event, ids [][]string, from int) ([]call, bool) {
 	completion := make([]int, len(events))
 	for i, e := range events {
 		completion[i] = -1
 		if e.Kind != Invoke {
-			completion[e.Call] = i
+			if e.Call < from {
+				return nil, false
+			}
+			completion[e.Call-from] = i
 		}
 	}
 	var calls []call
@@ -48,13 +53,16 @@ func callsOf(events []Event, ids [][]string) []call {
 			continue
 		}
 		op := Op{Operation: e.Operation, Args: e.Args}
-		if end >= 0 && events[end].Kind == OK {
-			op.Known, op.Output = true, events[end].Output
+		span := Span{Call: from + i, Completion: -1, Process: e.Process, Op: op}
+		if end >= 0 {
+			span.Completion = from + end
+			if events[end].Kind == OK {
+				span.Op.Known, span.Op.Output = true, events[end].Output
+			}
 		}
-		span := Span{Call: i, Completion: end, Process: e.Process, Op: op}
 		calls = append(calls, call{span: span, keys: e.Keys, ids: ids[i]})
 	}
-	return calls
+	return calls, true
 }
 
 // partitionsOf returns the partitions of calls, in the order of their first
