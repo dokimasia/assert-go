@@ -27,11 +27,6 @@ const (
 // [Contract.MaxLatency] bounds.
 const p99 = 0.99
 
-// unset marks a ceiling that the caller did not state. [Contract.End]
-// checks no unset ceiling. The marker is negative because zero is a
-// ceiling that a caller can state.
-const unset = -1
-
 // Contract measures a benchmark and fails it for exceeding a ceiling.
 //
 // Build one with [Start], state the ceilings, drive the benchmark with
@@ -89,11 +84,16 @@ type Contract struct {
 	// growth of each. They accumulate across iterations, because the
 	// counters are read once at each end of the loop.
 	excludedHeap, excludedHeapBytes uint64
+	// excluding reports whether [Contract.Excluding] runs its work now.
+	excluding bool
 
 	// maxLatency, maxMean, maxAllocs and maxBytes are the stated
-	// ceilings. Each is unset until the caller states it.
+	// ceilings.
 	maxLatency, maxMean time.Duration
-	maxAllocs, maxBytes int64
+	maxAllocs, maxBytes uint64
+	// latencyStated, meanStated, allocsStated and bytesStated report which
+	// ceilings the caller stated. [Contract.End] checks no other.
+	latencyStated, meanStated, allocsStated, bytesStated bool
 }
 
 // Start returns a contract that measures b and states no ceiling.
@@ -103,13 +103,7 @@ type Contract struct {
 // Start allocates the contract: one allocation.
 func Start(b B) *Contract {
 	b.Helper()
-	return &Contract{
-		b:          b,
-		maxLatency: unset,
-		maxMean:    unset,
-		maxAllocs:  unset,
-		maxBytes:   unset,
-	}
+	return &Contract{b: b}
 }
 
 // MaxLatency states the highest p99 latency per iteration that the
@@ -123,7 +117,7 @@ func Start(b B) *Contract {
 //
 // MaxLatency allocates nothing.
 func (c *Contract) MaxLatency(d time.Duration) *Contract {
-	c.maxLatency = d
+	c.maxLatency, c.latencyStated = d, true
 	return c
 }
 
@@ -138,7 +132,7 @@ func (c *Contract) MaxLatency(d time.Duration) *Contract {
 //
 // MaxMean allocates nothing.
 func (c *Contract) MaxMean(d time.Duration) *Contract {
-	c.maxMean = d
+	c.maxMean, c.meanStated = d, true
 	return c
 }
 
@@ -177,7 +171,7 @@ func (c *Contract) MaxMean(d time.Duration) *Contract {
 //
 // MaxAllocs allocates nothing.
 func (c *Contract) MaxAllocs(n uint64) *Contract {
-	c.maxAllocs = int64(n)
+	c.maxAllocs, c.allocsStated = n, true
 	return c
 }
 
@@ -231,7 +225,7 @@ func (c *Contract) Warmup(n int) *Contract {
 //
 // MaxBytes allocates nothing.
 func (c *Contract) MaxBytes(n uint64) *Contract {
-	c.maxBytes = int64(n)
+	c.maxBytes, c.bytesStated = n, true
 	return c
 }
 
@@ -340,25 +334,25 @@ func (c *Contract) End() {
 	if c.parallel && !lastRun(c.b.(*testing.B)) {
 		return
 	}
-	if c.maxLatency != unset {
+	if c.latencyStated {
 		c.check("bench-max-latency", "the p99 latency per iteration is within its ceiling",
 			tail > c.maxLatency, map[string]any{"want": c.maxLatency, "got": tail})
 	}
-	if c.maxMean != unset {
+	if c.meanStated {
 		c.check("bench-max-mean", "the mean latency per iteration is within its ceiling",
 			mean > c.maxMean, map[string]any{"want": c.maxMean, "got": mean})
 	}
 	counted := matcher.AllocationsCounted()
-	if c.maxAllocs != unset {
+	if c.allocsStated {
 		rounded := math.Round(allocs)
 		c.check("bench-max-allocs", "the allocations per iteration are within their ceiling",
 			counted && rounded > float64(c.maxAllocs),
-			map[string]any{"want": uint64(c.maxAllocs), "got": uint64(rounded)})
+			map[string]any{"want": c.maxAllocs, "got": uint64(rounded)})
 	}
-	if c.maxBytes != unset {
+	if c.bytesStated {
 		c.check("bench-max-bytes", "the bytes allocated per iteration are within their ceiling",
 			counted && math.Floor(bytes) > float64(c.maxBytes),
-			map[string]any{"want": uint64(c.maxBytes), "got": uint64(bytes)})
+			map[string]any{"want": c.maxBytes, "got": uint64(bytes)})
 	}
 }
 
@@ -399,17 +393,21 @@ func (c *Contract) perIteration() (allocs, bytes float64) {
 //	}
 //
 // Before the first [Contract.Loop] and after the last, Excluding runs
-// work and takes nothing out, because no iteration is being measured.
+// work and takes nothing out, because no iteration is being measured. A
+// call inside the work of another call runs its work and takes nothing out
+// either, because the other call takes out all of its own work.
 //
 // # Allocation contract
 //
 // Excluding allocates nothing besides what work allocates.
 func (c *Contract) Excluding(work func()) {
-	if !c.measuring {
+	if !c.measuring || c.excluding {
 		work()
 		return
 	}
 
+	c.excluding = true
+	defer func() { c.excluding = false }()
 	startedAt := time.Now()
 	c.excludeHeap(work)
 	c.excluded += time.Since(startedAt)

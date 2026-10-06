@@ -143,6 +143,45 @@ func TestParallel(t *testing.T) {
 			assert.Equal(t, seen, []benchCall{{n: 1}}, "a warm-up iteration's allocation counts against no ceiling")
 		})
 
+		t.Run("leaves what a body does after its last iteration out of every count", func(t *testing.T) {
+			result, seen := benchmark(t, "1x", func(b bench.B, _ int) {
+				var slot atomic.Int64
+				c := bench.Start(b).MaxBytes(1024)
+				c.RunParallel(func(pb *bench.PB) {
+					for pb.Next() {
+					}
+					parallelSink[slot.Add(1)-1] = make([]byte, 1<<20)
+					time.Sleep(20 * time.Millisecond)
+				})
+				c.End()
+			})
+
+			assert.Equal(t, seen, []benchCall{{n: 1}}, "a MiB after the last iteration counts against no ceiling")
+			assert.True(t, result.Extra["bytes/op"] < 1024, "the contract publishes no byte of it")
+			assert.True(t, result.NsPerOp() < int64(20*time.Millisecond), "testing's time leaves out the sleep")
+		})
+
+		t.Run("leaves the warm-up out of testing's time", func(t *testing.T) {
+			var warmed atomic.Int64
+			result, _ := benchmark(t, "1x", func(b bench.B, _ int) {
+				c := bench.Start(b).Warmup(1)
+				c.RunParallel(func(pb *bench.PB) {
+					for pb.Next() {
+						if warmed.Add(1) == 1 {
+							time.Sleep(20 * time.Millisecond)
+						}
+					}
+				})
+				c.End()
+			})
+
+			assert.True(
+				t,
+				result.NsPerOp() < int64(20*time.Millisecond),
+				"testing's time leaves out the warm-up's sleep",
+			)
+		})
+
 		t.Run("publishes the latency and the counts of the run", func(t *testing.T) {
 			result, _ := benchmark(t, "100x", func(b bench.B, _ int) {
 				c := bench.Start(b)

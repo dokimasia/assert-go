@@ -46,18 +46,21 @@ const benchtimeFlag = "test.benchtime"
 //	})
 //
 // The measurement starts once every goroutine has called Next for its
-// first measured iteration, and ends when the last goroutine finishes, so
-// the ceilings count neither the goroutines, nor the handles, nor what a
-// body does before its first iteration. The goroutines run the iterations
-// of [Contract.Warmup] before the measurement, its count in all. Each
+// first measured iteration, and ends once Next has reported false on every
+// goroutine, before any goroutine runs on. The ceilings count neither the
+// goroutines, nor the handles, nor what a body does before its first
+// iteration or after its last. The goroutines run the iterations of
+// [Contract.Warmup] before the measurement, its count in all. Each
 // iteration is timed on its goroutine, from one call of Next to the next.
 // [Contract.MaxLatency] bounds the p99 of the durations of every iteration
 // and [Contract.MaxMean] their mean. [Contract.MaxAllocs] and
 // [Contract.MaxBytes] bound the allocations and the bytes of the
 // measurement, divided by b.N: the allocations rounded to the nearest
-// whole number, and the bytes rounded down. testing's own ns/op is the
-// time of the run divided by b.N, about the mean latency divided by
-// GOMAXPROCS.
+// whole number, and the bytes rounded down. RunParallel resets testing's
+// timer at the start of the measurement and stops it at the end, so
+// testing's own ns/op is the time of the measurement divided by b.N, about
+// the mean latency divided by GOMAXPROCS, and its allocs/op counts the
+// measurement as well.
 //
 // RunParallel runs in a benchmark that calls testing.B.Loop nowhere, as
 // testing.B.RunParallel does, so testing calls the benchmark function once
@@ -111,10 +114,14 @@ func (c *Contract) RunParallel(body func(*PB)) {
 		go r.work(i, body)
 	}
 	r.ready.Wait()
+	b.ResetTimer()
 	c.heapAtStart, c.bytesAtStart = heap()
 	close(r.release)
-	r.done.Wait()
+	r.left.Wait()
+	b.StopTimer()
 	c.heapAtEnd, c.bytesAtEnd = heap()
+	close(r.measured)
+	r.done.Wait()
 
 	for i := range r.pbs {
 		if r.panics[i] != nil {
@@ -162,8 +169,9 @@ type PB struct {
 // ends the iteration that the call before it started. The first calls run
 // the iterations of [Contract.Warmup], untimed, while any remain. The first
 // call after them waits until every goroutine has made the same call, and
-// then starts the measurement. Once Next has reported false, it reports
-// false again.
+// then starts the measurement. The call that first reports false waits
+// until Next has reported false on every goroutine, and the measurement
+// has ended. Once Next has reported false, it reports false again.
 //
 // # Allocation contract
 //
@@ -190,6 +198,8 @@ func (pb *PB) Next() bool {
 		start := end - r.grain
 		if start >= r.n {
 			pb.finished = true
+			r.left.Done()
+			<-r.measured
 			return false
 		}
 		pb.next, pb.end = start, min(end, r.n)
@@ -224,11 +234,14 @@ type parallelRun struct {
 	pbs    []PB
 	panics []any
 	// ready counts the goroutines that have not arrived at the start of the
-	// measurement, release starts it, and done counts the goroutines that
-	// run.
-	ready   sync.WaitGroup
-	release chan struct{}
-	done    sync.WaitGroup
+	// measurement, and release starts it. left counts the goroutines whose
+	// Next has not reported false, and measured ends the measurement. done
+	// counts the goroutines that run.
+	ready    sync.WaitGroup
+	release  chan struct{}
+	left     sync.WaitGroup
+	measured chan struct{}
+	done     sync.WaitGroup
 }
 
 // newParallelRun returns a run of n measured iterations, after warmup
@@ -241,9 +254,11 @@ func newParallelRun(n, warmup, goroutines int) *parallelRun {
 		pbs:       make([]PB, goroutines),
 		panics:    make([]any, goroutines),
 		release:   make(chan struct{}),
+		measured:  make(chan struct{}),
 	}
 	r.warmup.Store(int64(warmup))
 	r.ready.Add(goroutines)
+	r.left.Add(goroutines)
 	r.done.Add(goroutines)
 	for i := range r.pbs {
 		r.pbs[i].run = r
@@ -252,7 +267,8 @@ func newParallelRun(n, warmup, goroutines int) *parallelRun {
 }
 
 // work runs body on the handle of goroutine i. A body that ends before it
-// arrives at the start of the measurement counts as arrived, so the other
+// arrives at the start of the measurement counts as arrived, and one that
+// ends before its Next reports false counts as having left it, so the other
 // goroutines do not wait for it.
 func (r *parallelRun) work(i int, body func(*PB)) {
 	pb := &r.pbs[i]
@@ -262,6 +278,9 @@ func (r *parallelRun) work(i int, body func(*PB)) {
 		if !pb.arrived {
 			pb.arrived = true
 			r.ready.Done()
+		}
+		if !pb.finished {
+			r.left.Done()
 		}
 	}()
 	body(pb)

@@ -4,6 +4,7 @@
 package bench_test
 
 import (
+	"math"
 	"path/filepath"
 	"testing"
 	"time"
@@ -231,6 +232,30 @@ func TestContract(t *testing.T) {
 				got, _ := records[0].Detail["got"].(uint64)
 				assert.True(t, got >= 4096, "the record states the bytes per iteration as got")
 			}
+		})
+
+		t.Run("checks an allocation ceiling up to the largest uint64, which a body under it meets", func(t *testing.T) {
+			t.Parallel()
+
+			for _, ceiling := range []uint64{1 << 63, math.MaxUint64} {
+				seat := run(iterations, func(c *bench.Contract) *bench.Contract {
+					return c.MaxAllocs(ceiling).MaxBytes(ceiling)
+				}, allocating())
+
+				assert.Equal(t, seat.verdicts(t), []string{"bench-max-allocs pass", "bench-max-bytes pass"},
+					"both ceilings are stated, and a body that allocates 4 KiB meets them")
+			}
+		})
+
+		t.Run("reports a latency above a ceiling below zero", func(t *testing.T) {
+			t.Parallel()
+
+			seat := run(iterations, func(c *bench.Contract) *bench.Contract {
+				return c.MaxLatency(-time.Nanosecond)
+			}, noop)
+
+			assert.Equal(t, seat.verdicts(t), []string{"bench-max-latency fail"},
+				"every iteration takes longer than a ceiling below zero")
 		})
 
 		t.Run("reports each exceeded ceiling", func(t *testing.T) {
@@ -612,6 +637,26 @@ func TestContractCounting(t *testing.T) {
 			})
 
 			assert.True(t, seat.Failed(), "a sleep outside Excluding is timed")
+		})
+
+		t.Run("takes the allocations of a call inside another call out once", func(t *testing.T) {
+			seat := runExcluding(iterations, tightAllocs, func(c *bench.Contract) {
+				c.Excluding(func() { c.Excluding(heavyFixture) })
+			})
+
+			assert.Equal(t, seat.verdicts(t), []string{"bench-max-allocs pass"},
+				"the fixture counts neither against the ceiling nor twice out of the count")
+			allocs, _ := seat.metric("allocs/op")
+			assert.InRange(t, allocs, 0.0, 1.0, "the contract publishes no allocation of the fixture")
+		})
+
+		t.Run("takes the time of a call inside another call out once", func(t *testing.T) {
+			seat := runExcluding(4, func(c *bench.Contract) *bench.Contract { return c }, func(c *bench.Contract) {
+				c.Excluding(func() { c.Excluding(func() { time.Sleep(10 * time.Millisecond) }) })
+			})
+
+			mean, _ := seat.metric("mean-ns/op")
+			assert.InRange(t, mean, 0.0, float64(5*time.Millisecond), "the sleep is taken out of each iteration once")
 		})
 
 		t.Run("takes no time out of the first iteration before the loop", func(t *testing.T) {
