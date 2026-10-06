@@ -75,18 +75,25 @@ func ScrubRunIDs() Scrubber {
 	}
 }
 
-// ScrubJSONFields replaces the value of each named JSON field.
+// jsonScalar matches the text of a JSON value that is no object and no
+// array: a string with its escapes, a number, true, false or null.
+const jsonScalar = `"(?:[^"\\]|\\.)*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|(?:true|false|null)\b`
+
+// ScrubJSONFields replaces the value of each named JSON field with the
+// string "SCRUBBED": a string, a number, true, false or null.
 //
-//	golden.ScrubJSONFields("created_at", "token")
+//	golden.ScrubJSONFields("created_at", "token", "seconds")
 //
 // It matches the text of a field and does not parse the document, so it
-// works on output that is nearly JSON. A field name inside a string value
-// is replaced too, so name fields that no string value contains.
+// works on output that is nearly JSON, and it leaves an object or an array
+// as it is. A field name inside a string value is replaced too, so name
+// fields that no string value contains.
 //
 // # Allocation contract
 //
-// ScrubJSONFields compiles a regular expression of the fields: 46
-// allocations for one field. It allocates nothing for no field.
+// ScrubJSONFields compiles a regular expression of the fields and of every
+// scalar value: 113 allocations for one field. It allocates nothing for no
+// field.
 func ScrubJSONFields(fields ...string) Scrubber {
 	if len(fields) == 0 {
 		return func(s string) string { return s }
@@ -97,7 +104,7 @@ func ScrubJSONFields(fields ...string) Scrubber {
 		quoted[i] = regexp.QuoteMeta(f)
 	}
 	pattern := regexp.MustCompile(
-		fmt.Sprintf(`("(?:%s)"\s*:\s*)"[^"]*"`, strings.Join(quoted, "|")),
+		fmt.Sprintf(`("(?:%s)"\s*:\s*)(?:%s)`, strings.Join(quoted, "|"), jsonScalar),
 	)
 
 	return func(s string) string {

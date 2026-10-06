@@ -82,32 +82,58 @@ func TestScrubber(t *testing.T) {
 	t.Run("ScrubJSONFields", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("replaces a named field's value", func(t *testing.T) {
-			t.Parallel()
+		tests := []struct {
+			name       string
+			giveFields []string
+			give       string
+			want       string
+		}{
+			{
+				name:       "replaces a named field's string, and leaves a field nobody named",
+				giveFields: []string{"token"},
+				give:       `{"token":"secret","name":"kept"}`,
+				want:       `{"token":"SCRUBBED","name":"kept"}`,
+			},
+			{
+				name:       "replaces a string with escaped quotes whole",
+				giveFields: []string{"token"},
+				give:       `{"token":"a \"quoted\" \\ word","name":"kept"}`,
+				want:       `{"token":"SCRUBBED","name":"kept"}`,
+			},
+			{
+				name:       "replaces a value of each scalar type",
+				giveFields: []string{"name", "seconds", "bytes", "done", "failed", "peak"},
+				give: `{"name": "fixture", "seconds": 0.25, "bytes": 512, "done": true, "failed": false, ` +
+					`"peak": null}`,
+				want: `{"name": "SCRUBBED", "seconds": "SCRUBBED", "bytes": "SCRUBBED", "done": "SCRUBBED", ` +
+					`"failed": "SCRUBBED", "peak": "SCRUBBED"}`,
+			},
+			{
+				name:       "replaces a negative number with a fraction and an exponent",
+				giveFields: []string{"drift"},
+				give:       `{"drift":-12.5e-3,"kept":1}`,
+				want:       `{"drift":"SCRUBBED","kept":1}`,
+			},
+			{
+				name:       "leaves an object, an array and a word that only starts as a literal",
+				giveFields: []string{"object", "list", "word"},
+				give:       `{"object":{"a":1},"list":[1,2],"word":nullish}`,
+				want:       `{"object":{"a":1},"list":[1,2],"word":nullish}`,
+			},
+			{
+				name:       "returns the input for no named field",
+				giveFields: nil,
+				give:       `{"a":"one"}`,
+				want:       `{"a":"one"}`,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
 
-			got := golden.ScrubJSONFields("token")(`{"token":"secret","name":"kept"}`)
-
-			assert.NotContains(t, got, "secret", "the named field's value is replaced")
-			assert.Contains(t, got, "kept", "a field nobody named is left alone")
-		})
-
-		t.Run("replaces several named fields", func(t *testing.T) {
-			t.Parallel()
-
-			got := golden.ScrubJSONFields("a", "b")(`{"a":"one","b":"two","c":"three"}`)
-
-			assert.NotContains(t, got, "one", "the first named field is replaced")
-			assert.NotContains(t, got, "two", "the second named field is replaced")
-			assert.Contains(t, got, "three", "a field nobody named is left alone")
-		})
-
-		t.Run("returns the input for no named field", func(t *testing.T) {
-			t.Parallel()
-
-			const in = `{"a":"one"}`
-			assert.Equal(t, golden.ScrubJSONFields()(in), in,
-				"a scrubber naming no field is the identity")
-		})
+				assert.Equal(t, golden.ScrubJSONFields(tt.giveFields...)(tt.give), tt.want, "the scrubbed text")
+			})
+		}
 	})
 }
 
@@ -131,7 +157,7 @@ func scrubberCases() []alloctest.Case {
 		{Name: "ScrubTimestamps", Call: func(assert.TB) { scrubbing = golden.ScrubTimestamps() }},
 		{Name: "ScrubHashes", Call: func(assert.TB) { scrubbing = golden.ScrubHashes() }},
 		{Name: "ScrubRunIDs", Call: func(assert.TB) { scrubbing = golden.ScrubRunIDs() }},
-		{Name: "ScrubJSONFields", Call: func(assert.TB) { scrubbing = golden.ScrubJSONFields("token") }, Allocs: 46},
+		{Name: "ScrubJSONFields", Call: func(assert.TB) { scrubbing = golden.ScrubJSONFields("token") }, Allocs: 113},
 		{Name: "ScrubJSONFields of no field", Call: func(assert.TB) { scrubbing = golden.ScrubJSONFields() }},
 	}
 }
