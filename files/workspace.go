@@ -25,8 +25,9 @@ const workspaceOp = "files.Workspace"
 // and a directory get 0755. Workspace sets each mode after it writes the
 // entry, and the mode of a directory after every entry below it, so the
 // umask cannot change a mode, and the tree that it writes is the same on
-// every run. The test removes the directory also when the mode of a
-// directory in it forbids the owner to write it.
+// every run. On Windows only the owner's write bit of a file's mode takes
+// effect, as the file's read-only attribute. The test removes the directory
+// also when the mode of a directory in it forbids the owner to write it.
 //
 // It takes a testing.TB, whose TempDir it writes the tree into.
 //

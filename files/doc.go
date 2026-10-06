@@ -49,8 +49,13 @@
 // # Platforms
 //
 // A file system that records no permission bits, as on Windows, reads no
-// mode and no execute bit: a comparison then compares neither, a workspace
-// sets no bit, and [HasMode] ends the call with a fault.
+// mode and no execute bit: a comparison then compares neither, and [HasMode]
+// ends the call with a fault. Windows records one permission bit, the
+// owner's write bit of a file, as the file's read-only attribute. [Workspace]
+// sets the attribute on each file whose mode lacks that bit, and sets none on
+// a directory, where Windows does not honour it. Windows stores the target of
+// a link with backslashes, and a tree reads it with slashes, as [Link] states
+// it, so [LinksTo] compares a target with slashes.
 //
 // # Allocation contracts
 //

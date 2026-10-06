@@ -21,7 +21,8 @@ func ModesUnrecorded() error {
 	return nil
 }
 
-// setMode sets the permission bits of the entry at name in root to mode.
-func setMode(root *os.Root, name string, mode fs.FileMode) error {
+// setDirMode sets the permission bits of the directory at name in root to
+// mode.
+func setDirMode(root *os.Root, name string, mode fs.FileMode) error {
 	return root.Chmod(name, mode)
 }

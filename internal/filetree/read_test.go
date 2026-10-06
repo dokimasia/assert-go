@@ -34,6 +34,7 @@ func TestRead(t *testing.T) {
 
 		t.Run("returns every entry with its permission bits, and a link as a link", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 
 			tree, err := filetree.Read(mapped, true)
 			assert.NoError(t, err, "the tree is read")
@@ -47,6 +48,7 @@ func TestRead(t *testing.T) {
 
 		t.Run("returns the execute bit of each file alone without modes", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 
 			tree, err := filetree.Read(mapped, false)
 			assert.NoError(t, err, "the tree is read")
@@ -60,10 +62,20 @@ func TestRead(t *testing.T) {
 
 		t.Run("returns the entries of a directory, and follows no link", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 
 			dir := written(t, filetree.Tree{"a.txt": textFile, "up": linkTo("..")})
 			assert.Equal(t, readBack(t, dir), filetree.Tree{"a.txt": fileWith("a\n", fileMode), "up": linkTo("..")},
 				"the link to the parent is read as a link")
+		})
+
+		t.Run("returns the target of a link with slashes, as a tree states it", func(t *testing.T) {
+			t.Parallel()
+
+			dir := written(t, filetree.Tree{"docs/a.md": fileOf("# a\n"), "current": linkTo("docs/a.md")})
+			tree, err := filetree.Read(os.DirFS(dir), false)
+			assert.NoError(t, err, "the tree is read")
+			assert.Equal(t, tree["current"], linkTo("docs/a.md"), "the target that Windows stores with a backslash")
 		})
 
 		t.Run("returns a fault for a root that is no directory", func(t *testing.T) {
@@ -128,26 +140,32 @@ func TestRead(t *testing.T) {
 			"a.txt":   fileWith("a\n", privateMode),
 			"keys":    dirWith(0o700),
 			"current": linkTo("a.txt"),
+			"nested":  linkTo("keys/a.txt"),
 		})
 
 		tests := []struct {
 			name    string
 			path    string
 			content bool
+			modes   bool
 			want    filetree.Entry
 		}{
 			{
-				name: "returns a file with its mode and without its content", path: "a.txt",
+				name: "returns a file with its mode and without its content", path: "a.txt", modes: true,
 				want: filetree.Entry{Kind: filetree.File, Mode: privateMode, Stated: true},
 			},
 			{
-				name: "returns a file with its content when asked", path: "a.txt", content: true,
+				name: "returns a file with its content when asked", path: "a.txt", content: true, modes: true,
 				want: fileWith("a\n", privateMode),
 			},
-			{name: "returns a directory with its mode", path: "keys", want: dirWith(0o700)},
+			{name: "returns a directory with its mode", path: "keys", modes: true, want: dirWith(0o700)},
 			{
 				name: "returns a link with its target, without following it", path: "current", content: true,
 				want: linkTo("a.txt"),
+			},
+			{
+				name: "returns the target of a link with slashes, as a tree states it", path: "nested",
+				want: linkTo("keys/a.txt"),
 			},
 			{name: "returns no entry where nothing is", path: "b.txt", want: filetree.Entry{}},
 			{name: "returns no entry below a file", path: "a.txt/b", want: filetree.Entry{}},
@@ -155,6 +173,9 @@ func TestRead(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
+				if tt.modes {
+					mustRecordModes(t)
+				}
 				got, err := filetree.ReadPath(filepath.Join(dir, tt.path), tt.content)
 				assert.NoError(t, err, "the entry is read")
 				assert.Equal(t, got, tt.want, "the entry at the path")

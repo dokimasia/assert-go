@@ -18,11 +18,17 @@
 // # Platforms
 //
 // A file system that records no permission bits reads no mode and no
-// execute bit, and a comparison then compares neither. [Write] sets no bit
-// there, and [ModesUnrecorded] returns the fault of an assertion that reads
-// a mode. The build for Windows takes the file systems of its platform for
-// such file systems, and every other build takes its file systems for ones
-// that record the nine permission bits.
+// execute bit, and a comparison then compares neither. [ModesUnrecorded]
+// returns the fault of an assertion that reads a mode there. The build for
+// Windows takes the file systems of its platform for such file systems, and
+// every other build takes its file systems for ones that record the nine
+// permission bits.
+//
+// Windows records one permission bit, the owner's write bit of a file, as
+// the file's read-only attribute. [Write] sets the attribute on each file
+// whose mode lacks that bit, and sets none on a directory, where Windows does
+// not honour it. Windows stores the target of a link with backslashes, and
+// [Read] and [ReadPath] return it with slashes, as a tree states it.
 //
 // # Dependency position
 //

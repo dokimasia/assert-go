@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"syscall"
 
 	"go.dokimi.dev/assert/internal/fault"
@@ -14,7 +15,8 @@ import (
 
 // Read returns the tree in fsys: every entry below its root, each link as a
 // link with its target, and the permission bits of each file and each
-// directory as the platform records them. With modes false, it states the
+// directory as the platform records them. A target separates its names with
+// slashes on every platform. With modes false, it states the
 // execute bit of each file alone, as an update of a golden tree reads the
 // golden tree.
 //
@@ -64,7 +66,9 @@ func readEntry(fsys fs.FS, path string, d fs.DirEntry, modes bool) (Entry, error
 		e.Content = string(content)
 	}
 	if err == nil && e.Kind == Link {
-		e.Target, err = fs.ReadLink(fsys, path)
+		var target string
+		target, err = fs.ReadLink(fsys, path)
+		e.Target = filepath.ToSlash(target)
 	}
 	if err != nil {
 		return Entry{}, readFault(err)
@@ -86,8 +90,9 @@ func readFault(err error) error {
 // the zero Entry when nothing is there. Nothing is at a path below a file.
 // It follows no link at path, and the platform resolves a link among the
 // names before the last one. It reads the content of a file with content
-// set, and the permission bits of a file or a directory as the platform
-// records them.
+// set, the target of a link, and the permission bits of a file or a
+// directory as the platform records them. A target separates its names with
+// slashes on every platform.
 //
 // # Errors
 //
@@ -114,7 +119,9 @@ func ReadPath(path string, content bool) (Entry, error) {
 		e.Content = string(data)
 	}
 	if err == nil && e.Kind == Link {
-		e.Target, err = os.Readlink(path)
+		var target string
+		target, err = os.Readlink(path)
+		e.Target = filepath.ToSlash(target)
 	}
 	if err != nil {
 		return Entry{}, readFault(err)

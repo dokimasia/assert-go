@@ -36,7 +36,9 @@ type step struct {
 // none [FileMode], [ExecutableMode] or [DirMode]. Write sets the mode of a
 // file after it writes the file, and the mode of a directory after every
 // entry below it, so the umask cannot change a mode, and the mode of a
-// directory cannot stop a write below it.
+// directory cannot stop a write below it. On Windows only the owner's write
+// bit of a file's mode takes effect, as the file's read-only attribute, and
+// the mode of a directory takes none.
 //
 // # Errors
 //
@@ -112,7 +114,7 @@ func creating(full, kept Tree, before ...step) []step {
 		steps = append(steps, step{path: path, run: create(path, e)})
 		if e.Kind == Dir {
 			modes = append(modes, step{path: path, run: func(root *os.Root) error {
-				return setMode(root, path, modeOf(e))
+				return setDirMode(root, path, modeOf(e))
 			}})
 		}
 	}
@@ -136,7 +138,7 @@ func create(path string, e Entry) func(root *os.Root) error {
 			return err
 		}
 		_, err = f.WriteString(e.Content)
-		return errors.Join(err, f.Close(), setMode(root, path, modeOf(e)))
+		return errors.Join(err, f.Close(), root.Chmod(path, modeOf(e)))
 	}
 }
 

@@ -56,7 +56,9 @@ func Dir() Entry {
 }
 
 // Link returns a symbolic link to target. The target is text that no rule of
-// a path limits, inside or outside the tree, and nothing follows it.
+// a path limits, inside or outside the tree, and nothing follows it. A tree
+// reads a target with slashes on every platform, so a target separates its
+// names with slashes.
 //
 // # Allocation contract
 //

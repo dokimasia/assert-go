@@ -25,6 +25,7 @@ func TestWrite(t *testing.T) {
 
 		t.Run("writes every entry with its stated mode, and 0644 and 0755 where it states none", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 
 			dir := written(t, filetree.Tree{
 				"a.txt":   textFile,
@@ -49,6 +50,7 @@ func TestWrite(t *testing.T) {
 
 		t.Run("sets the mode of a directory after every entry below it", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 
 			dir := written(t, filetree.Tree{"ro": dirWith(0o500), "ro/a.txt": textFile})
 			assert.Equal(
@@ -57,6 +59,20 @@ func TestWrite(t *testing.T) {
 				filetree.Tree{"ro": dirWith(0o500), "ro/a.txt": fileWith("a\n", fileMode)},
 				"the file below the directory is written before the directory loses its write bit",
 			)
+		})
+
+		t.Run("sets the owner's write bit of each file, the one bit that Windows records", func(t *testing.T) {
+			t.Parallel()
+
+			dir := written(t, filetree.Tree{"ro.txt": fileWith("a\n", 0o444), "rw.txt": fileWith("a\n", fileMode)})
+			writable := map[string]bool{}
+			for _, name := range []string{"ro.txt", "rw.txt"} {
+				info, err := os.Stat(filepath.Join(dir, name))
+				assert.NoError(t, err, name+" is there")
+				writable[name] = info.Mode().Perm()&ownerWrite != 0
+			}
+			assert.Equal(t, writable, map[string]bool{"ro.txt": false, "rw.txt": true},
+				"a file whose mode lacks the owner's write bit is read-only")
 		})
 
 		t.Run("returns the fault of a tree that breaks a rule, and writes nothing", func(t *testing.T) {
@@ -110,6 +126,7 @@ func TestWrite(t *testing.T) {
 			"creates a missing directory and writes the tree with the modes that a workspace sets",
 			func(t *testing.T) {
 				t.Parallel()
+				mustRecordModes(t)
 
 				dir := filepath.Join(t.TempDir(), "testdata", "golden", "api")
 				tree := filetree.Tree{"a.txt": fileWith("a\n", privateMode), "bin/run": executableFile}
@@ -140,12 +157,19 @@ func TestWrite(t *testing.T) {
 			got, err := filetree.Read(os.DirFS(dir), false)
 			assert.NoError(t, err, "the directory is read")
 			assert.Equal(t, got, tree, "the directory equals the tree")
-			assert.Equal(t, readBack(t, outside), filetree.Tree{"keep.txt": fileWith("a\n", fileMode)},
-				"the entry that the removed link points to stays")
+			kept, err := filetree.Read(os.DirFS(outside), false)
+			assert.NoError(t, err, "the directory outside is read")
+			assert.Equal(
+				t,
+				kept,
+				filetree.Tree{"keep.txt": textFile},
+				"the entry that the removed link points to stays",
+			)
 		})
 
 		t.Run("leaves an entry that equals the tree's as it is, its mode included", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 
 			dir := written(t, filetree.Tree{"a.txt": fileWith("a\n", privateMode)})
 			assert.NoError(t, filetree.Update(dir, filetree.Tree{"a.txt": textFile}), "the update passes")
@@ -170,6 +194,7 @@ func TestWrite(t *testing.T) {
 
 		t.Run("returns the fault of a directory that cannot be read", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 
 			dir := written(t, filetree.Tree{"locked": dirWith(0o300)})
 			err := filetree.Update(dir, filetree.Tree{"a.txt": textFile})
@@ -189,6 +214,7 @@ func TestWrite(t *testing.T) {
 
 		t.Run("gives the owner every permission of each directory, so the tree can be removed", func(t *testing.T) {
 			t.Parallel()
+			mustRecordModes(t)
 
 			dir := t.TempDir()
 			assert.NoError(t, filetree.Write(dir, filetree.Tree{"locked": dirWith(0), "locked/a.txt": textFile}),

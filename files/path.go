@@ -134,7 +134,8 @@ func kindIs(k filetree.Kind) func(filetree.Entry) map[string]any {
 }
 
 // LinksTo checks that a symbolic link whose target is target is at path. The
-// target compares as text, and nothing follows the link. It stops the test
+// target compares as text, read with slashes as separators on every
+// platform, and nothing follows the link. It stops the test
 // with a record of links-to when no such link is there: want is target, got
 // the target of the link there, or nil when no link is there, and kind the
 // kind of the entry there, or nil for none. The reading and the faults are

@@ -49,6 +49,9 @@ const (
 	dirMode fs.FileMode = 0o755
 	// privateMode is a mode that only the owner may read and write.
 	privateMode fs.FileMode = 0o600
+	// ownerWrite is the permission bit that lets the owner write a file,
+	// which Windows records as the file's read-only attribute.
+	ownerWrite fs.FileMode = 0o200
 )
 
 // fileOf returns a file of content that states no mode.
@@ -69,6 +72,15 @@ func dirWith(mode fs.FileMode) filetree.Entry {
 // linkTo returns a link to target.
 func linkTo(target string) filetree.Entry {
 	return filetree.Entry{Kind: filetree.Link, Target: target}
+}
+
+// mustRecordModes skips tb on a platform whose file systems record no
+// permission bits, where a tree reads no mode and no execute bit.
+func mustRecordModes(tb testing.TB) {
+	tb.Helper()
+	if err := filetree.ModesUnrecorded(); err != nil {
+		tb.Skip(err)
+	}
 }
 
 // expectFault checks that err is a fault at path whose reason is reason.
