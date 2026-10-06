@@ -12,10 +12,13 @@ import (
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
-// TestGoroutine reads the goroutines of the whole process, so neither it
-// nor its cases run in parallel. See [matchertest.RunNoGoroutineLeaks].
+// TestGoroutine runs the shared cases of the leak check, in parallel. See
+// [matchertest.RunNoGoroutineLeaks].
 func TestGoroutine(t *testing.T) {
+	t.Parallel()
+
 	t.Run("NoGoroutineLeaks", func(t *testing.T) {
+		t.Parallel()
 		matchertest.RunNoGoroutineLeaks(t, func(s *matchertest.Seat, msg string) func() {
 			return assert.NoGoroutineLeaks(s, msg)
 		})
@@ -49,7 +52,7 @@ func goroutineCases() []alloctest.Case {
 		{
 			Name:   "NoGoroutineLeaks",
 			Call:   func(tb assert.TB) { assert.NoGoroutineLeaks(tb, allocContract)() },
-			Allocs: 7,
+			Allocs: 174,
 		},
 	}
 }

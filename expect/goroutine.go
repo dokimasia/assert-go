@@ -8,43 +8,27 @@ import (
 	"go.dokimi.dev/assert/internal/matcher"
 )
 
-// NoGoroutineLeaks records which goroutines are running and returns a
-// check that records a failure, and lets the test continue, when a
-// goroutine started after this call is still running when the check is
-// called.
+// NoGoroutineLeaks marks the calling goroutine and returns a check that
+// records a failure, and lets the test continue, when a goroutine that the
+// scope started is still running when the check is called. The scope is
+// what the calling goroutine runs between this call and the check.
 //
 //	done := expect.NoGoroutineLeaks(t, "the worker stops with its context")
 //	defer done()
 //
-// The check compares goroutine ids, not counts, so a goroutine that was
-// already running is never reported.
-//
-// The check reads the running goroutines up to 100 times, 5 ms apart, and
-// reports the new goroutines that are still running at the last reading.
-// A goroutine that returns during that half second is not a leak. The
-// wait is real time, because no clock that a test controls affects when a
-// goroutine returns.
-//
-// Each reading dumps the stacks of every goroutine into a buffer of at
-// most 64 MiB. A dump that does not fit leaves the set of new goroutines
-// unknown. The check then stops the test with a fault and states no
-// verdict. Every fault stops the test, in this package as in
-// [go.dokimi.dev/assert].
-//
-// # Parallel tests
-//
-// A goroutine that a parallel test starts between the two readings is
-// new, so the check reports it as a leak. Do not call [testing.T.Parallel]
-// in a test that uses this check. A package whose other tests are
-// parallel can still produce a false report, because each reading covers
-// the whole process.
+// The call sets a profiler label of the scope on the calling goroutine, and
+// every goroutine that the scope starts inherits it, so a goroutine of
+// another test is never reported. Call the check on the goroutine that
+// called NoGoroutineLeaks, as a deferred call does. See
+// [go.dokimi.dev/assert.NoGoroutineLeaks] for the wait of the check, its
+// detail and its limits.
 //
 // # Allocation contract
 //
-// A call and a check that finds no new goroutine allocate 7 times in a
-// process of a few goroutines, the 1 MiB buffer of the dumps among them.
-// The sets of goroutine ids grow with the goroutines of the process, so a
-// process of more goroutines allocates more.
+// A call and a check that finds no labelled goroutine allocate at most 174
+// times in a process of a few goroutines, the goroutine profile among them.
+// The profile grows with the goroutines of the process and with their
+// stacks.
 func NoGoroutineLeaks(tb assert.TB, msg string) func() {
 	tb.Helper()
 	return matcher.NoGoroutineLeaks(tb, matcher.Soft, msg)

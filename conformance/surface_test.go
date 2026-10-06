@@ -708,9 +708,8 @@ var recordingMethods = map[string]func(tb assert.TB){
 // method set, so a member added without a driver fails here.
 //
 // It does not run in parallel. The MaxAllocs driver calls
-// testing.AllocsPerRun, which panics while a parallel test runs, the
-// MaxAllocsWithSetup driver counts the allocations of the whole process,
-// and the NoGoroutineLeaks driver reads every goroutine in the process.
+// testing.AllocsPerRun, which panics while a parallel test runs, and the
+// MaxAllocsWithSetup driver counts the allocations of the whole process.
 func TestSurfaceRecording(t *testing.T) {
 	members, err := conformance.Members(conformance.Recording)
 	if err != nil {

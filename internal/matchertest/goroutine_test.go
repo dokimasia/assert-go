@@ -4,7 +4,10 @@
 package matchertest_test
 
 import (
+	"context"
+	"math/rand/v2"
 	"runtime"
+	"runtime/pprof"
 	"slices"
 	"strconv"
 	"strings"
@@ -22,20 +25,25 @@ const (
 	poll  = 10 * time.Millisecond
 )
 
-// Not parallel, and neither are its cases: the reading is over the
-// whole process. See [matchertest.RunNoGoroutineLeaks].
+// referenceLabel is the key of the label that the independent check sets.
+const referenceLabel = "matchertest.scope"
+
 func TestGoroutine(t *testing.T) {
+	t.Parallel()
+
 	t.Run("RunNoGoroutineLeaks", func(t *testing.T) {
+		t.Parallel()
 		matchertest.RunNoGoroutineLeaks(t, leakCheck(slices.Sort))
 	})
 }
 
 // TestGoroutineTwins runs TestGoroutineTwinsChild in a child process, and
 // requires the failure of RunNoGoroutineLeaks for a twin that reports the
-// goroutines in descending order of id.
+// goroutines in descending order.
 func TestGoroutineTwins(t *testing.T) {
 	t.Parallel()
-	expectBroken(t, "TestGoroutineTwinsChild", "want the 8 goroutines in ascending order of id")
+	expectBroken(t, "TestGoroutineTwinsChild",
+		"want the functions of the 3 and 5 goroutines in ascending order")
 }
 
 // TestGoroutineTwinsChild runs only in the child process of
@@ -44,29 +52,27 @@ func TestGoroutineTwinsChild(t *testing.T) {
 	inChild(t)
 
 	t.Run("RunNoGoroutineLeaks of a twin that reports in descending order", func(t *testing.T) {
-		matchertest.RunNoGoroutineLeaks(t, leakCheck(func(leaked []uint64) {
+		matchertest.RunNoGoroutineLeaks(t, leakCheck(func(leaked []string) {
 			slices.Sort(leaked)
 			slices.Reverse(leaked)
 		}))
 	})
 }
 
-// leakCheck returns a leak assertion that reports the goroutines that
-// started after it and still run after the grace, in the order that order
-// puts their ids in.
-func leakCheck(order func(leaked []uint64)) matchertest.LeakInvoke {
+// leakCheck returns a leak assertion that labels the calling goroutine with
+// a scope of its own, and reports the function of each goroutine with that
+// label that still runs after the grace, in the order that order puts them
+// in.
+func leakCheck(order func(leaked []string)) matchertest.LeakInvoke {
 	return func(s *matchertest.Seat, msg string) func() {
-		before := ids()
+		scope := strconv.FormatUint(rand.Uint64(), 36)
+		pprof.SetGoroutineLabels(pprof.WithLabels(context.Background(), pprof.Labels(referenceLabel, scope)))
 
 		return func() {
-			var leaked []uint64
+			pprof.SetGoroutineLabels(context.Background())
+			var leaked []string
 			for deadline := time.Now().Add(grace); ; time.Sleep(poll) {
-				leaked = leaked[:0]
-				for id := range ids() {
-					if !before[id] {
-						leaked = append(leaked, id)
-					}
-				}
+				leaked = scoped(scope)
 				if len(leaked) == 0 || time.Now().After(deadline) {
 					break
 				}
@@ -82,26 +88,32 @@ func leakCheck(order func(leaked []uint64)) matchertest.LeakInvoke {
 	}
 }
 
-// ids returns every live goroutine's id, which is what a leak check
-// reads. Written out here rather than reused so the suite is driven by
-// an independent implementation.
-func ids() map[uint64]bool {
+// scoped returns the function of each goroutine whose header in a dump of
+// every stack states the label of scope. The header states a goroutine's
+// labels, because this module states go 1.27.0, whose traceback prints
+// them. It reads the dump of the stacks and not the goroutine profile that
+// the matcher reads, so the suite checks the matcher against a second
+// implementation.
+func scoped(scope string) []string {
 	buf := make([]byte, 1<<20)
 	buf = buf[:runtime.Stack(buf, true)]
 
-	out := map[uint64]bool{}
-	for line := range strings.SplitSeq(string(buf), "\n") {
-		rest, ok := strings.CutPrefix(line, "goroutine ")
-		if !ok {
+	var out []string
+	for block := range strings.SplitSeq(string(buf), "\n\n") {
+		header, frames, _ := strings.Cut(block, "\n")
+		if !strings.Contains(header, referenceLabel+": "+scope) {
 			continue
 		}
-		digits, _, ok := strings.Cut(rest, " ")
-		if !ok {
-			continue
+		function := ""
+		for line := range strings.SplitSeq(frames, "\n") {
+			if strings.HasPrefix(line, "created by ") {
+				break
+			}
+			if i := strings.LastIndex(line, "("); i > 0 && !strings.HasPrefix(line, "\t") {
+				function = line[:i]
+			}
 		}
-		if id, err := strconv.ParseUint(digits, 10, 64); err == nil {
-			out[id] = true
-		}
+		out = append(out, function)
 	}
 	return out
 }
