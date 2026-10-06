@@ -19,3 +19,4 @@ they record why not.
 | [0011](0011-machines-the-task-scheduler-and-campaigns-in-go.md) | Machines, the task scheduler and campaigns in Go | Accepted |
 | [0012](0012-definition-6-in-go.md) | Definition 6.0.0 in Go | Accepted |
 | [0013](0013-resuming-the-check-of-a-growing-history.md) | Resuming the check of a growing history | Accepted |
+| [0014](0014-an-analyzer-of-hand-written-checks.md) | An analyzer of hand-written checks | Draft |
