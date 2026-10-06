@@ -5,9 +5,11 @@ package matcher_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
+	"go.dokimi.dev/assert/internal/childtest"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 	"go.dokimi.dev/assert/internal/record"
@@ -24,9 +26,28 @@ const allocRuns = 100
 // allocContract is the contract of every call of the allocation cases.
 const allocContract = "the call passes"
 
-// mutantVariable is the variable that a mutation run sets in every run of
-// a test binary that it instrumented, its control runs included.
-const mutantVariable = "DOKIMI_MUTATE_MUTANT"
+// The variables that a mutation run sets in the environment of the test
+// binaries that it runs.
+const (
+	// mutantVariable is set in every run of a mutation run, the run that
+	// confirms a survivor in an ordinary build included.
+	mutantVariable = "DOKIMI_MUTATE_MUTANT"
+	// instrumentedVariable is set in every run of the test binary that a
+	// mutation run instrumented, and in no run of an ordinary build.
+	instrumentedVariable = "DOKIMI_MUTATE_INSTRUMENTED"
+)
+
+// runChild runs the test again in a child process, with the variables of
+// env, and returns the child's output. It fails the test when the child
+// fails or does not run the test.
+func runChild(t *testing.T, env ...string) string {
+	t.Helper()
+	out, err := childtest.Run(t, t.Name(), env...)
+	if err != nil || !strings.Contains(out, "--- PASS: "+t.Name()+" ") {
+		t.Fatalf("the child exits with %v, want a pass of %s:\n%s", err, t.Name(), out)
+	}
+	return out
+}
 
 // allocCase is one call of a function of the package, and the ceiling of
 // its allocations.

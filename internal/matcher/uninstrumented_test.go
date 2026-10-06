@@ -26,7 +26,7 @@ func TestUninstrumented(t *testing.T) {
 				t.Parallel()
 
 				info, _ := debug.ReadBuildInfo()
-				_, mutated := os.LookupEnv(mutantVariable)
+				_, mutated := os.LookupEnv(instrumentedVariable)
 				if got, want := matcher.AllocationsCounted(), !matcher.OptimisationsOff(info) && !mutated; got != want {
 					t.Fatalf("AllocationsCounted = %v, want %v in a build without instrumentation", got, want)
 				}

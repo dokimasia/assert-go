@@ -27,9 +27,11 @@ import (
 //
 // In a build with the race detector, msan or asan, in one whose -gcflags
 // turn off optimisation or inlining, and in a test binary that a mutation
-// run instrumented, which runs with DOKIMI_MUTATE_MUTANT in its
+// run instrumented, which runs with DOKIMI_MUTATE_INSTRUMENTED in its
 // environment, it calls fn as an ordinary build does and checks no
-// ceiling. Those builds allocate differently from an ordinary build.
+// ceiling. Those builds allocate differently from an ordinary build. The
+// ordinary build of one mutant, which a mutation run builds to confirm a
+// survivor, checks the ceiling.
 //
 // # Parallel tests
 //

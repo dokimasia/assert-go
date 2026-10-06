@@ -115,10 +115,12 @@ func allocsAfter[T any](setup func() T, fn func(T)) uint64 {
 //   - A build whose -gcflags turn off optimisation or inlining, as a
 //     debugger's build does. With inlining off, a value that an ordinary
 //     build keeps on the stack can move to the heap.
-//   - A test binary that a mutation run instrumented, as [Mutated]
-//     reports. The binary contains every mutant of a package behind a
-//     switch, so the compiler inlines fewer of its functions, and a value
-//     can move to the heap as it does with inlining off.
+//   - A test binary that a mutation run instrumented, as
+//     [MutationInstrumented] reports. The binary contains every mutant of
+//     a package behind a switch, so the compiler inlines fewer of its
+//     functions, and a value can move to the heap as it does with inlining
+//     off. The ordinary build of one mutant, which a mutation run builds to
+//     confirm a survivor, counts its allocations.
 //
 // It reads the build information and the environment on its first call,
 // and returns the result of that reading afterwards.
@@ -133,7 +135,7 @@ func AllocationsCounted() bool {
 // allocationsCounted computes [AllocationsCounted] on its first call.
 var allocationsCounted = sync.OnceValue(func() bool {
 	info, _ := debug.ReadBuildInfo()
-	return !instrumented && !OptimisationsOff(info) && !Mutated()
+	return !instrumented && !OptimisationsOff(info) && !MutationInstrumented()
 })
 
 // OptimisationsOff reports whether info records -gcflags that turn off

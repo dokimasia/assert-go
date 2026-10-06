@@ -182,9 +182,11 @@ In a build with the race detector, msan or asan, in one whose
 `-gcflags` turn off optimisation or inlining, and in a test binary that
 a mutation run instrumented, the assertions and the contracts check no
 allocation ceiling, because those builds allocate differently from a
-production build. A mutation run sets `DOKIMI_MUTATE_MUTANT` in every
-run of such a binary. `MaxAllocs` and `MaxAllocsWithSetup` still call
-the function, and a contract still publishes its counts.
+production build. A mutation run sets `DOKIMI_MUTATE_INSTRUMENTED` in
+every run of such a binary, and leaves it out of the ordinary build of
+one mutant that confirms a survivor, where the ceilings apply.
+`MaxAllocs` and `MaxAllocsWithSetup` still call the function, and a
+contract still publishes its counts.
 
 ## Properties
 

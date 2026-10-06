@@ -522,15 +522,3 @@ func verdictCases() []allocCase {
 		}},
 	}
 }
-
-// runChild runs the test again in a child process, with the variables of
-// env, and returns the child's output. It fails the test when the child
-// fails or does not run the test.
-func runChild(t *testing.T, env ...string) string {
-	t.Helper()
-	out, err := childtest.Run(t, t.Name(), env...)
-	if err != nil || !strings.Contains(out, "--- PASS: "+t.Name()+" ") {
-		t.Fatalf("the child exits with %v, want a pass of %s:\n%s", err, t.Name(), out)
-	}
-	return out
-}

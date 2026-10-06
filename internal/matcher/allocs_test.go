@@ -6,7 +6,6 @@ package matcher_test
 import (
 	"os"
 	"runtime/debug"
-	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert/internal/childtest"
@@ -81,9 +80,26 @@ func TestOptimisationsOff(t *testing.T) {
 // detector, msan and asan.
 var instrumentedSettings = map[string]bool{"-race": true, "-msan": true, "-asan": true}
 
+// countedHere returns what AllocationsCounted reports in the running
+// binary, from its build information and its environment, and the build's
+// settings. The build tags and the build information are two records of
+// one build. Reading the second checks the first, in every build this
+// suite runs under.
+func countedHere() (bool, []debug.BuildSetting) {
+	info, _ := debug.ReadBuildInfo()
+	instrumented := false
+	for _, setting := range info.Settings {
+		if instrumentedSettings[setting.Key] && setting.Value == "true" {
+			instrumented = true
+		}
+	}
+	_, mutation := os.LookupEnv(instrumentedVariable)
+	return !instrumented && !matcher.OptimisationsOff(info) && !mutation, info.Settings
+}
+
 // TestAllocationsCounted checks AllocationsCounted against the build
 // information and the environment of the running binary, and in child
-// processes whose environment states the variable of a mutation run. Each
+// processes whose environment states a variable of a mutation run. Each
 // child reads its own environment on its first call.
 func TestAllocationsCounted(t *testing.T) {
 	t.Parallel()
@@ -91,21 +107,9 @@ func TestAllocationsCounted(t *testing.T) {
 	t.Run("agrees with the running binary's build information and environment", func(t *testing.T) {
 		t.Parallel()
 
-		// The build tags and the build information are two records of one
-		// build. Reading the second checks the first, in every build this
-		// suite runs under.
-		info, _ := debug.ReadBuildInfo()
-		instrumented := false
-		for _, setting := range info.Settings {
-			if instrumentedSettings[setting.Key] && setting.Value == "true" {
-				instrumented = true
-			}
-		}
-
-		_, mutated := os.LookupEnv(mutantVariable)
-		want := !instrumented && !matcher.OptimisationsOff(info) && !mutated
+		want, settings := countedHere()
 		if got := matcher.AllocationsCounted(); got != want {
-			t.Fatalf("AllocationsCounted = %v, want %v for settings %v", got, want, info.Settings)
+			t.Fatalf("AllocationsCounted = %v, want %v for settings %v", got, want, settings)
 		}
 	})
 
@@ -113,8 +117,11 @@ func TestAllocationsCounted(t *testing.T) {
 		name string
 		give string
 	}{
-		{name: "reports false in a test binary that runs a mutant", give: mutantVariable + "=12"},
-		{name: "reports false whatever the variable states, the empty value included", give: mutantVariable + "="},
+		{name: "reports false in a test binary that a mutation run instrumented", give: instrumentedVariable + "=1"},
+		{
+			name: "reports false whatever the variable states, the empty value included",
+			give: instrumentedVariable + "=",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -126,12 +133,23 @@ func TestAllocationsCounted(t *testing.T) {
 				}
 				return
 			}
-			out, err := childtest.Run(t, t.Name(), tt.give)
-			if err != nil || !strings.Contains(out, "--- PASS: "+t.Name()+" ") {
-				t.Fatalf("the child exits with %v, want a pass:\n%s", err, out)
-			}
+			runChild(t, tt.give)
 		})
 	}
+
+	t.Run("counts in the ordinary build that confirms a survivor of a mutation run", func(t *testing.T) {
+		t.Parallel()
+
+		if childtest.InChild(t) {
+			want, settings := countedHere()
+			if got := matcher.AllocationsCounted(); got != want {
+				t.Fatalf("AllocationsCounted = %v, want %v for settings %v with %s set", got, want, settings,
+					mutantVariable)
+			}
+			return
+		}
+		runChild(t, mutantVariable+"=12")
+	})
 }
 
 // TestAllocsAllocs checks the allocation ceiling of a passing call of each
