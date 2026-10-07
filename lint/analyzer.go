@@ -28,18 +28,23 @@ var Analyzer = &analysis.Analyzer{
 
 // checkRules are the rules over a check, in the order in which they claim
 // it. The first rule that reports a check ends the search, so no check has
-// two diagnostics of these rules.
-var checkRules = []func(p *pass, c check) bool{
-	panics, nilContextSafe, inRange, conjunction,
-	honoursCancellation, honoursDeadline, pathAbsent, afterClose, errorsIs, errorsAs, sentinel,
-	fileKind, hasMode, linksTo, fileContent,
-	measurement,
-	commutative, associative, roundTrip, repetition, permutation,
-	rejects,
-	equalFunc, deepEqual, nilCheck, equalNil, length, contains, membership, containsInOrder, prefix, matches,
-	closeTo, pairwise,
-	order, compare,
-	condition,
+// two diagnostics of these rules. init assigns them, because conjunction
+// names the assertion of each operand through them.
+var checkRules []func(p *pass, c check) bool
+
+func init() {
+	checkRules = []func(p *pass, c check) bool{
+		panics, nilContextSafe, inRange, conjunction,
+		honoursCancellation, honoursDeadline, pathAbsent, afterClose, errorsIs, errorsAs, sentinel,
+		fileKind, hasMode, linksTo, fileContent,
+		measurement,
+		commutative, associative, roundTrip, repetition, permutation,
+		rejects,
+		equalFunc, deepEqual, nilCheck, equalNil, length, contains, membership, containsInOrder, prefix, matches,
+		closeTo, pairwise,
+		order, compare,
+		condition,
+	}
 }
 
 // loopNodes are the types of a loop.
@@ -78,6 +83,9 @@ type pass struct {
 	fixed map[*ast.CallExpr]bool
 	// skips are the annotations of the package.
 	skips []*skip
+	// naming, where it is not nil, receives what a rule states in place of a
+	// report, while named asks the rules which assertion states a check.
+	naming *string
 }
 
 // run reports the hand-written checks of the package of ap. The rules over
@@ -153,9 +161,33 @@ func (p *pass) brief(n ast.Node) string {
 	return string(text[:briefLength-1]) + "…"
 }
 
+// named returns the assertion that the first rule over checks names for c,
+// without a report, and True or False of c's condition where no rule names
+// one.
+func (p *pass) named(c check) string {
+	name := "False"
+	if c.holds {
+		name = "True"
+	}
+	saved := p.naming
+	p.naming = &name
+	defer func() { p.naming = saved }()
+	for _, rule := range checkRules {
+		if rule(p, c) {
+			break
+		}
+	}
+	return name
+}
+
 // reportf reports a hand-written check of the rule at the node n with the
-// message and the fixes, unless an annotation leaves the report out.
+// message and the fixes, unless an annotation leaves the report out. While
+// named asks the rules, it passes what the message states to named instead.
 func (p *pass) reportf(n ast.Node, rule, message string, fixes []analysis.SuggestedFix) {
+	if p.naming != nil {
+		*p.naming = strings.TrimPrefix(message, "state the check with ")
+		return
+	}
 	if p.skipped(n.Pos(), rule) {
 		return
 	}

@@ -57,6 +57,7 @@ func members(t *testing.T, s string, k kind, c byte, n int, a, b bool, v verdict
 	}
 	assert.True(t, s == "a" || n == 1, "the name is a or the count is one")
 	assert.True(t, a || b, "one holds")
-	assert.False(t, s == "a" || s == "b", "the name is neither a nor b")
+	assert.False(t, s == "a", "the name is neither a nor b")
+	assert.False(t, s == "b", "the name is neither a nor b") // want `conjunction: state each operand in an assertion of its own: NotEqual for s == "a", NotEqual for s == "b"$`
 	assert.True(t, s != "a" || s != "b", "the name is not both a and b")
 }

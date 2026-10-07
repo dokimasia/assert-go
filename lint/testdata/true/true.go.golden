@@ -31,21 +31,21 @@ func ifChecks(t *testing.T, ok bool, n int) {
 
 func conjunctions(t *testing.T, a, b, c bool, p *point, name string, names chan string) {
 	assert.True(t, a, "both hold")
-	assert.True(t, b, "both hold") // want `conjunction: state each operand in an assertion of its own`
+	assert.True(t, b, "both hold") // want `conjunction: state each operand in an assertion of its own: True for a, True for b$`
 	assert.True(t, a, "all three hold")
 	assert.True(t, b, "all three hold")
-	assert.True(t, c, "all three hold") // want `conjunction: state each operand in an assertion of its own`
+	assert.True(t, c, "all three hold") // want `conjunction: state each operand in an assertion of its own: True for a, True for b, True for c$`
 	assert.True(t, a, "both hold")
-	assert.True(t, b, "both hold") // want `conjunction: state each operand in an assertion of its own`
+	assert.True(t, b, "both hold") // want `conjunction: state each operand in an assertion of its own: True for a, True for b$`
 	assert.True(t, p != nil, "the point is right of the axis")
-	assert.True(t, p.x > 0, "the point is right of the axis") // want `conjunction: state each operand in an assertion of its own`
+	assert.True(t, p.x > 0, "the point is right of the axis") // want `conjunction: state each operand in an assertion of its own: NotNil for p != nil, InRange for p\.x > 0$`
 	assert.True(t, a, "case "+name)
 	assert.True(t, b, "case "+name)                                       // want `conjunction: state each operand in an assertion of its own`
-	expect.True(t, p != nil && p.x > 0, "the point is right of the axis") // want `conjunction: state each operand in an assertion of its own`
+	expect.True(t, p != nil && p.x > 0, "the point is right of the axis") // want `conjunction: state each operand in an assertion of its own: NotNil for p != nil, InRange for p\.x > 0$`
 	defer assert.True(t, a && b, "both hold")                             // want `conjunction: state each operand in an assertion of its own`
 	assert.True(t, a && b, fmt.Sprintf("case %s", name))                  // want `conjunction: state each operand in an assertion of its own`
 	assert.True(t, a && b, <-names)                                       // want `conjunction: state each operand in an assertion of its own`
-	if !(a && b) {                                                        // want `conjunction: state each operand in an assertion of its own`
+	if !(a && b) {                                                        // want `conjunction: state each operand in an assertion of its own: True for a, True for b$`
 		t.Fatal("one of the two does not hold")
 	}
 	assert.False(t, a && b, "not both hold")

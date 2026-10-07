@@ -79,10 +79,13 @@
 //     takes a bound of <= or >= by a constant, or by a float64 that calls no
 //     function. An integer takes a constant bound of a magnitude up to 2^53,
 //     which the fix moves by one for < and >.
-//   - conjunction: True of a && b. An assertion of each operand states the
-//     check. Its fix writes a True of each operand, for a statement of assert
-//     whose test and message neither call a function nor receive from a
-//     channel.
+//   - conjunction: True of a && b, and False of a || b, as a call or as an if
+//     check outside a loop that calls time.Sleep. An assertion of each
+//     operand states the check. The diagnostic names the assertion that the
+//     rules over a check name for each operand alone, as in "NoError for
+//     err != nil, False for failed". Its fix writes a True or a False of each
+//     operand, for a statement of assert whose test and message neither call
+//     a function nor receive from a channel.
 //   - honours-cancellation, honours-deadline: a match of an error with
 //     context.Canceled or context.DeadlineExceeded, where the call that
 //     returns the error receives a context that ended before the call. A
