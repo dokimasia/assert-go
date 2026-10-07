@@ -129,9 +129,9 @@ A rule reads one of three kinds of check:
   one call of `Error`, `Errorf`, `Fatal`, `Fatalf`, `Fail` or `FailNow` on
   a test, a value whose method set has `Helper` too. It states that its
   condition is false, as `False` of the condition states it.
-- **A statement that a rule names.** Examples are a loop that calls
-  `time.Sleep`, a `select` with a case of `time.After`, and a call of
-  `testing/quick`.
+- **A statement that a rule names.** Examples are a loop that sleeps until
+  it ends on a condition, a `select` with a case of `time.After`, and a call
+  of `testing/quick`.
 
 A condition loses its parentheses and its negations, and each negation
 inverts what the check states. `False(t, !(x == nil))` and `if x != nil {
@@ -185,7 +185,7 @@ package.
 | `panics`, `not-panics` | `Nil`, `NotNil`, or a comparison with nil, of a value whose origin is `recover()` | `Panics`, `NotPanics` | No |
 | `nil-context-safe` | `NotPanics` of a function literal that passes nil for a parameter whose declared type is `context.Context` | `NilContextSafe` | No |
 | `in-range` | `True` of `lo <= x && x <= hi`, or `False` of `x < lo \|\| x > hi`, over one number x, in any order of each comparison's operands | `InRange` | Where x calls no function and both bounds are exact as a float64 |
-| `conjunction` | `True` of `a && b` and `False` of `a \|\| b`, as a call or as an `if` check outside a loop that calls `time.Sleep` | The assertion that each operand takes alone, as the rules over a check name it for the operand | For a statement of assert, a `True` or a `False` of each operand |
+| `conjunction` | `True` of `a && b` and `False` of `a \|\| b`, as a call or as an `if` check outside a loop that waits for a condition, as `eventually` reads it | The assertion that each operand takes alone, as the rules over a check name it for the operand | For a statement of assert, a `True` or a `False` of each operand |
 | `honours-cancellation` | A match of an error with `context.Canceled`, where the call that returns it receives a context whose cancel function an earlier statement called, directly or through a function of the package that returns such a context. A function literal of an earlier statement that assigns the error returns it where each of its assignments of the error is such a call with a context that ended before the literal, and no statement from the literal up to the check assigns the context's variable | `HonoursCancellation` | No |
 | `honours-deadline` | A match of an error with `context.DeadlineExceeded`, where the call that returns it receives a context whose deadline had passed when it was made, directly or through a function literal as for `honours-cancellation` | `HonoursDeadline` | No |
 | `path-absent` | `True` of `os.IsNotExist(err)`, and a match of err with `fs.ErrNotExist` or `os.ErrNotExist`, where err comes from `os.Stat` | `files.Absent` | No |
@@ -225,12 +225,12 @@ package.
 | `pairwise` | `slices.IsSorted`, `slices.IsSortedFunc`, and the functions of `sort` that report whether values are sorted | `Pairwise` | No |
 | `order` | `<`, `<=`, `>` or `>=` between a number and a constant | `InRange` | For an integer and a constant of a magnitude up to 2^53 |
 | `compare` | `a == b` or `a != b` between booleans, numbers or strings | `Equal`, `NotEqual` | Yes |
-| `condition` | An `if` check that no other rule reports, outside a loop that calls `time.Sleep` | `True`, `False` | No |
+| `condition` | An `if` check that no other rule reports, outside a loop that waits for a condition | `True`, `False`, and for a guard on `a && b` the assertion of `!b` under an `if` of `a` | No |
 | `total` | A range over a slice whose body is one `NoError` of `f(element)`, where f does not read the element | `Total` | For assert, where f calls no function and the message does not read the element |
 | `poisoned` | A counted loop whose body is one `HasError` of a call | `Poisoned` | No |
 | `no-duplicates` | A range whose body checks `seen[x]` and assigns `seen[x]` | `NoDuplicates` | No |
 | `monotonic` | A loop that checks the order of a value and of the value that it keeps from the step before | `Monotonic` | No |
-| `eventually` | A loop that calls `time.Sleep` | `Eventually`, `EventuallyTrue` | No |
+| `eventually` | A loop that waits for a condition: it calls `time.Sleep`, a return or a break of its body or the condition of a `for` statement that compares no counter can end it, and a test is in scope | `Eventually`, `EventuallyTrue` | No |
 | `completes-within` | A `select` whose case of `time.After` fails the test | `CompletesWithin` | No |
 | `update-flag` | A definition of the flag `-update` in a test file | `golden.MatchAt` with `golden.ShouldUpdate` | No |
 | `for-all` | A loop that calls a function of `math/rand` or `math/rand/v2` and checks, and a call of `testing/quick` | `prop.ForAll` | No |

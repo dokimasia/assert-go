@@ -4,6 +4,7 @@
 package lint
 
 import (
+	"go/ast"
 	"go/token"
 	"strings"
 
@@ -15,7 +16,7 @@ import (
 // check of a || b, whose failure does not state which operand failed. It
 // names the assertion that each operand takes alone, as the rules over
 // checks name it for a check of the operand. An if check in a loop that
-// sleeps is part of the wait that eventually reports.
+// waits for a condition is part of the wait that eventually reports.
 //
 // It suggests a True or a False of each operand, with the call's test and
 // message, for a statement of the surface that stops the test. A failed
@@ -55,8 +56,12 @@ func conjunction(p *pass, c check) bool {
 }
 
 // condition reports an if check that no other rule reports, which True or
-// False of its condition states. An if check in a loop that sleeps is part of
-// the wait that eventually reports.
+// False of its condition states. An if check in a loop that waits for a
+// condition is part of the wait that eventually reports.
+//
+// A guard on a && b fails the test where both operands are true, so it
+// checks that a implies !b. The rule names the assertion of !b, which a test
+// states under an if of a, as in "NoError for err != nil, where ready".
 func condition(p *pass, c check) bool {
 	if c.call != nil || p.polls(c.cursor) {
 		return false
@@ -64,6 +69,11 @@ func condition(p *pass, c check) bool {
 	name := "False"
 	if c.holds {
 		name = "True"
+	}
+	if guard, ok := c.cond.(*ast.BinaryExpr); ok && guard.Op == token.LAND {
+		last, holds := normalize(guard.Y, false)
+		name = p.named(check{node: c.node, cursor: c.cursor, tb: c.tb, cond: last, holds: holds}) + " for " +
+			p.brief(guard.Y) + ", where " + p.brief(guard.X)
 	}
 	p.report(c.node, "condition", name, nil)
 	return true

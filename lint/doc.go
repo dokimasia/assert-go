@@ -83,12 +83,12 @@
 //     +1 or -1 after it, and a typed bound gets a conversion to float64, as
 //     in float64(slowStart-1).
 //   - conjunction: True of a && b, and False of a || b, as a call or as an if
-//     check outside a loop that calls time.Sleep. An assertion of each
-//     operand states the check. The diagnostic names the assertion that the
-//     rules over a check name for each operand alone, as in "NoError for
-//     err != nil, False for failed". Its fix writes a True or a False of each
-//     operand, for a statement of assert whose test and message neither call
-//     a function nor receive from a channel.
+//     check outside a loop that waits for a condition, as eventually reads
+//     it. An assertion of each operand states the check. The diagnostic
+//     names the assertion that the rules over a check name for each operand
+//     alone, as in "NoError for err != nil, False for failed". Its fix writes
+//     a True or a False of each operand, for a statement of assert whose test
+//     and message neither call a function nor receive from a channel.
 //   - honours-cancellation, honours-deadline: a match of an error with
 //     context.Canceled or context.DeadlineExceeded, where the call that
 //     returns the error receives a context that ended before the call. A
@@ -216,7 +216,10 @@
 //   - compare: == or != between booleans, numbers or strings. Equal and
 //     NotEqual state the check, and the fix calls them.
 //   - condition: an if check that no other rule reports, outside a loop that
-//     calls time.Sleep. True or False of its condition states the check.
+//     waits for a condition. True or False of its condition states the check.
+//     A guard on a && b fails where both operands are true, so the rule names
+//     the assertion of !b under an if of a, as in "NoError for err != nil,
+//     where ready".
 //
 // # Rules over a statement
 //
@@ -238,8 +241,12 @@
 //     assigns seen[x]. NoDuplicates states the check.
 //   - monotonic: a loop that checks an order of two variables and assigns one
 //     of them to the other. Monotonic states the check.
-//   - eventually: a loop that calls time.Sleep. EventuallyTrue and Eventually
-//     state the wait.
+//   - eventually: a loop that waits for a condition. It calls time.Sleep, it
+//     can end on a condition before a count of rounds, and a test is in
+//     scope. A return or a break of its body ends it on a condition, and so
+//     does the condition of a for statement that compares no counter, a
+//     variable that the loop changes. EventuallyTrue and Eventually state the
+//     wait.
 //   - for-all: a loop that calls a function or method of math/rand or
 //     math/rand/v2 and contains a check, and a call of quick.Check or
 //     quick.CheckEqual. prop.ForAll states the property.

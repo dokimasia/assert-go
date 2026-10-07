@@ -486,11 +486,11 @@ store_test.go:73:2: round-trip: state the check with RoundTrip of json.Marshal a
 A rule reads a call of an assertion, such as `True(t, len(xs) == 3, msg)`,
 and an `if` statement whose body is one failure of the test, such as
 `t.Fatalf`. Some rules read a loop or a call, such as a loop that calls
-`time.Sleep`. A diagnostic also quotes the calls that its rule matched
-outside the check's line. The 61 rules cover 100 of the 110 assertions,
-and 21 of them suggest a fix. Under `-fix`, the command applies every fix
-and prints nothing. Run it again without `-fix` to list the checks that
-have no fix.
+`time.Sleep` until a condition ends it. A diagnostic also quotes the calls
+that its rule matched outside the check's line. The 61 rules cover 100 of
+the 110 assertions, and 21 of them suggest a fix. Under `-fix`, the
+command applies every fix and prints nothing. Run it again without `-fix`
+to list the checks that have no fix.
 `go vet -vettool=$(command -v assertlint)` and
 `go fix -fixtool=$(command -v assertlint)` run the analyzer as well.
 

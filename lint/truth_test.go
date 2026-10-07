@@ -14,7 +14,10 @@ func TestTruth(t *testing.T) {
 				name: "suggests a True of each operand of a conjunction, and reports an if check as True",
 				give: "./true",
 			},
-			{name: "reports an if check of a condition that must be false as False", give: "./false"},
+			{
+				name: "reports an if check of a condition that must be false as False, and a guard as the assertion of its last operand",
+				give: "./false",
+			},
 		}
 		analyzeEach(t, tests)
 	})

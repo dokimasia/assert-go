@@ -4,6 +4,9 @@
 package false
 
 import (
+	"errors"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +35,25 @@ func ifChecks(t *testing.T, ok bool, flags []bool) {
 	}
 }
 
+func guards(t *testing.T, ok, ready bool, err, closed error, first, second *exec.Cmd) {
+	if ready && err != nil { // want `condition: state the check with NoError for err != nil, where ready$`
+		t.Fatal(err)
+	}
+	if first == second { // want `condition: state the check with False$`
+		t.Fatal("the two commands are one value")
+	}
+	var exited *exec.ExitError
+	if err != nil && !errors.As(err, &exited) { // want `condition: state the check with ErrorAs of errors\.As\(err, &exited\) for !errors\.As\(err, &exited\), where err != nil$`
+		t.Fatalf("run the command: %v", err)
+	}
+	if closed != nil && !strings.Contains(closed.Error(), "shutdown") { // want `condition: state the check with Contains for !strings\.Contains\(closed\.Error\(\), "shutdown"\), where closed != nil$`
+		t.Errorf("Close returned %v, want nil or a shutdown error", closed)
+	}
+	if ok && err != nil && done() { // want `condition: state the check with False for done\(\), where ok && err != nil$`
+		t.Fatal("the work is done after a failure")
+	}
+}
+
 func load() (bool, error) { return false, nil }
 
 func disjunctions(t *testing.T, a, b bool) {
@@ -43,11 +65,20 @@ func disjunctions(t *testing.T, a, b bool) {
 	expect.False(t, a || b, "neither holds")                   // want `conjunction: state each operand in an assertion of its own: False for a, False for b$`
 	assert.True(t, !(a || b), "neither holds")                 // want `conjunction: state each operand in an assertion of its own: False for a, False for b$`
 	for range 3 {                                              // want `eventually: state the check with EventuallyTrue or Eventually`
+		if done() {
+			break
+		}
 		time.Sleep(time.Millisecond)
 		if a || b {
 			t.Fatal("one holds")
 		}
 		expect.False(t, a || b, "neither holds") // want `conjunction: state each operand in an assertion of its own: False for a, False for b$`
 		expect.True(t, a && b, "both hold")      // want `conjunction: state each operand in an assertion of its own: True for a, True for b$`
+	}
+	for range 2 {
+		time.Sleep(time.Millisecond)
+		if a || b { // want `conjunction: state each operand in an assertion of its own: False for a, False for b$`
+			t.Fatal("one is set")
+		}
 	}
 }

@@ -10,7 +10,10 @@ func TestWaiting(t *testing.T) {
 	t.Run("Analyzer", func(t *testing.T) {
 		t.Parallel()
 		tests := []fixture{
-			{name: "reports a counted loop that sleeps between attempts as Eventually", give: "./eventually"},
+			{
+				name: "reports a loop that sleeps until it ends on a condition, and no loop that sleeps for a count or outside a test",
+				give: "./eventually",
+			},
 			{name: "reports a loop that sleeps until a condition is true as EventuallyTrue", give: "./eventually-true"},
 		}
 		analyzeEach(t, tests)
