@@ -1,0 +1,27 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: MIT
+
+package closeto
+
+import (
+	"math"
+	"testing"
+
+	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/expect"
+)
+
+func correct(t *testing.T, got float64) {
+	assert.CloseTo(t, got, 0.3, 1e-9, "the sum is three tenths")
+}
+
+func near(t *testing.T, got, want, tol float64) {
+	assert.CloseTo(t, got, want, 1e-9, "the sum is the expected one")        // want `close-to: state the check with CloseTo`
+	expect.CloseTo(t, got, 0.3, 1e-9, "the sum is three tenths")             // want `close-to: state the check with CloseTo`
+	assert.CloseTo(t, got, 0.3, tol, "the sum is three tenths")              // want `close-to: state the check with CloseTo`
+	assert.True(t, math.Abs(got-want) < 1e-9, "the sum is the expected one") // want `close-to: state the check with CloseTo`
+	if math.Abs(got-want) > tol {                                            // want `close-to: state the check with CloseTo`
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	assert.True(t, math.Abs(got) <= 1, "the ratio is a fraction") // want `order: state the check with InRange`
+}

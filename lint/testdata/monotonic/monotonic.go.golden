@@ -1,0 +1,44 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: MIT
+
+package monotonic
+
+import (
+	"testing"
+
+	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/expect"
+)
+
+type clock struct{}
+
+func (clock) Now() int64 { return 0 }
+
+func (clock) Advance() error { return nil }
+
+func correct(t *testing.T, c clock) {
+	assert.Monotonic(t, c.Now, c.Advance, 10, "the clock never runs back")
+}
+
+func kept(t *testing.T, c clock, xs []int) {
+	prev := c.Now()
+	for range 10 { // want `monotonic: state the check with Monotonic`
+		_ = c.Advance()
+		cur := c.Now()
+		assert.True(t, cur >= prev, "the clock never runs back")
+		prev = cur
+	}
+	last := 0
+	for _, x := range xs { // want `monotonic: state the check with Monotonic`
+		if x < last { // want `condition: state the check with False`
+			t.Fatalf("%d follows %d", x, last)
+		}
+		last = x
+	}
+	sum := 0
+	for _, x := range xs {
+		expect.InRange(t, x, 0, 1<<63, "every item is positive") // want `order: state the check with InRange`
+		sum = x
+	}
+	t.Log(sum)
+}

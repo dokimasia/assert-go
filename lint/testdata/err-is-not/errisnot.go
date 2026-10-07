@@ -1,0 +1,31 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: MIT
+
+package errisnot
+
+import (
+	"errors"
+	"io"
+	"io/fs"
+	"testing"
+
+	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/expect"
+)
+
+func correct(t *testing.T, err error) {
+	assert.ErrorIsNot(t, err, fs.ErrPermission, "the failure is no denial")
+}
+
+func matched(t *testing.T, err error) {
+	assert.False(t, errors.Is(err, fs.ErrPermission), "the failure is no denial") // want `errors-is: state the check with ErrorIsNot`
+	expect.True(t, !errors.Is(err, io.EOF), "the reader does not end")            // want `errors-is: state the check with ErrorIsNot`
+	if errors.Is(err, io.EOF) {                                                   // want `errors-is: state the check with ErrorIsNot`
+		t.Fatal("the reader ends")
+	}
+}
+
+func sentinels(t *testing.T, err error) {
+	assert.True(t, err != io.EOF, "the reader does not end")   // want `sentinel: state the check with ErrorIsNot`
+	assert.NotEqual(t, err, io.EOF, "the reader does not end") // want `sentinel: state the check with ErrorIsNot`
+}

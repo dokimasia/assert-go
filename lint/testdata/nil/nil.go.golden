@@ -1,0 +1,50 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: MIT
+
+package nil
+
+import (
+	"io"
+	"testing"
+	"unsafe"
+
+	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/expect"
+)
+
+type pathError struct{}
+
+func (*pathError) Error() string { return "path" }
+
+func correct(t *testing.T, p *int) {
+	assert.Nil(t, p, "the pointer is nil")
+}
+
+func compared(t *testing.T, p *int, s []int, f func(), u unsafe.Pointer, e *pathError) {
+	assert.Nil(t, p, "the pointer is nil")       // want `nil: state the check with Nil`
+	assert.Nil(t, s, "the slice is nil")         // want `nil: state the check with Nil`
+	expect.Nil(t, f, "the function is nil")      // want `nil: state the check with Nil`
+	assert.Nil(t, u, "the pointer is nil")       // want `nil: state the check with Nil`
+	assert.Nil(t, e, "the error pointer is nil") // want `nil: state the check with Nil`
+	if s != nil {                                // want `nil: state the check with Nil`
+		t.Fatal("the slice is present")
+	}
+}
+
+func equalled(t *testing.T, p *int, m map[string]int, r io.Reader, s []int) {
+	assert.Nil(t, p, "the pointer is nil") // want `equal-nil: state the check with Nil`
+	expect.Nil(t, m, "the map is nil")     // want `equal-nil: state the check with Nil`
+	assert.Equal(t, r, nil, "the reader is nil")
+	assert.Equal(t, s, nil, "the slice is empty", assert.EquateEmpty())
+}
+
+func interfaces(t *testing.T, r io.Reader) {
+	assert.True(t, r == nil, "the reader is nil")
+}
+
+func typed[P interface {
+	*pathError
+	error
+}](t *testing.T, p P) {
+	assert.True(t, p == nil, "the error is nil")
+}

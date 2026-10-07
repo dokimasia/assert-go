@@ -1,0 +1,22 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: MIT
+
+package edits
+
+import (
+	"testing"
+
+	"go.dokimi.dev/assert"
+	e "go.dokimi.dev/assert/expect"
+)
+
+func rewritten(t *testing.T, p *int, xs []int, a, b []byte) {
+	assert.Nil(t, // want `nil: state the check with Nil`
+		p,
+		"the pointer is nil",
+	)
+	assert.Empty(t, func() []int { return xs }(), "the closure returns no item") // want `length: state the check with Empty`
+	assert.Length(t, []int{1, 2}, 2, "the literal has two items")                // want `length: state the check with Length`
+	e.Equal(t, a, b, "the bodies match", e.EquateEmpty())                        // want `equal-func: state the check with Equal and EquateEmpty`
+	assert.Nil(t, p, "the pointer is nil")                                       // want `nil: state the check with Nil`
+}

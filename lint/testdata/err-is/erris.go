@@ -1,0 +1,40 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: MIT
+
+package erris
+
+import (
+	"errors"
+	"io"
+	"testing"
+
+	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/expect"
+)
+
+var errEnd = io.EOF
+
+func read() error { return nil }
+
+func correct(t *testing.T, err error) {
+	assert.ErrorIs(t, err, io.EOF, "the reader ends")
+}
+
+func matched(t *testing.T, err error) {
+	assert.True(t, errors.Is(err, io.EOF), "the reader ends") // want `errors-is: state the check with ErrorIs`
+	if !errors.Is(err, io.ErrUnexpectedEOF) {                 // want `errors-is: state the check with ErrorIs`
+		t.Fatal(err)
+	}
+}
+
+func sentinels(t *testing.T, err, other error) {
+	assert.True(t, err == io.EOF, "the reader ends")    // want `sentinel: state the check with ErrorIs`
+	expect.Equal(t, err, io.EOF, "the reader ends")     // want `sentinel: state the check with ErrorIs`
+	assert.True(t, io.EOF == err, "the reader ends")    // want `sentinel: state the check with ErrorIs`
+	assert.True(t, read() == io.EOF, "the reader ends") // want `sentinel: state the check with ErrorIs`
+	if err != io.ErrUnexpectedEOF {                     // want `sentinel: state the check with ErrorIs`
+		t.Fatal(err)
+	}
+	assert.True(t, err == other, "the two errors are one")
+	assert.Equal(t, errEnd, io.EOF, "the end of a reader is io.EOF")
+}

@@ -1,0 +1,17 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: MIT
+
+package erras
+
+import (
+	. "io/fs"
+	"testing"
+
+	"go.dokimi.dev/assert"
+)
+
+func dotted(t *testing.T, err error) {
+	var pathErr *PathError
+	pathErr = assert.ErrorAs[*PathError](t, err, "the error is a path error") // want `errors-as: state the check with ErrorAs`
+	t.Log(pathErr.Path)
+}

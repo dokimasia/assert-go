@@ -1,0 +1,25 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: MIT
+
+package hassuffix
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+
+	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/expect"
+)
+
+func correct(t *testing.T, name string) {
+	assert.HasSuffix(t, name, ".json", "the file is a JSON file")
+}
+
+func suffixed(t *testing.T, name string, b []byte) {
+	assert.True(t, strings.HasSuffix(name, ".json"), "the file is a JSON file")      // want `has-suffix: state the check with HasSuffix`
+	expect.True(t, bytes.HasSuffix(b, []byte("\n")), "the body ends with a newline") // want `has-suffix: state the check with HasSuffix`
+	if !strings.HasSuffix(name, ".json") {                                           // want `has-suffix: state the check with HasSuffix`
+		t.Fatal("the file is no JSON file")
+	}
+}

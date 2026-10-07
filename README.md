@@ -133,6 +133,7 @@ assert.Equal(t, want, any(store.ErrDuplicate), "the check wants the duplicate er
 | `go.dokimi.dev/assert/history` | the record of concurrent calls, the driver of the clients, and the checks that a record is linearizable, serializable, or has snapshot isolation |
 | `go.dokimi.dev/assert/stateful` | machines that take the steps of a property's case against the sequential specification of their subject, and the task scheduler |
 | `go.dokimi.dev/assert/conformance` | this library checked against the standard |
+| `go.dokimi.dev/assert/lint` | an analyzer of the checks that a test writes by hand, and the command `assertlint`, in a module of their own |
 
 ## Golden files
 
@@ -452,6 +453,49 @@ Recording is off by default, and an unset, empty or `0` value turns it
 off. Any other value is an error that every assertion reports. An
 `assert.Recorder` keeps the call records of its own calls whatever the
 variable states, and `Records` returns them.
+
+## Hand-written checks
+
+`assertlint` reports a check that a test writes by hand and that an
+assertion states. It rewrites the check where the rewrite keeps its
+meaning in every case:
+
+```sh
+go install go.dokimi.dev/assert/lint/cmd/assertlint@latest
+assertlint ./...
+assertlint -fix ./...
+```
+
+```text
+store_test.go:41:2: length: state the check with Length
+store_test.go:57:2: condition: state the check with False
+store_test.go:73:2: round-trip: state the check with RoundTrip of json.Marshal and json.Unmarshal
+```
+
+A rule reads a call of an assertion, such as `True(t, len(xs) == 3, msg)`,
+and an `if` statement whose body is one failure of the test, such as
+`t.Fatalf`. Some rules read a loop or a call, such as a loop that calls
+`time.Sleep`. A diagnostic also quotes the calls that its rule matched
+outside the check's line. The 61 rules cover 100 of the 110 assertions,
+and 21 of them suggest a fix. Under `-fix`, the command applies every fix
+and prints nothing. Run it again without `-fix` to list the checks that
+have no fix.
+`go vet -vettool=$(command -v assertlint)` and
+`go fix -fixtool=$(command -v assertlint)` run the analyzer as well.
+
+To keep a check that a rule reports, annotate its line with the rules and
+the reason. On a line of its own, the annotation covers the next line:
+
+```go
+//dokimi:lint-skip for-all: a fixed workload that the machine above checks
+for range rounds {
+```
+
+A run fails on an annotation without a reason, and on a listed rule that
+leaves out no report.
+
+The analyzer is a module of its own, so a test that imports the
+assertions loads no package of `golang.org/x/tools`.
 
 ## Assertion reference
 

@@ -1,0 +1,95 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: MIT
+
+package erras
+
+import (
+	"errors"
+	"io/fs"
+	"testing"
+
+	"example.test/lint/err-as/kind"
+	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/expect"
+)
+
+type notFound struct{}
+
+func (*notFound) Error() string { return "not found" }
+
+type wrapped[T any] struct{ value T }
+
+func (*wrapped[T]) Error() string { return "wrapped" }
+
+type state struct {
+	ok  bool
+	err *fs.PathError
+}
+
+var last *fs.PathError
+
+func correct(t *testing.T, err error) {
+	pathErr := assert.ErrorAs[*fs.PathError](t, err, "the error is a path error")
+	t.Log(pathErr.Path)
+}
+
+func fixed(t *testing.T, err error, s *state) {
+	var pathErr *fs.PathError
+	pathErr = assert.ErrorAs[*fs.PathError](t, err, "the error is a path error") // want `errors-as: state the check with ErrorAs`
+	t.Log(pathErr.Path)
+	var local *notFound
+	local = assert.ErrorAs[*notFound](t, err, "the error is not found") // want `errors-as: state the check with ErrorAs of errors\.As\(err, &local\)`
+	t.Log(local)
+	var cause error
+	cause = assert.ErrorAs[error](t, err, "the chain has an error") // want `errors-as: state the check with ErrorAs`
+	t.Log(cause)
+	s.err = assert.ErrorAs[*fs.PathError](t, err, "the error is a path error") // want `errors-as: state the check with ErrorAs`
+	last = assert.ErrorAs[*fs.PathError](t, err, "the error is a path error")  // want `errors-as: state the check with ErrorAs`
+}
+
+func reported(t *testing.T, err error) {
+	var pathErr *fs.PathError
+	expect.True(t, errors.As(err, &pathErr), "the error is a path error") // want `errors-as: state the check with ErrorAs`
+	ok := errors.As(err, &pathErr)
+	assert.True(t, ok, "the error is a path error") // want `errors-as: state the check with ErrorAs of errors\.As\(err, &pathErr\)`
+	found := false
+	found = errors.As(err, &pathErr)
+	expect.True(t, found, "the error is a path error") // want `errors-as: state the check with ErrorAs`
+	matched, count := errors.As(err, &pathErr), 1
+	assert.True(t, matched, "the error is a path error") // want `errors-as: state the check with ErrorAs`
+	expect.Equal(t, count, 1, "one error was checked")
+	if !errors.As(err, &pathErr) { // want `errors-as: state the check with ErrorAs`
+		t.Fatal(err)
+	}
+}
+
+func unfixed(t *testing.T, err error) {
+	external := kind.Lookup()
+	assert.True(t, errors.As(err, &external), "the error is not found") // want `errors-as: state the check with ErrorAs`
+	t.Log(external)
+	hidden := kind.Hidden()
+	assert.True(t, errors.As(err, &hidden), "the error is hidden") // want `errors-as: state the check with ErrorAs`
+	t.Log(hidden)
+	var generic *wrapped[int]
+	assert.True(t, errors.As(err, &generic), "the error wraps an int") // want `errors-as: state the check with ErrorAs`
+	t.Log(generic)
+	var timeout interface{ Timeout() bool }
+	assert.True(t, errors.As(err, &timeout), "the error times out") // want `errors-as: state the check with ErrorAs`
+	t.Log(timeout)
+	var unread *fs.PathError
+	assert.True(t, errors.As(err, &unread), "the error is a path error") // want `errors-as: state the check with ErrorAs`
+}
+
+func indirect(t *testing.T, err error, targets []any) {
+	assert.True(t, errors.As(err, targets[0]), "the error is a path error") // want `errors-as: state the check with ErrorAs`
+}
+
+func unreported(t *testing.T, err error) {
+	var pathErr *fs.PathError
+	assert.False(t, errors.As(err, &pathErr), "the error is no path error")
+	ok := true
+	assert.True(t, ok, "the flag is set")
+	var s state
+	s.ok = errors.As(err, &pathErr)
+	assert.True(t, s.ok, "the error is a path error")
+}

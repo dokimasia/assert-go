@@ -1,0 +1,25 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: MIT
+
+package notcontains
+
+import (
+	"strings"
+	"testing"
+
+	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/expect"
+)
+
+func correct(t *testing.T, s string) {
+	assert.NotContains(t, s, "secret", "the log leaves out the secret")
+}
+
+func missing(t *testing.T, s string, m map[string]int) {
+	assert.False(t, strings.Contains(s, "secret"), "the log leaves out the secret") // want `contains: state the check with NotContains`
+	_, ok := m["key"]
+	expect.False(t, ok, "the map leaves out the key") // want `contains: state the check with NotContains`
+	if strings.Contains(s, "secret") {                // want `contains: state the check with NotContains`
+		t.Fatal("the log contains the secret")
+	}
+}

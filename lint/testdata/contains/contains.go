@@ -1,0 +1,63 @@
+// Copyright ThesmOS B.V. 2026
+// SPDX-License-Identifier: MIT
+
+package contains
+
+import (
+	"bytes"
+	"slices"
+	"strings"
+	"testing"
+
+	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/expect"
+)
+
+type kind int
+
+const (
+	kindA kind = iota
+	kindB
+)
+
+type point struct{ x, y int }
+
+type verdict uint8
+
+func next() string { return "a" }
+
+func correct(t *testing.T, s string) {
+	assert.Contains(t, s, "needle", "the text contains the needle")
+}
+
+func found(t *testing.T, s string, b, sub []byte, xs []int, p point, ps []point, m map[string]int, vs []verdict,
+	v verdict,
+) {
+	assert.True(t, strings.Contains(s, "needle"), "the text contains the needle") // want `contains: state the check with Contains`
+	expect.True(t, bytes.Contains(b, sub), "the body contains the part")          // want `contains: state the check with Contains`
+	assert.True(t, slices.Contains(xs, 3), "the store holds three")               // want `contains: state the check with Contains`
+	assert.True(t, slices.Contains(b, 'x'), "the body holds an x")                // want `contains: state the check with Contains`
+	assert.True(t, slices.Contains(ps, p), "the points hold the point")           // want `contains: state the check with Contains`
+	assert.True(t, slices.Contains(vs, v), "the verdicts hold the verdict")       // want `contains: state the check with Contains`
+	_, ok := m["key"]
+	assert.True(t, ok, "the map holds the key") // want `contains: state the check with Contains of m\["key"\]`
+	if !strings.Contains(s, "needle") {         // want `contains: state the check with Contains`
+		t.Fatal("the needle is missing")
+	}
+}
+
+func members(t *testing.T, s string, k kind, c byte, n int, a, b bool, v verdict) {
+	assert.True(t, v == 1 || v == 2, "the verdict is one or two")             // want `membership: state the check with Contains`
+	assert.True(t, s == "a" || s == "b", "the name is a or b")                // want `membership: state the check with Contains`
+	expect.True(t, "a" == s || s == "b" || s == "c", "the name is a, b or c") // want `membership: state the check with Contains`
+	assert.True(t, k == kindA || k == kindB, "the kind is A or B")            // want `membership: state the check with Contains`
+	assert.True(t, s == next() || s == "b", "the name is the next one or b")  // want `membership: state the check with Contains`
+	assert.True(t, c == 'a' || c == 'b', "the byte is a or b")                // want `membership: state the check with Contains`
+	if s != "a" && s != "b" {                                                 // want `membership: state the check with Contains`
+		t.Fatalf("the name %q is neither a nor b", s)
+	}
+	assert.True(t, s == "a" || n == 1, "the name is a or the count is one")
+	assert.True(t, a || b, "one holds")
+	assert.False(t, s == "a" || s == "b", "the name is neither a nor b")
+	assert.True(t, s != "a" || s != "b", "the name is not both a and b")
+}
