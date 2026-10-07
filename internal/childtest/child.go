@@ -9,7 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"runtime/coverage"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,6 +30,14 @@ const (
 	grace = 5 * time.Second
 )
 
+// metaWritten writes the coverage meta-data of the test binary once in the
+// test process, into the directory of its coverage, before the first child
+// runs. A child that finds the meta-data there writes none of its own. Two
+// children that write it in one nanosecond write one temporary file, because
+// the runtime names that file by the time alone, and the second fails to
+// rename it.
+var metaWritten sync.Once
+
 // InChild reports whether t runs in the child process that [Run] started for
 // it.
 func InChild(t *testing.T) bool {
@@ -45,8 +55,9 @@ func InChild(t *testing.T) bool {
 // The child's environment is the parent's without DOKIMI_ASSERT_RECORD, with
 // [Variable] set to name and env added, so the child's switch is the one
 // that env states. The child writes its coverage where the parent writes its
-// own. It ends within a minute, and 5 seconds before t's deadline at the
-// latest.
+// own, after the parent has written the binary's coverage meta-data there.
+// Where that write fails, each child writes the meta-data itself. A child
+// ends within a minute, and 5 seconds before t's deadline at the latest.
 func Run(t *testing.T, name string, env ...string) (string, error) {
 	t.Helper()
 	parts := strings.Split(name, "/")
@@ -65,6 +76,7 @@ func Run(t *testing.T, name string, env ...string) (string, error) {
 		"-test.timeout=" + timeout.String(),
 	}
 	if dir := flag.Lookup("test.gocoverdir"); dir != nil && dir.Value.String() != "" {
+		metaWritten.Do(func() { _ = coverage.WriteMetaDir(dir.Value.String()) })
 		argv = append(argv, "-test.gocoverdir="+dir.Value.String())
 	}
 	cmd := exec.CommandContext(ctx, os.Args[0], argv...)
