@@ -226,7 +226,7 @@ package.
 | `order` | `<`, `<=`, `>` or `>=` between a number and a constant | `InRange` | For an integer and a constant of a magnitude up to 2^53 |
 | `compare` | `a == b` or `a != b` between booleans, numbers or strings | `Equal`, `NotEqual` | Yes |
 | `condition` | An `if` check that no other rule reports, outside a loop that calls `time.Sleep` | `True`, `False` | No |
-| `total` | A range over a slice whose body is one `NoError` of `f(element)`, where f does not read the element | `Total` | For assert, where f calls no function |
+| `total` | A range over a slice whose body is one `NoError` of `f(element)`, where f does not read the element | `Total` | For assert, where f calls no function and the message does not read the element |
 | `poisoned` | A counted loop whose body is one `HasError` of a call | `Poisoned` | No |
 | `no-duplicates` | A range whose body checks `seen[x]` and assigns `seen[x]` | `NoDuplicates` | No |
 | `monotonic` | A loop that checks the order of a value and of the value that it keeps from the step before | `Monotonic` | No |
@@ -350,7 +350,9 @@ case:
   `p != nil`, would run on a nil p.
 - **`total` fixes a loop whose function calls nothing.** `Total` evaluates
   its function once, and the loop evaluated `f.store().Add` for each
-  element.
+  element. The fix also requires a message that does not read the element,
+  which is out of scope after the loop. The record of `Total` states the
+  index and the error of the element that fails.
 - **`errors-as` fixes a statement of assert alone.** On a failure,
   `ErrorAs` returns the zero value. The original leaves the target
   unchanged. The fix also requires a statement that reads the target. A
@@ -360,6 +362,12 @@ case:
   value as a float64. A float64 represents every integer of a magnitude up
   to 2^53 exactly. A strict order of integers moves its constant by one. A
   strict order of floats gets no fix.
+- **`order` and `in-range` keep the source of a bound.** A literal bound
+  becomes the number of the closed bound. Any other bound keeps its source
+  text, with `+1` or `-1` after it, so the check changes with a named
+  constant: `took < slowStart` becomes
+  `InRange(t, took, -1<<63, float64(slowStart-1), msg)`. A typed bound gets
+  a conversion to float64, which the parameter of `InRange` takes.
 - **`close-to` fixes `<=` alone,** because `CloseTo` passes a difference
   equal to the tolerance.
 - **`commutative`, `associative` and `membership` change how often an

@@ -167,7 +167,10 @@ func lower(op token.Token) bool {
 // A float64 x takes a bound of <= or >= whose value is a constant or a
 // float64, unchanged. An integer x takes a constant whose bound, moved by one
 // for < and >, is of a magnitude up to 2^53, which a float64 represents
-// exactly.
+// exactly. A literal bound becomes the number of the closed bound. Any other
+// bound keeps its source text, with +1 or -1 after it for > and <, so that the
+// rewritten check changes with a named constant. A typed bound gets a
+// conversion to float64.
 func (p *pass) limit(x ast.Expr, b bound) (string, bool) {
 	t := p.TypesInfo.TypeOf(x).Underlying().(*types.Basic)
 	strict := b.op == token.LSS || b.op == token.GTR
@@ -180,11 +183,50 @@ func (p *pass) limit(x ast.Expr, b bound) (string, bool) {
 		return "", false
 	}
 	v, ok := constant.Int64Val(constant.ToInt(value))
+	text := p.source(b.value)
 	switch b.op {
 	case token.GTR:
-		v++
+		v, text = v+1, text+"+1"
 	case token.LSS:
-		v--
+		v, text = v-1, text+"-1"
 	}
-	return strconv.FormatInt(v, 10), ok && -exact <= v && v <= exact
+	switch {
+	case literal(b.value):
+		text = strconv.FormatInt(v, 10)
+	case !p.untyped(b.value):
+		text = "float64(" + text + ")"
+	}
+	return text, ok && -exact <= v && v <= exact
+}
+
+// literal reports whether e is a number as written, with at most one unary
+// operator, such as 10 or -1.
+func literal(e ast.Expr) bool {
+	if u, ok := ast.Unparen(e).(*ast.UnaryExpr); ok {
+		e = u.X
+	}
+	_, ok := ast.Unparen(e).(*ast.BasicLit)
+	return ok
+}
+
+// untyped reports whether the constant expression e is untyped as it is
+// written: literals and untyped constants joined by operators, which a
+// float64 parameter takes without a conversion. A call, such as len of a
+// constant string, has a type.
+func (p *pass) untyped(e ast.Expr) bool {
+	untyped := true
+	ast.Inspect(e, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.CallExpr:
+			untyped = false
+		case *ast.Ident:
+			if c, isConst := p.TypesInfo.Uses[n].(*types.Const); isConst {
+				if b, isBasic := c.Type().(*types.Basic); !isBasic || b.Info()&types.IsUntyped == 0 {
+					untyped = false
+				}
+			}
+		}
+		return untyped
+	})
+	return untyped
 }

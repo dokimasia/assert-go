@@ -654,10 +654,12 @@ func (p *pass) closes(s ast.Node, receiver ast.Expr) *ast.CallExpr {
 // its check as plainly as Total does, and the rule leaves it out.
 //
 // It suggests Total(t, f, xs, msg) for a statement of the surface that stops
-// the test, where evaluating f calls no function: the loop stops at the
-// first error, as Total does, and evaluates f once per element. The surface
-// that records a failure continues the loop, and Total reports the first
-// error alone.
+// the test, where evaluating f calls no function and the message does not
+// read the element: the loop stops at the first error, as Total does, and
+// evaluates f once per element. The surface that records a failure continues
+// the loop, and Total reports the first error alone. The record of Total
+// states the index and the error of the element that fails, and the fix
+// would use the element outside the loop that declares it.
 func total(p *pass, cursor inspector.Cursor) {
 	n := cursor.Node().(*ast.RangeStmt)
 	element := p.variable(n.Value)
@@ -674,7 +676,7 @@ func total(p *pass, cursor inspector.Cursor) {
 		return
 	}
 	var fixes []analysis.SuggestedFix
-	if c.name != nil && c.surface(assertPath) && pure(subject.Fun) {
+	if c.name != nil && c.surface(assertPath) && pure(subject.Fun) && !p.reads(c.call.Args[2], nil, element) {
 		fixes = replace("Call Total", n, c.qualifier+".Total("+p.source(c.tb)+", "+p.source(subject.Fun)+", "+
 			p.source(n.X)+", "+p.source(c.call.Args[2])+")")
 	}

@@ -41,6 +41,9 @@ func looped(t *testing.T, names []string, c checker) {
 	for _, name := range names { // want `total: state the check with Total`
 		assert.NoError(t, registry().Check(name), "every name passes the check of the registry")
 	}
+	for _, name := range names { // want `total: state the check with Total`
+		assert.NoError(t, valid(name), "the name "+name+" is valid")
+	}
 }
 
 func unlooped(t *testing.T, names []string, byName map[string]string, err error) {

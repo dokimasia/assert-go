@@ -78,7 +78,10 @@
 //     calls no function and InRange states both bounds exactly. A float64
 //     takes a bound of <= or >= by a constant, or by a float64 that calls no
 //     function. An integer takes a constant bound of a magnitude up to 2^53,
-//     which the fix moves by one for < and >.
+//     which the fix moves by one for < and >. A literal bound becomes the
+//     number of the closed bound. Any other bound keeps its source text, with
+//     +1 or -1 after it, and a typed bound gets a conversion to float64, as
+//     in float64(slowStart-1).
 //   - conjunction: True of a && b, and False of a || b, as a call or as an if
 //     check outside a loop that calls time.Sleep. An assertion of each
 //     operand states the check. The diagnostic names the assertion that the
@@ -207,9 +210,9 @@
 //     check.
 //   - order: <, <=, > or >= between a number and a constant. InRange states
 //     the check. Its fix applies to an integer and a bound of a magnitude up
-//     to 2^53, which the fix moves by one for < and >. The open end of the
-//     range is -1<<63 or 1<<63 for a signed integer, and 0 or 1<<64 for an
-//     unsigned one.
+//     to 2^53, which the fix moves by one for < and > and writes as in-range
+//     does. The open end of the range is -1<<63 or 1<<63 for a signed
+//     integer, and 0 or 1<<64 for an unsigned one.
 //   - compare: == or != between booleans, numbers or strings. Equal and
 //     NotEqual state the check, and the fix calls them.
 //   - condition: an if check that no other rule reports, outside a loop that
@@ -227,7 +230,8 @@
 //     and no comment is between them.
 //   - total: a range over a slice whose body is one NoError of f(element),
 //     where f does not read the element. Total states the check. Its fix
-//     applies to a statement of assert where f calls no function.
+//     applies to a statement of assert where f calls no function and the
+//     message does not read the element.
 //   - poisoned: a for loop with a condition, or a range over an integer,
 //     whose body is one HasError of a call. Poisoned states the check.
 //   - no-duplicates: a loop that checks seen[x], or the ok of its lookup, and

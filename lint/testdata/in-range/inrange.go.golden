@@ -4,6 +4,7 @@
 package inrange
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -12,6 +13,15 @@ import (
 )
 
 func size() int { return 3 }
+
+// maxTokens is an untyped bound.
+const maxTokens = 6000
+
+// slowStart is a typed bound.
+const slowStart = 1500 * time.Millisecond
+
+// minLength is a bound of a basic type.
+const minLength int = 1
 
 func correct(t *testing.T, n int) {
 	assert.InRange(t, n, 1, 10, "the count is between one and ten")
@@ -36,16 +46,33 @@ func bounded(t *testing.T, n, lo, hi int, f, low, high float64, g float32) {
 }
 
 func ordered(t *testing.T, n int, u uint, f float64, d time.Duration, a, b int) {
-	assert.InRange(t, n, 1, 1<<63, "the count is positive")                // want `order: state the check with InRange`
-	assert.InRange(t, n, 1, 1<<63, "the count is positive")                // want `order: state the check with InRange`
-	expect.InRange(t, u, 0, 9, "the digit is below ten")                   // want `order: state the check with InRange`
-	assert.InRange(t, n, -1<<63, 10, "the count is at most ten")           // want `order: state the check with InRange`
-	assert.InRange(t, d, -1<<63, 999999999, "the delay is below a second") // want `order: state the check with InRange`
-	assert.True(t, f > 0.5, "the ratio is above a half")                   // want `order: state the check with InRange`
-	assert.True(t, n < 1<<60, "the count is below the limit")              // want `order: state the check with InRange`
+	assert.InRange(t, n, 1, 1<<63, "the count is positive")                             // want `order: state the check with InRange`
+	assert.InRange(t, n, 1, 1<<63, "the count is positive")                             // want `order: state the check with InRange`
+	expect.InRange(t, u, 0, 9, "the digit is below ten")                                // want `order: state the check with InRange`
+	assert.InRange(t, n, -1<<63, 10, "the count is at most ten")                        // want `order: state the check with InRange`
+	assert.InRange(t, d, -1<<63, float64(time.Second-1), "the delay is below a second") // want `order: state the check with InRange`
+	assert.True(t, f > 0.5, "the ratio is above a half")                                // want `order: state the check with InRange`
+	assert.True(t, n < 1<<60, "the count is below the limit")                           // want `order: state the check with InRange`
+	assert.InRange(t, n, -4, 1<<63, "the count is above minus five")                    // want `order: state the check with InRange`
 	assert.True(t, a < b, "the first is below the second")
 	if n <= 0 { // want `order: state the check with InRange`
 		t.Fatal("the count is not positive")
 	}
 	assert.True(t, "a" < "b", "the letters are in order")
+}
+
+func named(t *testing.T, tokens, length int, took time.Duration) {
+	assert.InRange(t, tokens, -1<<63, maxTokens, "the tokens fit")                          // want `order: state the check with InRange`
+	assert.InRange(t, tokens, maxTokens+1, 1<<63, "the tokens overflow")                    // want `order: state the check with InRange`
+	assert.InRange(t, took, -1<<63, float64(slowStart-1), "Close returns before the start") // want `order: state the check with InRange`
+	assert.InRange(t, length, -1<<63, float64(160+len("…")), "the summary fits on a line")  // want `order: state the check with InRange`
+	assert.InRange(t, length, float64(minLength), 1<<63, "the summary is not empty")        // want `order: state the check with InRange`
+	assert.InRange(t, tokens, 0, maxTokens-1, "the tokens fit")                             // want `in-range: state the check with InRange`
+}
+
+func exactness(t *testing.T, n int, size uint64) {
+	assert.InRange(t, n, -1<<53, 1<<63, "the count is at least -2^53")          // want `order: state the check with InRange`
+	assert.InRange(t, n, -1<<63, 1<<53, "the count is at most 2^53")            // want `order: state the check with InRange`
+	assert.True(t, n > -1<<60, "the count is above -2^60")                      // want `order: state the check with InRange`
+	assert.True(t, size < math.MaxUint64, "the size is below the largest size") // want `order: state the check with InRange`
 }
