@@ -54,3 +54,31 @@ func failed(t *testing.T, s string) {
 	_, second := plan(s)
 	assert.Equal(t, second, first, "the plan fails the same way twice")
 }
+
+type gauge struct{ n int }
+
+func (g *gauge) Total() int { return g.n }
+
+func count(t *testing.T, g *gauge) int { return g.n }
+
+func prepare(t *testing.T) error { return nil }
+
+func checkedTwice(t *testing.T, g *gauge) {
+	first := g.Total()
+	assert.Equal(t, g.Total(), first, "two readings agree") // want `deterministic: state the check with Deterministic of g\.Total\(\)$`
+	one := count(t, g)
+	assert.NoError(t, prepare(t), "the test is prepared")
+	assert.Equal(t, count(t, g), one, "two counts agree") // want `deterministic: state the check with Deterministic of count\(t, g\)$`
+}
+
+func quietChecks(t *testing.T, g, other *gauge) {
+	first := g.Total()
+	assert.Equal(t, g.Total(), 0, "the gauge starts at zero")
+	assert.Equal(t, g.Total(), first, "two readings agree") // want `deterministic: state the check with Deterministic of g\.Total\(\)$`
+	second := g.Total()
+	assert.NotPanics(t, func() { t.Logf("the gauge %v", g) }, "a log of the gauge is safe")
+	assert.Equal(t, g.Total(), second, "two readings agree") // want `deterministic: state the check with Deterministic of g\.Total\(\)$`
+	third := g.Total()
+	assert.Equal(t, other.Total(), 3, "the other gauge reads three")
+	assert.Equal(t, g.Total(), third, "two readings agree") // want `deterministic: state the check with Deterministic of g\.Total\(\)$`
+}

@@ -40,8 +40,13 @@
 // want, err := os.ReadFile(path), or the call that receives its address, as
 // json.Unmarshal in json.Unmarshal(data, &got). An inert statement is a call
 // of an assertion, whatever its arguments call, or a declaration whose
-// variables take no values. The rules that relate two calls count no inert
-// statement as a step between them.
+// variables take no values. The rules round-trip and after-close count no
+// inert statement as a step between two calls. The rules over two readings
+// of one call count an assertion as a step where its values make a call that
+// can write a variable that the reading reads. Such a call is a method of
+// the variable, or receives the variable's address or a value of it that
+// shares memory, as a slice, a map or a pointer does. A call of an assertion
+// or of a method of a test writes nothing.
 //
 // A rule that relates a value to the call that made it follows the value
 // only through earlier statements of the check's block. A value that a loop
@@ -141,12 +146,15 @@
 //   - deterministic, stable-order, pure, not-pure, idempotent: an equality of
 //     the results of two calls of one function with one input, other than two
 //     errors. A conversion and a call of a builtin, such as make, are no such
-//     calls, and a result that a later statement changes is no result of its
-//     call. Deterministic states two consecutive calls, with only inert
-//     statements between them. StableOrder states them for a function
-//     without parameters that returns a slice other than bytes. Pure and
-//     NotPure state two calls with other statements between them, and
+//     calls, and a result that a later statement assigns is no result of its
+//     call. Deterministic states two consecutive calls, with no step between
+//     them, the second of which may be in the check. StableOrder states them
+//     for a function without parameters that returns a slice other than
+//     bytes. Pure and NotPure state two calls with steps between them, and
 //     Idempotent states them where one statement repeats before each call.
+//     Where a step passes the first result to a call that can write it, Pure
+//     and NotPure observe a copy of the result around the steps up to the
+//     check, as in "Pure of a copy of buf, around n, err := encode(buf)".
 //   - permutation: an equality of two slices that earlier statements of the
 //     block sort. Permutation states the check.
 //   - rejects: True of X.Failed(), where X is a test other than the check's

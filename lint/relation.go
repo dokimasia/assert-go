@@ -215,11 +215,13 @@ func (p *pass) builtin(n *ast.CallExpr) bool {
 // for a function without parameters that returns a slice other than bytes.
 // Calls with statements between them state Pure, or NotPure where the
 // results differ, and Idempotent where one statement repeats before each
-// call. Two calls are consecutive where only inert statements are between
-// them, and a result that a later statement changes is no result of its
-// call. Two errors are no results that the assertions compare:
-// Deterministic fails on an error, and Pure reads state before and after a
-// call.
+// call. Two calls are consecutive where only still statements of the first
+// call are between them. A result that a later statement assigns is no
+// result of its call. Where a later statement passes the first result to a
+// call that can write it, Pure and NotPure observe a copy of the result
+// around the statements up to the check. Two errors are no results that the
+// assertions compare: Deterministic fails on an error, and Pure reads state
+// before and after a call.
 func repetition(p *pass, c check) bool {
 	e, ok := p.equality(c)
 	stmt, listed := c.statement()
@@ -232,18 +234,28 @@ func repetition(p *pass, c check) bool {
 		p.changed(first.at, stmt, e.x) || p.changed(second.at, stmt, e.y) {
 		return false
 	}
+	firstValue, secondValue := e.x, e.y
 	if second.at.Index() < first.at.Index() {
 		first, second = second, first
+		firstValue, secondValue = secondValue, firstValue
 	}
+	if p.passed(second.at, stmt, secondValue) {
+		return false
+	}
+	if p.passed(first.at, stmt, firstValue) {
+		p.reportCopy(c, e.equal, firstValue, first.at, second.at, stmt)
+		return true
+	}
+	quiet := func(s ast.Node) bool { return p.still(s, first.call) }
 	rule, name := "pure", "Pure"
-	next, _ := p.following(first.at)
+	next, _ := following(first.at, stmt, quiet)
 	switch {
 	case first.at == second.at || next == second.at:
 		rule, name = "deterministic", "Deterministic"
 		if p.listing(first.call) {
 			rule, name = "stable-order", "StableOrder"
 		}
-	case p.repeats(first.at, second.at):
+	case p.repeats(first.at, second.at, quiet):
 		rule, name = "idempotent", "Idempotent"
 	case !e.equal:
 		rule, name = "not-pure", "NotPure"
@@ -254,26 +266,196 @@ func repetition(p *pass, c check) bool {
 	matched := name + " of " + p.brief(first.call)
 	switch rule {
 	case "pure", "not-pure":
-		matched += ", around " + p.steps(first.at, second.at)
+		matched += ", around " + p.steps(first.at, second.at, second.at, quiet)
 	case "idempotent":
-		repeated, _ := p.preceding(first.at)
+		repeated, _ := preceding(first.at, quiet)
 		matched = name + " of " + p.brief(repeated.Node()) + ", read by " + p.brief(first.call)
 	}
 	p.report(c.node, rule, matched, nil)
 	return true
 }
 
+// reportCopy reports an equality of value, a variable that a statement
+// between the reading at from and the check at stmt passes to a call that
+// can write it, and a second reading at second of value's call. Pure states
+// the check with an observation that returns a copy of value, around the
+// statements up to the check, and NotPure where the readings differ.
+func (p *pass) reportCopy(c check, equal bool, value ast.Expr, from, second, stmt inspector.Cursor) {
+	rule, name := "not-pure", "NotPure"
+	if equal {
+		rule, name = "pure", "Pure"
+	}
+	quiet := func(s ast.Node) bool { return p.still(s, value) }
+	p.report(c.node, rule, name+" of a copy of "+p.source(value)+", around "+p.steps(from, stmt, second, quiet), nil)
+}
+
 // steps returns the text of the statements after the statement at from and
-// before the statement at to that are not inert, joined by semicolons. from
-// is before to in one list.
-func (p *pass) steps(from, to inspector.Cursor) string {
+// before the statement at to, other than the statement at skip, that quiet
+// does not accept, joined by semicolons. from is before to in one list.
+func (p *pass) steps(from, to, skip inspector.Cursor, quiet func(ast.Node) bool) string {
 	var texts []string
-	for s, ok := from.NextSibling(); ok && s != to; s, ok = s.NextSibling() {
-		if !p.inert(s.Node()) {
+	for s, _ := from.NextSibling(); s != to; s, _ = s.NextSibling() {
+		if s != skip && !quiet(s.Node()) {
 			texts = append(texts, p.brief(s.Node()))
 		}
 	}
 	return strings.Join(texts, "; ")
+}
+
+// still reports whether the statement s leaves what observed reads as it
+// is, as the rules over two readings count it: a declaration whose
+// variables take no values, or an assertion whose values make no call that
+// can write a variable that observed reads. Such a call is a method of the
+// variable, or receives the variable's address or a value of it that shares
+// memory, as passes states. A call of observed's own function changes
+// nothing, and a test, which every assertion and helper takes, is no such
+// variable.
+func (p *pass) still(s ast.Node, observed ast.Expr) bool {
+	c, isAssertion := p.assertionStatement(s)
+	if !isAssertion {
+		return p.inert(s)
+	}
+	read := p.observed(observed)
+	own := ""
+	if n, isCall := ast.Unparen(observed).(*ast.CallExpr); isCall {
+		own = p.source(n.Fun)
+	}
+	return !slices.ContainsFunc(c.values(), func(value ast.Expr) bool {
+		touched := false
+		ast.Inspect(value, func(node ast.Node) bool {
+			call, isCall := node.(*ast.CallExpr)
+			if !touched && isCall && p.source(call.Fun) != own && !p.inspects(call) {
+				sel, isMethod := call.Fun.(*ast.SelectorExpr)
+				touched = isMethod && p.readsAny(sel.X, read) ||
+					slices.ContainsFunc(call.Args, func(arg ast.Expr) bool {
+						return p.readsAny(arg, read) && shares(p.TypesInfo.TypeOf(arg))
+					})
+			}
+			return !touched
+		})
+		return touched
+	})
+}
+
+// isAddress reports whether e takes the address of an operand, as &v does.
+func isAddress(e ast.Expr) bool {
+	u, ok := ast.Unparen(e).(*ast.UnaryExpr)
+	return ok && u.Op == token.AND
+}
+
+// inspects reports whether the call n reads its arguments and writes none:
+// a call of an assertion, or of a method of a test, such as t.Logf.
+func (p *pass) inspects(n *ast.CallExpr) bool {
+	if _, isAssertion := p.assertion(n); isAssertion {
+		return true
+	}
+	sel, _ := n.Fun.(*ast.SelectorExpr)
+	selection, isSelection := p.TypesInfo.Selections[sel]
+	return isSelection && types.NewMethodSet(selection.Recv()).Lookup(nil, "Helper") != nil
+}
+
+// observed returns the variables that the expression e reads, other than a
+// test: a value whose methods include Helper.
+func (p *pass) observed(e ast.Expr) map[*types.Var]bool {
+	read := make(map[*types.Var]bool)
+	ast.Inspect(e, func(node ast.Node) bool {
+		if id, isIdent := node.(*ast.Ident); isIdent {
+			if v, isVar := p.TypesInfo.Uses[id].(*types.Var); isVar &&
+				types.NewMethodSet(v.Type()).Lookup(nil, "Helper") == nil {
+				read[v] = true
+			}
+		}
+		return true
+	})
+	return read
+}
+
+// readsAny reports whether the node n reads one of the variables vars.
+func (p *pass) readsAny(n ast.Node, vars map[*types.Var]bool) bool {
+	found := false
+	ast.Inspect(n, func(node ast.Node) bool {
+		id, _ := node.(*ast.Ident)
+		v, _ := p.TypesInfo.Uses[id].(*types.Var)
+		found = found || vars[v]
+		return !found
+	})
+	return found
+}
+
+// passed reports whether a statement after the statement at from and before
+// the statement at to passes the variable that e names to a call that can
+// write it, and false where e names no variable. from is before to in one
+// list where e names a variable, because the reading of a variable is the
+// statement that assigns it.
+func (p *pass) passed(from, to inspector.Cursor, e ast.Expr) bool {
+	v := p.variable(e)
+	if v == nil {
+		return false
+	}
+	for s, _ := from.NextSibling(); s != to; s, _ = s.NextSibling() {
+		if p.passes(s.Node(), v) {
+			return true
+		}
+	}
+	return false
+}
+
+// passes reports whether the node n makes a call that can write the variable
+// v: a call that receives the address of v or of a part of it, a part of v
+// whose value shares memory, as a slice, a map or a pointer does, or v as
+// the receiver of a method that takes a pointer or of a value that shares
+// memory. A builtin writes through clear and copy alone, which changes
+// counts as assignments, a conversion writes nothing, and neither does a
+// call that inspects its arguments.
+func (p *pass) passes(n ast.Node, v *types.Var) bool {
+	found := false
+	ast.Inspect(n, func(node ast.Node) bool {
+		call, isCall := node.(*ast.CallExpr)
+		if !found && isCall && p.computes(call) && !p.inspects(call) {
+			found = p.writesReceiver(call, v) || slices.ContainsFunc(call.Args, func(arg ast.Expr) bool {
+				if isAddress(arg) {
+					return p.root(ast.Unparen(arg).(*ast.UnaryExpr).X) == v
+				}
+				return p.root(arg) == v && shares(p.TypesInfo.TypeOf(arg))
+			})
+		}
+		return !found
+	})
+	return found
+}
+
+// writesReceiver reports whether the call n is a call of a method or of a
+// function field whose receiver is v or a part of v, where a method takes a
+// pointer or the receiver shares memory, so that the call can write v.
+func (p *pass) writesReceiver(n *ast.CallExpr, v *types.Var) bool {
+	sel, isSelector := n.Fun.(*ast.SelectorExpr)
+	if !isSelector || p.root(sel.X) != v {
+		return false
+	}
+	byPointer := false
+	if method, isMethod := p.TypesInfo.Selections[sel].Obj().(*types.Func); isMethod {
+		_, byPointer = method.Signature().Recv().Type().(*types.Pointer)
+	}
+	return byPointer || shares(p.TypesInfo.TypeOf(sel.X))
+}
+
+// shares reports whether a value of type t refers to memory that a copy of
+// the value shares: a slice, a map, a pointer, a channel or an interface, or
+// an array or a struct that contains one.
+func shares(t types.Type) bool {
+	switch u := t.Underlying().(type) {
+	case *types.Slice, *types.Map, *types.Pointer, *types.Chan, *types.Interface:
+		return true
+	case *types.Array:
+		return shares(u.Elem())
+	case *types.Struct:
+		for field := range u.Fields() {
+			if shares(field.Type()) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // reading returns the call whose result e is: e where it is a call, and the
@@ -349,20 +531,22 @@ func (p *pass) root(e ast.Expr) *types.Var {
 }
 
 // following returns the statement after the statement at cursor in its
-// list, past the inert statements, and false at the end of the list.
-func (p *pass) following(cursor inspector.Cursor) (inspector.Cursor, bool) {
+// list, past the statements that quiet accepts, up to the statement at stop,
+// and false at the end of the list.
+func following(cursor, stop inspector.Cursor, quiet func(ast.Node) bool) (inspector.Cursor, bool) {
 	next, ok := cursor.NextSibling()
-	for ok && p.inert(next.Node()) {
+	for ok && next != stop && quiet(next.Node()) {
 		next, ok = next.NextSibling()
 	}
 	return next, ok
 }
 
 // preceding returns the statement before the statement at cursor in its
-// list, past the inert statements, and false at the start of the list.
-func (p *pass) preceding(cursor inspector.Cursor) (inspector.Cursor, bool) {
+// list, past the statements that quiet accepts, and false at the start of
+// the list.
+func preceding(cursor inspector.Cursor, quiet func(ast.Node) bool) (inspector.Cursor, bool) {
 	prev, ok := cursor.PrevSibling()
-	for ok && p.inert(prev.Node()) {
+	for ok && quiet(prev.Node()) {
 		prev, ok = prev.PrevSibling()
 	}
 	return prev, ok
@@ -403,11 +587,12 @@ func (p *pass) listing(n *ast.CallExpr) bool {
 }
 
 // repeats reports whether the statements right before the two readings at
-// first and second are one statement, which runs before each reading.
-// Checks of values between a statement and its reading do not count.
-func (p *pass) repeats(first, second inspector.Cursor) bool {
-	a, okA := p.preceding(first)
-	b, okB := p.preceding(second)
+// first and second are one statement, which runs before each reading. The
+// statements that quiet accepts between a statement and its reading do not
+// count.
+func (p *pass) repeats(first, second inspector.Cursor, quiet func(ast.Node) bool) bool {
+	a, okA := preceding(first, quiet)
+	b, okB := preceding(second, quiet)
 	return okA && okB && b != first && listed(a) && listed(b) && p.source(a.Node()) == p.source(b.Node())
 }
 

@@ -150,9 +150,22 @@ The origin of a variable is the call that assigns it, as `os.ReadFile` in
 as `json.Unmarshal` in `json.Unmarshal(data, &got)`.
 
 An inert statement is a call of an assertion, whatever its arguments call,
-or a declaration whose variables take no values. The rules that relate two
-calls, such as `round-trip`, `deterministic` and `after-close`, count no
-inert statement as a step between the calls.
+or a declaration whose variables take no values. The rules `round-trip` and
+`after-close` count no inert statement as a step between two calls.
+
+The rules over two readings of one call, from `deterministic` to
+`idempotent`, count an assertion as a step where its values make a call
+that can write a variable that the reading reads:
+
+- A method of the variable, as `s.Put(1)` beside `s.Total()`.
+- A call that receives the variable's address, as `load(&cfg)` beside
+  `sum(cfg)`.
+- A call that receives a value of the variable that shares memory, as a
+  slice, a map or a pointer does. A function literal that passes `l` to
+  `WriteManifest` beside `l.Writes()` makes such a call.
+
+A call of an assertion or of a method of a test writes nothing. A test, which
+every assertion and helper takes, counts as no variable of a reading.
 
 A rule that relates a value to the call that made it follows the value only
 through earlier statements of the check's block. A value that a loop
@@ -191,9 +204,9 @@ package.
 | `commutative` | An equality of `f(a, b)` and `f(b, a)` | `Commutative` | For `Equal`, where f is no builtin and has no type parameters, and neither f nor an operand calls a function |
 | `associative` | An equality of `f(f(a, b), c)` and `f(a, f(b, c))` | `Associative` | For `Equal` with the left grouping first, under the same conditions |
 | `round-trip` | An equality of x and `g(f(x))`, where x is no constant, f is no function of a test file that takes no test, every other statement from the call of f up to the check is inert, and only g reads the result of f | `RoundTrip` | No |
-| `deterministic` | An equality of the results of two consecutive calls of one function with one input, other than two errors, with only inert statements between them | `Deterministic` | No |
+| `deterministic` | An equality of the results of two consecutive calls of one function with one input, other than two errors, with no step between them, where the second call may be in the check | `Deterministic` | No |
 | `stable-order` | The same for a function without parameters that returns a slice other than bytes | `StableOrder` | No |
-| `pure`, `not-pure` | An equality of the results of two calls of one function, other than two errors, with other statements between them | `Pure`, `NotPure` | No |
+| `pure`, `not-pure` | An equality of the results of two calls of one function, other than two errors, with steps between them. Where a step passes the first result to a call that can write it, the check observes a copy of that result | `Pure`, `NotPure` | No |
 | `idempotent` | The same, where one statement repeats before each call | `Idempotent` | No |
 | `permutation` | An equality of two slices that earlier statements sort | `Permutation` | No |
 | `rejects` | A check of `Failed()` of a test other than the check's own, such as an `assert.Recorder` | `Rejects` | No |

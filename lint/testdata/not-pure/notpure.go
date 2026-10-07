@@ -38,3 +38,11 @@ func copied(t *testing.T, s store) {
 	copy(filled, []int{9})
 	assert.NotEqual(t, filled, s.Counts(), "a change to a copy leaves the store's own")
 }
+
+func double(counts []int) {}
+
+func written(t *testing.T, s store) {
+	counts := s.Counts()
+	double(counts)
+	assert.NotEqual(t, counts, s.Counts(), "double writes the counts") // want `not-pure: state the check with NotPure of a copy of counts, around double\(counts\)$`
+}
