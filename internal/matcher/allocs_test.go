@@ -4,9 +4,12 @@
 package matcher_test
 
 import (
+	"flag"
 	"os"
+	"regexp"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert/internal/childtest"
@@ -18,6 +21,20 @@ import (
 var (
 	counted bool
 	off     bool
+)
+
+// kept keeps what allocate builds, so escape analysis cannot remove the
+// allocation.
+var kept []byte
+
+// allocate makes one heap allocation per call.
+func allocate() { kept = make([]byte, 64) }
+
+// The notes of a ceiling that only the test log leaves unchecked, each on
+// the line of the test's call, as the log of a test states them.
+var (
+	unchecked          = regexp.MustCompile(`allocs_test\.go:\d+: max-allocs: the ceiling is not checked`)
+	uncheckedWithSetup = regexp.MustCompile(`allocs_test\.go:\d+: max-allocs-with-setup: the ceiling is not checked`)
 )
 
 // TestMaxAllocs does not run in parallel: its count covers the whole
@@ -40,6 +57,29 @@ func TestMaxAllocs(t *testing.T) {
 			func() { procs = max(procs, runtime.GOMAXPROCS(0)) }, 0, allocContract)
 		if got := runtime.GOMAXPROCS(0); procs != 1 || got != 2 {
 			t.Fatalf("the calls ran with GOMAXPROCS of at most %d and left it at %d, want 1 and 2", procs, got)
+		}
+	})
+
+	t.Run("notes and passes a call over its ceiling in a run that writes the test log", func(t *testing.T) {
+		if childtest.InChild(t) {
+			matcher.MaxAllocs(t, matcher.Fatal, allocate, 0, allocContract)
+			return
+		}
+		built, settings := builtHere()
+		out := runLogged(t)
+		if noted := unchecked.MatchString(out); noted != built {
+			t.Fatalf("the child notes the ceiling at its call: %v, want %v for settings %v:\n%s",
+				noted, built, settings, out)
+		}
+	})
+
+	t.Run("notes no ceiling in a run without the test log", func(t *testing.T) {
+		if childtest.InChild(t) {
+			matcher.MaxAllocs(t, matcher.Fatal, func() {}, 0, allocContract)
+			return
+		}
+		if out := runChild(t); strings.Contains(out, "the ceiling is not checked") {
+			t.Fatalf("the child notes an unchecked ceiling:\n%s", out)
 		}
 	})
 }
@@ -65,6 +105,20 @@ func TestMaxAllocsWithSetup(t *testing.T) {
 			func(int) { procs = max(procs, runtime.GOMAXPROCS(0)) }, 0, allocContract)
 		if got := runtime.GOMAXPROCS(0); procs != 1 || got != 2 {
 			t.Fatalf("the calls ran with GOMAXPROCS of at most %d and left it at %d, want 1 and 2", procs, got)
+		}
+	})
+
+	t.Run("notes and passes a call over its ceiling in a run that writes the test log", func(t *testing.T) {
+		if childtest.InChild(t) {
+			matcher.MaxAllocsWithSetup(t, matcher.Fatal, func() int { return 0 }, func(int) { allocate() }, 0,
+				allocContract)
+			return
+		}
+		built, settings := builtHere()
+		out := runLogged(t)
+		if noted := uncheckedWithSetup.MatchString(out); noted != built {
+			t.Fatalf("the child notes the ceiling at its call: %v, want %v for settings %v:\n%s",
+				noted, built, settings, out)
 		}
 	})
 }
@@ -118,12 +172,12 @@ func TestOptimisationsOff(t *testing.T) {
 // detector, msan and asan.
 var instrumentedSettings = map[string]bool{"-race": true, "-msan": true, "-asan": true}
 
-// countedHere returns what AllocationsCounted reports in the running
-// binary, from its build information and its environment, and the build's
-// settings. The build tags and the build information are two records of
-// one build. Reading the second checks the first, in every build this
-// suite runs under.
-func countedHere() (bool, []debug.BuildSetting) {
+// builtHere reports whether the build information and the environment of
+// the running binary let its allocations count, and returns the build's
+// settings. The build tags and the build information are two records of one
+// build. Reading the second checks the first, in every build this suite runs
+// under.
+func builtHere() (bool, []debug.BuildSetting) {
 	info, _ := debug.ReadBuildInfo()
 	instrumented := false
 	for _, setting := range info.Settings {
@@ -135,20 +189,41 @@ func countedHere() (bool, []debug.BuildSetting) {
 	return !instrumented && !matcher.OptimisationsOff(info) && !mutation, info.Settings
 }
 
+// countedHere returns what AllocationsCounted reports in the running
+// binary: what builtHere reports, in a run that writes no test log of go
+// test. It returns the build's settings too.
+func countedHere() (bool, []debug.BuildSetting) {
+	built, settings := builtHere()
+	return built && flag.Lookup("test.testlogfile").Value.String() == "", settings
+}
+
 // TestAllocationsCounted checks AllocationsCounted against the build
-// information and the environment of the running binary, and in child
-// processes whose environment states a variable of a mutation run. Each
-// child reads its own environment on its first call.
+// information, the environment and the test log of the running binary, and
+// in child processes whose environment states a variable of a mutation run
+// or that write a test log. Each child reads its own environment on its
+// first call.
 func TestAllocationsCounted(t *testing.T) {
 	t.Parallel()
 
-	t.Run("agrees with the running binary's build information and environment", func(t *testing.T) {
+	t.Run("agrees with the running binary's build information, environment and test log", func(t *testing.T) {
 		t.Parallel()
 
 		want, settings := countedHere()
 		if got := matcher.AllocationsCounted(); got != want {
 			t.Fatalf("AllocationsCounted = %v, want %v for settings %v", got, want, settings)
 		}
+	})
+
+	t.Run("reports false in a run that writes the test log of go test", func(t *testing.T) {
+		t.Parallel()
+
+		if childtest.InChild(t) {
+			if matcher.AllocationsCounted() {
+				t.Fatal("AllocationsCounted = true, want false in a run that writes the test log of go test")
+			}
+			return
+		}
+		runLogged(t)
 	})
 
 	tests := []struct {

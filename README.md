@@ -256,6 +256,13 @@ one mutant that confirms a survivor, where the ceilings apply.
 `MaxAllocs` and `MaxAllocsWithSetup` still call the function, and a
 contract still publishes its counts.
 
+A plain `go test` run checks no allocation ceiling either. `go test`
+passes a test log to every run whose result it can cache, and the log
+allocates in some calls of package `os`, such as an `Open` through an
+`os.Root`. `MaxAllocs` and `MaxAllocsWithSetup` then write a note into
+the test's log. A run with `-count=1`, `-covermode` or `-bench` turns the
+cache off, writes no test log and checks the ceilings.
+
 ## Properties
 
 `prop.ForAll` runs a body against generated inputs. When a case fails,

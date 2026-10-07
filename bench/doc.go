@@ -45,9 +45,14 @@
 // inlining, as a debugger's build does, moves values to the heap that an
 // ordinary build keeps on the stack. A test binary that a mutation run
 // instrumented, which runs with DOKIMI_MUTATE_INSTRUMENTED in its
-// environment, inlines fewer functions and moves values the same way. In each of these
-// builds [Contract.End] publishes the allocation and byte counts and
-// leaves both ceilings unchecked.
+// environment, inlines fewer functions and moves values the same way. In
+// each of these builds [Contract.End] publishes the allocation and byte
+// counts and leaves both ceilings unchecked.
+//
+// A run that writes the test log of go test leaves both ceilings unchecked
+// too, because the log allocates in some calls of package os. go test
+// passes the log to every run whose result it can cache, and -bench turns
+// the cache off, so a benchmark run checks the ceilings.
 //
 // # Dependency position
 //

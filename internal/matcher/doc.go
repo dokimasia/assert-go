@@ -40,9 +40,12 @@
 // msan or asan, in a build whose -gcflags turn off optimisation or
 // inlining, and in a test binary that a mutation run instrumented, which
 // [MutationInstrumented] reports. None of them allocates as an ordinary
-// build does, and [MaxAllocs] checks no ceiling in any of them. [Mutated]
-// reports any run that a mutation run starts, the ordinary build that
-// confirms a survivor included.
+// build does. It also reports false in a run that writes the test log of go
+// test, which go test passes to every run whose result it can cache, because
+// the log allocates in some calls of package os. [MaxAllocs] checks no
+// ceiling in any of them, and notes a ceiling that only the test log leaves
+// unchecked. [Mutated] reports any run that a mutation run starts, the
+// ordinary build that confirms a survivor included.
 //
 // # Allocation contracts
 //

@@ -4,6 +4,7 @@
 package matcher
 
 import (
+	"flag"
 	"runtime"
 	"runtime/debug"
 	"strings"
@@ -13,6 +14,15 @@ import (
 // allocRuns is the number of calls that [MaxAllocs] and
 // [MaxAllocsWithSetup] count, after the call that warms the callable.
 const allocRuns = 100
+
+// testLogFlag is the flag of the testing package that names the test log,
+// which go test passes to a run whose result it can cache.
+const testLogFlag = "test.testlogfile"
+
+// testLogNote ends the note of an allocation ceiling that only the test log
+// leaves unchecked, after the id of the assertion.
+const testLogNote = ": the ceiling is not checked, because this run writes the test log of go test's cache, " +
+	"which allocates. A run with -count=1 writes no log and checks the ceiling."
 
 // gcflagsSetting is the key under which the build information records
 // the -gcflags the binary was compiled with.
@@ -33,8 +43,10 @@ const (
 //	matcher.MaxAllocs(seat, matcher.Fatal, func() { _, _ = store.Get(ctx, id) }, 0,
 //	    "Get allocates nothing per call once the store is warm")
 //
-// In a build where [AllocationsCounted] reports false, it calls fn as
-// an ordinary build does and passes.
+// In a run where [AllocationsCounted] reports false, it calls fn as an
+// ordinary build does and passes. Where only the test log of go test stops
+// the check, it writes a note into the log of seat that a run with
+// -count=1 checks the ceiling.
 //
 // It counts as [testing.AllocsPerRun] counts, with GOMAXPROCS at 1 and one
 // reading of the counter before the 100 calls and one after them. The count
@@ -44,12 +56,12 @@ const (
 // # Allocation contract
 //
 // A passing call allocates nothing besides what the 101 calls of fn
-// allocate.
+// allocate, and the note that the Logf of seat writes.
 func MaxAllocs(seat Seat, mode Mode, fn func(), ceiling uint64, msg string) {
 	seat.Helper()
 
 	got := allocs(fn)
-	if AllocationsCounted() && got > ceiling {
+	if ceilingChecked(seat, "max-allocs"+testLogNote) && got > ceiling {
 		Fail(seat, mode, "max-allocs", msg, map[string]any{"want": ceiling, "got": got})
 		return
 	}
@@ -66,8 +78,10 @@ func MaxAllocs(seat Seat, mode Mode, fn func(), ceiling uint64, msg string) {
 //	matcher.MaxAllocsWithSetup(seat, matcher.Fatal, freshStore, (*Store).Settle, 4,
 //	    "settling a store allocates at most four times")
 //
-// In a build where [AllocationsCounted] reports false, it calls setup and
-// fn as an ordinary build does and passes.
+// In a run where [AllocationsCounted] reports false, it calls setup and fn
+// as an ordinary build does and passes. Where only the test log of go test
+// stops the check, it writes a note into the log of seat, as [MaxAllocs]
+// does.
 //
 // The count covers the whole process, so the test that calls
 // MaxAllocsWithSetup does not call t.Parallel.
@@ -75,12 +89,12 @@ func MaxAllocs(seat Seat, mode Mode, fn func(), ceiling uint64, msg string) {
 // # Allocation contract
 //
 // A passing call allocates nothing besides what the 101 calls of setup and
-// of fn allocate.
+// of fn allocate, and the note that the Logf of seat writes.
 func MaxAllocsWithSetup[T any](seat Seat, mode Mode, setup func() T, fn func(T), ceiling uint64, msg string) {
 	seat.Helper()
 
 	got := allocsAfter(setup, fn)
-	if AllocationsCounted() && got > ceiling {
+	if ceilingChecked(seat, "max-allocs-with-setup"+testLogNote) && got > ceiling {
 		Fail(seat, mode, "max-allocs-with-setup", msg, map[string]any{"want": ceiling, "got": got})
 		return
 	}
@@ -132,9 +146,21 @@ func perCall(total uint64) uint64 {
 	return (2*total + allocRuns) / (2 * allocRuns)
 }
 
+// ceilingChecked reports whether an allocation ceiling applies, as
+// [AllocationsCounted] reports it. Where the build counts allocations and
+// only the test log stops the check, it writes note into the log of seat.
+func ceilingChecked(seat Seat, note string) bool {
+	seat.Helper()
+	counted := AllocationsCounted()
+	if !counted && builtToCount() {
+		Note(seat, note)
+	}
+	return counted
+}
+
 // AllocationsCounted reports whether the running binary's allocation
-// counts describe the code under test. They do not describe it in three
-// kinds of build:
+// counts describe the code under test. They do not describe it in four
+// kinds of run:
 //
 //   - A build with the race detector, msan or asan, which allocates on
 //     the code's behalf. Under the race detector sync.Pool also drops a
@@ -148,22 +174,43 @@ func perCall(total uint64) uint64 {
 //     functions, and a value can move to the heap as it does with inlining
 //     off. The ordinary build of one mutant, which a mutation run builds to
 //     confirm a survivor, counts its allocations.
+//   - A run of a test binary that writes the test log of go test. go test
+//     passes the flag -test.testlogfile to every run whose result it can
+//     cache, and the log records the files that the run opens and stats.
+//     An entry of an os.Root allocates, so on Go 1.27.1 an Open and a Close
+//     through a Root allocate 6 times with the log and 5 times without it.
+//     A run that turns the cache off, such as one with -count=1, writes no
+//     log.
 //
 // It reads the build information and the environment on its first call,
-// and returns the result of that reading afterwards.
+// and returns the result of that reading afterwards. It reads the flag on
+// every call, because a TestMain can call it before the testing package
+// parses the flags.
 //
 // # Allocation contract
 //
 // AllocationsCounted allocates nothing after its first call.
 func AllocationsCounted() bool {
-	return allocationsCounted()
+	return builtToCount() && !testLogged()
 }
 
-// allocationsCounted computes [AllocationsCounted] on its first call.
-var allocationsCounted = sync.OnceValue(func() bool {
+// builtToCount reports whether the build and the environment of the running
+// binary let its allocation counts describe the code under test, on its
+// first call, and returns the result of that call afterwards.
+var builtToCount = sync.OnceValue(func() bool {
 	info, _ := debug.ReadBuildInfo()
 	return !instrumented && !OptimisationsOff(info) && !MutationInstrumented()
 })
+
+// testLogged reports whether the running binary writes the test log of go
+// test: whether its flag -test.testlogfile names a file. A binary without
+// the testing package has no such flag.
+func testLogged() bool {
+	f := flag.Lookup(testLogFlag)
+	//dokimi:mutate-skip ror-true,lcr-right: every test binary has the flag, so no test runs where f is nil
+	return f != nil &&
+		f.Value.String() != ""
+}
 
 // OptimisationsOff reports whether info records -gcflags that turn off
 // optimisation (-N) or inlining (-l) for any package. A flag may follow a

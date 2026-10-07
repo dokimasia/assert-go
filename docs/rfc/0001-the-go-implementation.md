@@ -294,9 +294,12 @@ assertion this library stops implementing fails the build until an
 overlay entry says why.
 
 The overlay does state limits. In a build with the race detector, msan
-or asan, and in one whose `-gcflags` turn off optimisation or inlining,
-no allocation ceiling is checked, because those builds allocate
-differently from the one that ships.
+or asan, in one whose `-gcflags` turn off optimisation or inlining, and
+in a test binary that a mutation run instrumented, no allocation ceiling
+is checked, because those builds allocate differently from the one that
+ships. A run that writes the test log of `go test`, which `go test`
+passes to every run whose result it can cache, checks no ceiling either,
+because the log allocates in some calls of package `os`.
 
 ## Alternatives considered
 

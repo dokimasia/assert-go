@@ -6,6 +6,7 @@
 package matcher_test
 
 import (
+	"flag"
 	"os"
 	"runtime/debug"
 	"testing"
@@ -21,13 +22,15 @@ func TestUninstrumented(t *testing.T) {
 	t.Run("AllocationsCounted", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("reports true unless the build turns off optimisation or a mutation run instrumented it",
+		t.Run("reports true without optimisation off, mutation instrumentation or a test log",
 			func(t *testing.T) {
 				t.Parallel()
 
 				info, _ := debug.ReadBuildInfo()
 				_, mutated := os.LookupEnv(instrumentedVariable)
-				if got, want := matcher.AllocationsCounted(), !matcher.OptimisationsOff(info) && !mutated; got != want {
+				logged := flag.Lookup("test.testlogfile").Value.String() != ""
+				want := !matcher.OptimisationsOff(info) && !mutated && !logged
+				if got := matcher.AllocationsCounted(); got != want {
 					t.Fatalf("AllocationsCounted = %v, want %v in a build without instrumentation", got, want)
 				}
 			})

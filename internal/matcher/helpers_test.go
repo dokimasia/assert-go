@@ -5,6 +5,7 @@ package matcher_test
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -42,7 +43,23 @@ const (
 // fails or does not run the test.
 func runChild(t *testing.T, env ...string) string {
 	t.Helper()
-	out, err := childtest.Run(t, t.Name(), env...)
+	return runChildFlags(t, nil, env...)
+}
+
+// runLogged runs the test again in a child process that writes the test log
+// of go test, as a run whose result go test can cache writes it. It returns
+// the child's output, as runChild does.
+func runLogged(t *testing.T) string {
+	t.Helper()
+	return runChildFlags(t, []string{"-test.testlogfile=" + filepath.Join(t.TempDir(), "testlog.txt")})
+}
+
+// runChildFlags runs the test again in a child process, with flags and the
+// variables of env, and returns the child's output. It fails the test when
+// the child fails or does not run the test.
+func runChildFlags(t *testing.T, flags []string, env ...string) string {
+	t.Helper()
+	out, err := childtest.RunFlags(t, t.Name(), flags, env...)
 	if err != nil || !strings.Contains(out, "--- PASS: "+t.Name()+" ") {
 		t.Fatalf("the child exits with %v, want a pass of %s:\n%s", err, t.Name(), out)
 	}

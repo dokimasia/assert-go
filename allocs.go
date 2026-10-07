@@ -31,6 +31,13 @@ import "go.dokimi.dev/assert/internal/matcher"
 // ordinary build of one mutant, which a mutation run builds to confirm a
 // survivor, checks the ceiling.
 //
+// It checks no ceiling either in a run that writes the test log of go test,
+// which go test passes to every run whose result it can cache. The log
+// allocates in some calls of package os, such as an Open through an
+// os.Root. There it writes a note into the test's log that a run with
+// -count=1 checks the ceiling. A run with -count=1, -covermode or -bench
+// turns the cache off and writes no test log.
+//
 // # Parallel tests
 //
 // It counts the allocations of the whole process, with GOMAXPROCS at 1, so
@@ -39,7 +46,7 @@ import "go.dokimi.dev/assert/internal/matcher"
 // # Allocation contract
 //
 // A passing call allocates nothing besides what the 101 calls of fn
-// allocate.
+// allocate, and the note in a run that writes the test log.
 func MaxAllocs(tb TB, fn func(), ceiling uint64, msg string) {
 	tb.Helper()
 	matcher.MaxAllocs(tb, matcher.Fatal, fn, ceiling, msg)
@@ -62,8 +69,9 @@ func MaxAllocs(tb TB, fn func(), ceiling uint64, msg string) {
 //
 // # Builds that allocate differently
 //
-// In the builds where [MaxAllocs] checks no ceiling, it calls setup and fn
-// as an ordinary build does and checks no ceiling either.
+// In the builds and the runs where [MaxAllocs] checks no ceiling, it calls
+// setup and fn as an ordinary build does and checks no ceiling either. It
+// writes the note of MaxAllocs in a run that writes the test log.
 //
 // # Parallel tests
 //
@@ -73,7 +81,7 @@ func MaxAllocs(tb TB, fn func(), ceiling uint64, msg string) {
 // # Allocation contract
 //
 // A passing call allocates nothing besides what the 101 calls of setup and
-// of fn allocate.
+// of fn allocate, and the note in a run that writes the test log.
 func MaxAllocsWithSetup[T any](tb TB, setup func() T, fn func(T), ceiling uint64, msg string) {
 	tb.Helper()
 	matcher.MaxAllocsWithSetup(tb, matcher.Fatal, setup, fn, ceiling, msg)

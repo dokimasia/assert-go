@@ -28,7 +28,13 @@ jobs:
       - name: Install ergon
         run: go install "go.thesmos.sh/ergon/cmd/ergon@${ERGON_VERSION}"
       - run: ergon bootstrap
+      # The mutation stage runs gremlins, which starts each go test with flags
+      # that keep its result cacheable. go test then passes the run a test
+      # log, and no allocation ceiling is checked under it. -count=1 turns
+      # the cache off for every go test of the gate.
       - run: ergon check
+        env:
+          GOFLAGS: -count=1
   # Vet, the build and the race tests run on every supported OS, because the
   # trees of files and the stores of properties read and write the file
   # system of the platform. The other jobs check properties of the source
