@@ -47,6 +47,8 @@ var (
 	pairsType = reflect.TypeFor[Pairs]()
 	// variantType is the type of a variant.
 	variantType = reflect.TypeFor[Variant]()
+	// byteType is the type of an element of a byte string.
+	byteType = reflect.TypeFor[byte]()
 )
 
 // nullLiteral is the literal of null.
@@ -229,7 +231,7 @@ func (w *walk) literalOf(v reflect.Value) (written, bool) {
 // null for any other, such as nil bytes, which no absent literal states.
 func absentOf(t reflect.Type) written {
 	of := scalarOf(t.Elem())
-	if t.Kind() == reflect.Slice && of != "" && t.Elem().Kind() != reflect.Uint8 {
+	if t.Kind() == reflect.Slice && of != "" && !IsBytes(t) {
 		return written{form: scalarList{Type: typeList, Of: of}, depth: 1}
 	}
 	if t.Kind() == reflect.Map && of != "" && scalarOf(t.Key()) == typeString {
@@ -301,11 +303,19 @@ func (w *walk) scalarOf(v reflect.Value) (written, bool) {
 	return written{}, false
 }
 
+// IsBytes reports whether t is a slice or an array of bytes, which the typed
+// literal bytes states. Its element type is byte itself: a slice of a type
+// defined over uint8, such as an enumeration, is a list of integers. It
+// allocates nothing.
+func IsBytes(t reflect.Type) bool {
+	return (t.Kind() == reflect.Slice || t.Kind() == reflect.Array) && t.Elem() == byteType
+}
+
 // listOf returns the literal of a slice or an array: a byte string for
 // bytes, and a list otherwise. A list of scalars of one type states their
 // values, and any other list the literal of each element.
 func (w *walk) listOf(v reflect.Value) (written, bool) {
-	if v.Type().Elem().Kind() == reflect.Uint8 {
+	if IsBytes(v.Type()) {
 		if !w.spend(v.Len()) {
 			return written{}, false
 		}
@@ -477,7 +487,8 @@ func (w *walk) nested(v reflect.Value, levels int) (written, bool) {
 //     beyond 2^53 - 1 in magnitude is a decimal string, and a NaN or an
 //     infinity is its name.
 //   - A slice or an array of bytes is a byte string, and any other slice or
-//     array a list.
+//     array a list. A slice of a type defined over uint8 is a list, as
+//     [IsBytes] states.
 //   - A map is its entries, sorted by the JSON of their keys, so that one
 //     map has one literal.
 //   - Any other struct is a map of its exported fields in declaration order.

@@ -27,6 +27,10 @@ const (
 		`],"output":{"type":"list","items":[` + appendOneLiteral + `]}}`
 )
 
+// verdict is a defined type over uint8, as an enumeration is, whose slices
+// are lists and no byte strings.
+type verdict uint8
+
 // committed is a transaction that appended 1 to x and committed.
 var committed = history.Transaction{
 	Call: 0, Completion: 1, Kind: history.OK, Args: []any{appendOf("x", 1)}, Output: []any{appendOf("x", 1)},
@@ -236,6 +240,24 @@ func TestTransaction(t *testing.T) {
 			h := history.New()
 			transact(h, 0, history.OK, appendOf("x", 1))
 			h.Invoke(1, "txn", []any{[]any{"read", "x", nil}}, "x").OK([]any{[]any{"read", "x", []int{1, 1}}})
+			got := isolationOf(history.Serializable, h)
+			assert.Equal(t, got[anomalyField], any(history.DuplicateAppend), "the read returned 1 twice")
+		})
+
+		t.Run("reads the list of a read from an array", func(t *testing.T) {
+			t.Parallel()
+			h := history.New()
+			transact(h, 0, history.OK, appendOf("x", 1))
+			h.Invoke(1, "txn", []any{[]any{"read", "x", nil}}, "x").OK([]any{[]any{"read", "x", [2]int{1, 1}}})
+			got := isolationOf(history.Serializable, h)
+			assert.Equal(t, got[anomalyField], any(history.DuplicateAppend), "the read returned 1 twice")
+		})
+
+		t.Run("reads the list of a read from a slice of a type defined over uint8", func(t *testing.T) {
+			t.Parallel()
+			h := history.New()
+			transact(h, 0, history.OK, appendOf("x", verdict(1)))
+			h.Invoke(1, "txn", []any{[]any{"read", "x", nil}}, "x").OK([]any{[]any{"read", "x", []verdict{1, 1}}})
 			got := isolationOf(history.Serializable, h)
 			assert.Equal(t, got[anomalyField], any(history.DuplicateAppend), "the read returned 1 twice")
 		})

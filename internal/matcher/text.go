@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"go.dokimi.dev/assert/internal/literal"
 	"go.dokimi.dev/assert/internal/prop/pattern"
 )
 
@@ -126,8 +127,9 @@ func portable(expr string) (*regexp.Regexp, error) {
 }
 
 // textOf reads a value as text, accepting a string, a []byte, or any
-// type defined over either. A nil value has the kind [reflect.Invalid],
-// and is no text.
+// type defined over either. A slice of a type defined over uint8, such as
+// an enumeration, is a sequence and no text. A nil value has the kind
+// [reflect.Invalid], and is no text.
 func textOf(v any) (string, bool) {
 	switch s := v.(type) {
 	case string:
@@ -140,7 +142,7 @@ func textOf(v any) (string, bool) {
 	if rv.Kind() == reflect.String {
 		return rv.String(), true
 	}
-	if rv.Kind() == reflect.Slice && rv.Type().Elem().Kind() == reflect.Uint8 {
+	if rv.Kind() == reflect.Slice && literal.IsBytes(rv.Type()) {
 		return string(rv.Bytes()), true
 	}
 	return "", false

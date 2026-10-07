@@ -5,12 +5,14 @@ package matchertest
 
 // Defined types over the kinds that each family reads. A surface that
 // switches on concrete types alone passes the plain cases and fails
-// these, so every table contains one.
+// these, so every table contains one. A slice of verdict, a type over
+// uint8 as an enumeration is, is a sequence and no text.
 type (
 	name    string
 	digits  []byte
 	celsius float64
 	ids     []int
+	verdict uint8
 )
 
 // HasPrefixCases are the cases every surface's prefix assertion must
@@ -34,6 +36,20 @@ func HasPrefixCases() []Case {
 			Fails:     true,
 			Assertion: "has-prefix",
 			Detail:    map[string]any{"got": 42, "prefix": "4"},
+		},
+		{
+			Name:      "a slice of a type defined over uint8 is no text and reports",
+			Args:      []any{[]verdict{1}, "\x01"},
+			Fails:     true,
+			Assertion: "has-prefix",
+			Detail:    map[string]any{"got": []verdict{1}, "prefix": "\x01"},
+		},
+		{
+			Name:      "an array of bytes is no text and reports",
+			Args:      []any{[2]byte{'a', 'b'}, "a"},
+			Fails:     true,
+			Assertion: "has-prefix",
+			Detail:    map[string]any{"got": [2]byte{'a', 'b'}, "prefix": "a"},
 		},
 	}
 }

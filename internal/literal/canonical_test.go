@@ -54,6 +54,11 @@ func TestCanonical(t *testing.T) {
 			{name: "returns bytes in hexadecimal", give: []byte{1, 2}, want: "bytes:0102"},
 			{name: "returns a list of its elements' texts", give: []int{1, 2}, want: "list:[int:1,int:2]"},
 			{
+				name: "returns a list for a slice of a type defined over uint8",
+				give: []verdict{1, 2},
+				want: "list:[int:1,int:2]",
+			},
+			{
 				name: "returns a list of any as the list of its elements",
 				give: []any{int64(1), 2},
 				want: "list:[int:1,int:2]",

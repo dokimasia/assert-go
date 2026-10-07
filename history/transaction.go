@@ -298,8 +298,7 @@ func (ids *identities) repeated(m *microOperation, part any) error {
 		m.list = list
 	default:
 		values := reflect.ValueOf(list)
-		if values.Kind() != reflect.Slice && values.Kind() != reflect.Array ||
-			values.Type().Elem().Kind() == reflect.Uint8 {
+		if values.Kind() != reflect.Slice && values.Kind() != reflect.Array || literal.IsBytes(values.Type()) {
 			return fault.Of(ErrTransaction, "the read returned %s, which is no list", text.Sprintf("%#v", list))
 		}
 		m.list = make([]any, values.Len())

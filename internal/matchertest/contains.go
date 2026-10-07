@@ -45,6 +45,10 @@ func ContainsCases() []Case {
 		},
 		{Name: "a defined string type reads as text", Args: []any{name("hello"), "ell"}},
 		{
+			Name: "a slice of a type defined over uint8 contains an element",
+			Args: []any{[]verdict{1, 2}, verdict(1)},
+		},
+		{
 			Name:      "an absent element reports",
 			Args:      []any{[]int{1, 2}, 9},
 			Fails:     true,
@@ -92,6 +96,10 @@ func NotContainsCases() []Case {
 	nan := math.NaN()
 	return []Case{
 		{Name: "an absent element passes", Args: []any{[]int{1, 2}, 9}},
+		{
+			Name: "an absent element of a slice of a type defined over uint8 passes",
+			Args: []any{[]verdict{1, 2}, verdict(3)},
+		},
 		{Name: "an absent substring passes", Args: []any{"hello", "xyz"}},
 		{Name: "a NaN key is not contained", Args: []any{map[float64]int{nan: 1}, nan}},
 		{

@@ -37,7 +37,13 @@ const (
 	// cycleAllocs are the allocations of Encode on a map that contains
 	// itself, which ends at the level past the levels of a literal.
 	cycleAllocs = 103
+	// isBytesAllocs are the allocations of IsBytes.
+	isBytesAllocs = 0
 )
+
+// keptBool is the value that a measured call of IsBytes returns, kept so
+// that the compiler keeps the call.
+var keptBool bool
 
 // faulty is a value whose text cannot be marshalled.
 type faulty struct{}
@@ -147,6 +153,21 @@ func TestEncode(t *testing.T) {
 			{name: "returns bytes in hexadecimal", give: []byte("hi"), want: `{"type":"bytes","value":"6869"}`},
 			{name: "returns an array of bytes", give: [2]byte{1, 2}, want: `{"type":"bytes","value":"0102"}`},
 			{name: "returns null for nil bytes", give: []byte(nil), want: `{"type":"null"}`},
+			{
+				name: "returns a list of ints for a slice of a type defined over uint8",
+				give: []verdict{1, 2},
+				want: `{"type":"list","of":"int","value":[1,2]}`,
+			},
+			{
+				name: "returns a list of ints for an array of a type defined over uint8",
+				give: [2]verdict{1, 2},
+				want: `{"type":"list","of":"int","value":[1,2]}`,
+			},
+			{
+				name: "returns the absent list of ints for a nil slice of a type defined over uint8",
+				give: []verdict(nil),
+				want: `{"type":"list","of":"int","value":null}`,
+			},
 			{
 				name: "returns a list of one scalar type",
 				give: []int{1, 2},
@@ -507,10 +528,33 @@ func TestEncode(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("IsBytes", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			give reflect.Type
+			want bool
+		}{
+			{name: "returns true for a slice of bytes", give: reflect.TypeFor[[]byte](), want: true},
+			{name: "returns true for an array of bytes", give: reflect.TypeFor[[4]byte](), want: true},
+			{name: "returns false for a slice of a type defined over uint8", give: reflect.TypeFor[[]verdict]()},
+			{name: "returns false for a pointer to a byte", give: reflect.TypeFor[*byte]()},
+			{name: "returns false for a map of bytes", give: reflect.TypeFor[map[string]byte]()},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				assert.Equal(t, literal.IsBytes(tt.give), tt.want, "whether the typed literal bytes states the type")
+			})
+		}
+	})
 }
 
 // TestEncodeAllocs checks the ceilings of Encode on a list of two
-// integers, of Opaque, of Detail on an error, and of Plain on an int.
+// integers, of Opaque, of Detail on an error, of Plain on an int, and of
+// IsBytes.
 func TestEncodeAllocs(t *testing.T) {
 	values := []int{1, 2}
 	boom := errors.New("literal_test: boom")
@@ -526,14 +570,26 @@ func TestEncodeAllocs(t *testing.T) {
 	var looped any = selfContaining()
 	assert.MaxAllocs(t, func() { _, _ = literal.Encode(looped) }, cycleAllocs,
 		"Encode refuses a map that contains itself once it nests past the levels of a literal")
+	bytesType := reflect.TypeFor[[]byte]()
+	assert.MaxAllocs(t, func() { keptBool = literal.IsBytes(bytesType) }, isBytesAllocs, "IsBytes allocates nothing")
 }
 
 // BenchmarkEncode measures Encode on a list of two integers, Opaque,
-// Detail on an error, and Plain on an int.
+// Detail on an error, Plain on an int, and IsBytes.
 func BenchmarkEncode(b *testing.B) {
 	values := []int{1, 2}
 	boom := errors.New("literal_test: boom")
 	var number any = 1234
+
+	b.Run("IsBytes", func(b *testing.B) {
+		bytesType := reflect.TypeFor[[]byte]()
+		c := bench.Start(b).MaxAllocs(isBytesAllocs)
+		defer c.End()
+		for c.Loop() {
+			keptBool = literal.IsBytes(bytesType)
+		}
+		assert.True(b, keptBool, "a slice of bytes is bytes")
+	})
 
 	b.Run("Plain", func(b *testing.B) {
 		got, _ := literal.Plain(number)

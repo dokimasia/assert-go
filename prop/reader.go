@@ -14,6 +14,7 @@ import (
 	"uuid"
 
 	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/literal"
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
 
@@ -70,7 +71,6 @@ var (
 	bigIntType   = reflect.TypeFor[*big.Int]()
 	ratType      = reflect.TypeFor[*big.Rat]()
 	wallType     = reflect.TypeFor[WallTime]()
-	byteType     = reflect.TypeFor[byte]()
 )
 
 // node is one shape of a shape file, as encoding/json writes it.
@@ -402,7 +402,7 @@ func (r *reader) wallShape(k *tags, at fault.Path) (node, converter, error) {
 // lists of integers. The keys of the tag that the list does not take apply
 // to its elements.
 func (r *reader) sequence(t reflect.Type, k *tags, at fault.Path) (node, converter, error) {
-	if t.Elem() == byteType {
+	if literal.IsBytes(t) {
 		if t.Kind() == reflect.Array {
 			return node{shapeKey: "bytes", minSizeKey: t.Len(), maxSizeKey: t.Len()}, bytesConverter, nil
 		}

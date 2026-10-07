@@ -73,7 +73,7 @@ func writeCanonical(b *strings.Builder, v reflect.Value) {
 // writeSlice writes a byte string as bytes in hexadecimal, and any other
 // slice as the list of its elements' texts.
 func writeSlice(b *strings.Builder, v reflect.Value) {
-	if v.Type().Elem().Kind() == reflect.Uint8 {
+	if IsBytes(v.Type()) {
 		fmt.Fprintf(b, "%s:%s", typeBytes, hex.EncodeToString(v.Bytes()))
 		return
 	}

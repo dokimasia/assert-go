@@ -322,7 +322,7 @@ var bytesConverter = converter{
 		}
 	},
 	neutral: func(src reflect.Value) (any, error) {
-		if (src.Kind() != reflect.Slice && src.Kind() != reflect.Array) || src.Type().Elem() != byteType {
+		if !literal.IsBytes(src.Type()) {
 			return unchanged(src)
 		}
 		b := make([]byte, src.Len())

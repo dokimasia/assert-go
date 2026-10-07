@@ -193,7 +193,7 @@ func divisibleBy(v any, n *big.Float) bool {
 // and a NaN sum is above nothing.
 func sumAbove(v any, n *big.Float) bool {
 	items := reflect.ValueOf(v)
-	if items.Kind() != reflect.Slice || items.Type().Elem().Kind() == reflect.Uint8 {
+	if items.Kind() != reflect.Slice || literal.IsBytes(items.Type()) {
 		return false
 	}
 	exact, inexact, floating := new(big.Int), 0.0, false
@@ -336,7 +336,7 @@ func hasDuplicate(v any) bool {
 // number above n. A float or a bool is no index, and a bool is no number.
 func indexedAbove(v any, n *big.Float) bool {
 	items := reflect.ValueOf(v)
-	if items.Kind() != reflect.Slice || items.Type().Elem().Kind() == reflect.Uint8 || items.Len() == 0 {
+	if items.Kind() != reflect.Slice || literal.IsBytes(items.Type()) || items.Len() == 0 {
 		return false
 	}
 	last := items.Len() - 1
