@@ -10,10 +10,12 @@
 // follows no link, and [ReadPath] reads the entry at one path of the
 // operating system. [Differing] compares a tree read with a wanted one, and
 // [NewRecord] builds the record of a comparison that fails. [Write] writes a
-// tree into a directory as a workspace does, and [Update] makes a directory
-// equal a tree as an update of a golden tree does. [Tree.MarshalJSON] writes
-// the tree literal of a record, [Tree.Encode] writes the tree literal of an
-// input, and [Decode] reads the tree literal of an input.
+// tree into a directory as a workspace does, [Overwrite] writes a tree over
+// the entries of a directory that exists as files.Write does, and [Update]
+// makes a directory equal a tree as an update of a golden tree does.
+// [Tree.MarshalJSON] writes the tree literal of a record, [Tree.Encode]
+// writes the tree literal of an input, and [Decode] reads the tree literal of
+// an input.
 //
 // # Platforms
 //
@@ -25,9 +27,9 @@
 // permission bits.
 //
 // Windows records one permission bit, the owner's write bit of a file, as
-// the file's read-only attribute. [Write] sets the attribute on each file
-// whose mode lacks that bit, and sets none on a directory, where Windows does
-// not honour it. Windows stores the target of a link with backslashes, and
+// the file's read-only attribute. [Write] and [Overwrite] set the attribute
+// on each file whose mode lacks that bit, and set none on a directory, where
+// Windows does not honour it. Windows stores the target of a link with backslashes, and
 // [Read] and [ReadPath] return it with slashes, as a tree states it.
 //
 // # Dependency position

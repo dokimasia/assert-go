@@ -55,7 +55,7 @@ func Write(dir string, t Tree) error {
 	if err := t.Check(); err != nil {
 		return err
 	}
-	return apply(dir, creating(t.Full(), nil))
+	return apply(dir, func(*os.Root) ([]step, error) { return creating(t.Full(), nil), nil })
 }
 
 // Update makes dir equal t, as an update of a golden tree does. It creates
@@ -97,7 +97,118 @@ func Update(dir string, t Tree) error {
 		}
 		steps = append(steps, step{path: path, run: func(root *os.Root) error { return root.RemoveAll(path) }})
 	}
-	return apply(dir, creating(wanted, kept, steps...))
+	return apply(dir, func(*os.Root) ([]step, error) { return creating(wanted, kept, steps...), nil })
+}
+
+// Overwrite writes t into dir, a directory that exists, as files.Write does.
+// It reads the entry at each path of t, and at each parent of one, before it
+// writes anything. Where nothing is at a path, it creates the entry as [Write]
+// does. A file replaces the content of the file at its path, also of a file
+// that its owner may not write, and a link replaces the target of the link at
+// its path. A directory keeps its entries. Each entry that t states gets its
+// stated mode, and where it states none [FileMode], [ExecutableMode] or
+// [DirMode], each directory after every entry below it. A parent that t
+// implies keeps its mode where it exists. Every entry that t does not state
+// keeps its content and its mode. Overwrite writes through os.Root and never
+// follows a link: it replaces a link by removing the link itself. On Windows
+// only the owner's write bit of a file's mode takes effect, as with [Write].
+//
+// # Errors
+//
+// It returns the fault of [Tree.Check] for a tree that breaks a rule of a
+// tree, and a fault for a dir that cannot be opened. Before it writes
+// anything, it returns a fault at the first path, in path order, whose entry
+// cannot be read, is of another kind than t states, or is the entry at an
+// earlier path of t, such as a second name of one file. A parent that is no
+// directory is of another kind than t states. It returns a fault at the path
+// of the first entry that cannot be written, whose cause is the error of the
+// file system, such as a file that a directory without the owner's write bit
+// refuses.
+//
+// # Allocation contract
+//
+// Overwrite allocates the tree with its implied directories, the information
+// of each entry that it reads, an operation for each entry, and what the file
+// system's calls allocate.
+func Overwrite(dir string, t Tree) error {
+	if err := t.Check(); err != nil {
+		return err
+	}
+	return apply(dir, func(root *os.Root) ([]step, error) { return overwriting(root, t) })
+}
+
+// overwriting reads the entry at each path of the full tree of t in root, in
+// path order, and returns the operations that write t over them: the
+// replacement of each file and each link that is there, the operations of
+// [Write] for each entry that is missing, and then the mode of each directory
+// that is there and that t states, deepest first. No directory that is there
+// is below one that the write creates, so the modes of the created
+// directories come first. It returns the fault of the first entry that it
+// refuses, before any operation runs.
+func overwriting(root *os.Root, t Tree) ([]step, error) {
+	full := t.Full()
+	there := Tree{}
+	read := map[string]fs.FileInfo{}
+	var replaced, modes []step
+	for _, path := range full.Paths() {
+		e := full[path]
+		info, err := root.Lstat(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fault.At(readFault(err), fault.Key(path))
+		}
+		if err := refusal(info, e, read); err != nil {
+			return nil, fault.At(err, fault.Key(path))
+		}
+		there[path], read[path] = e, info
+		if e.Kind != Dir {
+			replaced = append(replaced, step{path: path, run: replace(path, e)})
+		} else if _, stated := t[path]; stated {
+			modes = append(modes, step{path: path, run: dirMode(path, e)})
+		}
+	}
+	slices.Reverse(modes)
+	return append(creating(full, there, replaced...), modes...), nil
+}
+
+// refusal returns a fault for the entry of info, where a tree states e: an
+// entry that is no file, directory or link, one of another kind than e, and
+// one that is the entry of a path in read. It returns nil for an entry that a
+// write replaces or keeps.
+func refusal(info fs.FileInfo, e Entry, read map[string]fs.FileInfo) error {
+	got, err := entryOf(info.Mode(), false)
+	if err != nil {
+		return err
+	}
+	if got.Kind != e.Kind {
+		return fault.New("the entry is a %s, and the tree states a %s", got.Kind.Name(), e.Kind.Name())
+	}
+	for path, other := range read {
+		if os.SameFile(info, other) {
+			return fault.New("the file system maps the path to the entry at %q", path)
+		}
+	}
+	return nil
+}
+
+// replace returns the operation that writes e over the entry of its kind at
+// path: the content and then the mode of a file, after it gives the owner the
+// permission to write the file, and the target of a link, after it removes
+// the link itself.
+func replace(path string, e Entry) func(root *os.Root) error {
+	if e.Kind == Link {
+		return func(root *os.Root) error {
+			if err := root.Remove(path); err != nil {
+				return err
+			}
+			return root.Symlink(e.Target, path)
+		}
+	}
+	return func(root *os.Root) error {
+		return errors.Join(root.Chmod(path, createFile), writeFile(root, path, os.O_TRUNC, e))
+	}
 }
 
 // creating returns the operations that write each entry of full that kept
@@ -113,9 +224,7 @@ func creating(full, kept Tree, before ...step) []step {
 		e := full[path]
 		steps = append(steps, step{path: path, run: create(path, e)})
 		if e.Kind == Dir {
-			modes = append(modes, step{path: path, run: func(root *os.Root) error {
-				return setDirMode(root, path, modeOf(e))
-			}})
+			modes = append(modes, step{path: path, run: dirMode(path, e)})
 		}
 	}
 	slices.Reverse(modes)
@@ -132,24 +241,38 @@ func create(path string, e Entry) func(root *os.Root) error {
 	if e.Kind == Link {
 		return func(root *os.Root) error { return root.Symlink(e.Target, path) }
 	}
-	return func(root *os.Root) error {
-		f, err := root.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, createFile)
-		if err != nil {
-			return err
-		}
-		_, err = f.WriteString(e.Content)
-		return errors.Join(err, f.Close(), root.Chmod(path, modeOf(e)))
-	}
+	return func(root *os.Root) error { return writeFile(root, path, os.O_CREATE|os.O_EXCL, e) }
 }
 
-// apply runs steps on the root of dir, in order, and returns a fault at the
-// path of the first step that fails.
-func apply(dir string, steps []step) error {
+// writeFile opens the file at path in root for writing with flag, writes the
+// content of e into it, and gives it the mode of e.
+func writeFile(root *os.Root, path string, flag int, e Entry) error {
+	f, err := root.OpenFile(path, os.O_WRONLY|flag, createFile)
+	if err != nil {
+		return err
+	}
+	_, err = f.WriteString(e.Content)
+	return errors.Join(err, f.Close(), root.Chmod(path, modeOf(e)))
+}
+
+// dirMode returns the operation that gives the directory e at path its mode.
+func dirMode(path string, e Entry) func(root *os.Root) error {
+	return func(root *os.Root) error { return setDirMode(root, path, modeOf(e)) }
+}
+
+// apply opens the root of dir and runs on it the steps that plan returns, in
+// order. It returns the error of plan as it is, and a fault at the path of
+// the first step that fails.
+func apply(dir string, plan func(root *os.Root) ([]step, error)) error {
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return fault.New("the directory cannot be opened").Because(err)
 	}
 	defer root.Close()
+	steps, err := plan(root)
+	if err != nil {
+		return err
+	}
 	for _, s := range steps {
 		if err := s.run(root); err != nil {
 			return fault.At(fault.New("the entry cannot be written").Because(err), fault.Key(s.path))

@@ -58,8 +58,10 @@ func lengthCases() []allocCase {
 		{name: "Length", call: func(seat matcher.Seat) {
 			matcher.Length(seat, matcher.Fatal, items, 3, allocContract)
 		}},
-		{name: "Empty", call: func(seat matcher.Seat) { matcher.Empty(seat, matcher.Fatal, none, allocContract) }},
-		{name: "NotEmpty", call: func(seat matcher.Seat) {
+		{name: "Empty", allocs: 1, call: func(seat matcher.Seat) {
+			matcher.Empty(seat, matcher.Fatal, none, allocContract)
+		}},
+		{name: "NotEmpty", allocs: 1, call: func(seat matcher.Seat) {
 			matcher.NotEmpty(seat, matcher.Fatal, items, allocContract)
 		}},
 	}

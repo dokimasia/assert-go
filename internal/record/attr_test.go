@@ -87,7 +87,7 @@ func TestAttr(t *testing.T) {
 			t.Parallel()
 			if !childtest.InChild(t) {
 				out := runChild(t, on)
-				want := attrLine + t.Name() + ` dokimi.assert.1 {"definition":"7.0.0","seq":1,"assertion":"true"`
+				want := attrLine + t.Name() + ` dokimi.assert.1 {"definition":"7.1.0","seq":1,"assertion":"true"`
 				assert.Contains(t, out, want, "the attribute of the record in the test's output")
 				return
 			}

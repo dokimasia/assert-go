@@ -113,7 +113,8 @@ func (a *Assertion[T]) Length(want int, msg string) *Assertion[T] {
 //
 // # Allocation contract
 //
-// A passing call on a chain of a slice allocates nothing.
+// A passing call on a chain of a slice allocates once: the interface of
+// the slice, which a failure states as got.
 func (a *Assertion[T]) Empty(msg string) *Assertion[T] {
 	a.tb.Helper()
 	matcher.Empty(a.tb, matcher.Fatal, a.got, msg)
@@ -125,7 +126,8 @@ func (a *Assertion[T]) Empty(msg string) *Assertion[T] {
 //
 // # Allocation contract
 //
-// A passing call on a chain of a slice allocates nothing.
+// A passing call on a chain of a slice allocates once: the interface of
+// the slice, which a failure states as got.
 func (a *Assertion[T]) NotEmpty(msg string) *Assertion[T] {
 	a.tb.Helper()
 	matcher.NotEmpty(a.tb, matcher.Fatal, a.got, msg)

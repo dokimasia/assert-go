@@ -184,6 +184,17 @@ follows no link: a link is an entry with its target. A failure lists the
 first 64 paths that differ, and prints each entry as the `files`
 expression that states it.
 
+`files.Write` writes a tree over the entries of a directory that exists,
+such as a person's edit between two runs of a generator. It creates each
+missing entry, replaces the content of a file and the target of a link, and
+keeps every entry that the tree does not state. An entry of another kind
+than the tree states ends the call before it writes anything:
+
+```go
+files.Write(t, dir, files.Tree{"api/store.gen.go": files.Text(edited)})
+assert.ErrorIs(t, gen.Run(dir), gen.ErrDrift, "the second run reports the edit")
+```
+
 The assertions of one path, such as `files.HasMode`, check the entry at a
 path of the operating system. `files.Read` returns the content of a file,
 so the text assertions apply to it.

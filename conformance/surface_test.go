@@ -485,6 +485,7 @@ var pinned = map[conformance.ID]any{
 	"tree":             files.Tree{},
 	"entry":            files.Entry{},
 	"files.workspace":  files.Workspace,
+	"files.write":      files.Write,
 	"files.read":       files.Read,
 	"files.text":       files.Text,
 	"files.bytes":      files.Bytes,

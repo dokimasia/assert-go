@@ -69,7 +69,10 @@ func HasSuffix(seat Seat, mode Mode, got any, suffix, msg string) {
 // classes, and . matches no line terminator: \n, \r, U+0085, U+2028 or
 // U+2029. A pattern outside the subset, such as one with a backreference,
 // a lookaround, a flag or \b, fails the assertion and does not panic,
-// because a test with such a pattern has established nothing.
+// because a test with such a pattern has established nothing. Its failure
+// states reason, the text with which the parser of the subset refuses the
+// pattern: the position in the pattern and the construct that the subset
+// leaves out there. reason is nil for a pattern inside the subset.
 //
 // # Allocation contract
 //
@@ -78,15 +81,18 @@ func HasSuffix(seat Seat, mode Mode, got any, suffix, msg string) {
 func Matches(seat Seat, mode Mode, got any, expr, msg string) {
 	seat.Helper()
 
+	re, err := portable(expr)
+	var reason any
+	if err != nil {
+		reason = err.Error()
+	}
 	text, ok := textOf(got)
 	if !ok {
-		Fail(seat, mode, "matches", msg, map[string]any{"got": got, "pattern": expr})
+		Fail(seat, mode, "matches", msg, map[string]any{"got": got, "pattern": expr, "reason": reason})
 		return
 	}
-
-	re, err := portable(expr)
 	if err != nil || !re.MatchString(text) {
-		Fail(seat, mode, "matches", msg, map[string]any{"got": text, "pattern": expr})
+		Fail(seat, mode, "matches", msg, map[string]any{"got": text, "pattern": expr, "reason": reason})
 		return
 	}
 	Pass(seat, mode, "matches", msg)

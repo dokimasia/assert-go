@@ -42,24 +42,25 @@ func EmptyCases() []Case {
 		{Name: "an empty string passes", Args: []any{""}},
 		{Name: "an empty map passes", Args: []any{map[string]int{}}},
 		{
-			Name:      "a populated slice reports its length",
+			Name:      "a populated slice reports its items and its length",
 			Args:      []any{[]int{1, 2}},
 			Fails:     true,
 			Assertion: "empty",
+			Detail:    map[string]any{"got": []int{1, 2}, "length": 2},
 		},
 		{
-			Name:      "a type with no length reports no length",
+			Name:      "a type with no length reports the value and no length",
 			Args:      []any{42},
 			Fails:     true,
 			Assertion: "empty",
-			Detail:    map[string]any{"length": nil},
+			Detail:    map[string]any{"got": 42, "length": nil},
 		},
 		{
 			Name:      "nil is no container and reports",
 			Args:      []any{nil},
 			Fails:     true,
 			Assertion: "empty",
-			Detail:    map[string]any{"length": nil},
+			Detail:    map[string]any{"got": nil, "length": nil},
 		},
 	}
 }
@@ -71,22 +72,25 @@ func NotEmptyCases() []Case {
 		{Name: "a populated slice passes", Args: []any{[]int{1}}},
 		{Name: "a non-empty string passes", Args: []any{"a"}},
 		{
-			Name:      "an empty slice reports",
+			Name:      "an empty slice reports the slice",
 			Args:      []any{[]int{}},
 			Fails:     true,
 			Assertion: "not-empty",
+			Detail:    map[string]any{"got": []int{}},
 		},
 		{
-			Name:      "a nil slice reports",
+			Name:      "a nil slice reports the nil slice",
 			Args:      []any{[]int(nil)},
 			Fails:     true,
 			Assertion: "not-empty",
+			Detail:    map[string]any{"got": []int(nil)},
 		},
 		{
 			Name:      "nil is no container and reports",
 			Args:      []any{nil},
 			Fails:     true,
 			Assertion: "not-empty",
+			Detail:    map[string]any{"got": nil},
 		},
 	}
 }

@@ -32,7 +32,7 @@ const maxAllocsWithSetupFormAllocs = 10934
 // assertion and its subjects allocate in each case.
 var formAllocs = map[string]uint64{
 	"Equal": 833, "NotEqual": 833, "True": 833, "False": 833, "Nil": 833, "NotNil": 933, "Length": 933,
-	"Empty": 1913, "NotEmpty": 2112, "Contains": 2212, "NotContains": 1913, "ContainsInOrder": 1262,
+	"Empty": 1913, "NotEmpty": 2212, "Contains": 2212, "NotContains": 1913, "ContainsInOrder": 1262,
 	"IsPermutation": 2543, "HasPrefix": 1261, "HasSuffix": 1261, "Matches": 3961, "CloseTo": 932,
 	"InRange": 932, "Pairwise": 2345, "NoError": 833, "HasError": 833, "ErrorIs": 833, "ErrorIsNot": 833,
 	"ErrorAs": 1033, "Panics": 833, "NotPanics": 833, "Pure": 833, "NotPure": 836, "NilContextSafe": 833,

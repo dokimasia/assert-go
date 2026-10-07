@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -209,6 +210,213 @@ func TestWrite(t *testing.T) {
 		})
 	})
 
+	t.Run("Overwrite", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("creates each missing entry, replaces each file and link, and keeps the others", func(t *testing.T) {
+			t.Parallel()
+			mustRecordModes(t)
+
+			dir := written(t, filetree.Tree{
+				"a.txt":      fileOf("old\n"),
+				"current":    linkTo("a.txt"),
+				"docs":       dirWith(0o700),
+				"docs/x.txt": fileWith("x\n", privateMode),
+			})
+			assert.NoError(t, filetree.Overwrite(dir, filetree.Tree{
+				"a.txt":        fileOf("new\n"),
+				"bin/run":      executableFile,
+				"current":      linkTo("docs/x.txt"),
+				"docs/new.txt": textFile,
+			}), "the tree is written over the directory")
+			assert.Equal(t, readBack(t, dir), filetree.Tree{
+				"a.txt":        fileWith("new\n", fileMode),
+				"bin":          dirWith(dirMode),
+				"bin/run":      fileWith("#!/bin/sh\n", dirMode),
+				"current":      linkTo("docs/x.txt"),
+				"docs":         dirWith(0o700),
+				"docs/new.txt": fileWith("a\n", fileMode),
+				"docs/x.txt":   fileWith("x\n", privateMode),
+			}, "a directory that the tree implies keeps its mode, and every entry that it does not state is kept")
+		})
+
+		t.Run("sets each stated mode, and the mode of a directory after every entry below it", func(t *testing.T) {
+			t.Parallel()
+			mustRecordModes(t)
+
+			dir := written(t, filetree.Tree{"ro": directory, "ro/a.txt": textFile})
+			assert.NoError(t, filetree.Overwrite(dir, filetree.Tree{
+				"ro":           dirWith(0o500),
+				"ro/a.txt":     fileWith("b\n", 0o400),
+				"ro/new":       dirWith(0o500),
+				"ro/new/b.txt": textFile,
+			}), "the tree is written over the directory")
+			assert.Equal(t, readBack(t, dir), filetree.Tree{
+				"ro":           dirWith(0o500),
+				"ro/a.txt":     fileWith("b\n", 0o400),
+				"ro/new":       dirWith(0o500),
+				"ro/new/b.txt": fileWith("a\n", fileMode),
+			}, "each directory loses its write bit after the entries below it are written")
+		})
+
+		t.Run("sets the mode of each directory that is there after the directories below it", func(t *testing.T) {
+			t.Parallel()
+			mustRecordModes(t)
+
+			dir := written(t, filetree.Tree{"a/b": directory})
+			err := filetree.Overwrite(dir, filetree.Tree{"a": dirWith(privateMode), "a/b": dirWith(0o700)})
+			assert.NoError(t, err, "the directory below gets its mode while its parent may still be searched")
+			info, err := os.Lstat(filepath.Join(dir, "a"))
+			assert.NoError(t, err, "the parent is there")
+			assert.Equal(t, info.Mode().Perm(), privateMode, "the parent's stated mode, without the search bit")
+		})
+
+		t.Run("replaces a file that its owner may not write", func(t *testing.T) {
+			t.Parallel()
+
+			dir := written(t, filetree.Tree{"ro.txt": fileWith("old\n", 0o444)})
+			assert.NoError(t, filetree.Overwrite(dir, filetree.Tree{"ro.txt": fileOf("new\n")}), "the file is replaced")
+			assert.Equal(t, readBack(t, dir)["ro.txt"].Content, "new\n", "the file's content")
+			info, err := os.Stat(filepath.Join(dir, "ro.txt"))
+			assert.NoError(t, err, "the file is there")
+			assert.Equal(t, info.Mode().Perm()&ownerWrite, ownerWrite, "the file gets the owner's write bit of 0644")
+		})
+
+		t.Run("replaces a link, and keeps the entry that the link points to", func(t *testing.T) {
+			t.Parallel()
+
+			outside := written(t, filetree.Tree{"keep.txt": textFile})
+			dir := written(t, filetree.Tree{"latest": linkTo(filepath.Join(outside, "keep.txt"))})
+			assert.NoError(t, filetree.Overwrite(dir, filetree.Tree{"latest": linkTo("a.txt")}), "the link is replaced")
+			assert.Equal(t, readBack(t, dir), filetree.Tree{"latest": linkTo("a.txt")}, "the link's new target")
+			kept, err := filetree.Read(os.DirFS(outside), false)
+			assert.NoError(t, err, "the directory outside is read")
+			assert.Equal(t, kept, filetree.Tree{"keep.txt": textFile}, "the entry that the old target names is kept")
+		})
+
+		tests := []struct {
+			name         string
+			giveExisting filetree.Tree
+			give         filetree.Tree
+			wantPath     fault.Path
+			wantReason   string
+		}{
+			{
+				name:         "returns a fault at a file where the tree states a directory, and writes nothing",
+				giveExisting: filetree.Tree{"a": textFile},
+				give:         filetree.Tree{"0.txt": textFile, "a/b.txt": textFile},
+				wantPath:     fault.Path{fault.Key("a")},
+				wantReason:   "the entry is a file, and the tree states a directory",
+			},
+			{
+				name:         "returns a fault at a directory where the tree states a file, and writes nothing",
+				giveExisting: filetree.Tree{"a": directory},
+				give:         filetree.Tree{"0.txt": textFile, "a": textFile},
+				wantPath:     fault.Path{fault.Key("a")},
+				wantReason:   "the entry is a directory, and the tree states a file",
+			},
+			{
+				name:         "returns a fault at a link to a directory where the tree states a directory",
+				giveExisting: filetree.Tree{"docs": directory, "a": linkTo("docs")},
+				give:         filetree.Tree{"0.txt": textFile, "a/b.txt": textFile},
+				wantPath:     fault.Path{fault.Key("a")},
+				wantReason:   "the entry is a link, and the tree states a directory",
+			},
+			{
+				name:         "returns a fault at a link where the tree states a file, and writes nothing through it",
+				giveExisting: filetree.Tree{"a.txt": textFile, "b": linkTo("a.txt")},
+				give:         filetree.Tree{"0.txt": textFile, "b": fileOf("new\n")},
+				wantPath:     fault.Path{fault.Key("b")},
+				wantReason:   "the entry is a link, and the tree states a file",
+			},
+			{
+				name:         "returns a fault at an entry that cannot be read, and writes nothing",
+				giveExisting: filetree.Tree{},
+				give:         filetree.Tree{"0.txt": textFile, longName: textFile},
+				wantPath:     fault.Path{fault.Key(longName)},
+				wantReason:   "the entry cannot be read",
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				dir := written(t, tt.giveExisting)
+				before := readBack(t, dir)
+				err := filetree.Overwrite(dir, tt.give)
+				expectFault(t, err, tt.wantPath, tt.wantReason)
+				assert.Equal(t, readBack(t, dir), before, "the directory is unchanged")
+			})
+		}
+
+		t.Run("returns a fault at a second name of a stated entry, and writes nothing", func(t *testing.T) {
+			t.Parallel()
+
+			dir := written(t, filetree.Tree{"a.txt": textFile})
+			assert.NoError(t, os.Link(filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")), "a second name")
+			before := readBack(t, dir)
+			err := filetree.Overwrite(dir, filetree.Tree{"a.txt": fileOf("x\n"), "b.txt": fileOf("y\n")})
+			expectFault(t, err, fault.Path{fault.Key("b.txt")}, `the file system maps the path to the entry at "a.txt"`)
+			assert.Equal(t, readBack(t, dir), before, "the directory is unchanged")
+		})
+
+		t.Run("returns a fault at an entry that is no file, directory or link", func(t *testing.T) {
+			t.Parallel()
+			if runtime.GOOS == "windows" {
+				t.Skip("a root on Windows refuses the name of a device, so no read of one returns its kind")
+			}
+
+			device := filepath.Base(os.DevNull)
+			err := filetree.Overwrite(filepath.Dir(os.DevNull), filetree.Tree{device + "/a.txt": textFile})
+			expectFault(t, err, fault.Path{fault.Key(device)}, "the entry is no file, directory or link")
+		})
+
+		t.Run("returns the fault of a tree that breaks a rule", func(t *testing.T) {
+			t.Parallel()
+
+			err := filetree.Overwrite(t.TempDir(), filetree.Tree{"a": {}})
+			expectFault(t, err, fault.Path{fault.Key("a")}, "the entry states no file, directory or link")
+		})
+
+		t.Run("returns a fault for a directory that cannot be opened", func(t *testing.T) {
+			t.Parallel()
+
+			err := filetree.Overwrite(filepath.Join(t.TempDir(), "missing"), filetree.Tree{"a.txt": textFile})
+			expectFault(t, err, nil, "the directory cannot be opened")
+		})
+
+		writes := []struct {
+			name string
+			give filetree.Tree
+			path string
+		}{
+			{
+				name: "returns a fault at a file that a directory without the owner's write bit refuses",
+				give: filetree.Tree{"ro/new.txt": textFile},
+				path: "ro/new.txt",
+			},
+			{
+				name: "returns a fault at a link that a directory without the owner's write bit refuses to replace",
+				give: filetree.Tree{"ro/latest": linkTo("b.txt")},
+				path: "ro/latest",
+			},
+		}
+		for _, tt := range writes {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				mustRecordModes(t)
+				if os.Geteuid() == 0 {
+					t.Skip("root writes into a read-only directory")
+				}
+
+				dir := written(t, filetree.Tree{"ro": dirWith(0o500), "ro/latest": linkTo("a.txt")})
+				err := filetree.Overwrite(dir, tt.give)
+				expectFault(t, err, fault.Path{fault.Key(tt.path)}, "the entry cannot be written")
+				assert.ErrorIs(t, err, fs.ErrPermission, "the cause is the error of the file system")
+			})
+		}
+	})
+
 	t.Run("Unlock", func(t *testing.T) {
 		t.Parallel()
 
@@ -247,6 +455,7 @@ func writeCases(tb testing.TB) []alloctest.Case {
 	return []alloctest.Case{
 		{Name: "Write", Call: func(assert.TB) { errKept = filetree.Write(dir, filetree.Tree{}) }, Allocs: 5},
 		{Name: "Update", Call: func(assert.TB) { errKept = filetree.Update(dir, filetree.Tree{}) }, Allocs: 18},
+		{Name: "Overwrite", Call: func(assert.TB) { errKept = filetree.Overwrite(dir, filetree.Tree{}) }, Allocs: 5},
 		{Name: "Unlock", Call: func(assert.TB) { filetree.Unlock(dir) }, Allocs: 8},
 	}
 }

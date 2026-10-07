@@ -25,11 +25,12 @@ func Length(tb assert.TB, got any, want int, msg string) {
 
 // Empty records a failure when got has any item. A value without a
 // length, nil included, fails. See [Length] for the values that have
-// one.
+// one. The failure states got, so it names the items.
 //
 // # Allocation contract
 //
-// A passing call on a slice allocates nothing.
+// A passing call on a slice allocates once: the interface of the slice,
+// which a failure states as got.
 func Empty(tb assert.TB, got any, msg string) {
 	tb.Helper()
 	matcher.Empty(tb, matcher.Soft, got, msg)
@@ -37,11 +38,12 @@ func Empty(tb assert.TB, got any, msg string) {
 
 // NotEmpty records a failure when got has no item. A value without a
 // length, nil included, fails. See [Length] for the values that have
-// one.
+// one. The failure states got.
 //
 // # Allocation contract
 //
-// A passing call on a slice allocates nothing.
+// A passing call on a slice allocates once: the interface of the slice,
+// which a failure states as got.
 func NotEmpty(tb assert.TB, got any, msg string) {
 	tb.Helper()
 	matcher.NotEmpty(tb, matcher.Soft, got, msg)

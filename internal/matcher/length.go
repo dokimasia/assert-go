@@ -36,21 +36,22 @@ func Length(seat Seat, mode Mode, got any, want int, msg string) {
 
 // Empty reports when got has any item. See [Length] for the types that
 // have a length. A value without one, nil included, is no container, and
-// fails with length nil.
+// fails with length nil. The failure states got, so it names the items.
 //
 // # Allocation contract
 //
-// A passing call on a slice allocates nothing.
+// A passing call on a slice allocates once: the interface of the slice,
+// which a failure states as got.
 func Empty(seat Seat, mode Mode, got any, msg string) {
 	seat.Helper()
 
 	n, ok := lengthOf(got)
 	if !ok {
-		Fail(seat, mode, "empty", msg, map[string]any{"length": nil})
+		Fail(seat, mode, "empty", msg, map[string]any{"got": got, "length": nil})
 		return
 	}
 	if n != 0 {
-		Fail(seat, mode, "empty", msg, map[string]any{"length": n})
+		Fail(seat, mode, "empty", msg, map[string]any{"got": got, "length": n})
 		return
 	}
 	Pass(seat, mode, "empty", msg)
@@ -58,17 +59,18 @@ func Empty(seat Seat, mode Mode, got any, msg string) {
 
 // NotEmpty reports when got has no item. See [Length] for the types that
 // have a length. A value without one, nil included, is no container, and
-// fails.
+// fails. The failure states got.
 //
 // # Allocation contract
 //
-// A passing call on a slice allocates nothing.
+// A passing call on a slice allocates once: the interface of the slice,
+// which a failure states as got.
 func NotEmpty(seat Seat, mode Mode, got any, msg string) {
 	seat.Helper()
 
 	// A value without a length has no item.
 	if n, _ := lengthOf(got); n == 0 {
-		Fail(seat, mode, "not-empty", msg, nil)
+		Fail(seat, mode, "not-empty", msg, map[string]any{"got": got})
 		return
 	}
 	Pass(seat, mode, "not-empty", msg)

@@ -141,10 +141,29 @@ func MatchesCases() []Case {
 			Assertion: "matches",
 		},
 		{
-			Name:      "a non-matching pattern reports both",
+			Name:      "a tab escaped in a class is outside the subset and reports the parser's reason",
+			Args:      []any{"text", `^[^\t]*$`},
+			Fails:     true,
+			Assertion: "matches",
+			Detail: map[string]any{
+				"got": "text", "pattern": `^[^\t]*$`, "reason": `"^[^\\t]*$" at 5: \t is not in the portable subset`,
+			},
+		},
+		{
+			Name:      "a value that is not text reports the reason of a pattern outside the subset",
+			Args:      []any{42, `\b`},
+			Fails:     true,
+			Assertion: "matches",
+			Detail: map[string]any{
+				"got": 42, "pattern": `\b`, "reason": `"\\b" at 2: \b is not in the portable subset`,
+			},
+		},
+		{
+			Name:      "a non-matching pattern reports both and no reason",
 			Args:      []any{"zzz", `^[0-9a-f]+$`},
 			Fails:     true,
 			Assertion: "matches",
+			Detail:    map[string]any{"got": "zzz", "pattern": `^[0-9a-f]+$`, "reason": nil},
 		},
 		{
 			Name:      "an anchored pattern rejects a partial match",
@@ -163,7 +182,7 @@ func MatchesCases() []Case {
 			Args:      []any{42, `\d`},
 			Fails:     true,
 			Assertion: "matches",
-			Detail:    map[string]any{"got": 42, "pattern": `\d`},
+			Detail:    map[string]any{"got": 42, "pattern": `\d`, "reason": nil},
 		},
 	}
 }

@@ -60,7 +60,7 @@ func lengthCases() []alloctest.Case {
 	items, none := []int{1, 2, 3}, []int{}
 	return []alloctest.Case{
 		{Name: "Length", Call: func(tb assert.TB) { expect.Length(tb, items, 3, allocContract) }},
-		{Name: "Empty", Call: func(tb assert.TB) { expect.Empty(tb, none, allocContract) }},
-		{Name: "NotEmpty", Call: func(tb assert.TB) { expect.NotEmpty(tb, items, allocContract) }},
+		{Name: "Empty", Allocs: 1, Call: func(tb assert.TB) { expect.Empty(tb, none, allocContract) }},
+		{Name: "NotEmpty", Allocs: 1, Call: func(tb assert.TB) { expect.NotEmpty(tb, items, allocContract) }},
 	}
 }

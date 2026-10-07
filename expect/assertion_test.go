@@ -260,8 +260,8 @@ func assertionCases() []alloctest.Case {
 		{Name: "Nil", Call: func(tb assert.TB) { expect.That(tb, absent).Nil(allocContract) }},
 		{Name: "NotNil", Call: func(tb assert.TB) { expect.That(tb, present).NotNil(allocContract) }},
 		{Name: "Length", Call: func(tb assert.TB) { expect.That(tb, items).Length(3, allocContract) }},
-		{Name: "Empty", Call: func(tb assert.TB) { expect.That(tb, none).Empty(allocContract) }},
-		{Name: "NotEmpty", Call: func(tb assert.TB) { expect.That(tb, items).NotEmpty(allocContract) }},
+		{Name: "Empty", Allocs: 1, Call: func(tb assert.TB) { expect.That(tb, none).Empty(allocContract) }},
+		{Name: "NotEmpty", Allocs: 1, Call: func(tb assert.TB) { expect.That(tb, items).NotEmpty(allocContract) }},
 		{Name: "Contains", Allocs: 1, Call: func(tb assert.TB) {
 			expect.That(tb, "a cart of three items").Contains("cart", allocContract)
 		}},

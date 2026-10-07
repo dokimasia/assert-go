@@ -21,11 +21,13 @@ func Length(tb TB, got any, want int, msg string) {
 }
 
 // Empty stops the test when got has any item. A value without a length,
-// nil included, fails. See [Length] for the values that have one.
+// nil included, fails. See [Length] for the values that have one. The
+// failure states got, so it names the items.
 //
 // # Allocation contract
 //
-// A passing call on a slice allocates nothing.
+// A passing call on a slice allocates once: the interface of the slice,
+// which a failure states as got.
 func Empty(tb TB, got any, msg string) {
 	tb.Helper()
 	matcher.Empty(tb, matcher.Fatal, got, msg)
@@ -33,11 +35,12 @@ func Empty(tb TB, got any, msg string) {
 
 // NotEmpty stops the test when got has no item. A value without a
 // length, nil included, fails. See [Length] for the values that have
-// one.
+// one. The failure states got.
 //
 // # Allocation contract
 //
-// A passing call on a slice allocates nothing.
+// A passing call on a slice allocates once: the interface of the slice,
+// which a failure states as got.
 func NotEmpty(tb TB, got any, msg string) {
 	tb.Helper()
 	matcher.NotEmpty(tb, matcher.Fatal, got, msg)

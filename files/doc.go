@@ -16,10 +16,12 @@
 //		"keys/id": files.Text("secret\n").WithMode(0o600),
 //	})
 //
-// [Workspace] writes a tree into a directory of the test's own. [Equal],
-// [Contains] and [Unchanged] compare a tree read from an fs.FS with a
-// wanted one, so they read a directory through os.DirFS and a tree in
-// memory through fstest.MapFS. [Absent], [IsFile], [IsDir], [LinksTo],
+// [Workspace] writes a tree into a directory of the test's own, and [Write]
+// writes a tree over the entries of a directory that exists, such as an edit
+// between two runs of the code under test. [Equal], [Contains] and
+// [Unchanged] compare a tree read from an fs.FS with a wanted one, so they
+// read a directory through os.DirFS and a tree in memory through
+// fstest.MapFS. [Absent], [IsFile], [IsDir], [LinksTo],
 // [HasContent] and [HasMode] check the entry at one path of the operating
 // system, and [Read] returns the content of a file, so that the text
 // assertions apply to it.
@@ -52,8 +54,8 @@
 // mode and no execute bit: a comparison then compares neither, and [HasMode]
 // ends the call with a fault. Windows records one permission bit, the
 // owner's write bit of a file, as the file's read-only attribute. [Workspace]
-// sets the attribute on each file whose mode lacks that bit, and sets none on
-// a directory, where Windows does not honour it. Windows stores the target of
+// and [Write] set the attribute on each file whose mode lacks that bit, and
+// set none on a directory, where Windows does not honour it. Windows stores the target of
 // a link with backslashes, and a tree reads it with slashes, as [Link] states
 // it, so [LinksTo] compares a target with slashes.
 //
