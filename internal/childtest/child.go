@@ -26,7 +26,8 @@ const Variable = "DOKIMI_ASSERT_CHILD"
 const (
 	// limit is the longest that a child process runs.
 	limit = time.Minute
-	// grace is how long before the deadline of its parent a child ends.
+	// grace is how long before the deadline of its parent a child ends, at
+	// most half of the time that the deadline leaves.
 	grace = 5 * time.Second
 )
 
@@ -57,8 +58,18 @@ func InChild(t *testing.T) bool {
 // that env states. The child writes its coverage where the parent writes its
 // own, after the parent has written the binary's coverage meta-data there.
 // Where that write fails, each child writes the meta-data itself. A child
-// ends within a minute, and 5 seconds before t's deadline at the latest.
+// ends within a minute, and 5 seconds before t's deadline at the latest. A
+// deadline less than 10 seconds away gives the child half of the time left.
 func Run(t *testing.T, name string, env ...string) (string, error) {
+	t.Helper()
+	return RunFlags(t, name, nil, env...)
+}
+
+// RunFlags runs the test name in a child process as [Run] does, with flags
+// after the flags that Run passes, such as -test.testlogfile=path. Where Run
+// passes a flag of flags too, the value of flags applies, because the last
+// value of a flag applies.
+func RunFlags(t *testing.T, name string, flags []string, env ...string) (string, error) {
 	t.Helper()
 	parts := strings.Split(name, "/")
 	for i, part := range parts {
@@ -66,7 +77,8 @@ func Run(t *testing.T, name string, env ...string) (string, error) {
 	}
 	timeout := limit
 	if deadline, ok := t.Deadline(); ok {
-		timeout = min(timeout, time.Until(deadline)-grace)
+		left := time.Until(deadline)
+		timeout = min(timeout, left-min(grace, left/2))
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), timeout)
 	defer cancel()
@@ -79,7 +91,7 @@ func Run(t *testing.T, name string, env ...string) (string, error) {
 		metaWritten.Do(func() { _ = coverage.WriteMetaDir(dir.Value.String()) })
 		argv = append(argv, "-test.gocoverdir="+dir.Value.String())
 	}
-	cmd := exec.CommandContext(ctx, os.Args[0], argv...)
+	cmd := exec.CommandContext(ctx, os.Args[0], append(argv, flags...)...)
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(kv, record.Variable+"=") {
 			cmd.Env = append(cmd.Env, kv)
