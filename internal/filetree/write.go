@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package filetree
@@ -201,7 +201,7 @@ func replace(path string, e Entry) func(root *os.Root) error {
 	if e.Kind == Link {
 		return func(root *os.Root) error {
 			if err := root.Remove(path); err != nil {
-				return err
+				return fault.New("the link cannot be removed").Because(err)
 			}
 			return root.Symlink(e.Target, path)
 		}
@@ -249,7 +249,7 @@ func create(path string, e Entry) func(root *os.Root) error {
 func writeFile(root *os.Root, path string, flag int, e Entry) error {
 	f, err := root.OpenFile(path, os.O_WRONLY|flag, createFile)
 	if err != nil {
-		return err
+		return fault.New("the file cannot be opened").Because(err)
 	}
 	_, err = f.WriteString(e.Content)
 	return errors.Join(err, f.Close(), root.Chmod(path, modeOf(e)))
@@ -311,6 +311,7 @@ func Unlock(dir string) {
 		if err == nil && d.IsDir() {
 			info, err := d.Info()
 			if err == nil {
+				//nolint:gosec // WalkDir reports a link as no directory, so the walk changes no link's target
 				_ = os.Chmod(path, info.Mode().Perm()|createDir)
 			}
 		}

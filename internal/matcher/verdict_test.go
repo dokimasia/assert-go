@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher_test
@@ -99,6 +99,7 @@ func TestVerdict(t *testing.T) {
 			got := lines[0]
 			if got["assertion"] != "true" || got["contract"] != "the claim is true" || got["verdict"] != "pass" ||
 				got["aborting"] != true || got["seq"] != 1.0 {
+
 				t.Fatalf("wrote %v, want a passing call of true on the aborting surface", got)
 			}
 			where := got["where"].(map[string]any)
@@ -130,6 +131,7 @@ func TestVerdict(t *testing.T) {
 			matcher.Fail(seat, matcher.Fatal, "equal", "the values match", map[string]any{"want": 2, "got": 1})
 			if records := seat.Records(); len(records) != 1 || records[0].Assertion != "equal" ||
 				records[0].Contract != "the values match" {
+
 				t.Fatalf("reported %v, want one record of equal", records)
 			}
 			if fatals, errs := len(seat.Fatals()), len(seat.Errs()); fatals != 1 || errs != 0 {

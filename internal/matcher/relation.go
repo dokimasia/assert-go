@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -41,9 +41,9 @@ func attempt[T any](fn func() (T, error)) (value T, failure any) {
 // first step and second for every later one.
 func failedAt(i int, failure any) map[string]any {
 	if i == 0 {
-		return map[string]any{"first": failure, "second": nil}
+		return map[string]any{firstField: failure, secondField: nil}
 	}
-	return map[string]any{"first": nil, "second": failure}
+	return map[string]any{firstField: nil, secondField: failure}
 }
 
 // both runs first and then second, and returns their values, or the
@@ -70,7 +70,7 @@ func settle(seat Seat, mode Mode, assertion, msg string, first, second any, fail
 		return
 	}
 	if !equal(first, second, r) {
-		Fail(seat, mode, assertion, msg, map[string]any{"first": first, "second": second})
+		Fail(seat, mode, assertion, msg, map[string]any{firstField: first, secondField: second})
 		return
 	}
 	Pass(seat, mode, assertion, msg)
@@ -94,7 +94,7 @@ func agree[T any](seat Seat, mode Mode, assertion, msg string, run func() (T, er
 			continue
 		}
 		if !equal(first, next, r) {
-			Fail(seat, mode, assertion, msg, map[string]any{"first": first, "second": next})
+			Fail(seat, mode, assertion, msg, map[string]any{firstField: first, secondField: next})
 			return
 		}
 	}
@@ -179,7 +179,7 @@ func Accumulates[I any](seat Seat, mode Mode, call func(I) error, input I, obser
 	// Two ints compare by value. A *big.Int compares by identity, so a pair
 	// that includes one is never equal, and such a change always fails.
 	if after == before || first != second {
-		Fail(seat, mode, "accumulates", msg, map[string]any{"first": first, "second": second})
+		Fail(seat, mode, "accumulates", msg, map[string]any{firstField: first, secondField: second})
 		return
 	}
 	Pass(seat, mode, "accumulates", msg)
@@ -276,11 +276,11 @@ func RoundTrip[I, E any](
 		return inverse(encoded)
 	})
 	if failure != nil {
-		Fail(seat, mode, "round-trip", msg, map[string]any{"want": nil, "got": failure})
+		Fail(seat, mode, "round-trip", msg, map[string]any{wantField: nil, gotField: failure})
 		return
 	}
 	if !equal(input, got, rulesOf(opts)) {
-		Fail(seat, mode, "round-trip", msg, map[string]any{"want": input, "got": got})
+		Fail(seat, mode, "round-trip", msg, map[string]any{wantField: input, gotField: got})
 		return
 	}
 	Pass(seat, mode, "round-trip", msg)
@@ -321,14 +321,14 @@ func NoDuplicates[T any](seat Seat, mode Mode, iterate func() ([]T, error), msg 
 
 	items, failure := attempt(iterate)
 	if failure != nil {
-		Fail(seat, mode, "no-duplicates", msg, map[string]any{"got": failure, "index": nil})
+		Fail(seat, mode, "no-duplicates", msg, map[string]any{gotField: failure, indexField: nil})
 		return
 	}
 	r, values := rulesOf(opts), reflect.ValueOf(items)
 	for i := range items {
 		for j := range i {
 			if equality.Equal(values.Index(j), values.Index(i), r) {
-				Fail(seat, mode, "no-duplicates", msg, map[string]any{"got": items[i], "index": i})
+				Fail(seat, mode, "no-duplicates", msg, map[string]any{gotField: items[i], indexField: i})
 				return
 			}
 		}
@@ -356,7 +356,7 @@ func Monotonic[N cmp.Ordered](seat Seat, mode Mode, observe func() N, advance fu
 	seat.Helper()
 
 	failed := func(failure any) {
-		Fail(seat, mode, "monotonic", msg, map[string]any{"index": nil, "first": nil, "second": failure})
+		Fail(seat, mode, "monotonic", msg, map[string]any{indexField: nil, firstField: nil, secondField: failure})
 	}
 	previous, failure := attempt(func() (N, error) { return observe(), nil })
 	if failure != nil {
@@ -364,7 +364,7 @@ func Monotonic[N cmp.Ordered](seat Seat, mode Mode, observe func() N, advance fu
 		return
 	}
 	if isNaN(previous) {
-		Fail(seat, mode, "monotonic", msg, map[string]any{"index": 0, "first": nil, "second": previous})
+		Fail(seat, mode, "monotonic", msg, map[string]any{indexField: 0, firstField: nil, secondField: previous})
 		return
 	}
 	for i := range steps {
@@ -380,7 +380,8 @@ func Monotonic[N cmp.Ordered](seat Seat, mode Mode, observe func() N, advance fu
 			return
 		}
 		if isNaN(next) || next < previous {
-			Fail(seat, mode, "monotonic", msg, map[string]any{"index": i + 1, "first": previous, "second": next})
+			Fail(seat, mode, "monotonic", msg,
+				map[string]any{indexField: i + 1, firstField: previous, secondField: next})
 			return
 		}
 		previous = next
@@ -409,7 +410,7 @@ func Total[I any](seat Seat, mode Mode, call func(I) error, domain []I, msg stri
 	for i, element := range domain {
 		_, failure := attempt(func() (struct{}, error) { return struct{}{}, call(element) })
 		if failure != nil {
-			Fail(seat, mode, "total", msg, map[string]any{"index": i, "got": failure})
+			Fail(seat, mode, "total", msg, map[string]any{indexField: i, gotField: failure})
 			return
 		}
 	}
@@ -438,11 +439,11 @@ func NotPure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg strin
 		return struct{}{}, nil
 	})
 	if failure != nil {
-		Fail(seat, mode, "not-pure", msg, map[string]any{"got": failure})
+		Fail(seat, mode, "not-pure", msg, map[string]any{gotField: failure})
 		return
 	}
 	if equal(before, after, rulesOf(opts)) {
-		Fail(seat, mode, "not-pure", msg, map[string]any{"got": after})
+		Fail(seat, mode, "not-pure", msg, map[string]any{gotField: after})
 		return
 	}
 	Pass(seat, mode, "not-pure", msg)
@@ -468,11 +469,11 @@ func FailsAfterClose(seat Seat, mode Mode, closer, call func() error, sentinel e
 		return call(), nil
 	})
 	if failure != nil {
-		Fail(seat, mode, "after-close", msg, map[string]any{"want": nil, "got": failure})
+		Fail(seat, mode, "after-close", msg, map[string]any{wantField: nil, gotField: failure})
 		return
 	}
 	if !errors.Is(got, sentinel) {
-		Fail(seat, mode, "after-close", msg, map[string]any{"want": sentinel, "got": got})
+		Fail(seat, mode, "after-close", msg, map[string]any{wantField: sentinel, gotField: got})
 		return
 	}
 	Pass(seat, mode, "after-close", msg)
@@ -498,17 +499,17 @@ func Poisoned(seat Seat, mode Mode, induce func(), observe func() error, msg str
 		return struct{}{}, nil
 	})
 	if failure != nil {
-		Fail(seat, mode, "poisoned", msg, map[string]any{"index": nil, "got": failure})
+		Fail(seat, mode, "poisoned", msg, map[string]any{indexField: nil, gotField: failure})
 		return
 	}
 	for i := range repetitions {
 		err, failure := attempt(func() (error, error) { return observe(), nil })
 		if failure != nil {
-			Fail(seat, mode, "poisoned", msg, map[string]any{"index": nil, "got": failure})
+			Fail(seat, mode, "poisoned", msg, map[string]any{indexField: nil, gotField: failure})
 			return
 		}
 		if err == nil {
-			Fail(seat, mode, "poisoned", msg, map[string]any{"index": i, "got": nil})
+			Fail(seat, mode, "poisoned", msg, map[string]any{indexField: i, gotField: nil})
 			return
 		}
 	}

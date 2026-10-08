@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package engine
@@ -90,6 +90,7 @@ func invert[T any](g Generator[T], v any) ([]choice.Choice, error) {
 	}
 	if !slices.EqualFunc(e.Case.record(), choices, choice.Choice.Equal) ||
 		canonicalKey(decoded) != canonicalKey(normal) {
+
 		return nil, uninvertible("the choices of %v decode to %v", v, decoded)
 	}
 	return choices, nil

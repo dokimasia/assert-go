@@ -1,12 +1,12 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package engine_test
 
 import (
-	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -315,7 +315,7 @@ func TestCollection(t *testing.T) {
 		t.Parallel()
 
 		digit := func(c *engine.Case) int { return int(c.Integer(digitRange).Magnitude()) }
-		parity := func(v int) string { return fmt.Sprint(v % 2) }
+		parity := func(v int) string { return strconv.Itoa(v % 2) }
 		tests := []struct {
 			name     string
 			sizes    choice.Sizes

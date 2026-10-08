@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -29,7 +29,7 @@ import (
 func Equal[T any](seat Seat, mode Mode, got, want T, msg string, opts ...Option) {
 	seat.Helper()
 	if !equal(got, want, rulesOf(opts)) {
-		Fail(seat, mode, "equal", msg, map[string]any{"want": want, "got": got})
+		Fail(seat, mode, "equal", msg, map[string]any{wantField: want, gotField: got})
 		return
 	}
 	Pass(seat, mode, "equal", msg)
@@ -56,7 +56,7 @@ func equal(x, y any, r equality.Rules) bool {
 func NotEqual[T any](seat Seat, mode Mode, got, want T, msg string, opts ...Option) {
 	seat.Helper()
 	if equal(got, want, rulesOf(opts)) {
-		Fail(seat, mode, "not-equal", msg, map[string]any{"got": got})
+		Fail(seat, mode, "not-equal", msg, map[string]any{gotField: got})
 		return
 	}
 	Pass(seat, mode, "not-equal", msg)

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -63,7 +63,7 @@ func NotPanics(seat Seat, mode Mode, fn func(), msg string) {
 	returned := false
 	defer func() {
 		if r := recover(); r != nil {
-			Fail(seat, mode, "not-throws", msg, map[string]any{"got": r})
+			Fail(seat, mode, "not-throws", msg, map[string]any{gotField: r})
 			return
 		}
 		if returned {

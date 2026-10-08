@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package filetree
@@ -61,14 +61,14 @@ const (
 type Entry struct {
 	// Kind is the kind of the entry.
 	Kind Kind
+	// Stated reports whether Mode states all nine permission bits.
+	Stated bool
+	// Mode is the entry's permission bits, as Stated states.
+	Mode fs.FileMode
 	// Content is the content of a file.
 	Content string
 	// Target is the target of a link, as text that no rule of a path limits.
 	Target string
-	// Mode is the entry's permission bits, as Stated states.
-	Mode fs.FileMode
-	// Stated reports whether Mode states all nine permission bits.
-	Stated bool
 }
 
 // Executable reports whether the owner may execute e. It allocates nothing.

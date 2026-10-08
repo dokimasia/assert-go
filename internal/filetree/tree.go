@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package filetree
@@ -57,31 +57,6 @@ func (t Tree) Check() error {
 	return nil
 }
 
-// checkEntry returns a fault for the entry at path when it breaks a rule of
-// a tree.
-func (t Tree) checkEntry(path string) error {
-	if err := CheckPath(path); err != nil {
-		return err
-	}
-	e := t[path]
-	if e.Kind < File || e.Kind > Link {
-		return fault.New("the entry states no file, directory or link")
-	}
-	if e.Mode&^fs.ModePerm != 0 {
-		return fault.New("the mode %O has a bit beyond the nine permission bits", uint32(e.Mode))
-	}
-	target := e.Target != "" && !strings.ContainsRune(e.Target, 0) && utf8.ValidString(e.Target)
-	if e.Kind == Link && (e.Stated || !target) {
-		return fault.New("the link to %q states a mode, or no target of UTF-8 text without NUL", e.Target)
-	}
-	for parent := range parents(path) {
-		if kind := t[parent].Kind; kind == File || kind == Link {
-			return fault.New("the entry is below %q, which is a %s", parent, kind.Name())
-		}
-	}
-	return nil
-}
-
 // Paths returns the paths of t in path order, the order of their bytes.
 //
 // # Allocation contract
@@ -112,6 +87,31 @@ func (t Tree) Full() Tree {
 		}
 	}
 	return out
+}
+
+// checkEntry returns a fault for the entry at path when it breaks a rule of
+// a tree.
+func (t Tree) checkEntry(path string) error {
+	if err := CheckPath(path); err != nil {
+		return err
+	}
+	e := t[path]
+	if e.Kind < File || e.Kind > Link {
+		return fault.New("the entry states no file, directory or link")
+	}
+	if e.Mode&^fs.ModePerm != 0 {
+		return fault.New("the mode %O has a bit beyond the nine permission bits", uint32(e.Mode))
+	}
+	target := e.Target != "" && !strings.ContainsRune(e.Target, 0) && utf8.ValidString(e.Target)
+	if e.Kind == Link && (e.Stated || !target) {
+		return fault.New("the link to %q states a mode, or no target of UTF-8 text without NUL", e.Target)
+	}
+	for parent := range parents(path) {
+		if kind := t[parent].Kind; kind == File || kind == Link {
+			return fault.New("the entry is below %q, which is a %s", parent, kind.Name())
+		}
+	}
+	return nil
 }
 
 // parents yields each directory above path, outermost first: a, then a/b,

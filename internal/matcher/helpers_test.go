@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher_test
@@ -133,7 +133,7 @@ func (s *clockedSeat) Clock() matcher.Clock { return s.clock }
 type contextSeat struct {
 	matchertest.Seat
 
-	ctx context.Context
+	ctx context.Context //nolint:containedctx // the seat has a context, as testing.T has
 }
 
 // Context returns the seat's context.
@@ -164,8 +164,9 @@ func newKeepingSeat() *keepingSeat {
 // lines returns the call records that s keeps, each as its JSON object.
 func (s *keepingSeat) lines(t *testing.T) []map[string]any {
 	t.Helper()
-	var out []map[string]any
-	for _, line := range record.Lines(&s.calls) {
+	lines := record.Lines(&s.calls)
+	out := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
 		var object map[string]any
 		if err := json.Unmarshal([]byte(line), &object); err != nil {
 			t.Fatalf("the call record %s is no JSON object: %v", line, err)

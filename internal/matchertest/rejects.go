@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matchertest
@@ -32,6 +32,7 @@ func RunRejects(t *testing.T, invoke RejectsInvoke) {
 		checkOutcome(t, seat, Case{})
 		if len(got) != 2 || got[0].Contract != "the first value is one" ||
 			got[1].Contract != "the second value is one" {
+
 			t.Fatalf("returned %+v, want the records of both failures in call order", got)
 		}
 		if got[1].Assertion != "equal" || got[1].Detail["got"] != 3 || got[1].Detail["want"] != 1 {

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher_test
@@ -17,7 +17,7 @@ import (
 var _ matcher.Seat = assert.TB(nil)
 
 // seatContext keeps the context that a call of ContextOf returns.
-var seatContext context.Context
+var seatContext any
 
 func TestSeat(t *testing.T) {
 	t.Parallel()
@@ -50,7 +50,8 @@ func TestSeat(t *testing.T) {
 		t.Run("returns context.Background() for a seat without a context", func(t *testing.T) {
 			t.Parallel()
 
-			if got := matcher.ContextOf(&matchertest.Seat{}); got != context.Background() {
+			want := context.Background() //nolint:usetesting // ContextOf returns it for a seat without a context
+			if got := matcher.ContextOf(&matchertest.Seat{}); got != want {
 				t.Fatalf("ContextOf returned %v, want context.Background()", got)
 			}
 		})
@@ -58,7 +59,8 @@ func TestSeat(t *testing.T) {
 		t.Run("returns context.Background() for a seat whose context is nil", func(t *testing.T) {
 			t.Parallel()
 
-			if got := matcher.ContextOf(&contextSeat{}); got != context.Background() {
+			want := context.Background() //nolint:usetesting // ContextOf returns it for a seat whose context is nil
+			if got := matcher.ContextOf(&contextSeat{}); got != want {
 				t.Fatalf("ContextOf returned %v, want context.Background()", got)
 			}
 		})

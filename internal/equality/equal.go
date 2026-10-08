@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package equality
@@ -147,9 +147,10 @@ func (c *comparison) begin(x, y reflect.Value) (frame, bool) {
 		return frame{x: x, y: y, parts: x.NumField()}, true
 	case reflect.Slice:
 		return c.slices(x, y)
+	default:
+		// A map is the one kind left: inside unwraps every interface.
+		return frame{}, c.maps(x, y)
 	}
-	// A map is the one kind left: inside unwraps every interface.
-	return frame{}, c.maps(x, y)
 }
 
 // reference reports whether a value of kind k is a pointer, a map or a
@@ -244,8 +245,9 @@ func part(v reflect.Value, i int) reflect.Value {
 		return v.Index(i)
 	case reflect.Struct:
 		return v.Field(i)
+	default:
+		return v.Elem()
 	}
-	return v.Elem()
 }
 
 // inside returns the value inside v when v is of an interface type, which
@@ -283,6 +285,8 @@ func canRepeat(t reflect.Type) bool {
 				return true
 			}
 		}
+		return false
+	default:
+		return false
 	}
-	return false
 }

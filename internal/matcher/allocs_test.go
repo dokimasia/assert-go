@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher_test
@@ -84,9 +84,9 @@ func TestMaxAllocs(t *testing.T) {
 	})
 }
 
-// TestMaxAllocsWithSetup does not run in parallel: its count covers the
+// TestMaxAllocsWithSetupAllocs does not run in parallel: its count covers the
 // whole process, and a case sets GOMAXPROCS.
-func TestMaxAllocsWithSetup(t *testing.T) {
+func TestMaxAllocsWithSetupAllocs(t *testing.T) {
 	matchertest.RunMaxAllocsWithSetup(t,
 		func(s *matchertest.Seat, setup func() *[]byte, fn func(*[]byte), ceiling uint64, msg string) {
 			matcher.MaxAllocsWithSetup(s, matcher.Fatal, setup, fn, ceiling, msg)

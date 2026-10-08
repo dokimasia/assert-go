@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matchertest_test
@@ -30,15 +30,15 @@ type pair struct {
 	b int
 }
 
-// TestCaseTwins runs TestCaseTwinsChild in a child process, and requires
+// TestCaseTwins runs TestCaseTwinsProcess in a child process, and requires
 // the failure of a suite over no cases.
 func TestCaseTwins(t *testing.T) {
 	t.Parallel()
-	expectBroken(t, "TestCaseTwinsChild", "the suite has no cases; it would pass having checked nothing")
+	expectBroken(t, "TestCaseTwinsProcess", "the suite has no cases; it would pass having checked nothing")
 }
 
-// TestCaseTwinsChild runs only in the child process of TestCaseTwins.
-func TestCaseTwinsChild(t *testing.T) {
+// TestCaseTwinsProcess runs only in the child process of TestCaseTwins.
+func TestCaseTwinsProcess(t *testing.T) {
 	inChild(t)
 
 	t.Run("RunOne over no cases", func(t *testing.T) {

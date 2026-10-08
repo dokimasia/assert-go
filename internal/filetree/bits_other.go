@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 //go:build !windows
@@ -8,6 +8,8 @@ package filetree
 import (
 	"io/fs"
 	"os"
+
+	"go.dokimi.dev/assert/internal/fault"
 )
 
 // recordedBits are the permission bits that the file systems of this
@@ -24,5 +26,8 @@ func ModesUnrecorded() error {
 // setDirMode sets the permission bits of the directory at name in root to
 // mode.
 func setDirMode(root *os.Root, name string, mode fs.FileMode) error {
-	return root.Chmod(name, mode)
+	if err := root.Chmod(name, mode); err != nil {
+		return fault.New("the mode of the directory cannot be set").Because(err)
+	}
+	return nil
 }

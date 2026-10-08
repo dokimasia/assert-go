@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -34,7 +34,7 @@ func HonoursCancellation(seat Seat, mode Mode, fn func(ctx context.Context) erro
 
 	err := fn(ctx)
 	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-		Fail(seat, mode, "honours-cancellation", msg, map[string]any{"got": err})
+		Fail(seat, mode, "honours-cancellation", msg, map[string]any{gotField: err})
 		return
 	}
 	Pass(seat, mode, "honours-cancellation", msg)
@@ -68,7 +68,7 @@ func HonoursDeadline(seat Seat, mode Mode, fn func(ctx context.Context) error, m
 
 	err := fn(ctx)
 	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
-		Fail(seat, mode, "honours-deadline", msg, map[string]any{"got": err})
+		Fail(seat, mode, "honours-deadline", msg, map[string]any{gotField: err})
 		return
 	}
 	Pass(seat, mode, "honours-deadline", msg)
@@ -129,14 +129,14 @@ func CompletesWithin(seat Seat, mode Mode, within time.Duration, fn func(ctx con
 	case expired, exited:
 		<-ctx.Done()
 		Fail(seat, mode, "completes-within", msg, map[string]any{
-			"want": within,
-			"got":  time.Since(waited).Round(time.Millisecond),
+			wantField: within,
+			gotField:  time.Since(waited).Round(time.Millisecond),
 		})
 	case nil:
 		if elapsed := clock.Now().Sub(started); elapsed > within {
 			Fail(seat, mode, "completes-within", msg, map[string]any{
-				"want": within,
-				"got":  elapsed.Round(time.Millisecond),
+				wantField: within,
+				gotField:  elapsed.Round(time.Millisecond),
 			})
 			return
 		}
@@ -163,12 +163,12 @@ const (
 // subject is the state of a subject that [CompletesWithin] runs.
 type subject struct {
 	state atomic.Int32
-	// outcome receives one value: the value that the subject panicked
-	// with, nil for a subject that returned, exited, or expired.
-	outcome chan any
 	// returned reports that the subject returned. Only the subject's
 	// goroutine reads and writes it.
 	returned bool
+	// outcome receives one value: the value that the subject panicked
+	// with, nil for a subject that returned, exited, or expired.
+	outcome chan any
 }
 
 // expired is the outcome of a subject whose deadline passed first.
@@ -236,7 +236,7 @@ func Pure[S any](seat Seat, mode Mode, observe func() S, fn func(), msg string, 
 	after := observe()
 
 	if !equal(before, after, rulesOf(opts)) {
-		Fail(seat, mode, "pure", msg, map[string]any{"want": before, "got": after})
+		Fail(seat, mode, "pure", msg, map[string]any{wantField: before, gotField: after})
 		return
 	}
 	Pass(seat, mode, "pure", msg)
@@ -260,7 +260,7 @@ func NilContextSafe(seat Seat, mode Mode, fn func(ctx context.Context) error, ms
 	returned := false
 	defer func() {
 		if r := recover(); r != nil {
-			Fail(seat, mode, "nil-context-safe", msg, map[string]any{"got": r})
+			Fail(seat, mode, "nil-context-safe", msg, map[string]any{gotField: r})
 			return
 		}
 		if returned {
@@ -268,7 +268,6 @@ func NilContextSafe(seat Seat, mode Mode, fn func(ctx context.Context) error, ms
 		}
 	}()
 
-	//nolint:staticcheck // passing nil is the subject of the assertion
 	_ = fn(nil)
 	returned = true
 }

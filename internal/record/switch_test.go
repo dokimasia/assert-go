@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package record_test
@@ -61,6 +61,7 @@ func TestSwitch(t *testing.T) {
 				var f *fault.Error
 				if !errors.As(err, &f) || f.Op != "record.On" || !errors.Is(err, record.ErrSwitch) ||
 					len(f.Path) != 1 || f.Path[0] != fault.Field(record.Variable) {
+
 					t.Fatalf("On() = %#v, want a fault of record.On of the kind ErrSwitch at the variable", err)
 				}
 			})

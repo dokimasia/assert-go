@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package text
@@ -252,6 +252,8 @@ func (w *walk) pointer(v reflect.Value, depth int) {
 			w.write("&")
 			w.visit(v.Elem(), depth+1)
 			return
+		default:
+			// A pointer to any other kind is written as its address, below.
 		}
 	}
 	w.write("0x" + strconv.FormatUint(uint64(v.Pointer()), 16))
@@ -416,6 +418,7 @@ func flatParts(t reflect.Type) (int, bool) {
 			total += parts
 		}
 		return total, true
+	default:
+		return 1, true
 	}
-	return 1, true
 }

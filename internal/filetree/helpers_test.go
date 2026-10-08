@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package filetree_test
@@ -132,7 +132,7 @@ func (f failingFS) ReadFile(name string) ([]byte, error) {
 	if name == f.read {
 		return nil, &fs.PathError{Op: "read", Path: name, Err: errFailing}
 	}
-	return f.MapFS.ReadFile(name)
+	return f.MapFS.ReadFile(name) //nolint:wrapcheck // the fake returns the errors of the file system it wraps
 }
 
 // ReadDir reads the directory name, whose entry named info fails to state
@@ -144,7 +144,7 @@ func (f failingFS) ReadDir(name string) ([]fs.DirEntry, error) {
 			entries[i] = failingEntry{e}
 		}
 	}
-	return entries, err
+	return entries, err //nolint:wrapcheck // the fake returns the errors of the file system it wraps
 }
 
 // failingEntry is a directory entry whose information fails.
@@ -164,5 +164,5 @@ type linklessFS struct {
 
 // Open opens name in the file system that it wraps.
 func (f linklessFS) Open(name string) (fs.File, error) {
-	return f.fsys.Open(name)
+	return f.fsys.Open(name) //nolint:wrapcheck // the fake returns the errors of the file system it wraps
 }

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matchertest_test
@@ -23,7 +23,7 @@ func TestBehaviour(t *testing.T) {
 	// Both suites drive a subject with a context that is already done,
 	// so one correct implementation satisfies each.
 	honours := func(s *matchertest.Seat, fn func(ctx context.Context) error, msg string) {
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
 		err := fn(ctx)
@@ -65,7 +65,7 @@ func TestBehaviour(t *testing.T) {
 			fn func(ctx context.Context) error, msg string,
 		) {
 			started := time.Now()
-			ctx, cancel := context.WithTimeout(context.Background(), within)
+			ctx, cancel := context.WithTimeout(t.Context(), within)
 			defer cancel()
 
 			type outcome struct {
@@ -110,25 +110,24 @@ func TestBehaviour(t *testing.T) {
 					}, true)
 				}
 			}()
-			//nolint:staticcheck // passing nil is the subject of the suite
 			_ = fn(nil)
 		})
 	})
 }
 
-// TestBehaviourTwins runs TestBehaviourTwinsChild in a child process, and
+// TestBehaviourTwins runs TestBehaviourTwinsProcess in a child process, and
 // requires the failures of RunCompletesWithin and RunPure for their broken
 // twins.
 func TestBehaviourTwins(t *testing.T) {
 	t.Parallel()
-	expectBroken(t, "TestBehaviourTwinsChild",
+	expectBroken(t, "TestBehaviourTwinsProcess",
 		"recovered <nil>, want the subject's own panic value",
 		"the call did not run: hidden = 0, want 1")
 }
 
-// TestBehaviourTwinsChild runs only in the child process of
+// TestBehaviourTwinsProcess runs only in the child process of
 // TestBehaviourTwins.
-func TestBehaviourTwinsChild(t *testing.T) {
+func TestBehaviourTwinsProcess(t *testing.T) {
 	inChild(t)
 
 	t.Run("RunCompletesWithin of a twin that recovers the subject's panic", func(t *testing.T) {

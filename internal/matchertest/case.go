@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matchertest
@@ -189,8 +189,9 @@ func matches(held, value reflect.Value) bool {
 		return true
 	case reflect.Func:
 		return held.IsNil() && value.IsNil()
+	default:
+		return held.Equal(value)
 	}
-	return held.Equal(value)
 }
 
 // matchesByMeaning compares the two kinds of value that match by meaning

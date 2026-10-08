@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matchertest_test
@@ -37,18 +37,18 @@ func TestGoroutine(t *testing.T) {
 	})
 }
 
-// TestGoroutineTwins runs TestGoroutineTwinsChild in a child process, and
+// TestGoroutineTwins runs TestGoroutineTwinsProcess in a child process, and
 // requires the failure of RunNoGoroutineLeaks for a twin that reports the
 // goroutines in descending order.
 func TestGoroutineTwins(t *testing.T) {
 	t.Parallel()
-	expectBroken(t, "TestGoroutineTwinsChild",
+	expectBroken(t, "TestGoroutineTwinsProcess",
 		"want the functions of the 3 and 5 goroutines in ascending order")
 }
 
-// TestGoroutineTwinsChild runs only in the child process of
+// TestGoroutineTwinsProcess runs only in the child process of
 // TestGoroutineTwins.
-func TestGoroutineTwinsChild(t *testing.T) {
+func TestGoroutineTwinsProcess(t *testing.T) {
 	inChild(t)
 
 	t.Run("RunNoGoroutineLeaks of a twin that reports in descending order", func(t *testing.T) {

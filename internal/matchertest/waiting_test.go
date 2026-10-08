@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matchertest_test
@@ -55,18 +55,18 @@ func TestWaiting(t *testing.T) {
 	})
 }
 
-// TestWaitingTwins runs TestWaitingTwinsChild in a child process, and
+// TestWaitingTwins runs TestWaitingTwinsProcess in a child process, and
 // requires the failures of RunEventually for a twin that never runs the
 // body.
 func TestWaitingTwins(t *testing.T) {
 	t.Parallel()
-	expectBroken(t, "TestWaitingTwinsChild",
+	expectBroken(t, "TestWaitingTwinsProcess",
 		"ran 0 attempts, want at least 3; it did not retry",
 		"the body never ran")
 }
 
-// TestWaitingTwinsChild runs only in the child process of TestWaitingTwins.
-func TestWaitingTwinsChild(t *testing.T) {
+// TestWaitingTwinsProcess runs only in the child process of TestWaitingTwins.
+func TestWaitingTwinsProcess(t *testing.T) {
 	inChild(t)
 
 	t.Run("RunEventually of a twin that never runs the body", func(t *testing.T) {

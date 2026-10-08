@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -16,7 +16,7 @@ import "reflect"
 func Nil(seat Seat, mode Mode, got any, msg string) {
 	seat.Helper()
 	if !isNil(got) {
-		Fail(seat, mode, "nil", msg, map[string]any{"got": got})
+		Fail(seat, mode, "nil", msg, map[string]any{gotField: got})
 		return
 	}
 	Pass(seat, mode, "nil", msg)

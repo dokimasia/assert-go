@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matchertest_test
@@ -333,19 +333,19 @@ func TestRelation(t *testing.T) {
 	})
 }
 
-// TestRelationTwins runs TestRelationTwinsChild in a child process, and
+// TestRelationTwins runs TestRelationTwinsProcess in a child process, and
 // requires the failures of RunPoisoned for twins that end the goroutine of
 // induce in two ways.
 func TestRelationTwins(t *testing.T) {
 	t.Parallel()
-	expectBroken(t, "TestRelationTwinsChild",
+	expectBroken(t, "TestRelationTwinsProcess",
 		"the assertion returned after a callable ended its goroutine",
 		"for a callable that ended its goroutine")
 }
 
-// TestRelationTwinsChild runs only in the child process of
+// TestRelationTwinsProcess runs only in the child process of
 // TestRelationTwins.
-func TestRelationTwinsChild(t *testing.T) {
+func TestRelationTwinsProcess(t *testing.T) {
 	inChild(t)
 
 	t.Run("RunPoisoned of a twin that induces on a goroutine of its own", func(t *testing.T) {

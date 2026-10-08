@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matchertest_test
@@ -47,18 +47,18 @@ func TestPanics(t *testing.T) {
 	})
 }
 
-// TestPanicsTwins runs TestPanicsTwinsChild in a child process, and
+// TestPanicsTwins runs TestPanicsTwinsProcess in a child process, and
 // requires the failures of RunPanics and RunNotPanics for twins that
 // recover the panic silently.
 func TestPanicsTwins(t *testing.T) {
 	t.Parallel()
-	expectBroken(t, "TestPanicsTwinsChild",
+	expectBroken(t, "TestPanicsTwinsProcess",
 		`yielded <nil>, want "matchertest: the stated reason"`,
 		"reported nothing for a panicking function")
 }
 
-// TestPanicsTwinsChild runs only in the child process of TestPanicsTwins.
-func TestPanicsTwinsChild(t *testing.T) {
+// TestPanicsTwinsProcess runs only in the child process of TestPanicsTwins.
+func TestPanicsTwinsProcess(t *testing.T) {
 	inChild(t)
 
 	t.Run("RunPanics of a twin that yields nothing", func(t *testing.T) {

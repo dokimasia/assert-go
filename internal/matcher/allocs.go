@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -61,7 +61,7 @@ func MaxAllocs(seat Seat, mode Mode, fn func(), ceiling uint64, msg string) {
 
 	got := allocs(fn)
 	if ceilingChecked(seat, "max-allocs"+testLogNote) && got > ceiling {
-		Fail(seat, mode, "max-allocs", msg, map[string]any{"want": ceiling, "got": got})
+		Fail(seat, mode, "max-allocs", msg, map[string]any{wantField: ceiling, gotField: got})
 		return
 	}
 	Pass(seat, mode, "max-allocs", msg)
@@ -94,7 +94,7 @@ func MaxAllocsWithSetup[T any](seat Seat, mode Mode, setup func() T, fn func(T),
 
 	got := allocsAfter(setup, fn)
 	if ceilingChecked(seat, "max-allocs-with-setup"+testLogNote) && got > ceiling {
-		Fail(seat, mode, "max-allocs-with-setup", msg, map[string]any{"want": ceiling, "got": got})
+		Fail(seat, mode, "max-allocs-with-setup", msg, map[string]any{wantField: ceiling, gotField: got})
 		return
 	}
 	Pass(seat, mode, "max-allocs-with-setup", msg)

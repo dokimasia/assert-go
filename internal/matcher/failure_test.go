@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher_test
@@ -180,6 +180,7 @@ func TestFailure(t *testing.T) {
 				record, ok := tt.give.CaseFailure()
 				if record.Assertion != tt.want.Assertion || record.Contract != tt.want.Contract ||
 					len(record.Detail) != len(tt.want.Detail) || ok != tt.wantOK {
+
 					t.Fatalf("CaseFailure() = %+v, %t, want %+v, %t", record, ok, tt.want, tt.wantOK)
 				}
 			})

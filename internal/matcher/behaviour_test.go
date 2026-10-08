@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher_test
@@ -26,10 +26,10 @@ const (
 	childWait = 2 * time.Second
 )
 
-// TestCompletesWithinChild runs only in the child process. Its subject
+// TestCompletesWithinProcess runs only in the child process. Its subject
 // panics after the deadline, when CompletesWithin has returned, and the
 // panic ends the process because nothing recovers it.
-func TestCompletesWithinChild(t *testing.T) {
+func TestCompletesWithinProcess(t *testing.T) {
 	if !childtest.InChild(t) {
 		t.Skip("runs only as the child of TestBehaviour")
 	}
@@ -137,7 +137,7 @@ func TestBehaviour(t *testing.T) {
 	t.Run("CompletesWithin panics on the subject's goroutine with a panic after the deadline", func(t *testing.T) {
 		t.Parallel()
 
-		out, err := childtest.Run(t, "TestCompletesWithinChild")
+		out, err := childtest.Run(t, "TestCompletesWithinProcess")
 		if err == nil || !strings.Contains(out, "panic: "+latePanic) {
 			t.Fatalf("the child exited with %v, want a crash on the panic %q:\n%s", err, latePanic, out)
 		}
@@ -193,10 +193,10 @@ func TestBehaviour(t *testing.T) {
 	})
 }
 
-// TestBehaviourAbandoned reads the goroutines of the whole process, so it
+// TestBehaviourAbandonedProcess reads the goroutines of the whole process, so it
 // does not run in parallel. Its leak check waits until the goroutine of the
 // subject has ended.
-func TestBehaviourAbandoned(t *testing.T) {
+func TestBehaviourAbandonedProcess(t *testing.T) {
 	t.Run("CompletesWithin ends the goroutine of a subject that returns after its deadline", func(t *testing.T) {
 		check := matcher.NoGoroutineLeaks(t, matcher.Fatal, "the subject's goroutine ends")
 		release := make(chan struct{})

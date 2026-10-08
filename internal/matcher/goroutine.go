@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -73,7 +73,7 @@ const profileBytes = 64 << 10
 func NoGoroutineLeaks(seat Seat, mode Mode, msg string) func() {
 	seat.Helper()
 
-	value := strconv.FormatUint(rand.Uint64(), 36)
+	value := strconv.FormatUint(rand.Uint64(), 36) //nolint:gosec // a label tells scopes apart and needs no secrecy
 	pprof.SetGoroutineLabels(pprof.WithLabels(context.Background(), pprof.Labels(scopeLabel, value)))
 	return func() {
 		seat.Helper()

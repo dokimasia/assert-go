@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package literal
@@ -67,6 +67,8 @@ func writeCanonical(b *strings.Builder, v reflect.Value) {
 			return
 		}
 		writeCanonical(b, v.Elem())
+	default:
+		// A value of another kind, such as a channel, has the empty text.
 	}
 }
 

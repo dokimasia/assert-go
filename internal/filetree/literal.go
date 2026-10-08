@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package filetree
@@ -63,8 +63,8 @@ type entryLiteral struct {
 	Digest     string  `json:"digest,omitempty"`
 	Size       int     `json:"size,omitempty"`
 	Directory  bool    `json:"directory,omitempty"`
-	Link       *string `json:"link,omitempty"`
 	Executable bool    `json:"executable,omitempty"`
+	Link       *string `json:"link,omitempty"`
 	Mode       *uint32 `json:"mode,omitempty"`
 }
 

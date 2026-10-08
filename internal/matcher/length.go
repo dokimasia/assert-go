@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -24,11 +24,11 @@ func Length(seat Seat, mode Mode, got any, want int, msg string) {
 
 	n, ok := lengthOf(got)
 	if !ok {
-		Fail(seat, mode, "length", msg, map[string]any{"want": want, "got": nil})
+		Fail(seat, mode, "length", msg, map[string]any{wantField: want, gotField: nil})
 		return
 	}
 	if n != want {
-		Fail(seat, mode, "length", msg, map[string]any{"want": want, "got": n})
+		Fail(seat, mode, "length", msg, map[string]any{wantField: want, gotField: n})
 		return
 	}
 	Pass(seat, mode, "length", msg)
@@ -47,11 +47,11 @@ func Empty(seat Seat, mode Mode, got any, msg string) {
 
 	n, ok := lengthOf(got)
 	if !ok {
-		Fail(seat, mode, "empty", msg, map[string]any{"got": got, "length": nil})
+		Fail(seat, mode, "empty", msg, map[string]any{gotField: got, lengthField: nil})
 		return
 	}
 	if n != 0 {
-		Fail(seat, mode, "empty", msg, map[string]any{"got": got, "length": n})
+		Fail(seat, mode, "empty", msg, map[string]any{gotField: got, lengthField: n})
 		return
 	}
 	Pass(seat, mode, "empty", msg)
@@ -70,7 +70,7 @@ func NotEmpty(seat Seat, mode Mode, got any, msg string) {
 
 	// A value without a length has no item.
 	if n, _ := lengthOf(got); n == 0 {
-		Fail(seat, mode, "not-empty", msg, map[string]any{"got": got})
+		Fail(seat, mode, "not-empty", msg, map[string]any{gotField: got})
 		return
 	}
 	Pass(seat, mode, "not-empty", msg)

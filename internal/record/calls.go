@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package record
@@ -156,6 +156,8 @@ func (c *Calls) add(e *entry) {
 		if e.done {
 			c.emit(e)
 		}
+	case off:
+		// A Calls that is off records nothing.
 	}
 }
 

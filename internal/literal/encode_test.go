@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package literal_test
@@ -507,7 +507,7 @@ func TestEncode(t *testing.T) {
 			},
 			{
 				name: "returns a context as opaque",
-				give: context.Background(),
+				give: context.Background(), //nolint:usetesting // the text of the literal names this context
 				want: `{"type":"opaque","text":"context.Background"}`,
 			},
 			{

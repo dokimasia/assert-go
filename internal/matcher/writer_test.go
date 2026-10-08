@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher_test
@@ -11,6 +11,15 @@ import (
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
+
+// sentenceID is the assertion whose sentence this test binary registers.
+const sentenceID = "matcher-test-sentence"
+
+// The registration runs while the test binary initialises, as the
+// registration of a package does.
+func init() {
+	matcher.RegisterSentence(func(f matcher.Failure) string { return "registered: " + f.Contract }, sentenceID)
+}
 
 // boxed keeps its contents in an unexported field.
 type boxed struct{ items []int }
@@ -77,15 +86,6 @@ func selfContaining() map[string]any {
 	m := map[string]any{}
 	m["self"] = m
 	return m
-}
-
-// sentenceID is the assertion whose sentence this test binary registers.
-const sentenceID = "matcher-test-sentence"
-
-// The registration runs while the test binary initialises, as the
-// registration of a package does.
-func init() {
-	matcher.RegisterSentence(func(f matcher.Failure) string { return "registered: " + f.Contract }, sentenceID)
 }
 
 // TestWriter checks the sentence that the text writer writes for a

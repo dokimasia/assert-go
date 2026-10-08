@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package token_test
@@ -193,7 +193,7 @@ func TestToken(t *testing.T) {
 
 		t.Run("returns only choices that Encode writes as the same token for every short payload", func(t *testing.T) {
 			t.Parallel()
-			payloads := [][]byte{nil}
+			payloads := make([][]byte, 1, 1+256+256*256+5*256*256)
 			for first := range 256 {
 				payloads = append(payloads, []byte{byte(first)})
 				for second := range 256 {

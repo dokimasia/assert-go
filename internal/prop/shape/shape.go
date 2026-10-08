@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package shape
@@ -32,6 +32,16 @@ const (
 	nameKey = "name"
 	// refKind is the id of a ref.
 	refKind = "ref"
+)
+
+// The ids of the collection shapes that the reader tells apart from a list.
+const (
+	// fixedListID is the id of a list of one size.
+	fixedListID = "fixed-list"
+	// setID is the id of a list of distinct elements.
+	setID = "set"
+	// mapID is the id of a map.
+	mapID = "map"
 )
 
 // The keys of the parameters of the shapes.
@@ -72,7 +82,7 @@ type takes struct {
 // vocabulary is what each shape of the vocabulary takes, by its id.
 var vocabulary = map[string]takes{
 	"bool": {},
-	"int":  {required: []string{widthKey, signedKey}, optional: []string{minKey, maxKey}},
+	intID:  {required: []string{widthKey, signedKey}, optional: []string{minKey, maxKey}},
 	"float": {
 		required: []string{widthKey},
 		optional: []string{minKey, maxKey, allowNaNKey, allowInfinityKey},
@@ -80,13 +90,13 @@ var vocabulary = map[string]takes{
 	"char":            {optional: []string{alphabetKey}},
 	"string":          {optional: []string{minSizeKey, maxSizeKey, alphabetKey, patternKey}},
 	"bytes":           {optional: []string{minSizeKey, maxSizeKey}},
-	"list":            {required: []string{ofKey}, optional: []string{minSizeKey, maxSizeKey}},
-	"fixed-list":      {required: []string{ofKey, sizeKey}},
-	"set":             {required: []string{ofKey}, optional: []string{minSizeKey, maxSizeKey}},
-	"map":             {required: []string{mapKey, ofKey}, optional: []string{minSizeKey, maxSizeKey}},
-	"optional":        {required: []string{ofKey}},
-	"record":          {required: []string{fieldsKey}},
-	"enum":            {required: []string{variantsKey}},
+	listID:            {required: []string{ofKey}, optional: []string{minSizeKey, maxSizeKey}},
+	fixedListID:       {required: []string{ofKey, sizeKey}},
+	setID:             {required: []string{ofKey}, optional: []string{minSizeKey, maxSizeKey}},
+	mapID:             {required: []string{mapKey, ofKey}, optional: []string{minSizeKey, maxSizeKey}},
+	optionalID:        {required: []string{ofKey}},
+	recordID:          {required: []string{fieldsKey}},
+	enumID:            {required: []string{variantsKey}},
 	"literal":         {required: []string{valuesKey}},
 	refKind:           {required: []string{nameKey}},
 	"uuid":            {},
@@ -105,6 +115,47 @@ var vocabulary = map[string]takes{
 
 // ids are the ids of the shape vocabulary, sorted.
 var ids = slices.Sorted(maps.Keys(vocabulary))
+
+// builder returns the generator of one shape of its kind, and a fault whose
+// path starts at the shape.
+type builder func(r *reader, n node) (engine.Generator[any], error)
+
+// builders are the builder of each shape, by its id.
+var builders map[string]builder
+
+// init fills builders. A builder of a shape that nests shapes reads
+// builders, so the map cannot be the initializer of the variable.
+func init() {
+	builders = map[string]builder{
+		"bool":            boolShape,
+		intID:             intShape,
+		"float":           floatShape,
+		"char":            charShape,
+		"string":          stringShape,
+		"bytes":           bytesShape,
+		listID:            listShape,
+		fixedListID:       listShape,
+		setID:             listShape,
+		mapID:             mapShape,
+		optionalID:        optionalShape,
+		recordID:          recordShape,
+		enumID:            enumShape,
+		"literal":         literalShape,
+		refKind:           refShape,
+		"uuid":            uuidShape,
+		"ip-address":      ipShape,
+		"decimal":         decimalShape,
+		"instant":         instantShape,
+		"date":            dateShape,
+		"time-of-day":     timeOfDayShape,
+		"local-date-time": localShape,
+		"duration":        durationShape,
+		"offset":          offsetShape,
+		"zone":            zoneShape,
+		"zoned-date-time": zonedShape,
+		"wall-time":       wallShape,
+	}
+}
 
 // Shapes returns the ids of the shape vocabulary, sorted.
 func Shapes() []string {
@@ -352,12 +403,12 @@ func (r *reader) refersBack(v any) bool {
 // refer back.
 func (r *reader) exits(n node) bool {
 	switch n[shapeKey] {
-	case "optional":
+	case optionalID:
 		return true
-	case "list", "set", "map":
+	case listID, setID, mapID:
 		least := integer(n[minSizeKey])
 		return n[minSizeKey] == nil || least != nil && least.Sign() == 0
-	case "enum":
+	case enumID:
 		_, ok := r.exitVariant(n)
 		return ok
 	}
@@ -454,43 +505,4 @@ func (r *reader) child(v any, segs ...fault.Segment) (engine.Generator[any], err
 		return engine.Generator[any]{}, fault.At(err, segs...)
 	}
 	return g, nil
-}
-
-// builder returns the generator of one shape of its kind, and a fault whose
-// path starts at the shape.
-type builder func(r *reader, n node) (engine.Generator[any], error)
-
-// builders are the builder of each shape, by its id.
-var builders map[string]builder
-
-func init() {
-	builders = map[string]builder{
-		"bool":            boolShape,
-		"int":             intShape,
-		"float":           floatShape,
-		"char":            charShape,
-		"string":          stringShape,
-		"bytes":           bytesShape,
-		"list":            listShape,
-		"fixed-list":      listShape,
-		"set":             listShape,
-		"map":             mapShape,
-		"optional":        optionalShape,
-		"record":          recordShape,
-		"enum":            enumShape,
-		"literal":         literalShape,
-		refKind:           refShape,
-		"uuid":            uuidShape,
-		"ip-address":      ipShape,
-		"decimal":         decimalShape,
-		"instant":         instantShape,
-		"date":            dateShape,
-		"time-of-day":     timeOfDayShape,
-		"local-date-time": localShape,
-		"duration":        durationShape,
-		"offset":          offsetShape,
-		"zone":            zoneShape,
-		"zoned-date-time": zonedShape,
-		"wall-time":       wallShape,
-	}
 }

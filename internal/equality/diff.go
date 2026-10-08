@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package equality
@@ -129,6 +129,7 @@ func (d *differ) walk(path *trail, x, y reflect.Value, depth int) {
 	ix, iy := inside(x), inside(y)
 	if depth == maxDepth || !ix.IsValid() || !iy.IsValid() || ix.Type() != iy.Type() ||
 		d.rules.ByIdentity && reference(ix.Kind()) {
+
 		d.whole(path, x, y)
 		return
 	}
@@ -191,6 +192,8 @@ func (d *differ) slices(path *trail, x, y reflect.Value, depth int) {
 			deleted = append(deleted, e.X)
 		case align.Insert:
 			inserted = append(inserted, e.Y)
+		case align.Keep:
+			// A kept element ends the run of edits before it, below.
 		}
 		if k+1 == len(edits) || edits[k+1].Op == align.Keep {
 			d.run(path, x, y, deleted, inserted, depth)
@@ -349,10 +352,11 @@ func order(x, y reflect.Value) int {
 			}
 		}
 		return 0
+	default:
+		// A pointer, a channel and an unsafe pointer are the kinds left that a
+		// map key can be.
+		return cmp.Compare(x.Pointer(), y.Pointer())
 	}
-	// A pointer, a channel and an unsafe pointer are the kinds left that a
-	// map key can be.
-	return cmp.Compare(x.Pointer(), y.Pointer())
 }
 
 // parts returns the number of parts of an array or a struct.

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package engine_test
@@ -488,8 +488,9 @@ func TestCase(t *testing.T) {
 
 		t.Run("returns one context to every call", func(t *testing.T) {
 			t.Parallel()
-			var first, second context.Context
-			engine.Replay(func(c *engine.Case) { first, second = c.Context(), c.Context() }, nil, nil)
+			reads := make(chan context.Context, 2)
+			engine.Replay(func(c *engine.Case) { reads <- c.Context(); reads <- c.Context() }, nil, nil)
+			first, second := <-reads, <-reads
 			assert.True(t, first == second, "the same context")
 		})
 	})

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package tree
@@ -34,16 +34,16 @@ type node struct {
 	// parent is the index of the node above. The root has none, and the
 	// walk up from a leaf stops at the root before it reads the field.
 	parent int32
-	// children is the number of values that cases took at the node.
-	children uint64
-	// exhaustedChildren is the number of those children that are
-	// exhausted.
-	exhaustedChildren uint64
 	// state is what a case did at the node.
 	state state
 	// exhausted reports whether the node is a leaf, or whether every value
 	// of its bounds leads to an exhausted node.
 	exhausted bool
+	// children is the number of values that cases took at the node.
+	children uint64
+	// exhaustedChildren is the number of those children that are
+	// exhausted.
+	exhaustedChildren uint64
 }
 
 // edge identifies a child: its parent and the value that a case took

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -27,7 +27,7 @@ func Pairwise[T any](seat Seat, mode Mode, items []T, pred func(earlier, later T
 	for i := 1; i < len(items); i++ {
 		if !pred(items[i-1], items[i]) {
 			Fail(seat, mode, "pairwise", msg, map[string]any{
-				"index": i - 1, "first": items[i-1], "second": items[i],
+				indexField: i - 1, firstField: items[i-1], secondField: items[i],
 			})
 			return
 		}

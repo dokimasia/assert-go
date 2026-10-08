@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matchertest_test
@@ -105,19 +105,19 @@ func TestErrors(t *testing.T) {
 	})
 }
 
-// TestErrorsTwins runs TestErrorsTwinsChild in a child process, and
+// TestErrorsTwins runs TestErrorsTwinsProcess in a child process, and
 // requires the failures of RunErrorAs for twins that return nil and a zero
 // error.
 func TestErrorsTwins(t *testing.T) {
 	t.Parallel()
-	expectBroken(t, "TestErrorsTwinsChild",
+	expectBroken(t, "TestErrorsTwinsProcess",
 		"returned matchertest: typed error, want the error from the chain",
 		"returned nil for an error already of the target type",
 		"returned matchertest: typed error on failure, want the zero value")
 }
 
-// TestErrorsTwinsChild runs only in the child process of TestErrorsTwins.
-func TestErrorsTwinsChild(t *testing.T) {
+// TestErrorsTwinsProcess runs only in the child process of TestErrorsTwins.
+func TestErrorsTwinsProcess(t *testing.T) {
 	inChild(t)
 
 	t.Run("RunErrorAs of a twin that returns nil", func(t *testing.T) {

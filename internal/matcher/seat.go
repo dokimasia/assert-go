@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -52,7 +52,7 @@ type bodyContext struct {
 	parent Seat
 
 	mu     sync.Mutex
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx // a body's seat has the context of the body, as testing.T has
 	cancel context.CancelFunc
 	// ended records that the body ended, so that a first read after the
 	// end returns a cancelled context.

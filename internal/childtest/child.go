@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package childtest
@@ -91,6 +91,7 @@ func RunFlags(t *testing.T, name string, flags []string, env ...string) (string,
 		metaWritten.Do(func() { _ = coverage.WriteMetaDir(dir.Value.String()) })
 		argv = append(argv, "-test.gocoverdir="+dir.Value.String())
 	}
+	//nolint:gosec // the command is the running test binary, with flags of the test package
 	cmd := exec.CommandContext(ctx, os.Args[0], append(argv, flags...)...)
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(kv, record.Variable+"=") {

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher_test
@@ -59,10 +59,12 @@ func TestRejects(t *testing.T) {
 			lines := seat.lines(t)
 			if len(lines) != 2 || lines[0]["assertion"] != "rejects" || lines[0]["verdict"] != "pass" ||
 				lines[0]["seq"] != 1.0 {
+
 				t.Fatalf("wrote %v, want a pass of rejects as 1 and the check's call", lines)
 			}
 			if lines[1]["assertion"] != "equal" || lines[1]["verdict"] != "fail" || lines[1]["parent"] != 1.0 ||
 				lines[1]["run"] != 1.0 {
+
 				t.Fatalf("the second record is %v, want the check's failure under 1 in run 1", lines[1])
 			}
 		})
@@ -106,11 +108,13 @@ func TestRejects(t *testing.T) {
 		t.Run("returns one context to each read, and cancels it when the check ends", func(t *testing.T) {
 			t.Parallel()
 
-			var first, second context.Context
+			reads := make(chan context.Context, 2)
 			matcher.Rejects(&contextSeat{ctx: t.Context()}, matcher.Fatal, "the check fails", func(s matcher.Seat) {
-				first, second = matcher.ContextOf(s), matcher.ContextOf(s)
+				reads <- matcher.ContextOf(s)
+				reads <- matcher.ContextOf(s)
 				s.Errorf("the check fails")
 			})
+			first, second := <-reads, <-reads
 			if first != second || !errors.Is(first.Err(), context.Canceled) {
 				t.Fatalf("the reads returned %v and %v, ended with %v, want one context that ended with the check",
 					first, second, first.Err())

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -31,7 +31,7 @@ func Contains(seat Seat, mode Mode, haystack, needle any, msg string, opts ...Op
 	// contained reports false for a haystack of a type without containment.
 	found, _ := contained(haystack, needle, rulesOf(opts))
 	if !found {
-		Fail(seat, mode, "contains", msg, map[string]any{"haystack": haystack, "needle": needle})
+		Fail(seat, mode, "contains", msg, map[string]any{haystackField: haystack, needleField: needle})
 		return
 	}
 	Pass(seat, mode, "contains", msg)
@@ -49,11 +49,11 @@ func NotContains(seat Seat, mode Mode, haystack, needle any, msg string, opts ..
 
 	found, supported := contained(haystack, needle, rulesOf(opts))
 	if !supported {
-		Fail(seat, mode, "not-contains", msg, map[string]any{"haystack": haystack, "needle": needle})
+		Fail(seat, mode, "not-contains", msg, map[string]any{haystackField: haystack, needleField: needle})
 		return
 	}
 	if found {
-		Fail(seat, mode, "not-contains", msg, map[string]any{"haystack": haystack, "needle": needle})
+		Fail(seat, mode, "not-contains", msg, map[string]any{haystackField: haystack, needleField: needle})
 		return
 	}
 	Pass(seat, mode, "not-contains", msg)
@@ -79,7 +79,7 @@ func ContainsInOrder(seat Seat, mode Mode, haystack any, needles []string, msg s
 	text, ok := textOf(haystack)
 	if !ok {
 		Fail(seat, mode, "contains-in-order", msg,
-			map[string]any{"haystack": haystack, "needle": "", "index": 0})
+			map[string]any{haystackField: haystack, needleField: "", indexField: 0})
 		return
 	}
 
@@ -88,7 +88,7 @@ func ContainsInOrder(seat Seat, mode Mode, haystack any, needles []string, msg s
 		at := strings.Index(text[cursor:], needle)
 		if at < 0 {
 			Fail(seat, mode, "contains-in-order", msg,
-				map[string]any{"haystack": text, "needle": needle, "index": i})
+				map[string]any{haystackField: text, needleField: needle, indexField: i})
 			return
 		}
 		cursor += at + len(needle)
@@ -114,7 +114,7 @@ func Permutation[T any](seat Seat, mode Mode, got, want []T, msg string, opts ..
 	seat.Helper()
 
 	if !permuted(got, want, rulesOf(opts)) {
-		Fail(seat, mode, "permutation", msg, map[string]any{"want": want, "got": got})
+		Fail(seat, mode, "permutation", msg, map[string]any{wantField: want, gotField: got})
 		return
 	}
 	Pass(seat, mode, "permutation", msg)

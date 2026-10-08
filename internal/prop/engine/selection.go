@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package engine
@@ -120,8 +120,9 @@ func Absent(v any) bool {
 		return true
 	case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Interface:
 		return rv.IsNil()
+	default:
+		return false
 	}
-	return false
 }
 
 // Permutation returns a generator of the orderings of values: one swap

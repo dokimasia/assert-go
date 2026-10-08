@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package fault
@@ -134,6 +134,14 @@ func (f *Error) Error() string {
 	return b.String()
 }
 
+// Unwrap returns the cause of f, so that errors.Is and errors.As see
+// through it. It allocates nothing.
+func (f *Error) Unwrap() error { return f.Err }
+
+// Is reports whether target is the kind of f, so that errors.Is matches a
+// fault by its kind. It allocates nothing.
+func (f *Error) Is(target error) bool { return target == f.Kind }
+
 // reason returns the reason of f, or the text of its kind for a fault
 // without a reason.
 func (f *Error) reason() string {
@@ -151,11 +159,3 @@ func (f *Error) cause() string {
 	}
 	return f.Err.Error()
 }
-
-// Unwrap returns the cause of f, so that errors.Is and errors.As see
-// through it. It allocates nothing.
-func (f *Error) Unwrap() error { return f.Err }
-
-// Is reports whether target is the kind of f, so that errors.Is matches a
-// fault by its kind. It allocates nothing.
-func (f *Error) Is(target error) bool { return target == f.Kind }

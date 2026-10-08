@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matchertest_test
@@ -22,13 +22,13 @@ func TestRejects(t *testing.T) {
 	})
 }
 
-// TestRejectsTwins runs TestRejectsTwinsChild in a child process, and
+// TestRejectsTwins runs TestRejectsTwinsProcess in a child process, and
 // requires the failures of RunRejects for a twin that never runs the check,
 // a twin that runs the check past each failure and keeps only the contracts
 // of its records, and a twin that returns a record of a check that passes.
 func TestRejectsTwins(t *testing.T) {
 	t.Parallel()
-	expectBroken(t, "TestRejectsTwinsChild",
+	expectBroken(t, "TestRejectsTwinsProcess",
 		"returned [], want the records of both failures in call order",
 		"returned [], want the record of the failure that stopped the check",
 		"returned [] and ran on: false, want no record and a check that Errorf let run",
@@ -40,8 +40,8 @@ func TestRejectsTwins(t *testing.T) {
 		"want no record of a check that passed")
 }
 
-// TestRejectsTwinsChild runs only in the child process of TestRejectsTwins.
-func TestRejectsTwinsChild(t *testing.T) {
+// TestRejectsTwinsProcess runs only in the child process of TestRejectsTwins.
+func TestRejectsTwinsProcess(t *testing.T) {
 	inChild(t)
 
 	t.Run("RunRejects of a twin that never runs the check", func(t *testing.T) {

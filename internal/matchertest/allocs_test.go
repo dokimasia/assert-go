@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matchertest_test
@@ -18,6 +18,7 @@ func TestOverCeiling(t *testing.T) {
 		got := matchertest.OverCeiling("max-allocs-with-setup", true)
 		if !got.Fails || got.Assertion != "max-allocs-with-setup" ||
 			got.Detail["want"] != uint64(0) || got.Detail["got"] != uint64(1) {
+
 			t.Fatalf("OverCeiling(true) = %+v, want a failure of max-allocs-with-setup with want 0 and got 1", got)
 		}
 	})
@@ -31,20 +32,20 @@ func TestOverCeiling(t *testing.T) {
 	})
 }
 
-// TestAllocsTwins runs TestAllocsTwinsChild in a child process, and
+// TestAllocsTwins runs TestAllocsTwinsProcess in a child process, and
 // requires the failures of RunMaxAllocs and RunMaxAllocsWithSetup for a
 // twin that never calls the callable.
 func TestAllocsTwins(t *testing.T) {
 	t.Parallel()
-	expectBroken(t, "TestAllocsTwinsChild",
+	expectBroken(t, "TestAllocsTwinsProcess",
 		"the fixture allocated nothing, so the case checked no ceiling",
 		"called the callable 0 times, want 101",
 		"called the setup 0 times and the callable 0 times, want 101 of each",
 		"call 0 took another input than the setup before it built")
 }
 
-// TestAllocsTwinsChild runs only in the child process of TestAllocsTwins.
-func TestAllocsTwinsChild(t *testing.T) {
+// TestAllocsTwinsProcess runs only in the child process of TestAllocsTwins.
+func TestAllocsTwinsProcess(t *testing.T) {
 	inChild(t)
 
 	t.Run("RunMaxAllocs of a twin that never calls the callable", func(t *testing.T) {

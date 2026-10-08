@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package literal
@@ -263,8 +263,9 @@ func scalarOf(t reflect.Type) string {
 		return typeFloat
 	case reflect.String:
 		return typeString
+	default:
+		return ""
 	}
-	return ""
 }
 
 // bigOf returns the integer of a *big.Int or a big.Int, and false for a

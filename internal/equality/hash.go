@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package equality
@@ -116,6 +116,8 @@ func (h *hasher) value(v reflect.Value, depth int) {
 		h.slice(v, depth)
 	case reflect.Map:
 		h.entries(v, depth)
+	default:
+		// inside unwraps every interface, so no other kind reaches the switch.
 	}
 }
 

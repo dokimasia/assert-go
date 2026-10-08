@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matchertest_test
@@ -68,18 +68,18 @@ func TestContains(t *testing.T) {
 	})
 }
 
-// TestContainsTwins runs TestContainsTwinsChild in a child process, and
+// TestContainsTwins runs TestContainsTwinsProcess in a child process, and
 // requires the failure of RunPermutation for a twin that reports a field
 // that permutation does not declare.
 func TestContainsTwins(t *testing.T) {
 	t.Parallel()
-	expectBroken(t, "TestContainsTwinsChild",
+	expectBroken(t, "TestContainsTwinsProcess",
 		`the record contains the fields ["got" "index" "want"], want ["got" "want"]`)
 }
 
-// TestContainsTwinsChild runs only in the child process of
+// TestContainsTwinsProcess runs only in the child process of
 // TestContainsTwins.
-func TestContainsTwinsChild(t *testing.T) {
+func TestContainsTwinsProcess(t *testing.T) {
 	inChild(t)
 
 	t.Run("RunPermutation of a twin that reports an undeclared field", func(t *testing.T) {

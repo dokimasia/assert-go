@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -141,7 +141,7 @@ func Eventually(seat Seat, mode Mode, timeout, interval time.Duration, fn func(S
 		}
 		if !waitWithin(clock, deadline, max(interval, minWait)) {
 			run.Fail(mode, "eventually", msg, map[string]any{
-				"attempts": attempt, "last": last,
+				attemptsField: attempt, "last": last,
 			})
 			return
 		}
@@ -198,7 +198,7 @@ func EventuallyTrue(seat Seat, mode Mode, timeout time.Duration, pred func() boo
 		}
 		if !waitWithin(clock, deadline, backoff) {
 			Fail(seat, mode, "eventually-true", msg,
-				map[string]any{"attempts": attempt})
+				map[string]any{attemptsField: attempt})
 			return
 		}
 		backoff = min(max(2*backoff, minWait), maxBackoff)

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -175,23 +175,6 @@ func (r Running) FailRun(mode Mode, f Failure, run json.Marshaler) {
 	r.report(mode, f)
 }
 
-// report sends f to a seat that satisfies [Reporter], and the writer's text
-// of it to any other seat, through Fatalf under [Fatal] and Errorf under
-// [Soft].
-func (r Running) report(mode Mode, f Failure) {
-	r.seat.Helper()
-	if reporter, ok := r.seat.(Reporter); ok {
-		reporter.Report(f, mode == Fatal)
-		return
-	}
-	text := writer.Failure(f)
-	if mode == Soft {
-		r.seat.Errorf("%s", text)
-		return
-	}
-	r.seat.Fatalf("%s", text)
-}
-
 // Fault reports that the call ended without a verdict because of err, as
 // [Fault] does.
 //
@@ -208,6 +191,23 @@ func (r Running) Fault(mode Mode, assertion, contract string, err error) {
 		Error: writer.Fault(err),
 	}, nil, nil)
 	r.end(err)
+}
+
+// report sends f to a seat that satisfies [Reporter], and the writer's text
+// of it to any other seat, through Fatalf under [Fatal] and Errorf under
+// [Soft].
+func (r Running) report(mode Mode, f Failure) {
+	r.seat.Helper()
+	if reporter, ok := r.seat.(Reporter); ok {
+		reporter.Report(f, mode == Fatal)
+		return
+	}
+	text := writer.Failure(f)
+	if mode == Soft {
+		r.seat.Errorf("%s", text)
+		return
+	}
+	r.seat.Fatalf("%s", text)
 }
 
 // end ends the call with err, a fault, as [End] ends a call.

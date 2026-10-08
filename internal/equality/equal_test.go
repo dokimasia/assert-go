@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package equality_test
@@ -367,11 +367,11 @@ func TestEqual(t *testing.T) {
 	})
 }
 
-// TestEqualDepth checks that Equal compares lists far deeper than the
+// TestEqualDepthProcess checks that Equal compares lists far deeper than the
 // goroutine's stack would allow a recursive walk. It lowers the maximum
 // stack of every goroutine of the process for its run, so it does not run
 // in parallel.
-func TestEqualDepth(t *testing.T) {
+func TestEqualDepthProcess(t *testing.T) {
 	x, y, other := list(deepLinks, 1), list(deepLinks, 1), list(deepLinks, 2)
 	previous := debug.SetMaxStack(deepStack)
 	defer debug.SetMaxStack(previous)

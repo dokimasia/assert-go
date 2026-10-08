@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package filetree_test
@@ -48,7 +48,7 @@ func TestRecord(t *testing.T) {
 			t.Parallel()
 
 			want, got := filetree.Tree{}, filetree.Tree{}
-			var paths []string
+			paths := make([]string, 0, filetree.MaxPaths+1)
 			for i := range filetree.MaxPaths + 1 {
 				path := fmt.Sprintf("f%02d", i)
 				want[path], got[path], paths = fileOf("b"), fileOf("a"), append(paths, path)

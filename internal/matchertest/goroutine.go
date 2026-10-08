@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matchertest
@@ -80,6 +80,7 @@ func RunNoGoroutineLeaks(t *testing.T, invoke LeakInvoke) {
 		leaked, _ := seat.Records()[0].Detail["leaked"].([]string)
 		if len(leaked) != firstRunning+secondRunning || !slices.IsSorted(leaked) ||
 			len(slices.Compact(slices.Clone(leaked))) != 2 {
+
 			t.Fatalf("leaked %v, want the functions of the %d and %d goroutines in ascending order",
 				seat.Records()[0].Detail["leaked"], firstRunning, secondRunning)
 		}

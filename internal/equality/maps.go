@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package equality
@@ -148,6 +148,7 @@ func lookup(t reflect.Type, r Rules) bool {
 			}
 		}
 		return true
+	default:
+		return false
 	}
-	return false
 }

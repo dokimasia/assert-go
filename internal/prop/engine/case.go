@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package engine
@@ -147,17 +147,12 @@ type Case struct {
 	// requests are what the case recorded of the requests behind the
 	// choices, in order.
 	requests []recorded
-	// keepsWheres reports whether the case keeps where it made each request
-	// and where it observed each fingerprint, in wheres and observed, as the
-	// replay that confirms a failure does.
-	keepsWheres      bool
+	// wheres and observed are where the case made each request and where it
+	// observed each fingerprint, when keepsWheres is set.
 	wheres, observed []Where
 	// divergedAt is where the case made the request that diverged from the
 	// case tree.
 	divergedAt Where
-	// keepsWalk reports whether the case keeps its walk, which a case that
-	// runs outside the case tree and enters it afterwards does.
-	keepsWalk bool
 	// walk are the steps of the case's walk, the choices that a rewind
 	// removed from the record included, in order, when the case keeps it.
 	walk []walkStep
@@ -175,12 +170,10 @@ type Case struct {
 	// fingerprints are the fingerprints the body observed, in order.
 	fingerprints []uint64
 	// label is the label of the innermost draw that runs, when drawing.
-	label   string
-	drawing bool
+	label string
 	// place is the part and the step of a machine that are running, when
 	// placed.
-	place  Place
-	placed bool
+	place Place
 	// taken are the steps that the body's machine took, each with the number
 	// of draws before it, in order.
 	taken []RecordedStep
@@ -200,6 +193,19 @@ type Case struct {
 	// dropped reports whether the run no longer needs the case, which then
 	// ends at its next choice.
 	dropped bool
+	// ended reports whether the body has ended, after which the case's
+	// context is cancelled.
+	ended bool
+	// keepsWheres reports whether the case keeps wheres and observed, as the
+	// replay that confirms a failure does.
+	keepsWheres bool
+	// keepsWalk reports whether the case keeps its walk, which a case that
+	// runs outside the case tree and enters it afterwards does.
+	keepsWalk bool
+	// drawing reports whether a draw of the body runs.
+	drawing bool
+	// placed reports whether a part of a machine is running.
+	placed bool
 	// divergence is the tree's report of a diverged case.
 	divergence *tree.DivergenceError
 	// panicked is the identity of a panic that ended the body.
@@ -218,12 +224,9 @@ type Case struct {
 	// cleanups are the cleanups that have not run yet, in the order they
 	// were registered.
 	cleanups []func()
-	// ended reports whether the body has ended, after which the case's
-	// context is cancelled.
-	ended bool
 	// parent is the context that the case's context derives from, which
 	// [WithContext] sets, and nil for context.Background().
-	parent context.Context
+	parent context.Context //nolint:containedctx // a case has the context of its test, as testing.T has
 	// replayed is the provider of a case that recycleReplaying starts. It is
 	// a field of the case, so the provider costs no allocation.
 	replayed replaying
@@ -236,7 +239,7 @@ type Case struct {
 	// refusal is the refusal that ended a case of Settings.Draws.
 	refusal error
 	// ctx is the case's context, and nil until a caller asks for it.
-	ctx context.Context
+	ctx context.Context //nolint:containedctx // a case has a context of its own, as testing.T has
 	// cancelCtx cancels ctx.
 	cancelCtx context.CancelFunc
 }
@@ -254,62 +257,6 @@ func newCase(p provider, s Settings, w *tree.Walker) *Case {
 	c := new(Case)
 	c.recycle(p, s, w)
 	return c
-}
-
-// recycle empties c, a case whose body's goroutine has ended, for a new
-// case as newCase describes it. It keeps the storage of the record's
-// choices, requests, spans and draws, and of the cleanups, and clears their
-// elements. The caller no longer uses c's earlier record, and the slot took
-// c's earlier calls.
-func (c *Case) recycle(p provider, s Settings, w *tree.Walker) {
-	clear(c.choices)
-	clear(c.spans)
-	clear(c.draws)
-	clear(c.taken)
-	clear(c.cleanups)
-	*c = Case{
-		recorder:   assert.NewRecorder().WithGoexit().WithClock(s.Clock),
-		provider:   p,
-		maxChoices: s.MaxChoices,
-		walker:     w,
-		choices:    c.choices[:0],
-		requests:   c.requests[:0],
-		spans:      c.spans[:0],
-		open:       c.open[:0],
-		draws:      c.draws[:0],
-		taken:      c.taken[:0],
-		cleanups:   c.cleanups[:0],
-		settings:   s,
-	}
-	record.Run(&c.calls, s.Slot, nil)
-}
-
-// recycleReplaying empties c, as recycle does, for a case outside the case
-// tree that replays choices, whose provider is c's own field.
-func (c *Case) recycleReplaying(choices []choice.Choice, s Settings) {
-	c.recycle(nil, s, nil)
-	c.replayed = replaying{choices: choices}
-	c.provider = &c.replayed
-}
-
-// steps returns how many steps the case's kept walk has made, which the
-// call record of a case that runs ahead of the runner states.
-func (c *Case) steps() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return len(c.walk)
-}
-
-// keepWalk makes c, a new case outside the case tree whose body has not
-// started, keep its walk, which the runner enters into the case tree once
-// the case has ended. Each call record that the case keeps then states the
-// steps that its walk had made, so the runner keeps only the calls that a
-// run on one worker makes.
-func (c *Case) keepWalk() {
-	c.keepsWalk = true
-	if c.settings.Slot != nil {
-		record.Run(&c.calls, c.settings.Slot, c.steps)
-	}
 }
 
 // Helper forwards a helper mark to the case's recorder, which counts it.
@@ -455,13 +402,6 @@ func (c *Case) Context() context.Context {
 	return c.ctx
 }
 
-// derive makes ctx the context that the case's context derives from.
-func (c *Case) derive(ctx context.Context) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.parent = ctx
-}
-
 // Choices returns a copy of the choices the case made, in order.
 func (c *Case) Choices() []choice.Choice {
 	c.mu.Lock()
@@ -514,6 +454,171 @@ func (c *Case) Fingerprints() []uint64 {
 // in call order.
 func (c *Case) Failures() []assert.Failure {
 	return c.recorder.Failures()
+}
+
+// Integer returns a value choice in b and records it. The random phase
+// draws it anew, with no reuse of an earlier value, and the edge phase
+// gives it the case's boundary. Like every choice, it ends the calling
+// goroutine when it takes the case past its cap, repeats a tested case or
+// diverges from one.
+func (c *Case) Integer(b choice.IntegerBounds) choice.Int {
+	return c.choose(request{bounds: choice.OfInteger(b)}).Integer
+}
+
+// Reusable returns a value choice in b and records it, as [Case.Integer]
+// does, except that the random phase may give it an earlier value of the
+// case with the same bounds. The second of two keys or two identifiers
+// then equals the first in at least one case in four.
+func (c *Case) Reusable(b choice.IntegerBounds) choice.Int {
+	return c.choose(request{bounds: choice.OfInteger(b), reuse: true}).Integer
+}
+
+// Structure returns a choice in b that decides structure, such as an index
+// among alternatives, and records it. The edge phase gives it the value
+// edge. It ends the calling goroutine as [Case.Integer] does.
+func (c *Case) Structure(b choice.IntegerBounds, edge uint64) choice.Int {
+	return c.choose(request{bounds: choice.OfInteger(b), structure: true, edge: choice.UintOf(edge)}).Integer
+}
+
+// Coin returns a choice in [0, 1] that the random phase draws as a coin of
+// num in den, records it, and reports whether it is 1. num is at most den,
+// and den is above 0. It ends the calling goroutine as [Case.Integer] does.
+func (c *Case) Coin(num, den uint64) bool {
+	r := request{bounds: choice.OfInteger(bitBounds), drawing: byCoin, num: num, den: den}
+	return c.choose(r).Integer == choice.UintOf(1)
+}
+
+// Span calls f inside a span labelled label, which starts at the next
+// choice and ends after the last choice f makes. The span closes when f
+// returns or ends the goroutine. The shrinker deletes, lifts and sorts
+// whole spans.
+func (c *Case) Span(label string, f func()) {
+	span := c.openSpan(label)
+	defer c.closeSpan(span)
+	f()
+}
+
+// Position returns the index that the case's next choice will have. A span
+// that [Case.SpanFrom] opens starts at such an index.
+func (c *Case) Position() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.choices)
+}
+
+// Count returns the count of owner's innermost value in progress in the
+// case, and 0 when no value of owner is in progress.
+func (c *Case) Count(owner any) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	stack := c.recursion[owner]
+	if len(stack) == 0 {
+		return 0
+	}
+	return stack[len(stack)-1]
+}
+
+// Add adds one to the count of owner's innermost value in progress. A value
+// of owner is in progress: an [Case.Enter] of owner whose end has not run.
+func (c *Case) Add(owner any) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.recursion[owner][len(c.recursion[owner])-1]++
+}
+
+// Enter starts a count of 0 for owner's next value in the case, and returns
+// the function that ends it. A generator whose values nest, such as a
+// recursive one, counts what each value spends with [Case.Add] and reads
+// it with [Case.Count]. The values of one owner nest, so the innermost one
+// in progress counts.
+func (c *Case) Enter(owner any) func() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.recursion == nil {
+		c.recursion = make(map[any][]int)
+	}
+	c.recursion[owner] = append(c.recursion[owner], 0)
+	return func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.recursion[owner] = c.recursion[owner][:len(c.recursion[owner])-1]
+	}
+}
+
+// Raise panics with v on the calling goroutine, as a panic that another
+// goroutine of the case raised where pcs and stack were taken. When the
+// panic ends the body or a cleanup, the case keeps v with the identity and
+// the stack of that goroutine, so two panics raised again keep the places
+// where they were raised. A scheduler raises the panic of a task again
+// this way. A body that recovers the panic recovers v.
+func (c *Case) Raise(v any, pcs []uintptr, stack []byte) {
+	c.mu.Lock()
+	c.raised = &origin{value: v, pcs: pcs, stack: stack}
+	c.mu.Unlock()
+	panic(v)
+}
+
+// recycle empties c, a case whose body's goroutine has ended, for a new
+// case as newCase describes it. It keeps the storage of the record's
+// choices, requests, spans and draws, and of the cleanups, and clears their
+// elements. The caller no longer uses c's earlier record, and the slot took
+// c's earlier calls.
+func (c *Case) recycle(p provider, s Settings, w *tree.Walker) {
+	clear(c.choices)
+	clear(c.spans)
+	clear(c.draws)
+	clear(c.taken)
+	clear(c.cleanups)
+	*c = Case{
+		recorder:   assert.NewRecorder().WithGoexit().WithClock(s.Clock),
+		provider:   p,
+		maxChoices: s.MaxChoices,
+		walker:     w,
+		choices:    c.choices[:0],
+		requests:   c.requests[:0],
+		spans:      c.spans[:0],
+		open:       c.open[:0],
+		draws:      c.draws[:0],
+		taken:      c.taken[:0],
+		cleanups:   c.cleanups[:0],
+		settings:   s,
+	}
+	record.Run(&c.calls, s.Slot, nil)
+}
+
+// recycleReplaying empties c, as recycle does, for a case outside the case
+// tree that replays choices, whose provider is c's own field.
+func (c *Case) recycleReplaying(choices []choice.Choice, s Settings) {
+	c.recycle(nil, s, nil)
+	c.replayed = replaying{choices: choices}
+	c.provider = &c.replayed
+}
+
+// steps returns how many steps the case's kept walk has made, which the
+// call record of a case that runs ahead of the runner states.
+func (c *Case) steps() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.walk)
+}
+
+// keepWalk makes c, a new case outside the case tree whose body has not
+// started, keep its walk, which the runner enters into the case tree once
+// the case has ended. Each call record that the case keeps then states the
+// steps that its walk had made, so the runner keeps only the calls that a
+// run on one worker makes.
+func (c *Case) keepWalk() {
+	c.keepsWalk = true
+	if c.settings.Slot != nil {
+		record.Run(&c.calls, c.settings.Slot, c.steps)
+	}
+}
+
+// derive makes ctx the context that the case's context derives from.
+func (c *Case) derive(ctx context.Context) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.parent = ctx
 }
 
 // requested reports whether the body drew a value or made a choice. It
@@ -588,38 +693,6 @@ func (c *Case) walked(err error) stop {
 	return running
 }
 
-// Integer returns a value choice in b and records it. The random phase
-// draws it anew, with no reuse of an earlier value, and the edge phase
-// gives it the case's boundary. Like every choice, it ends the calling
-// goroutine when it takes the case past its cap, repeats a tested case or
-// diverges from one.
-func (c *Case) Integer(b choice.IntegerBounds) choice.Int {
-	return c.choose(request{bounds: choice.OfInteger(b)}).Integer
-}
-
-// Reusable returns a value choice in b and records it, as [Case.Integer]
-// does, except that the random phase may give it an earlier value of the
-// case with the same bounds. The second of two keys or two identifiers
-// then equals the first in at least one case in four.
-func (c *Case) Reusable(b choice.IntegerBounds) choice.Int {
-	return c.choose(request{bounds: choice.OfInteger(b), reuse: true}).Integer
-}
-
-// Structure returns a choice in b that decides structure, such as an index
-// among alternatives, and records it. The edge phase gives it the value
-// edge. It ends the calling goroutine as [Case.Integer] does.
-func (c *Case) Structure(b choice.IntegerBounds, edge uint64) choice.Int {
-	return c.choose(request{bounds: choice.OfInteger(b), structure: true, edge: choice.UintOf(edge)}).Integer
-}
-
-// Coin returns a choice in [0, 1] that the random phase draws as a coin of
-// num in den, records it, and reports whether it is 1. num is at most den,
-// and den is above 0. It ends the calling goroutine as [Case.Integer] does.
-func (c *Case) Coin(num, den uint64) bool {
-	r := request{bounds: choice.OfInteger(bitBounds), drawing: byCoin, num: num, den: den}
-	return c.choose(r).Integer == choice.UintOf(1)
-}
-
 // float returns a float choice in b.
 func (c *Case) float(b choice.FloatBounds) float64 {
 	return c.choose(request{bounds: choice.OfFloat(b)}).Float
@@ -668,6 +741,12 @@ func (c *Case) openSpanAt(label string, start int) int {
 	return c.openAt(label, start)
 }
 
+// mark is a point of a case's record that rewind returns to.
+type mark struct {
+	// choices, spans and draws are the lengths of the record at the mark.
+	choices, spans, draws int
+}
+
 // openAt opens a span labelled label that starts at the choice at start,
 // and returns its index. The caller has locked c.mu.
 func (c *Case) openAt(label string, start int) int {
@@ -689,16 +768,6 @@ func (c *Case) closeSpan(index int) {
 	c.spans[index].End = len(c.choices)
 }
 
-// Span calls f inside a span labelled label, which starts at the next
-// choice and ends after the last choice f makes. The span closes when f
-// returns or ends the goroutine. The shrinker deletes, lifts and sorts
-// whole spans.
-func (c *Case) Span(label string, f func()) {
-	span := c.openSpan(label)
-	defer c.closeSpan(span)
-	f()
-}
-
 // draw records a value that g decoded under label, from the span at index
 // span.
 func (c *Case) draw(label string, value any, span int, g erased) {
@@ -712,20 +781,6 @@ func (c *Case) nextSpan() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.spans)
-}
-
-// Position returns the index that the case's next choice will have. A span
-// that [Case.SpanFrom] opens starts at such an index.
-func (c *Case) Position() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return len(c.choices)
-}
-
-// mark is a point of a case's record that rewind returns to.
-type mark struct {
-	// choices, spans and draws are the lengths of the record at the mark.
-	choices, spans, draws int
 }
 
 // mark returns the current point of the record.
@@ -758,45 +813,6 @@ func (c *Case) recordAt(n int) []choice.Choice {
 	return record
 }
 
-// Count returns the count of owner's innermost value in progress in the
-// case, and 0 when no value of owner is in progress.
-func (c *Case) Count(owner any) int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	stack := c.recursion[owner]
-	if len(stack) == 0 {
-		return 0
-	}
-	return stack[len(stack)-1]
-}
-
-// Add adds one to the count of owner's innermost value in progress. A value
-// of owner is in progress: an [Case.Enter] of owner whose end has not run.
-func (c *Case) Add(owner any) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.recursion[owner][len(c.recursion[owner])-1]++
-}
-
-// Enter starts a count of 0 for owner's next value in the case, and returns
-// the function that ends it. A generator whose values nest, such as a
-// recursive one, counts what each value spends with [Case.Add] and reads
-// it with [Case.Count]. The values of one owner nest, so the innermost one
-// in progress counts.
-func (c *Case) Enter(owner any) func() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.recursion == nil {
-		c.recursion = make(map[any][]int)
-	}
-	c.recursion[owner] = append(c.recursion[owner], 0)
-	return func() {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.recursion[owner] = c.recursion[owner][:len(c.recursion[owner])-1]
-	}
-}
-
 // cancel ends the case at its next choice. A run on more than one worker
 // cancels the cases it started ahead and no longer needs.
 func (c *Case) cancel() {
@@ -822,19 +838,6 @@ func (c *Case) halt(s stop) {
 	runtime.Goexit()
 }
 
-// run calls body on c, on the goroutine that finish starts for it. It keeps
-// a panic that ends the body, then runs the case's cleanups, and marks the
-// goroutine done when the body and the cleanups have returned, panicked or
-// ended the goroutine. It reserves the goroutine's stack before it calls
-// the body.
-func (c *Case) run(body Body) {
-	defer c.done.Done()
-	defer c.cleanUp()
-	defer c.recoverPanic()
-	reserveStack()
-	body(c)
-}
-
 // origin is where a panic was raised first: its value, and the frames and
 // the stack of the goroutine that raised it.
 type origin struct {
@@ -847,17 +850,17 @@ type origin struct {
 	stack []byte
 }
 
-// Raise panics with v on the calling goroutine, as a panic that another
-// goroutine of the case raised where pcs and stack were taken. When the
-// panic ends the body or a cleanup, the case keeps v with the identity and
-// the stack of that goroutine, so two panics raised again keep the places
-// where they were raised. A scheduler raises the panic of a task again
-// this way. A body that recovers the panic recovers v.
-func (c *Case) Raise(v any, pcs []uintptr, stack []byte) {
-	c.mu.Lock()
-	c.raised = &origin{value: v, pcs: pcs, stack: stack}
-	c.mu.Unlock()
-	panic(v)
+// run calls body on c, on the goroutine that finish starts for it. It keeps
+// a panic that ends the body, then runs the case's cleanups, and marks the
+// goroutine done when the body and the cleanups have returned, panicked or
+// ended the goroutine. It reserves the goroutine's stack before it calls
+// the body.
+func (c *Case) run(body Body) {
+	defer c.done.Done()
+	defer c.cleanUp()
+	defer c.recoverPanic()
+	reserveStack()
+	body(c)
 }
 
 // recoverPanic keeps the identity, the value and the stack of a panic that

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package engine
@@ -45,6 +45,8 @@ type request struct {
 	reuse bool
 	// drawing is how the random phase draws the value.
 	drawing drawing
+	// kept reports, for a swarm choice, whether an earlier action is kept.
+	kept bool
 	// num and den are the odds of a coin and of a swarm choice.
 	num, den uint64
 	// sizes and count are the sizes of the collection or the run of steps
@@ -53,10 +55,8 @@ type request struct {
 	sizes   choice.Sizes
 	count   int
 	average int
-	// kept and remaining are what a swarm choice depends on: whether an
-	// earlier action is kept, and the number of actions from this one to the
-	// last.
-	kept      bool
+	// remaining is, for a swarm choice, the number of actions from this one
+	// to the last.
 	remaining int
 	// weights are the weights of an index by weight.
 	weights []uint64
@@ -86,8 +86,9 @@ func (r *request) draw(s *random.Source) choice.Choice {
 		return bit(random.Keep(s, r.num, r.den, r.kept, r.remaining))
 	case byWeighted:
 		return choice.Choice{Kind: choice.Integer, Integer: choice.UintOf(uint64(random.Weighted(s, r.weights)))}
+	default:
+		return choice.Choice{Kind: choice.Integer, Integer: choice.UintOf(s.UpTo(r.bounds.Integer().Hi().Magnitude()))}
 	}
-	return choice.Choice{Kind: choice.Integer, Integer: choice.UintOf(s.UpTo(r.bounds.Integer().Hi().Magnitude()))}
 }
 
 // fromBounds returns the value that the random package draws from s in r's

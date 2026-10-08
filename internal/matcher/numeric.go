@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -27,7 +27,7 @@ func CloseTo(seat Seat, mode Mode, got any, want, tolerance float64, msg string)
 	f, ok := floatOf(got)
 	if !ok {
 		Fail(seat, mode, "close-to", msg,
-			map[string]any{"got": got, "want": want, "tolerance": tolerance})
+			map[string]any{gotField: got, wantField: want, toleranceField: tolerance})
 		return
 	}
 
@@ -36,12 +36,12 @@ func CloseTo(seat Seat, mode Mode, got any, want, tolerance float64, msg string)
 	diff := math.Abs(f - want)
 	if math.IsNaN(diff) || math.IsNaN(tolerance) {
 		Fail(seat, mode, "close-to", msg,
-			map[string]any{"got": got, "want": want, "tolerance": tolerance})
+			map[string]any{gotField: got, wantField: want, toleranceField: tolerance})
 		return
 	}
 	if diff > tolerance {
 		Fail(seat, mode, "close-to", msg,
-			map[string]any{"got": got, "want": want, "tolerance": tolerance})
+			map[string]any{gotField: got, wantField: want, toleranceField: tolerance})
 		return
 	}
 	Pass(seat, mode, "close-to", msg)
@@ -66,14 +66,14 @@ func InRange(seat Seat, mode Mode, got any, low, high float64, msg string) {
 	// bounds below for every number.
 	if math.IsNaN(low) || math.IsNaN(high) {
 		Fail(seat, mode, "in-range", msg,
-			map[string]any{"got": got, "low": low, "high": high})
+			map[string]any{gotField: got, lowField: low, highField: high})
 		return
 	}
 
 	f, ok := floatOf(got)
 	if !ok {
 		Fail(seat, mode, "in-range", msg,
-			map[string]any{"got": got, "low": low, "high": high})
+			map[string]any{gotField: got, lowField: low, highField: high})
 		return
 	}
 
@@ -81,12 +81,12 @@ func InRange(seat Seat, mode Mode, got any, low, high float64, msg string) {
 	// would admit it. See [CloseTo].
 	if math.IsNaN(f) {
 		Fail(seat, mode, "in-range", msg,
-			map[string]any{"got": got, "low": low, "high": high})
+			map[string]any{gotField: got, lowField: low, highField: high})
 		return
 	}
 	if f < low || f > high {
 		Fail(seat, mode, "in-range", msg,
-			map[string]any{"got": got, "low": low, "high": high})
+			map[string]any{gotField: got, lowField: low, highField: high})
 		return
 	}
 	Pass(seat, mode, "in-range", msg)

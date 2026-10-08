@@ -1,10 +1,10 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package engine_test
 
 import (
-	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -77,7 +77,7 @@ func TestCampaign(t *testing.T) {
 		}{
 			{
 				name:  "finds a failure that needs the pool when its cases count a label of their progress",
-				guide: func(c *engine.Case, matched int) { c.Classify(fmt.Sprint(matched)) },
+				guide: func(c *engine.Case, matched int) { c.Classify(strconv.Itoa(matched)) },
 			},
 			{
 				name:  "finds a failure that needs the pool when its cases observe their progress",
@@ -106,7 +106,7 @@ func TestCampaign(t *testing.T) {
 			t.Parallel()
 			shaped := func(c *engine.Case) {
 				kind := c.Integer(choice.MustIntegerBounds(choice.Int{}, choice.UintOf(3))).Magnitude()
-				c.Classify(fmt.Sprint(kind))
+				c.Classify(strconv.FormatUint(kind, 10))
 				if kind == 0 {
 					engine.Draw(c, digit, drawn)
 				}

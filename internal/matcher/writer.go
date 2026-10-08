@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -167,9 +167,9 @@ var named = func() map[string]bool {
 // reading order. A field that order does not list follows them,
 // alphabetically.
 var order = []string{
-	"want", "got", "length", "haystack", "needle", "index",
-	"prefix", "suffix", "pattern", "tolerance", "low", "high",
-	"first", "second", "attempts", "last", "leaked", "field",
+	wantField, gotField, lengthField, haystackField, needleField, indexField,
+	prefixField, suffixField, patternField, toleranceField, lowField, highField,
+	firstField, secondField, attemptsField, "last", "leaked", "field",
 }
 
 // diffed are the assertions whose text states want and got as a diff:
@@ -198,8 +198,8 @@ func equalDiff(f Failure) string {
 	if !diffed[f.Assertion] {
 		return ""
 	}
-	want, hasWant := f.Detail["want"]
-	got, hasGot := f.Detail["got"]
+	want, hasWant := f.Detail[wantField]
+	got, hasGot := f.Detail[gotField]
 	if !hasWant || !hasGot {
 		return ""
 	}

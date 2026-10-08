@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -29,7 +29,7 @@ var errorType = reflect.TypeFor[error]()
 func NoError(seat Seat, mode Mode, got any, msg string) {
 	seat.Helper()
 	if got != nil {
-		Fail(seat, mode, "err-absent", msg, map[string]any{"got": got})
+		Fail(seat, mode, "err-absent", msg, map[string]any{gotField: got})
 		return
 	}
 	Pass(seat, mode, "err-absent", msg)
@@ -62,7 +62,7 @@ func HasError(seat Seat, mode Mode, got any, msg string) {
 func ErrorIs(seat Seat, mode Mode, got any, target error, msg string) {
 	seat.Helper()
 	if err, isError := got.(error); got != nil && !isError || !errors.Is(err, target) {
-		Fail(seat, mode, "err-is", msg, map[string]any{"want": target, "got": got})
+		Fail(seat, mode, "err-is", msg, map[string]any{wantField: target, gotField: got})
 		return
 	}
 	Pass(seat, mode, "err-is", msg)
@@ -78,7 +78,7 @@ func ErrorIs(seat Seat, mode Mode, got any, target error, msg string) {
 func ErrorIsNot(seat Seat, mode Mode, got any, target error, msg string) {
 	seat.Helper()
 	if err, isError := got.(error); got != nil && !isError || errors.Is(err, target) {
-		Fail(seat, mode, "err-is-not", msg, map[string]any{"got": got})
+		Fail(seat, mode, "err-is-not", msg, map[string]any{gotField: got})
 		return
 	}
 	Pass(seat, mode, "err-is-not", msg)
@@ -112,7 +112,7 @@ func ErrorAs[T any](seat Seat, mode Mode, err error, msg string) T {
 	if errors.As(err, &target) {
 		Pass(seat, mode, "err-as", msg)
 	} else {
-		Fail(seat, mode, "err-as", msg, map[string]any{"want": target, "got": err})
+		Fail(seat, mode, "err-as", msg, map[string]any{wantField: target, gotField: err})
 	}
 	return target
 }

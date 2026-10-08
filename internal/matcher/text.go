@@ -1,9 +1,10 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
 
 import (
+	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
@@ -29,11 +30,11 @@ func HasPrefix(seat Seat, mode Mode, got any, prefix, msg string) {
 
 	text, ok := textOf(got)
 	if !ok {
-		Fail(seat, mode, "has-prefix", msg, map[string]any{"got": got, "prefix": prefix})
+		Fail(seat, mode, "has-prefix", msg, map[string]any{gotField: got, prefixField: prefix})
 		return
 	}
 	if !strings.HasPrefix(text, prefix) {
-		Fail(seat, mode, "has-prefix", msg, map[string]any{"got": text, "prefix": prefix})
+		Fail(seat, mode, "has-prefix", msg, map[string]any{gotField: text, prefixField: prefix})
 		return
 	}
 	Pass(seat, mode, "has-prefix", msg)
@@ -51,11 +52,11 @@ func HasSuffix(seat Seat, mode Mode, got any, suffix, msg string) {
 
 	text, ok := textOf(got)
 	if !ok {
-		Fail(seat, mode, "has-suffix", msg, map[string]any{"got": got, "suffix": suffix})
+		Fail(seat, mode, "has-suffix", msg, map[string]any{gotField: got, suffixField: suffix})
 		return
 	}
 	if !strings.HasSuffix(text, suffix) {
-		Fail(seat, mode, "has-suffix", msg, map[string]any{"got": text, "suffix": suffix})
+		Fail(seat, mode, "has-suffix", msg, map[string]any{gotField: text, suffixField: suffix})
 		return
 	}
 	Pass(seat, mode, "has-suffix", msg)
@@ -88,11 +89,11 @@ func Matches(seat Seat, mode Mode, got any, expr, msg string) {
 	}
 	text, ok := textOf(got)
 	if !ok {
-		Fail(seat, mode, "matches", msg, map[string]any{"got": got, "pattern": expr, "reason": reason})
+		Fail(seat, mode, "matches", msg, map[string]any{gotField: got, patternField: expr, "reason": reason})
 		return
 	}
 	if err != nil || !re.MatchString(text) {
-		Fail(seat, mode, "matches", msg, map[string]any{"got": text, "pattern": expr, "reason": reason})
+		Fail(seat, mode, "matches", msg, map[string]any{gotField: text, patternField: expr, "reason": reason})
 		return
 	}
 	Pass(seat, mode, "matches", msg)
@@ -129,7 +130,11 @@ func portable(expr string) (*regexp.Regexp, error) {
 		}
 		b.WriteByte(c)
 	}
-	return regexp.Compile(b.String())
+	re, err := regexp.Compile(b.String())
+	if err != nil {
+		return nil, fmt.Errorf("matcher: the pattern %q does not compile: %w", expr, err)
+	}
+	return re, nil
 }
 
 // textOf reads a value as text, accepting a string, a []byte, or any

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package alloctest_test
@@ -46,10 +46,10 @@ func (b *fakeB) Loop() bool {
 // ReportMetric discards the metric.
 func (*fakeB) ReportMetric(float64, string) {}
 
-// TestCeiling checks a table of ceilings in a test and in a benchmark. It
+// TestCeilingAllocs checks a table of ceilings in a test and in a benchmark. It
 // does not run in parallel: expect.MaxAllocs and a contract count the
 // allocations of the whole process.
-func TestCeiling(t *testing.T) {
+func TestCeilingAllocs(t *testing.T) {
 	passing := alloctest.Case{Name: "noop", Call: func(assert.TB) {}}
 	allocating := alloctest.Case{Name: "allocating", Call: func(assert.TB) { sink = make([]byte, 64) }}
 	failing := alloctest.Case{

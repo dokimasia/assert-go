@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package equality_test
@@ -58,9 +58,9 @@ func chains() map[string][2]any {
 			var s *sliceLink
 			var m *mapLink
 			for i := chainLinks - 1; i >= 0; i-- {
-				id := i
-				if i == chainLinks-1 {
-					id = last
+				id := last
+				if i != chainLinks-1 {
+					id = i
 				}
 				a = &arrayLink{ID: id, Next: [1]*arrayLink{a}}
 				s = &sliceLink{ID: id, Next: []*sliceLink{s}}
@@ -78,8 +78,9 @@ func chains() map[string][2]any {
 // and of y after a +, of each side that has the place. The roots are
 // interface values, as a caller that takes its values as any passes them.
 func differences(x, y any, r equality.Rules, limit int) []string {
-	var texts []string
-	for _, d := range equality.Diff(reflect.ValueOf(&x).Elem(), reflect.ValueOf(&y).Elem(), r, limit) {
+	diffs := equality.Diff(reflect.ValueOf(&x).Elem(), reflect.ValueOf(&y).Elem(), r, limit)
+	texts := make([]string, 0, len(diffs))
+	for _, d := range diffs {
 		var text strings.Builder
 		for _, s := range d.Path {
 			switch {

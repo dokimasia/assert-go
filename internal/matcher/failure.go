@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package matcher
@@ -20,6 +20,36 @@ const (
 	gotField = "got"
 	// failureField is the failure record of a property's failing case.
 	failureField = "failure"
+)
+
+// The other fields of a detail that the assertions write.
+const (
+	// lengthField is the length of a value that is not empty.
+	lengthField = "length"
+	// haystackField is the value that a containment assertion searched.
+	haystackField = "haystack"
+	// needleField is the value that a containment assertion searched for.
+	needleField = "needle"
+	// indexField is the position of the element at fault.
+	indexField = "index"
+	// prefixField is the prefix that has-prefix required.
+	prefixField = "prefix"
+	// suffixField is the suffix that has-suffix required.
+	suffixField = "suffix"
+	// patternField is the pattern that matches required.
+	patternField = "pattern"
+	// toleranceField is the tolerance of close-to.
+	toleranceField = "tolerance"
+	// lowField is the lower bound of in-range.
+	lowField = "low"
+	// highField is the upper bound of in-range.
+	highField = "high"
+	// firstField is the first of two values that a relation compared.
+	firstField = "first"
+	// secondField is the second of two values that a relation compared.
+	secondField = "second"
+	// attemptsField is the number of attempts of a waiting assertion.
+	attemptsField = "attempts"
 )
 
 // Failure is what a failing assertion reports.

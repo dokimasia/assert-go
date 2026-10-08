@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package engine
@@ -170,8 +170,9 @@ func parents(spans []Span) []int {
 // groups returns the sibling groups, in the order parents returns their
 // parents.
 func groups(spans []Span) [][]Span {
-	var out [][]Span
-	for _, parent := range parents(spans) {
+	ps := parents(spans)
+	out := make([][]Span, 0, len(ps))
+	for _, parent := range ps {
 		out = append(out, children(spans, parent))
 	}
 	return out

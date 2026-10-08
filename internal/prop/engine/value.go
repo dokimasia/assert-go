@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package engine
@@ -68,8 +68,9 @@ func enclosing(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Map, reflect.Slice:
 		return !v.IsNil()
+	default:
+		return false
 	}
-	return false
 }
 
 // appendValue appends the canonical encoding of v, a valid value: its tag,

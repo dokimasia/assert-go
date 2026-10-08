@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package store_test
@@ -110,8 +110,9 @@ func TestDirectory(t *testing.T) {
 			assert.ErrorIs(t, err, store.ErrDamaged, "the damage")
 			var joined interface{ Unwrap() []error }
 			assert.True(t, errors.As(err, &joined), "a fault for each damaged file")
-			var paths []fault.Path
-			for _, err := range joined.Unwrap() {
+			errs := joined.Unwrap()
+			paths := make([]fault.Path, 0, len(errs))
+			for _, err := range errs {
 				paths = append(paths, assert.ErrorAs[*fault.Error](t, err, "a fault").Path)
 			}
 			wantPaths := []fault.Path{{fault.Field("broken.json")}, {fault.Field("empty.json")}}

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package shape
@@ -291,14 +291,14 @@ func listShape(r *reader, n node) (engine.Generator[any], error) {
 	if err != nil {
 		return engine.Generator[any]{}, err
 	}
-	exits := kind != "fixed-list" && r.exits(n) && r.refersBack(n)
-	return listOf(of, s, kind == "set", exits, r.budget), nil
+	exits := kind != fixedListID && r.exits(n) && r.refersBack(n)
+	return listOf(of, s, kind == setID, exits, r.budget), nil
 }
 
 // listSizes returns the sizes of a list or a set, and a fixed-list's one
 // size.
 func listSizes(n node) (choice.Sizes, error) {
-	if n[shapeKey] != "fixed-list" {
+	if n[shapeKey] != fixedListID {
 		return sizes(n)
 	}
 	size, stated, err := count(n, sizeKey)
@@ -681,7 +681,6 @@ func enumOf(names []string, payloads []*engine.Generator[any], exit int, exits b
 		if !ok || index < 0 {
 			return nil, nil, uninvertible("%v is no variant of %v", v, names)
 		}
-		head := []engine.Step{indexStep(all, index)}
 		payload := payloads[index]
 		at := fault.Variant(variant.Name)
 		switch {
@@ -690,13 +689,15 @@ func enumOf(names []string, payloads []*engine.Generator[any], exit int, exits b
 		case payload != nil && !variant.HasPayload:
 			return nil, nil, fault.At(uninvertible("the variant has a payload, and the value states none"), at)
 		case payload == nil:
-			return head, literal.Variant{Name: variant.Name}, nil
+			return []engine.Step{indexStep(all, index)}, literal.Variant{Name: variant.Name}, nil
 		}
 		steps, value, err := payload.Inverse(variant.Payload)
 		if err != nil {
 			return nil, nil, fault.At(err, at)
 		}
-		return append(head, steps...), literal.Variant{Name: variant.Name, Payload: value, HasPayload: true}, nil
+		out := make([]engine.Step, 0, 1+len(steps))
+		out = append(append(out, indexStep(all, index)), steps...)
+		return out, literal.Variant{Name: variant.Name, Payload: value, HasPayload: true}, nil
 	})
 }
 

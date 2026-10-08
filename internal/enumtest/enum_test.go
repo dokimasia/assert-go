@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package enumtest_test
@@ -33,8 +33,9 @@ func (c colour) String() string {
 		return "red"
 	case green:
 		return "green"
+	default:
+		return "colour(" + strconv.Itoa(int(c)) + ")"
 	}
-	return "colour(" + strconv.Itoa(int(c)) + ")"
 }
 
 // TestEnum checks that each check passes for an enumeration that meets it,

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package engine
@@ -27,16 +27,18 @@ const (
 type Place struct {
 	// Part is the part that was running.
 	Part Part
+	// Positioned reports whether Position is set.
+	Positioned bool
+	// Acting reports whether Action is set.
+	Acting bool
 	// Position is the step's position in its part, from 0, and in the swarm
 	// the position of the action whose keep choice it is, when Positioned.
 	// No step runs in setup, in settle, and while a concurrent section runs
 	// the steps that it listed.
-	Position   int
-	Positioned bool
+	Position int
 	// Action is the action of the swarm choice or of the step, when Acting.
 	// A step that has not chosen its action has none.
 	Action string
-	Acting bool
 }
 
 // Where is where a case made a request or observed a fingerprint: the draw
@@ -44,12 +46,14 @@ type Place struct {
 type Where struct {
 	// Label is the label of the innermost draw that was running, when
 	// Drawing.
-	Label   string
+	Label string
+	// Drawing reports whether a draw was running.
 	Drawing bool
+	// Placed reports whether a part of a machine was running.
+	Placed bool
 	// Place is the part and the step of a machine that were running, when
 	// Placed.
-	Place  Place
-	Placed bool
+	Place Place
 }
 
 // SetPlace makes p the place of every request that the case makes and every

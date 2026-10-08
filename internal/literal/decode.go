@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package literal
@@ -193,7 +193,7 @@ func (d decoder) decode(raw json.RawMessage) (any, error) {
 
 	switch lit.Type {
 	case typeNull:
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil is the Go value of the null literal
 	case typeBool:
 		return atValue(decodeScalar[bool](lit.Value))
 	case typeInt:
