@@ -21,3 +21,4 @@ they record why not.
 | [0013](0013-resuming-the-check-of-a-growing-history.md) | Resuming the check of a growing history | Accepted |
 | [0014](0014-an-analyzer-of-hand-written-checks.md) | An analyzer of hand-written checks | Accepted |
 | [0015](0015-definition-7-in-go.md) | Definition 7.0.0 in Go | Accepted |
+| [0016](0016-definition-7-2-in-go.md) | Definition 7.2.0 in Go | Accepted |
