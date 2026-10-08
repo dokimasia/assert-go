@@ -2,8 +2,8 @@ github.com/golangci/plugin-module-register v0.1.2 h1:e5WM6PO6NIAEcij3B053CohVp3H
 github.com/golangci/plugin-module-register v0.1.2/go.mod h1:1+QGTsKBvAIvPvoY/os+G5eoqxWn70HYDm2uvUyGuVw=
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
 github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
-go.dokimi.dev/assert/lint v0.0.0-20261007161809-4abc39fa6683 h1:kuVNzhnXifng1lI7XD7ng3BeHuPcIAAu4f4iuks5MGA=
-go.dokimi.dev/assert/lint v0.0.0-20261007161809-4abc39fa6683/go.mod h1:aEmFhRpKphNHfYt3U48njfr5d42NM3WZiB4JwlDOpOw=
+go.dokimi.dev/assert/lint v0.1.0 h1:tyJO3lFVyBOPYgnRpFsbFlkmubONu0OkP6oOKzBaooA=
+go.dokimi.dev/assert/lint v0.1.0/go.mod h1:oJ/sbZm54bSNlFOijdx7U1SHlMmpceS2wgxCci4owPI=
 golang.org/x/mod v0.41.0 h1:qJmnOUb4YB+FsEuM3HcWucdZASCPGhsX6uljO6pog0c=
 golang.org/x/mod v0.41.0/go.mod h1:Ek9pY8RKWXwsWvd3rQiHYtMqkjSUV+s1Rj7j4H5Ur6o=
 golang.org/x/sync v0.23.0 h1:KameEIfc1IkluZyXWLn39Wd4tURc6GbCiISGiZm2bQk=
