@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history
@@ -58,6 +58,8 @@ func (d *deadline) passed() bool {
 type ending[S any] struct {
 	// verdict is the partition's verdict.
 	verdict Verdict
+	// limit is the limit that stopped an undecided search.
+	limit Limit
 	// steps is the steps that the search spent.
 	steps int
 	// linearized are the positions of the frontier's calls, in order.
@@ -67,8 +69,6 @@ type ending[S any] struct {
 	// candidates are the positions of the calls that the spec rejected at
 	// the frontier.
 	candidates []int
-	// limit is the limit that stopped an undecided search.
-	limit Limit
 	// err is the fault of a spec's function that panicked or ended the
 	// goroutine, and nil for a search that ended.
 	err error
@@ -158,6 +158,8 @@ type search[S any] struct {
 	// final reports whether a search that passes states the states that its
 	// order leaves.
 	final bool
+	// atFrontier reports whether the current configuration is the frontier.
+	atFrontier bool
 
 	// next and prev link each entry to the entries beside it, from the head
 	// at headEntry to the tail at tailEntry.
@@ -203,8 +205,6 @@ type search[S any] struct {
 	// candidates are the positions of the calls that the spec rejected at
 	// the frontier so far.
 	candidates []int
-	// atFrontier reports whether the current configuration is the frontier.
-	atFrontier bool
 
 	// calling is the spec's function that the search calls.
 	calling string
@@ -538,6 +538,7 @@ func (s *search[S]) remember(sum uint64) (extent, bool, Limit) {
 		c := s.configurations[i]
 		if c.first == s.done[0] && slices.Equal(s.words[i*len(rest):i*len(rest)+len(rest)], rest) &&
 			s.same(c.states) {
+
 			return extent{}, false, 0
 		}
 	}

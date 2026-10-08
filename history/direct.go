@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history
@@ -53,9 +53,9 @@ func (g *graph) duplicateAppend() *finding {
 // grows in place, and not the lists of a read, which no append changes.
 type knowledge struct {
 	whole  bool
+	owned  bool
 	values []any
 	ids    []int32
-	owned  bool
 }
 
 // internalInconsistency returns the first read of a transaction that

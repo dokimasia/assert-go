@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history
@@ -43,6 +43,9 @@ const (
 type detail[S any] struct {
 	// outcome is how the check ended.
 	outcome Verdict
+	// limit is the limit that stopped an undecided search, and zero for a
+	// violated one.
+	limit Limit
 	// partitions is the number of partitions.
 	partitions int
 	// steps is the steps of the partitions up to and including the reported
@@ -62,9 +65,6 @@ type detail[S any] struct {
 	states []S
 	// candidates are the calls that the spec rejected at the frontier.
 	candidates []Span
-	// limit is the limit that stopped an undecided search, and zero for a
-	// violated one.
-	limit Limit
 	// final are the states that the order of a passing check leaves, when
 	// [Final] asks for them and the check searched one partition or none.
 	final []S

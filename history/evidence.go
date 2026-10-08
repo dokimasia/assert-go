@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history
@@ -40,6 +40,9 @@ type Edge struct {
 	From, To int
 	// Relation is the dependency of To on From.
 	Relation Relation
+	// Empty reports an RW edge whose From read the empty list, so Value
+	// states no value.
+	Empty bool
 	// Key is the key whose list proves the dependency.
 	Key any
 	// Value is a value of From in Key's version order for [WW], the last
@@ -49,9 +52,6 @@ type Edge struct {
 	// Next is the value of To that follows Value in Key's version order, for
 	// WW and RW, and nil for WR.
 	Next any
-	// Empty reports an RW edge whose From read the empty list, so Value
-	// states no value.
-	Empty bool
 }
 
 // edgeJSON is an edge as the explanation of a record states it.
@@ -108,6 +108,13 @@ func (Edge) evidence() {}
 type Observation struct {
 	// Anomaly is the anomaly that the observation shows.
 	Anomaly Anomaly
+	// Whole reports whether the transaction knew the whole list before the
+	// read. It is false when the transaction knew only its own appends at
+	// the end of the list.
+	Whole bool
+	// HasFuture reports whether the read contains a value that the
+	// transaction appends to Key after the read.
+	HasFuture bool
 	// Calls are the calls of the transactions that read.
 	Calls []int
 	// Key is the key that they read.
@@ -122,13 +129,9 @@ type Observation struct {
 	Next any
 	// Expected is what the transaction knew of the list before the read.
 	Expected []any
-	// Whole reports whether it knew the whole list, and false when it knew
-	// only the list's end: its own appends.
-	Whole bool
 	// Future is the first value of the read that the transaction appends to
 	// Key after the read, when HasFuture reports one.
-	Future    any
-	HasFuture bool
+	Future any
 }
 
 // readJSON is the observation of a garbage read or a duplicate append.
@@ -193,10 +196,11 @@ func (o Observation) MarshalJSON() ([]byte, error) {
 			out.Next = literal.Detail(o.Next)
 		}
 		return json.Marshal(out)
+	default:
+		return json.Marshal(
+			readJSON{Call: o.Calls[0], Key: key, Read: literal.Detail(o.Reads[0]), Value: literal.Detail(o.Value)},
+		)
 	}
-	return json.Marshal(
-		readJSON{Call: o.Calls[0], Key: key, Read: literal.Detail(o.Reads[0]), Value: literal.Detail(o.Value)},
-	)
 }
 
 // evidence marks an Observation as evidence.

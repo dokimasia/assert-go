@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history_test
@@ -194,8 +194,9 @@ func TestHistory(t *testing.T) {
 
 // processes returns the process of each event of h, in recording order.
 func processes(h *history.History) []int {
-	var out []int
-	for _, e := range h.Events() {
+	events := h.Events()
+	out := make([]int, 0, len(events))
+	for _, e := range events {
 		out = append(out, e.Process)
 	}
 	return out

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history_test
@@ -372,7 +372,7 @@ func cancelledHistory() *history.History {
 	h := history.New()
 	recordOK(h, 0, write, writeOne, nil, "a")
 	recordOK(h, 0, read, nil, 0, "a")
-	var calls []history.Call
+	calls := make([]history.Call, 0, cancelledWrites+1)
 	for client := range cancelledWrites {
 		calls = append(calls, h.Invoke(client+1, put, []any{client + 100}, "b"))
 	}
@@ -389,7 +389,7 @@ func cancelledHistory() *history.History {
 // the whole default budget.
 func budgetHistory() *history.History {
 	h := history.New()
-	var calls []history.Call
+	calls := make([]history.Call, 0, budgetWrites)
 	for client := range budgetWrites {
 		calls = append(calls, h.Invoke(client, write, []any{client + 100}, "x"))
 	}
@@ -405,7 +405,7 @@ func budgetHistory() *history.History {
 // spends a budget of queueBudget steps.
 func queueHistory() *history.History {
 	h := history.New()
-	var calls []history.Call
+	calls := make([]history.Call, 0, queueEnqueues)
 	for client := range queueEnqueues {
 		calls = append(calls, h.Invoke(client, enqueue, []any{client + 100}, "q"))
 	}

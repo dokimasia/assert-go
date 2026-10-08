@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history
@@ -87,10 +87,11 @@ func (e Event) MarshalJSON() ([]byte, error) {
 		})
 	case OK:
 		return json.Marshal(okJSON{eventHead: head, Output: literal.Detail(e.Output)})
+	default:
+		text := ""
+		if e.Error != nil {
+			text = e.Error.Error()
+		}
+		return json.Marshal(errorJSON{eventHead: head, Error: text})
 	}
-	text := ""
-	if e.Error != nil {
-		text = e.Error.Error()
-	}
-	return json.Marshal(errorJSON{eventHead: head, Error: text})
 }

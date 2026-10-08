@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history_test
@@ -289,6 +289,8 @@ func transact(h *history.History, client int, kind history.Kind, operations ...[
 		call.Fail(errAborted)
 	case history.Unknown:
 		call.Unknown(errLost)
+	case history.Invoke:
+		// The call has not completed, so it remains pending.
 	}
 }
 

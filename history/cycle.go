@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history
@@ -54,8 +54,9 @@ func searchOf(a Anomaly) cycleSearch {
 		return cycleSearch{component: nonRW, closing: WR, path: nonRW}
 	case GSingle:
 		return cycleSearch{component: allRelations, closing: RW, path: nonRW}
+	default:
+		return cycleSearch{component: allRelations, closing: RW, path: allRelations}
 	}
-	return cycleSearch{component: allRelations, closing: RW, path: allRelations}
 }
 
 // hop is one step of a walk over the graph: the number of a transaction, and

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history_test
@@ -174,11 +174,11 @@ func TestDirect(t *testing.T) {
 	})
 }
 
-// TestDirectBytes checks that the bytes that the check of one transaction's
+// TestDirectBytesAllocs checks that the bytes that the check of one transaction's
 // appends allocates grow with the number of the appends, and not with its
 // square. It counts the allocations of the whole process, so it does not run
 // in parallel.
-func TestDirectBytes(t *testing.T) {
+func TestDirectBytesAllocs(t *testing.T) {
 	small, large := appendBytes(1000), appendBytes(4000)
 	assert.True(t, large < 6*small, "four times the appends allocate less than six times the bytes")
 }

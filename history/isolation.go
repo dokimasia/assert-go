@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history
@@ -186,8 +186,9 @@ func (g *graph) find(a Anomaly) *finding {
 		return g.intermediateRead()
 	case GNonadjacent:
 		return g.nonadjacent()
+	default:
+		return g.cycle(a)
 	}
-	return g.cycle(a)
 }
 
 // check returns the detail of the record of a check for the kinds of
@@ -227,6 +228,28 @@ type isolationDetail struct {
 	explanation  []Evidence
 }
 
+// MarshalJSON returns the detail as the call record of a check states it, in
+// the form of the definition's vectors: the kinds by their spellings, each
+// transaction in the history's JSON form, null for the cycle of an anomaly
+// that is no cycle, and each entry of the explanation with its values as
+// typed literals.
+func (d isolationDetail) MarshalJSON() ([]byte, error) {
+	return json.Marshal(isolationJSON{
+		Anomaly: d.anomaly, Kinds: d.kinds, Transactions: d.transactions, Cycle: d.cycle,
+		Explanation: d.explanation,
+	})
+}
+
+// isolationJSON is the detail of a failing isolation check as its call
+// record states it, in the order that the definition lists its fields.
+type isolationJSON struct {
+	Anomaly      Anomaly       `json:"anomaly"`
+	Kinds        []Anomaly     `json:"kinds"`
+	Transactions []Transaction `json:"transactions"`
+	Cycle        []Link        `json:"cycle"`
+	Explanation  []Evidence    `json:"explanation"`
+}
+
 // fields returns the detail as a failure record states it: each field of
 // the definition by its name, with its Go value, and nil for the cycle of an
 // anomaly that is no cycle.
@@ -242,26 +265,4 @@ func (d isolationDetail) fields() map[string]any {
 		fields[cycleField] = d.cycle
 	}
 	return fields
-}
-
-// isolationJSON is the detail of a failing isolation check as its call
-// record states it, in the order that the definition lists its fields.
-type isolationJSON struct {
-	Anomaly      Anomaly       `json:"anomaly"`
-	Kinds        []Anomaly     `json:"kinds"`
-	Transactions []Transaction `json:"transactions"`
-	Cycle        []Link        `json:"cycle"`
-	Explanation  []Evidence    `json:"explanation"`
-}
-
-// MarshalJSON returns the detail as the call record of a check states it, in
-// the form of the definition's vectors: the kinds by their spellings, each
-// transaction in the history's JSON form, null for the cycle of an anomaly
-// that is no cycle, and each entry of the explanation with its values as
-// typed literals.
-func (d isolationDetail) MarshalJSON() ([]byte, error) {
-	return json.Marshal(isolationJSON{
-		Anomaly: d.anomaly, Kinds: d.kinds, Transactions: d.transactions, Cycle: d.cycle,
-		Explanation: d.explanation,
-	})
 }

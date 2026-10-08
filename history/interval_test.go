@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history_test
@@ -211,8 +211,9 @@ func refused(i int, reason string) fault.Error {
 
 // clientsOf returns the client of each event of h, in recording order.
 func clientsOf(h *history.History) []int {
-	var out []int
-	for _, e := range h.Events() {
+	events := h.Events()
+	out := make([]int, 0, len(events))
+	for _, e := range events {
 		out = append(out, e.Client)
 	}
 	return out
@@ -220,8 +221,9 @@ func clientsOf(h *history.History) []int {
 
 // callsOf returns the call of each event of h, in recording order.
 func callsOf(h *history.History) []int {
-	var out []int
-	for _, e := range h.Events() {
+	events := h.Events()
+	out := make([]int, 0, len(events))
+	for _, e := range events {
 		out = append(out, e.Call)
 	}
 	return out

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history
@@ -19,8 +19,8 @@ type committedRead struct {
 // appended, and the value with its identity.
 type appendedValue struct {
 	number  int32
-	value   any
 	valueID int32
+	value   any
 }
 
 // versions is the version order of one key.

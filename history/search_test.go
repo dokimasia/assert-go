@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history_test
@@ -324,8 +324,9 @@ func outcomeOf(h *history.History, m history.Spec[int], opts ...history.Option) 
 	rec := assert.NewRecorder()
 	all := append([]history.Option{history.Whole(), history.Final(&final)}, opts...)
 	history.Linearizable(rec, h, m, contract, all...)
-	var details []map[string]any
-	for _, f := range rec.Failures() {
+	failures := rec.Failures()
+	details := make([]map[string]any, 0, len(failures))
+	for _, f := range failures {
 		details = append(details, f.Detail)
 	}
 	return details, final

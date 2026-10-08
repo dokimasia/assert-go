@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package history
@@ -95,11 +95,11 @@ func (t Transaction) MarshalJSON() ([]byte, error) {
 // value to a key, or a read of a key's list. A key and a value are known by
 // the identity of their typed literal.
 type microOperation struct {
-	// read reports whether the micro-operation reads a list.
-	read bool
 	// key is the key. keyID is its identity.
 	key   any
 	keyID int32
+	// read reports whether the micro-operation reads a list.
+	read bool
 	// value is the value that an append appends. valueID is its identity.
 	value   any
 	valueID int32
@@ -285,6 +285,7 @@ func (ids *identities) repeated(m *microOperation, part any) error {
 	parts, ok := part.([]any)
 	if !ok || len(parts) != microOperationParts || parts[0] != m.function() || !ids.same(parts[1], m.keyID) ||
 		(!m.read && !ids.same(parts[2], m.valueID)) {
+
 		return fault.Of(ErrTransaction, "%s does not repeat %s", text.Sprintf("%#v", part),
 			text.Sprintf("%#v", []any{m.function(), m.key, m.value}))
 	}
