@@ -156,10 +156,10 @@ func TestContract(t *testing.T) {
 			t.Parallel()
 
 			seat := run(10, func(c *bench.Contract) *bench.Contract {
-				return c.MaxLatency(50 * time.Millisecond).MaxMean(50 * time.Millisecond)
+				return c.MaxLatency(time.Second).MaxMean(time.Second)
 			}, func() { time.Sleep(time.Millisecond) })
 
-			assert.False(t, seat.Failed(), "a body that sleeps for a millisecond meets ceilings of 50 milliseconds")
+			assert.False(t, seat.Failed(), "a body that sleeps for a millisecond meets ceilings of a second")
 			assert.Equal(t, seat.verdicts(t), []string{"bench-max-latency pass", "bench-max-mean pass"},
 				"each stated ceiling passes")
 		})

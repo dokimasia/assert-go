@@ -110,7 +110,7 @@ func TestParallel(t *testing.T) {
 
 		t.Run("checks the ceilings of the run that takes a -benchtime of a duration", func(t *testing.T) {
 			var once sync.Once
-			_, seen := benchmark(t, "10ms", func(b bench.B, _ int) {
+			_, seen := benchmark(t, "200ms", func(b bench.B, _ int) {
 				c := bench.Start(b).MaxAllocs(0)
 				c.RunParallel(func(pb *bench.PB) {
 					for pb.Next() {
@@ -121,7 +121,7 @@ func TestParallel(t *testing.T) {
 				c.End()
 			})
 
-			assert.True(t, len(seen) > 1, "testing runs the benchmark more than once before a run takes 10 ms")
+			assert.True(t, len(seen) > 1, "testing runs the benchmark more than once before a run takes 200 ms")
 			assert.False(t, seen[len(seen)-1].failed, "only the first run allocates, and testing does not report it")
 		})
 
@@ -151,14 +151,15 @@ func TestParallel(t *testing.T) {
 					for pb.Next() {
 					}
 					parallelSink[slot.Add(1)-1] = make([]byte, 1<<20)
-					time.Sleep(20 * time.Millisecond)
+					time.Sleep(500 * time.Millisecond)
 				})
 				c.End()
 			})
 
 			assert.Equal(t, seen, []benchCall{{n: 1}}, "a MiB after the last iteration counts against no ceiling")
 			assert.True(t, result.Extra["bytes/op"] < 1024, "the contract publishes no byte of it")
-			assert.True(t, result.NsPerOp() < int64(20*time.Millisecond), "testing's time leaves out the sleep")
+			assert.True(t, result.NsPerOp() < int64(250*time.Millisecond),
+				"testing's time leaves out the sleep of 500 ms")
 		})
 
 		t.Run("leaves the warm-up out of testing's time", func(t *testing.T) {
@@ -168,18 +169,35 @@ func TestParallel(t *testing.T) {
 				c.RunParallel(func(pb *bench.PB) {
 					for pb.Next() {
 						if warmed.Add(1) == 1 {
-							time.Sleep(20 * time.Millisecond)
+							time.Sleep(500 * time.Millisecond)
 						}
 					}
 				})
 				c.End()
 			})
 
-			assert.True(
-				t,
-				result.NsPerOp() < int64(20*time.Millisecond),
-				"testing's time leaves out the warm-up's sleep",
-			)
+			assert.True(t, result.NsPerOp() < int64(250*time.Millisecond),
+				"testing's time leaves out the warm-up's sleep of 500 ms")
+		})
+
+		t.Run("leaves each goroutine's wait for the warm-up out of its first iteration", func(t *testing.T) {
+			result, _ := benchmark(t, "100x", func(b bench.B, _ int) {
+				var warmed atomic.Bool
+				c := bench.Start(b).Warmup(1)
+				c.RunParallel(func(pb *bench.PB) {
+					for pb.Next() {
+						if warmed.CompareAndSwap(false, true) {
+							time.Sleep(500 * time.Millisecond)
+							continue
+						}
+						time.Sleep(time.Millisecond)
+					}
+				})
+				c.End()
+			})
+
+			assert.True(t, result.Extra["p99-ns/op"] < float64(250*time.Millisecond),
+				"the p99 latency leaves out the 500 ms for which the other goroutines wait at the start")
 		})
 
 		t.Run("publishes the latency and the counts of the run", func(t *testing.T) {

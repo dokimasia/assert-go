@@ -336,10 +336,12 @@ func (c *Contract) End() {
 	}
 	if c.latencyStated {
 		c.check("bench-max-latency", "the p99 latency per iteration is within its ceiling",
+			//dokimi:mutate-skip ror-boundary: no test can make the wall clock time a p99 at its ceiling exactly
 			tail > c.maxLatency, map[string]any{"want": c.maxLatency, "got": tail})
 	}
 	if c.meanStated {
 		c.check("bench-max-mean", "the mean latency per iteration is within its ceiling",
+			//dokimi:mutate-skip ror-boundary: no test can make the wall clock time a mean at its ceiling exactly
 			mean > c.maxMean, map[string]any{"want": c.maxMean, "got": mean})
 	}
 	counted := matcher.AllocationsCounted()
