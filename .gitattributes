@@ -1,4 +1,4 @@
-# Text files check out with LF line endings on every platform, so that the
-# golden files, the stored cases and the vendored definition match the bytes
-# that the tests read and the digests that the manifest states.
+# Managed by ergon init. Add repository settings to .ergon/local/.gitattributes and run ergon init sync.
 * text=auto eol=lf
+*.go diff=golang
+go.sum linguist-generated=true

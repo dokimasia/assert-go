@@ -1,0 +1,58 @@
+# Copyright Dokimasia B.V. 2026
+# SPDX-License-Identifier: MIT
+
+linters:
+  settings:
+    wrapcheck:
+      # Each package of the module starts its errors with its own name and wraps the cause, so an
+      # error that one package returns from another already carries its context.
+      ignore-package-globs:
+        - go.dokimi.dev/assert/*
+      # A MarshalJSON method returns the error of json.Marshal as it is, because encoding/json wraps
+      # the error of a MarshalJSON method in a MarshalerError that names the type.
+      ignore-sig-regexps:
+        - encoding/json\.Marshal\(
+
+  exclusions:
+    rules:
+      # fieldalignment reports a struct that a field order makes larger, and a struct whose
+      # pointers come after other fields. The second report saves no memory, and the order that it
+      # asks for replaces the reading order of the fields, which the docblocks of the module follow.
+      - linters: [govet]
+        text: "fieldalignment: .* leading bytes of pointer data"
+      # The property engine, its choices and the hashes convert between integer types by design: a
+      # length to its unsigned count, a magnitude to its two's complement, and a bit pattern to its
+      # float. A bound check at each conversion would restate a range that the code guarantees.
+      - linters: [gosec]
+        text: "G115:"
+      # assert panics on a misuse of its API, such as an invalid option or a second registration of
+      # a type, as its documentation states. A test has no caller that could handle an error.
+      - linters: [forbidigo]
+        text: "use of `panic` forbidden"
+      # The exported functions and methods take their values as the public API states them, and
+      # the values of the module, such as generators and specs, are immutable and passed by value
+      # on purpose. A copy allocates nothing.
+      - linters: [gocritic]
+        text: "(hugeParam|rangeValCopy):"
+      # The reflective decoders and the conformance drivers assert types that the decoder or the
+      # vector's schema guarantees. A checked assertion would replace one panic with another.
+      - path: \.go$
+        linters: [forcetypeassert]
+      # internal/matchertest states the cases of every assertion as tables that each surface's
+      # tests run. A case states its values inline, as a test does, because the value is the case.
+      - path: ^internal/matchertest/
+        linters: [goconst]
+      # The surfaces assert and expect are twins. go doc lists no method of a type declared in an
+      # internal package, so each surface declares its own functions, and the table of one surface's
+      # functions repeats the other's names, one entry each.
+      - linters: [dupl]
+        path: ^conformance/functions\.go$
+
+formatters:
+  settings:
+    # The modules of the repository form an import group of their own.
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(go.dokimi.dev/assert)
