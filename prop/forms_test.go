@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package prop_test
@@ -37,7 +37,7 @@ var formAllocs = map[string]uint64{
 	"InRange": 932, "Pairwise": 2345, "NoError": 833, "HasError": 833, "ErrorIs": 833, "ErrorIsNot": 833,
 	"ErrorAs": 1033, "Panics": 833, "NotPanics": 833, "Pure": 833, "NotPure": 836, "NilContextSafe": 833,
 	"HonoursCancellation": 1033, "HonoursDeadline": 1033, "Idempotent": 836, "Accumulates": 836,
-	"Deterministic": 833, "Commutative": 855, "Associative": 1078, "RoundTrip": 1036,
+	"Deterministic": 833, "Commutative": 855, "Associative": 1079, "RoundTrip": 1036,
 }
 
 // errSentinel is the error that the subjects of the error forms return.
@@ -191,10 +191,10 @@ func boxed(x int8) *int8 {
 	return new(x)
 }
 
-// TestMaxAllocsWithSetupForm checks prop.MaxAllocsWithSetup, which counts
+// TestMaxAllocsWithSetupFormAllocs checks prop.MaxAllocsWithSetup, which counts
 // the allocations of the whole process and so runs in a test that does
 // not run in parallel.
-func TestMaxAllocsWithSetupForm(t *testing.T) {
+func TestMaxAllocsWithSetupFormAllocs(t *testing.T) {
 	allocates := func(x *int8) {
 		if *x >= 5 {
 			heap = make([]byte, 16)
@@ -229,9 +229,9 @@ func TestMaxAllocsWithSetupForm(t *testing.T) {
 	})
 }
 
-// TestMaxAllocsForm checks prop.MaxAllocs, which counts the allocations of
+// TestMaxAllocsFormAllocs checks prop.MaxAllocs, which counts the allocations of
 // the whole process and so runs in a test that does not run in parallel.
-func TestMaxAllocsForm(t *testing.T) {
+func TestMaxAllocsFormAllocs(t *testing.T) {
 	allocates := func(x int8) {
 		if x >= 5 {
 			heap = make([]byte, 16)

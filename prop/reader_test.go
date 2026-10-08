@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package prop_test
@@ -80,12 +80,6 @@ type (
 	}
 )
 
-func (flat) key()           {}
-func (nested) key()         {}
-func (tight) loose()        {}
-func (sliced) loose()       {}
-func (clogged) isPipeline() {}
-
 // init registers the variants of keyed, loose and pipeline in the test
 // process's registry, before any property runs.
 func init() {
@@ -93,6 +87,12 @@ func init() {
 	prop.RegisterVariants[loose](tight(0), sliced(nil))
 	prop.RegisterVariants[pipeline](clogged{})
 }
+
+func (flat) key()           {}
+func (nested) key()         {}
+func (tight) loose()        {}
+func (sliced) loose()       {}
+func (clogged) isPipeline() {}
 
 // TestReader checks the shape that the reader reads from each Go type, the
 // keys of the prop tag that each type takes, and each part of a type that

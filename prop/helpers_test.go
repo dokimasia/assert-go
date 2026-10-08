@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package prop_test
@@ -82,6 +82,13 @@ const mutantVariable = "DOKIMI_MUTATE_MUTANT"
 // run instrumented, whose runs write no entry. A case of what a run writes
 // checks that the store is empty there.
 const unwritten = "a mutation run writes no entry"
+
+// init registers the values of status and the variants of payment in the
+// test process's registry, before any property runs.
+func init() {
+	prop.RegisterValues(statusPending, statusPaid, statusShipped)
+	prop.RegisterVariants[payment](pending{}, paid(0), refunded(""), &cancelled{})
+}
 
 // inMutationRun runs the test t in a child process whose environment states
 // the variable of a mutation run, and fails t unless the child passes it.
@@ -192,13 +199,6 @@ const (
 	invalidOutcome    prop.Outcome    = 6
 	invalidVerdict    prop.Verdict    = 2
 )
-
-// init registers the values of status and the variants of payment in the
-// test process's registry, before any property runs.
-func init() {
-	prop.RegisterValues(statusPending, statusPaid, statusShipped)
-	prop.RegisterVariants[payment](pending{}, paid(0), refunded(""), &cancelled{})
-}
 
 // testSeat is a seat of internal/matchertest with a test's name and
 // cleanups, as testing.TB has them, and a clock that reads today. It takes

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package prop
@@ -105,6 +105,55 @@ func detailOf(r engine.Result) runDetail {
 	return d
 }
 
+// MarshalJSON returns the detail as the call record of a property states
+// it, in the form of the definition's vectors: the counts as numbers, the
+// seed and the token as strings, each drawn value as a typed literal, a
+// failure as its failure record, the bounds of a request as an object, and
+// null for a field that the outcome does not use.
+func (d runDetail) MarshalJSON() ([]byte, error) {
+	out := detailJSON{
+		Outcome: d.outcome, Cases: d.cases, Rejected: d.rejected, Seed: d.seed,
+		Counterexample: d.counterexample, Failure: d.failure, Choices: d.choices, Others: d.others,
+		Coverage: d.coverage,
+	}
+	if v := d.divergence; v != nil {
+		public := divergenceOf(*v)
+		out.Divergence = &divergenceJSON{
+			What: Difference(v.What), Index: v.Index, Recorded: sideOf(v.Recorded),
+			Replayed: sideOf(v.Replayed), Label: public.Label, Step: public.Step,
+		}
+	}
+	return json.Marshal(out)
+}
+
+// detailJSON is the detail of a run as the call record of a property states
+// it, in the order that the definition lists its fields.
+type detailJSON struct {
+	Outcome        Outcome         `json:"outcome"`
+	Cases          int             `json:"cases"`
+	Rejected       int             `json:"rejected"`
+	Seed           string          `json:"seed"`
+	Counterexample []Entry         `json:"counterexample"`
+	Failure        *assert.Failure `json:"failure"`
+	Choices        *string         `json:"choices"`
+	Others         []Other         `json:"others"`
+	Divergence     *divergenceJSON `json:"divergence"`
+	Coverage       *Shortfall      `json:"coverage"`
+}
+
+// divergenceJSON is a divergence as the call record of a property states
+// it: a side is the bounds of a request, the text of a failure's identity,
+// a fingerprint, or null, and the label and the step are null where
+// [Divergence] states nil.
+type divergenceJSON struct {
+	What     Difference `json:"what"`
+	Index    int        `json:"index"`
+	Recorded any        `json:"recorded"`
+	Replayed any        `json:"replayed"`
+	Label    *string    `json:"label"`
+	Step     *Place     `json:"step"`
+}
+
 // fields returns the detail as a failure record states it: each field of
 // the definition by its name, with its Go value, and nil for a field that
 // the outcome does not use.
@@ -137,55 +186,6 @@ func (d runDetail) fields() map[string]any {
 		detail[coverageField] = d.coverage
 	}
 	return detail
-}
-
-// detailJSON is the detail of a run as the call record of a property states
-// it, in the order that the definition lists its fields.
-type detailJSON struct {
-	Outcome        Outcome         `json:"outcome"`
-	Cases          int             `json:"cases"`
-	Rejected       int             `json:"rejected"`
-	Seed           string          `json:"seed"`
-	Counterexample []Entry         `json:"counterexample"`
-	Failure        *assert.Failure `json:"failure"`
-	Choices        *string         `json:"choices"`
-	Others         []Other         `json:"others"`
-	Divergence     *divergenceJSON `json:"divergence"`
-	Coverage       *Shortfall      `json:"coverage"`
-}
-
-// divergenceJSON is a divergence as the call record of a property states
-// it: a side is the bounds of a request, the text of a failure's identity,
-// a fingerprint, or null, and the label and the step are null where
-// [Divergence] states nil.
-type divergenceJSON struct {
-	What     Difference `json:"what"`
-	Index    int        `json:"index"`
-	Recorded any        `json:"recorded"`
-	Replayed any        `json:"replayed"`
-	Label    *string    `json:"label"`
-	Step     *Place     `json:"step"`
-}
-
-// MarshalJSON returns the detail as the call record of a property states
-// it, in the form of the definition's vectors: the counts as numbers, the
-// seed and the token as strings, each drawn value as a typed literal, a
-// failure as its failure record, the bounds of a request as an object, and
-// null for a field that the outcome does not use.
-func (d runDetail) MarshalJSON() ([]byte, error) {
-	out := detailJSON{
-		Outcome: d.outcome, Cases: d.cases, Rejected: d.rejected, Seed: d.seed,
-		Counterexample: d.counterexample, Failure: d.failure, Choices: d.choices, Others: d.others,
-		Coverage: d.coverage,
-	}
-	if v := d.divergence; v != nil {
-		public := divergenceOf(*v)
-		out.Divergence = &divergenceJSON{
-			What: Difference(v.What), Index: v.Index, Recorded: sideOf(v.Recorded),
-			Replayed: sideOf(v.Replayed), Label: public.Label, Step: public.Step,
-		}
-	}
-	return json.Marshal(out)
 }
 
 // sideOf returns one side of the engine's divergence as the call record of

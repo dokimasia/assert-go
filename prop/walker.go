@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package prop
@@ -34,7 +34,7 @@ func (w *walker) convert(n node, at fault.Path) (converter, error) {
 	switch kind {
 	case "bool":
 		return boolConverter, nil
-	case "int":
+	case intID:
 		width, _ := n[widthKey].(json.Number).Int64()
 		signed, _ := n[signedKey].(bool)
 		return integerConverter(int(width), signed), nil
@@ -47,29 +47,29 @@ func (w *walker) convert(n node, at fault.Path) (converter, error) {
 		return stringConverter, nil
 	case "char":
 		return charConverter, nil
-	case "bytes":
+	case bytesID:
 		return bytesConverter, nil
-	case "list", "fixed-list", "set":
+	case listID, fixedListID, setID:
 		of, err := w.convert(n[ofKey].(node), slices.Concat(at, fault.Path{fault.Field(ofKey)}))
 		if err != nil {
 			return converter{}, err
 		}
-		if kind == "set" {
+		if kind == setID {
 			return setConverter(of), nil
 		}
 		return sequenceConverter(of), nil
-	case "map":
+	case mapID:
 		return w.mapping(n, at)
-	case "optional":
+	case optionalID:
 		of, err := w.convert(n[ofKey].(node), slices.Concat(at, fault.Path{fault.Field(ofKey)}))
 		return optionalConverter(of, nil), err
-	case "record":
+	case recordID:
 		return w.record(n, at)
-	case "enum":
+	case enumID:
 		return w.enum(n, at)
-	case "literal":
+	case literalID:
 		return literalOf(n), nil
-	case "ref":
+	case refID:
 		return w.ref(n)
 	case "uuid":
 		return uuidConverter, nil
@@ -135,24 +135,24 @@ func (w *walker) mapping(n node, at fault.Path) (converter, error) {
 // map. seen are the definitions that the walk has entered.
 func (w *walker) keyable(n node, seen map[string]bool) bool {
 	switch n[shapeKey] {
-	case "bytes", "list", "fixed-list", "set", "map", "record":
+	case bytesID, listID, fixedListID, setID, mapID, recordID:
 		return false
-	case "optional":
+	case optionalID:
 		return w.keyable(n[ofKey].(node), seen)
-	case "enum":
+	case enumID:
 		for _, item := range n[variantsKey].([]any) {
 			payload, shaped := item.([]any)[1].(node)
 			if shaped && !w.keyable(payload, seen) {
 				return false
 			}
 		}
-	case "literal":
+	case literalID:
 		for _, v := range decodedLiterals(n) {
 			if v != nil && !reflect.ValueOf(plainOf(v)).Comparable() {
 				return false
 			}
 		}
-	case "ref":
+	case refID:
 		name := n[nameKey].(string)
 		if seen[name] {
 			return true

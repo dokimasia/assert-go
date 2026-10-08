@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package prop_test
@@ -155,6 +155,12 @@ type (
 // value that contains it.
 const selfReference = "the value refers to a value that contains it"
 
+// init registers the variants of event in the test process's registry,
+// before any property runs.
+func init() {
+	prop.RegisterVariants[event](voided{}, stamped{})
+}
+
 // selfList returns a list whose one element is the list itself.
 func selfList() []any {
 	v := []any{nil}
@@ -165,12 +171,6 @@ func selfList() []any {
 func (lost) isPayment()  {}
 func (voided) isEvent()  {}
 func (stamped) isEvent() {}
-
-// init registers the variants of event in the test process's registry,
-// before any property runs.
-func init() {
-	prop.RegisterVariants[event](voided{}, stamped{})
-}
 
 // TestConverter checks the Go values that a derived generator decodes its
 // choices to and runs back to them: those of Of for each kind of Go type,

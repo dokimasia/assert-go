@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package prop_test
@@ -85,14 +85,6 @@ type (
 	// NaN.
 	reading float64
 )
-
-func (label) isParcel()        {}
-func (letter) isParcel()       {}
-func (*crate) isParcel()       {}
-func (courier) isShipping()    {}
-func (filled) isWithNil()      {}
-func (firstOf) isDuplicated()  {}
-func (secondOf) isDuplicated() {}
 
 // The values of grade, in the order that RegisterValues states them.
 const (
@@ -235,6 +227,14 @@ func init() {
 		}
 	}
 }
+
+func (label) isParcel()        {}
+func (letter) isParcel()       {}
+func (*crate) isParcel()       {}
+func (courier) isShipping()    {}
+func (filled) isWithNil()      {}
+func (firstOf) isDuplicated()  {}
+func (secondOf) isDuplicated() {}
 
 // TestRegistry checks what each registration states, and each panic of a
 // registration. The registrations are those of init in the test process's

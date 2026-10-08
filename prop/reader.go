@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package prop
@@ -16,6 +16,32 @@ import (
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/literal"
 	"go.dokimi.dev/assert/internal/prop/engine"
+)
+
+// The ids of the shapes that the reader writes and the walker reads.
+const (
+	// intID is the id of an integer.
+	intID = "int"
+	// bytesID is the id of a byte string.
+	bytesID = "bytes"
+	// listID is the id of a list.
+	listID = "list"
+	// fixedListID is the id of a list of one size.
+	fixedListID = "fixed-list"
+	// setID is the id of a list of distinct elements.
+	setID = "set"
+	// mapID is the id of a map.
+	mapID = "map"
+	// optionalID is the id of a value that can be absent.
+	optionalID = "optional"
+	// recordID is the id of a record of named fields.
+	recordID = "record"
+	// enumID is the id of a choice between named variants.
+	enumID = "enum"
+	// literalID is the id of a choice between typed literals.
+	literalID = "literal"
+	// refID is the id of a reference to a definition.
+	refID = "ref"
 )
 
 // The keys of a shape file that the reader writes.
@@ -153,7 +179,7 @@ func qualified(t reflect.Type) string {
 
 // refTo returns a ref to name.
 func refTo(name string) node {
-	return node{shapeKey: "ref", nameKey: name}
+	return node{shapeKey: refID, nameKey: name}
 }
 
 // refused returns a fault at the path at whose reason is format with args.
@@ -226,7 +252,7 @@ func (r *reader) content(t reflect.Type, variants []variant, k *tags, at fault.P
 		k.copy(n, numeric, versionKey)
 		return n, addressConverter, nil
 	case bigIntType:
-		n := node{shapeKey: "int", widthKey: wideInt, signedKey: true}
+		n := node{shapeKey: intID, widthKey: wideInt, signedKey: true}
 		k.copy(n, numeric, minKey, maxKey)
 		return n, bigIntConverter, nil
 	case ratType:
@@ -240,7 +266,7 @@ func (r *reader) content(t reflect.Type, variants []variant, k *tags, at fault.P
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return signedShape(t, k, at)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		n := node{shapeKey: "int", widthKey: t.Bits(), signedKey: false}
+		n := node{shapeKey: intID, widthKey: t.Bits(), signedKey: false}
 		k.copy(n, numeric, minKey, maxKey)
 		return n, integerConverter(t.Bits(), false), nil
 	case reflect.Float32, reflect.Float64:
@@ -263,8 +289,9 @@ func (r *reader) content(t reflect.Type, variants []variant, k *tags, at fault.P
 			return r.enum(t, variants, at)
 		}
 		return nil, converter{}, refused(at, "%v has no variants, which RegisterVariants states", t)
+	default:
+		return nil, converter{}, refused(at, "%v is no type that a shape states", t)
 	}
-	return nil, converter{}, refused(at, "%v is no type that a shape states", t)
 }
 
 // signedShape returns the shape of a signed integer type t: an int of its
@@ -288,7 +315,7 @@ func signedShape(t reflect.Type, k *tags, at fault.Path) (node, converter, error
 		k.copy(n, verbatim, alphabetKey)
 		return n, charConverter, nil
 	}
-	n := node{shapeKey: "int", widthKey: t.Bits(), signedKey: true}
+	n := node{shapeKey: intID, widthKey: t.Bits(), signedKey: true}
 	k.copy(n, numeric, minKey, maxKey)
 	return n, integerConverter(t.Bits(), true), nil
 }
@@ -404,15 +431,15 @@ func (r *reader) wallShape(k *tags, at fault.Path) (node, converter, error) {
 func (r *reader) sequence(t reflect.Type, k *tags, at fault.Path) (node, converter, error) {
 	if literal.IsBytes(t) {
 		if t.Kind() == reflect.Array {
-			return node{shapeKey: "bytes", minSizeKey: t.Len(), maxSizeKey: t.Len()}, bytesConverter, nil
+			return node{shapeKey: bytesID, minSizeKey: t.Len(), maxSizeKey: t.Len()}, bytesConverter, nil
 		}
-		n := node{shapeKey: "bytes"}
+		n := node{shapeKey: bytesID}
 		k.copy(n, numeric, minSizeKey, maxSizeKey)
 		return n, bytesConverter, nil
 	}
-	n := node{shapeKey: "list"}
+	n := node{shapeKey: listID}
 	if t.Kind() == reflect.Array {
-		n = node{shapeKey: "fixed-list", sizeKey: t.Len()}
+		n = node{shapeKey: fixedListID, sizeKey: t.Len()}
 	} else {
 		k.copy(n, numeric, minSizeKey, maxSizeKey)
 	}
@@ -432,9 +459,9 @@ func (r *reader) sequence(t reflect.Type, k *tags, at fault.Path) (node, convert
 func (r *reader) mapping(t reflect.Type, k *tags, at fault.Path) (node, converter, error) {
 	member := t.Elem()
 	set := member.Kind() == reflect.Struct && member.NumField() == 0
-	n := node{shapeKey: "map"}
+	n := node{shapeKey: mapID}
 	if set {
-		n = node{shapeKey: "set"}
+		n = node{shapeKey: setID}
 	}
 	k.copy(n, numeric, minSizeKey, maxSizeKey)
 	keyTags, keyPath := (*tags)(nil), slices.Concat(at, fault.Path{fault.Field(keyKey)})
@@ -484,6 +511,8 @@ func (r *reader) keyable(t reflect.Type, seen map[reflect.Type]bool) bool {
 		}
 	case reflect.Array:
 		return r.keyable(t.Elem(), seen)
+	default:
+		// A value of any other kind that a read produces is comparable.
 	}
 	return true
 }
@@ -495,7 +524,7 @@ func (r *reader) optional(t reflect.Type, k *tags, at fault.Path) (node, convert
 	if err != nil {
 		return nil, converter{}, err
 	}
-	return node{shapeKey: "optional", ofKey: of}, optionalConverter(inner, t), nil
+	return node{shapeKey: optionalID, ofKey: of}, optionalConverter(inner, t), nil
 }
 
 // fieldName returns the name of f in a record: the name that its json tag
@@ -552,7 +581,7 @@ func (r *reader) record(t reflect.Type, at fault.Path) (node, converter, error) 
 	if len(fields) == 0 {
 		return nil, converter{}, refused(at, "%v has no exported field to read", t)
 	}
-	return node{shapeKey: "record", fieldsKey: shapes}, recordConverter(fields, unread, t), nil
+	return node{shapeKey: recordID, fieldsKey: shapes}, recordConverter(fields, unread, t), nil
 }
 
 // enum returns the shape of an interface type t with registered variants:
@@ -575,7 +604,7 @@ func (r *reader) enum(t reflect.Type, variants []variant, at fault.Path) (node, 
 		}
 		shapes[i], cases[i].payload = []any{v.name, n}, &conv
 	}
-	return node{shapeKey: "enum", variantsKey: shapes}, enumConverter(cases, t), nil
+	return node{shapeKey: enumID, variantsKey: shapes}, enumConverter(cases, t), nil
 }
 
 // hasPayload reports whether a variant of type t has a payload: whether t

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package prop
@@ -80,7 +80,7 @@ type literals struct {
 
 // shape returns the literal shape of the values.
 func (l *literals) shape() node {
-	return node{shapeKey: "literal", "values": l.stated}
+	return node{shapeKey: literalID, "values": l.stated}
 }
 
 // variant is one variant that RegisterVariants states: its name, its type,

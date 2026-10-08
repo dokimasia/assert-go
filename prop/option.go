@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package prop
@@ -217,12 +217,8 @@ type config struct {
 	cases int
 	// seed is the seed that Seed states, when seeded is set.
 	seed uint64
-	// seeded reports whether Seed stated the seed.
-	seeded bool
 	// replay is the token that Replay states, when replaying is set.
 	replay string
-	// replaying reports whether Replay stated a token.
-	replaying bool
 	// requirements are the coverage requirements, in the order stated.
 	requirements []engine.Requirement
 	// shrink is the budget of shrink runs.
@@ -233,14 +229,18 @@ type config struct {
 	maxChoices int
 	// store is the directory that Store states, when storeSet is set.
 	store string
-	// storeSet reports whether Store stated the directory.
-	storeSet bool
-	// explain reports whether the run explains its counterexample.
-	explain bool
 	// workers is the number of workers.
 	workers int
 	// draws are the entries that Draws states, when drawn is set.
 	draws string
+	// seeded reports whether Seed stated the seed.
+	seeded bool
+	// replaying reports whether Replay stated a token.
+	replaying bool
+	// storeSet reports whether Store stated the directory.
+	storeSet bool
+	// explain reports whether the run explains its counterexample.
+	explain bool
 	// drawn reports whether Draws stated entries.
 	drawn bool
 	// hermetic reports whether Hermetic made the run read none of the

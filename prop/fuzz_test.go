@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package prop_test
@@ -79,7 +79,7 @@ var sentinelSeed = append([]byte{byte(len(sentinel)), 0}, sentinel...)
 // sentinelChoice is the choice of the sentinel's byte string.
 var sentinelChoice = sequence(0xde, 0xad, 0xbe, 0xef)
 
-// TestFuzz checks the stored cases that Fuzz replays, what it reports for a
+// TestFuzzProcess checks the stored cases that Fuzz replays, what it reports for a
 // failing input, and the store of its fuzz test. Fuzz takes a *testing.F,
 // which only the testing package constructs, so each case runs FuzzChild in
 // a child process of the test binary. The children run one at a time, because two children
@@ -89,7 +89,7 @@ var sentinelChoice = sequence(0xde, 0xad, 0xbe, 0xef)
 // A case reads the call records that a child writes. A case of the text
 // that a child writes into a test's log, which no call record states,
 // builds the text it expects with the writer.
-func TestFuzz(t *testing.T) {
+func TestFuzzProcess(t *testing.T) {
 	t.Run("Fuzz", func(t *testing.T) {
 		t.Run("generates no case under go test, so a body that fails for every input passes without a seed",
 			func(t *testing.T) {
@@ -311,13 +311,13 @@ func FuzzPassing(f *testing.F) {
 	prop.Fuzz(f, contract, draws(prop.Bytes()))
 }
 
-// FuzzChild runs Fuzz in a child process of TestFuzz, in the mode that
+// FuzzChild runs Fuzz in a child process of TestFuzzProcess, in the mode that
 // PROP_TEST_FUZZ_MODE names, with the store that PROP_TEST_FUZZ_STORE
 // names, and the seed childSeed. It skips outside a child process.
 func FuzzChild(f *testing.F) {
 	mode := os.Getenv(childMode)
 	if mode == "" {
-		f.Skip("runs in a child process of TestFuzz")
+		f.Skip("runs in a child process of TestFuzzProcess")
 	}
 	stored, seeded := prop.Store(os.Getenv(childStore)), prop.Seed(childSeed)
 	if mode == passingMode {
@@ -391,10 +391,11 @@ func failsAtSentinel(c *prop.Case) {
 // environment is empty unless env sets it.
 func child(t *testing.T, mode, dir string, env ...string) (string, error) {
 	t.Helper()
-	vars := []string{
-		childMode + "=" + mode, childStore + "=" + dir, seedVariable + "=", profileVariable + "=",
-		replayVariable + "=", budgetVariable + "=",
-	}
+	vars := make([]string, 0, 6+len(env))
+	vars = append(vars,
+		childMode+"="+mode, childStore+"="+dir, seedVariable+"=", profileVariable+"=",
+		replayVariable+"=", budgetVariable+"=",
+	)
 	return childtest.Run(t, "FuzzChild", append(vars, env...)...)
 }
 

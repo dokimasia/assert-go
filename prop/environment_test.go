@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package prop_test
@@ -21,14 +21,14 @@ import (
 // states it.
 var contractSeed = any(strconv.FormatUint(random.Mix(contract), 10))
 
-// TestEnvironment checks the environment variables that set the seed, the
+// TestEnvironmentEnv checks the environment variables that set the seed, the
 // profile and the token to replay of every run, a hermetic run, which reads
 // none of them, and a run in a test binary that a mutation run
 // instrumented. Each case sets the process's environment, so the cases run
 // one at a time. In a test binary that a mutation run instrumented, every
 // run seeds from its contract and runs no campaign, so a case of a random
 // seed or of a campaign checks that instead.
-func TestEnvironment(t *testing.T) {
+func TestEnvironmentEnv(t *testing.T) {
 	t.Run("ForAll", func(t *testing.T) {
 		t.Run("takes the seed of a run that Seed does not seed from DOKIMI_ASSERT_PROP_SEED", func(t *testing.T) {
 			clean(t)

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package prop
@@ -126,7 +126,7 @@ func seedOf(c config, contract string) (uint64, error) {
 	if matcher.Mutated() || p == ciProfile {
 		return random.Mix(contract), nil
 	}
-	return rand.Uint64(), nil
+	return rand.Uint64(), nil //nolint:gosec // a seed varies the cases of a run and needs no secrecy
 }
 
 // tokenOf returns the token that a run replays and the name of where it is

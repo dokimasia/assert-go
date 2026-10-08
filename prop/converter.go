@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package prop
@@ -103,6 +103,8 @@ func selfReferent(v reflect.Value, inside map[reference]bool) error {
 		}
 		inside[r] = true
 		defer delete(inside, r)
+	default:
+		// Only a pointer, a map and a slice refer to a value by its address.
 	}
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Interface:
@@ -129,6 +131,8 @@ func selfReferent(v reflect.Value, inside map[reference]bool) error {
 				return fault.At(err, fault.Field(f.Name))
 			}
 		}
+	default:
+		// A value of any other kind contains no value.
 	}
 	return nil
 }
@@ -137,7 +141,7 @@ func selfReferent(v reflect.Value, inside map[reference]bool) error {
 // that a converter converts, and nil for no value.
 func unchanged(src reflect.Value) (any, error) {
 	if !src.IsValid() {
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil is the neutral value of no value
 	}
 	return src.Interface(), nil
 }
