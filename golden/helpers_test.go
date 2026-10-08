@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package golden_test
@@ -60,8 +60,9 @@ func dangling(t *testing.T) string {
 func verdicts(t *testing.T, r *assert.Recorder) []string {
 	t.Helper()
 
-	var out []string
-	for _, line := range r.Records() {
+	records := r.Records()
+	out := make([]string, 0, len(records))
+	for _, line := range records {
 		var got struct {
 			Verdict string `json:"verdict"`
 		}

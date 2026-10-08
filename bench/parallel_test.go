@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package bench_test
@@ -19,11 +19,11 @@ import (
 // cannot remove the allocation. Each goroutine writes its own slot.
 var parallelSink [64][]byte
 
-// TestParallel checks a parallel body under a contract, in benchmarks of
+// TestParallelAllocs checks a parallel body under a contract, in benchmarks of
 // testing that run in this process. It does not run in parallel: it sets
 // -benchtime for each run, and the allocation counter covers the whole
 // process.
-func TestParallel(t *testing.T) {
+func TestParallelAllocs(t *testing.T) {
 	t.Run("RunParallel", func(t *testing.T) {
 		t.Run("runs b.N iterations in all on GOMAXPROCS goroutines", func(t *testing.T) {
 			var goroutines, iterations atomic.Int64

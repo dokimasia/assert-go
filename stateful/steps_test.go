@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package stateful_test
@@ -440,7 +440,7 @@ var queueCase = bodyOf(func(c *prop.Case) {
 // queueChoices are the choices of the measured case: a flag and an index
 // for each step, put and get in turn.
 var queueChoices = func() []choice.Choice {
-	var values []uint64
+	values := make([]uint64, 0, 2*queueSteps)
 	for i := range queueSteps {
 		values = append(values, 1, uint64(i%2))
 	}

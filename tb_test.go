@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package assert_test
@@ -20,7 +20,7 @@ var (
 )
 
 // tbContext keeps the context that a call of Context returns.
-var tbContext context.Context
+var tbContext any
 
 // bareSeat is a seat with the three methods of TB and nothing else, as the
 // seat of a generated check body can be.
@@ -104,7 +104,8 @@ func TestTB(t *testing.T) {
 		t.Run("returns context.Background() for a seat without a context", func(t *testing.T) {
 			t.Parallel()
 
-			if got := assert.Context(bareSeat{}); got != context.Background() {
+			want := context.Background() //nolint:usetesting // Context returns it for a seat without a context
+			if got := assert.Context(bareSeat{}); got != want {
 				t.Fatalf("Context of a bare seat = %v, want context.Background()", got)
 			}
 		})

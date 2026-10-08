@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package golden
@@ -103,7 +103,7 @@ func MatchJSONField(tb assert.TB, path, field string, got []byte, update bool, s
 	stored, present := document[field]
 	if !present {
 		if !update {
-			c.fail(map[string]any{"want": nil, "got": mine, "field": field})
+			c.fail(map[string]any{wantField: nil, gotField: mine, "field": field})
 			return
 		}
 		document[field] = got
@@ -123,7 +123,7 @@ func MatchJSONField(tb assert.TB, path, field string, got []byte, update bool, s
 		c.writeObject(document)
 		return
 	}
-	c.fail(map[string]any{"want": theirs, "got": mine, "field": field})
+	c.fail(map[string]any{wantField: theirs, gotField: mine, "field": field})
 }
 
 // lock locks the golden file at path for this process, and returns the
@@ -192,7 +192,7 @@ func decodeNumbers(raw []byte) (any, error) {
 	d.UseNumber()
 	var value any
 	if err := d.Decode(&value); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("golden: the text is no JSON value: %w", err)
 	}
 	if _, err := d.Token(); !errors.Is(err, io.EOF) {
 		return nil, errTrailing

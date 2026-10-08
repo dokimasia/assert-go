@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package stateful_test
@@ -266,9 +266,9 @@ func TestScheduler(t *testing.T) {
 	})
 }
 
-// TestSchedulerGoroutines checks that a case's tasks end with the case. It
+// TestSchedulerGoroutinesProcess checks that a case's tasks end with the case. It
 // reads every goroutine of the process, so it does not run in parallel.
-func TestSchedulerGoroutines(t *testing.T) {
+func TestSchedulerGoroutinesProcess(t *testing.T) {
 	t.Run("NewScheduler", func(t *testing.T) {
 		t.Run("ends the tasks that wait for a release when the case ends", func(t *testing.T) {
 			check := assert.NoGoroutineLeaks(t, "every task has ended")

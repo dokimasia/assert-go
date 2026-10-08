@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package assert_test
@@ -26,7 +26,7 @@ var (
 	failed          bool
 	helpers         int
 	recorderClock   assert.Clock
-	recorderContext context.Context
+	recorderContext any
 )
 
 // TestRecorder checks what a recorder records of each call of its seat.
@@ -258,7 +258,8 @@ func TestRecorderContext(t *testing.T) {
 		t.Run("returns context.Background() by default", func(t *testing.T) {
 			t.Parallel()
 
-			if got := assert.NewRecorder().Context(); got != context.Background() {
+			want := context.Background() //nolint:usetesting // a new Recorder returns it from Context
+			if got := assert.NewRecorder().Context(); got != want {
 				t.Fatalf("Context() = %v, want context.Background()", got)
 			}
 		})

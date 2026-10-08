@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package golden
@@ -50,6 +50,15 @@ const (
 	matchID     = "golden-match"
 	matchAtID   = "golden-match-at"
 	jsonFieldID = "golden-match-json-field"
+)
+
+// The fields of the detail of a golden comparison's record.
+const (
+	// wantField is the content of the golden file, and nil for a file that
+	// does not exist.
+	wantField = "want"
+	// gotField is the content that the comparison received.
+	gotField = "got"
 )
 
 // call is one call of a golden comparison: its seat, the operation that
@@ -154,7 +163,7 @@ func matchFile(c call, got []byte, update bool, scrubbers []Scrubber) {
 			c.write(mine)
 			return
 		}
-		c.fail(map[string]any{"want": nil, "got": mine})
+		c.fail(map[string]any{wantField: nil, gotField: mine})
 		return
 	}
 	if err != nil {
@@ -171,5 +180,5 @@ func matchFile(c call, got []byte, update bool, scrubbers []Scrubber) {
 		c.write(mine)
 		return
 	}
-	c.fail(map[string]any{"want": theirs, "got": mine})
+	c.fail(map[string]any{wantField: theirs, gotField: mine})
 }

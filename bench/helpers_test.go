@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package bench_test
@@ -115,8 +115,9 @@ func (b *benchSeat) metric(unit string) (float64, bool) {
 func (b *benchSeat) verdicts(t *testing.T) []string {
 	t.Helper()
 
-	var out []string
-	for _, line := range record.Lines(&b.calls) {
+	lines := record.Lines(&b.calls)
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
 		var got struct {
 			Assertion string `json:"assertion"`
 			Verdict   string `json:"verdict"`

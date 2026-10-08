@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package expect_test
@@ -152,15 +152,15 @@ func BenchmarkRelation(b *testing.B) {
 // ints, with its allocation ceiling, measured.
 func relationCases() []alloctest.Case {
 	var state int
-	set := func(x int) error { state = x; return nil }   //nolint:unparam // the assertion's signature
-	increment := func(int) error { state++; return nil } //nolint:unparam // the assertion's signature
+	set := func(x int) error { state = x; return nil }
+	increment := func(int) error { state++; return nil }
 	read := func() int { return state }
-	advance := func() error { state++; return nil } //nolint:unparam // the assertion's signature
+	advance := func() error { state++; return nil }
 	double := func(x int) (int, error) { return 2 * x, nil }
 	add := func(a, b int) int { return a + b }
 	format := func(x int) (string, error) { return strconv.Itoa(x), nil }
 	items := []int{1, 2, 3}
-	listed := func() ([]int, error) { return items, nil } //nolint:unparam // the assertion's signature
+	listed := func() ([]int, error) { return items, nil }
 	accepts := func(int) error { return nil }
 	closes := func() error { return nil }
 	refuses := func() error { return errClosed }

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package bench
@@ -21,6 +21,14 @@ const (
 	unitMeanLatency = "mean-ns/op"
 	unitAllocs      = "allocs/op"
 	unitBytes       = "bytes/op"
+)
+
+// The fields of the detail of a ceiling's record.
+const (
+	// wantField is the ceiling that the caller stated.
+	wantField = "want"
+	// gotField is the measurement that exceeded the ceiling.
+	gotField = "got"
 )
 
 // p99 is the quantile of the iteration durations that
@@ -56,9 +64,6 @@ type Contract struct {
 	// before the first measured one, and warmed the number that Loop has
 	// run.
 	warmup, warmed int
-	// ran reports whether Loop or RunParallel has run, and parallel whether
-	// RunParallel has.
-	ran, parallel bool
 
 	// each contains one duration per iteration. [Contract.End] reads the
 	// quantile and the mean from it.
@@ -72,9 +77,6 @@ type Contract struct {
 	// ended.
 	heapAtStart, bytesAtStart uint64
 	heapAtEnd, bytesAtEnd     uint64
-	// measuring reports whether the loop is running. The first
-	// [Contract.Loop] sets it, and the call that ends the loop clears it.
-	measuring bool
 
 	// excluded is the time that [Contract.Excluding] has taken out of
 	// the current iteration. Each iteration starts it at zero.
@@ -84,13 +86,20 @@ type Contract struct {
 	// growth of each. They accumulate across iterations, because the
 	// counters are read once at each end of the loop.
 	excludedHeap, excludedHeapBytes uint64
-	// excluding reports whether [Contract.Excluding] runs its work now.
-	excluding bool
 
 	// maxLatency, maxMean, maxAllocs and maxBytes are the stated
 	// ceilings.
 	maxLatency, maxMean time.Duration
 	maxAllocs, maxBytes uint64
+
+	// ran reports whether Loop or RunParallel has run, and parallel whether
+	// RunParallel has.
+	ran, parallel bool
+	// measuring reports whether the loop is running. The first
+	// [Contract.Loop] sets it, and the call that ends the loop clears it.
+	measuring bool
+	// excluding reports whether [Contract.Excluding] runs its work now.
+	excluding bool
 	// latencyStated, meanStated, allocsStated and bytesStated report which
 	// ceilings the caller stated. [Contract.End] checks no other.
 	latencyStated, meanStated, allocsStated, bytesStated bool
@@ -337,47 +346,25 @@ func (c *Contract) End() {
 	if c.latencyStated {
 		c.check("bench-max-latency", "the p99 latency per iteration is within its ceiling",
 			//dokimi:mutate-skip ror-boundary: no test can make the wall clock time a p99 at its ceiling exactly
-			tail > c.maxLatency, map[string]any{"want": c.maxLatency, "got": tail})
+			tail > c.maxLatency, map[string]any{wantField: c.maxLatency, gotField: tail})
 	}
 	if c.meanStated {
 		c.check("bench-max-mean", "the mean latency per iteration is within its ceiling",
 			//dokimi:mutate-skip ror-boundary: no test can make the wall clock time a mean at its ceiling exactly
-			mean > c.maxMean, map[string]any{"want": c.maxMean, "got": mean})
+			mean > c.maxMean, map[string]any{wantField: c.maxMean, gotField: mean})
 	}
 	counted := matcher.AllocationsCounted()
 	if c.allocsStated {
 		rounded := math.Round(allocs)
 		c.check("bench-max-allocs", "the allocations per iteration are within their ceiling",
 			counted && rounded > float64(c.maxAllocs),
-			map[string]any{"want": c.maxAllocs, "got": uint64(rounded)})
+			map[string]any{wantField: c.maxAllocs, gotField: uint64(rounded)})
 	}
 	if c.bytesStated {
 		c.check("bench-max-bytes", "the bytes allocated per iteration are within their ceiling",
 			counted && math.Floor(bytes) > float64(c.maxBytes),
-			map[string]any{"want": c.maxBytes, "got": uint64(bytes)})
+			map[string]any{wantField: c.maxBytes, gotField: uint64(bytes)})
 	}
-}
-
-// check reports the verdict of the ceiling of assertion: a failure with
-// detail when the measurement exceeded the ceiling, and a pass otherwise.
-func (c *Contract) check(assertion, contract string, exceeded bool, detail map[string]any) {
-	c.b.Helper()
-	if exceeded {
-		matcher.Fail(c.b, matcher.Soft, assertion, contract, detail)
-		return
-	}
-	matcher.Pass(c.b, matcher.Soft, assertion, contract)
-}
-
-// perIteration returns the allocations and the bytes per iteration, over
-// the counters that the loop's end read.
-func (c *Contract) perIteration() (allocs, bytes float64) {
-	n := float64(len(c.each))
-
-	// The excluded allocations are subtracted, so the result covers the
-	// measured work and not the whole loop body.
-	return float64(c.heapAtEnd-c.heapAtStart-c.excludedHeap) / n,
-		float64(c.bytesAtEnd-c.bytesAtStart-c.excludedHeapBytes) / n
 }
 
 // Excluding runs work outside the measurement.
@@ -413,6 +400,28 @@ func (c *Contract) Excluding(work func()) {
 	startedAt := time.Now()
 	c.excludeHeap(work)
 	c.excluded += time.Since(startedAt)
+}
+
+// check reports the verdict of the ceiling of assertion: a failure with
+// detail when the measurement exceeded the ceiling, and a pass otherwise.
+func (c *Contract) check(assertion, contract string, exceeded bool, detail map[string]any) {
+	c.b.Helper()
+	if exceeded {
+		matcher.Fail(c.b, matcher.Soft, assertion, contract, detail)
+		return
+	}
+	matcher.Pass(c.b, matcher.Soft, assertion, contract)
+}
+
+// perIteration returns the allocations and the bytes per iteration, over
+// the counters that the loop's end read.
+func (c *Contract) perIteration() (allocs, bytes float64) {
+	n := float64(len(c.each))
+
+	// The excluded allocations are subtracted, so the result covers the
+	// measured work and not the whole loop body.
+	return float64(c.heapAtEnd-c.heapAtStart-c.excludedHeap) / n,
+		float64(c.bytesAtEnd-c.bytesAtStart-c.excludedHeapBytes) / n
 }
 
 // excludeHeap runs work and takes the heap allocations that work makes

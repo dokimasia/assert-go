@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package bench_test
@@ -266,8 +266,9 @@ func TestContract(t *testing.T) {
 			}, func() { time.Sleep(time.Millisecond) })
 
 			assert.Length(t, seat.Errs(), 2, "the p99 ceiling and the mean ceiling both fail")
-			var ids []string
-			for _, record := range seat.Records() {
+			records := seat.Records()
+			ids := make([]string, 0, len(records))
+			for _, record := range records {
 				ids = append(ids, record.Assertion)
 			}
 			assert.Equal(t, ids, []string{"bench-max-latency", "bench-max-mean"},
@@ -422,7 +423,7 @@ func runExcluding(
 	return seat
 }
 
-// TestContractCounting checks how a contract counts the allocations of a
+// TestContractCountingAllocs checks how a contract counts the allocations of a
 // body. It does not run in parallel: the allocation counter is
 // process-wide, so an allocation by a parallel test would count against
 // the ceilings that these cases state.
@@ -430,7 +431,7 @@ func runExcluding(
 // Each Excluding case that takes work out has a twin that runs the same
 // work in the body without Excluding. The twin fails, which proves that
 // the work counts unless Excluding takes it out.
-func TestContractCounting(t *testing.T) {
+func TestContractCountingAllocs(t *testing.T) {
 	nothing := func(c *bench.Contract) *bench.Contract { return c.MaxAllocs(0).MaxBytes(0) }
 	tightAllocs := func(c *bench.Contract) *bench.Contract { return c.MaxAllocs(2) }
 
@@ -674,11 +675,11 @@ func TestContractCounting(t *testing.T) {
 	})
 }
 
-// TestContractAfterRunParallel checks the calls that a contract refuses once
+// TestContractAfterRunParallelProcess checks the calls that a contract refuses once
 // RunParallel has run its body, in benchmarks of testing that run in this
 // process. It does not run in parallel, because it sets -benchtime, a flag
 // of the process.
-func TestContractAfterRunParallel(t *testing.T) {
+func TestContractAfterRunParallelProcess(t *testing.T) {
 	tests := []struct {
 		name string
 		give func(c *bench.Contract)

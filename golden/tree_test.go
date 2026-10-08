@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package golden_test
@@ -40,11 +40,11 @@ var apiTree = filetree.Tree{
 	"v1/types.go": {Kind: filetree.File, Content: "package v1\n"},
 }
 
-// TestTree checks MatchTree against the golden trees that the cases write.
+// TestTreeProcess checks MatchTree against the golden trees that the cases write.
 // Each case changes the working directory of the process to a temporary
 // directory of its own, which MatchTree resolves the conventional directory
 // against, so the cases run one at a time.
-func TestTree(t *testing.T) {
+func TestTreeProcess(t *testing.T) {
 	t.Run("MatchTree", func(t *testing.T) {
 		t.Run("passes an output that equals the golden tree", func(t *testing.T) {
 			t.Chdir(t.TempDir())

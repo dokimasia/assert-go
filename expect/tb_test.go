@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package expect_test
@@ -21,7 +21,7 @@ var (
 )
 
 // tbContext keeps the context that a call of Context returns.
-var tbContext context.Context
+var tbContext any
 
 func TestTB(t *testing.T) {
 	t.Parallel()

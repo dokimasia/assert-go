@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package files
@@ -23,15 +23,6 @@ const (
 // of the definition: {"type": "tree", "entries": [...]}, its entries in the
 // order of their paths' bytes.
 type Tree map[string]Entry
-
-// internal returns t as the package filetree states a tree.
-func (t Tree) internal() filetree.Tree {
-	out := make(filetree.Tree, len(t))
-	for path, entry := range t {
-		out[path] = entry.e
-	}
-	return out
-}
 
 // MarshalJSON returns the tree literal of t, which [Tree.UnmarshalJSON]
 // reads back. A file states its whole content, however long, as text when
@@ -82,4 +73,13 @@ func (t *Tree) UnmarshalJSON(data []byte) error {
 	}
 	*t = out
 	return nil
+}
+
+// internal returns t as the package filetree states a tree.
+func (t Tree) internal() filetree.Tree {
+	out := make(filetree.Tree, len(t))
+	for path, entry := range t {
+		out[path] = entry.e
+	}
+	return out
 }

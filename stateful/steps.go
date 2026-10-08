@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package stateful
@@ -261,7 +261,7 @@ func (r *run[S]) section(planned [][]plannedStep[S]) {
 	r.e.Repeat(r.cfg.repeat)
 	history.Concurrently(len(active), unlimited, func(i int) (any, error) {
 		runSteps(r.c, active[i], planned[active[i]])
-		return nil, nil
+		return nil, nil //nolint:nilnil // a client's steps have no output for the history
 	})
 }
 

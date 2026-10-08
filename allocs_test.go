@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package assert_test
@@ -19,9 +19,9 @@ func TestMaxAllocs(t *testing.T) {
 	})
 }
 
-// TestMaxAllocsWithSetup does not run in parallel: its count covers the
+// TestMaxAllocsWithSetupAllocs does not run in parallel: its count covers the
 // whole process.
-func TestMaxAllocsWithSetup(t *testing.T) {
+func TestMaxAllocsWithSetupAllocs(t *testing.T) {
 	matchertest.RunMaxAllocsWithSetup(t,
 		func(s *matchertest.Seat, setup func() *[]byte, fn func(*[]byte), ceiling uint64, msg string) {
 			assert.MaxAllocsWithSetup(s, setup, fn, ceiling, msg)

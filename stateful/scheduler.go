@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package stateful
@@ -199,6 +199,8 @@ func (s *Scheduler) Run() {
 			s.end()
 			kept := r
 			s.raise(&kept)
+		case returned:
+			// A task that returned has ended, so it leaves the ready tasks.
 		}
 	}
 }

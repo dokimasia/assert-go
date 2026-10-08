@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package assert
@@ -61,7 +61,7 @@ type Recorder struct {
 	// platform clock.
 	clock matcher.Clock
 	// ctx is the context of the seat, or nil for context.Background().
-	ctx context.Context
+	ctx context.Context //nolint:containedctx // a seat has the context of its test, as testing.T has
 }
 
 // NewRecorder returns a Recorder that records failures and returns

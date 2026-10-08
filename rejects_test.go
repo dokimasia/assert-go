@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package assert_test
@@ -38,6 +38,7 @@ func TestRejects(t *testing.T) {
 
 			if len(got) != 2 || got[0].Assertion != "equal" || got[0].Contract != "the first value is one" ||
 				got[1].Contract != "the second value is one" {
+
 				t.Fatalf("returned %+v, want the records of both failures in call order", got)
 			}
 			if got[1].Detail["got"] != 3 || got[1].Detail["want"] != 1 {
@@ -80,10 +81,12 @@ func TestRejects(t *testing.T) {
 			got := decoded(t, r.Records())
 			if len(got) != 2 || got[0]["assertion"] != "rejects" || got[0]["verdict"] != "pass" ||
 				got[0]["seq"] != 1.0 {
+
 				t.Fatalf("Records() = %v, want a pass of rejects as 1 and the check's call", got)
 			}
 			if got[1]["assertion"] != "equal" || got[1]["verdict"] != "fail" || got[1]["parent"] != 1.0 ||
 				got[1]["run"] != 1.0 {
+
 				t.Fatalf("the second record is %v, want the check's failure under 1 in run 1", got[1])
 			}
 		})
@@ -108,12 +111,13 @@ func TestRejects(t *testing.T) {
 		t.Run("hands the check a context that derives from the seat's and ends with the check", func(t *testing.T) {
 			t.Parallel()
 
-			var ctx context.Context
+			reads := make(chan context.Context, 1)
 			r := assert.NewRecorder().WithContext(context.WithValue(t.Context(), ledgerKey{}, "ledger"))
 			assert.Rejects(r, "the check fails", func(tb assert.TB) {
-				ctx = assert.Context(tb)
+				reads <- assert.Context(tb)
 				assert.True(tb, false, "the check fails")
 			})
+			ctx := <-reads
 
 			assert.Equal(t, ctx.Value(ledgerKey{}), any("ledger"), "the check reads the value of the seat's context")
 			assert.ErrorIs(t, ctx.Err(), context.Canceled, "the check's context ends with the check")
