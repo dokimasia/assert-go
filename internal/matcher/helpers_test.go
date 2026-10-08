@@ -4,6 +4,7 @@
 package matcher_test
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -126,6 +127,21 @@ type clockedSeat struct {
 
 // Clock returns the seat's clock.
 func (s *clockedSeat) Clock() matcher.Clock { return s.clock }
+
+// contextSeat is a seat that states a context, as a *testing.T states one,
+// and records what was reported.
+type contextSeat struct {
+	matchertest.Seat
+
+	ctx context.Context
+}
+
+// Context returns the seat's context.
+func (s *contextSeat) Context() context.Context { return s.ctx }
+
+// ledgerKey is the key of a value in the context of a seat, which every
+// context that derives from that context returns.
+type ledgerKey struct{}
 
 // calls is the record.Calls that a seat of the tests embeds, as a seat of
 // this module embeds it.

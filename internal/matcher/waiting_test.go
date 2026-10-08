@@ -4,6 +4,7 @@
 package matcher_test
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -103,6 +104,28 @@ func TestWaiting(t *testing.T) {
 			got := lines[i+1]
 			if got["verdict"] != verdict || got["parent"] != 1.0 || got["run"] != float64(i+1) {
 				t.Fatalf("wrote %v, want a %s of attempt %d under 1", got, verdict, i+1)
+			}
+		}
+	})
+
+	t.Run("Eventually hands each attempt a context of the seat's that ends with the attempt", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := context.WithValue(t.Context(), ledgerKey{}, "ledger")
+		var contexts []context.Context
+		matcher.Eventually(&contextSeat{ctx: ctx}, matcher.Fatal, matchertest.PatientTimeout,
+			matchertest.ShortInterval, func(trial matcher.Seat) {
+				contexts = append(contexts, matcher.ContextOf(trial))
+				matcher.True(trial, matcher.Fatal, len(contexts) > 1, "the second attempt passes")
+			}, "the body settles")
+
+		if len(contexts) != 2 || contexts[0] == contexts[1] {
+			t.Fatalf("the attempts read %v, want two contexts, one of each attempt", contexts)
+		}
+		for i, attempt := range contexts {
+			if attempt.Value(ledgerKey{}) != "ledger" || !errors.Is(attempt.Err(), context.Canceled) {
+				t.Fatalf("the context of attempt %d returns %v and ended with %v, "+
+					"want the seat's value and context.Canceled", i+1, attempt.Value(ledgerKey{}), attempt.Err())
 			}
 		}
 	})

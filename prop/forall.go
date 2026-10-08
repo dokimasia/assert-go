@@ -4,8 +4,6 @@
 package prop
 
 import (
-	"context"
-
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/matcher"
@@ -117,7 +115,7 @@ func (p property) run(tb assert.TB, run matcher.Running, body func(*Case)) {
 		p.fault(tb, run, duplicate(p.op, p.dir, p.contract))
 		return
 	}
-	cases := bodyOf(contextOf(tb), body)
+	cases := bodyOf(matcher.ContextOf(tb), body)
 	s := p.settings
 	s.Slot = run.Slot()
 	if p.replaying {
@@ -158,14 +156,4 @@ func (p property) campaign(cases engine.Body, s engine.Settings) (engine.Result,
 	var saved []error
 	s.Concluded = func(found engine.Result) { saved = append(saved, p.save(found)...) }
 	return engine.Campaign(cases, s), saved
-}
-
-// contextOf returns the context of tb when tb states one, as a *testing.T
-// does, and context.Background() for a seat without one, such as an
-// [assert.Recorder].
-func contextOf(tb assert.TB) context.Context {
-	if seat, ok := tb.(interface{ Context() context.Context }); ok {
-		return seat.Context()
-	}
-	return context.Background()
 }

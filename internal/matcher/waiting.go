@@ -27,9 +27,12 @@ type calls = record.Calls
 //
 // Fatalf ends the calling goroutine once it has recorded, as a test's
 // Fatalf does, so an aborting assertion stops the trial at its first
-// failure. A trial runs on a goroutine of its own for that reason.
+// failure. A trial runs on a goroutine of its own for that reason. Its
+// context derives from the context of the retrying assertion's seat, and
+// ends with the trial.
 type probe struct {
 	calls
+	bodyContext
 
 	mu     sync.Mutex
 	failed bool
@@ -64,12 +67,13 @@ func (p *probe) outcome() (msg string, failed bool) {
 }
 
 // trial runs fn once with a probe of its own, whose calls are a run of the
-// call that slot started, on a goroutine of its own, and returns the probe
-// once fn has returned or a fatal failure has ended it. A panic in fn
-// panics again on the calling goroutine with the same value, so it is not
-// taken for a failed attempt.
-func trial(fn func(Seat), slot *record.Slot) *probe {
-	p := &probe{}
+// call that slot started and whose context derives from the context of
+// seat, on a goroutine of its own. It returns the probe once fn has
+// returned or a fatal failure has ended it, and cancels the probe's context
+// then. A panic in fn panics again on the calling goroutine with the same
+// value, so it is not taken for a failed attempt.
+func trial(seat Seat, fn func(Seat), slot *record.Slot) *probe {
+	p := &probe{parent: seat}
 	record.Run(&p.calls, slot, nil)
 	ended := make(chan any, 1)
 	go func() {
@@ -78,7 +82,9 @@ func trial(fn func(Seat), slot *record.Slot) *probe {
 		defer func() { ended <- recover() }()
 		fn(p)
 	}()
-	if raised := <-ended; raised != nil {
+	raised := <-ended
+	p.end()
+	if raised != nil {
 		panic(raised)
 	}
 	return p
@@ -93,7 +99,9 @@ func trial(fn func(Seat), slot *record.Slot) *probe {
 // as it ends a test. Only the final attempt's failure is reported. A
 // panic in fn is no failed attempt: it panics again on the goroutine that
 // called Eventually. The calls of each attempt are recorded under the
-// call of Eventually, which takes its number before them.
+// call of Eventually, which takes its number before them. The context of
+// each attempt's seat derives from the context of seat, as [ContextOf]
+// reads it, and Eventually cancels it when the attempt ends.
 //
 //	matcher.Eventually(seat, matcher.Fatal, 5*time.Second, 100*time.Millisecond,
 //	    func(s matcher.Seat) {
@@ -124,7 +132,7 @@ func Eventually(seat Seat, mode Mode, timeout, interval time.Duration, fn func(S
 	clock := ClockOf(seat)
 	deadline := clock.Now().Add(timeout)
 	for attempt := 1; ; attempt++ {
-		p := trial(fn, run.Slot())
+		p := trial(seat, fn, run.Slot())
 		run.Slot().Take(&p.calls, record.NoPhase)
 		last, failed := p.outcome()
 		if !failed && !clock.Now().After(deadline) {

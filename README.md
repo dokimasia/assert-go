@@ -107,6 +107,21 @@ order. A subject that panics before the check's own assertion runs
 satisfies a bare call. `expect.Rejects` records its failure and lets the
 test continue.
 
+A helper reads the context of its seat with `assert.Context`, and passes
+it to the code under test. The context is the test's own on a
+`*testing.T`, and `NewRecorder().WithContext(ctx)` gives a recorder one.
+The check that `Rejects` runs, and each attempt of `Eventually`, gets a
+context that derives from its assertion's seat and ends with the check:
+
+```go
+func loaded(tb assert.TB, path string) *catalog.Catalog {
+    tb.Helper()
+    c, err := catalog.Load(assert.Context(tb), path)
+    assert.NoError(tb, err, "the catalog at "+path+" loads")
+    return c
+}
+```
+
 A record's `Want` and `Got` return the fields `want` and `got` of its
 detail, and whether its assertion declares them. `CaseFailure` returns
 the record of a property's failing case:

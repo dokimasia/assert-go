@@ -349,9 +349,11 @@ var pinned = map[conformance.ID]any{
 	"that":                     assert.That[int],
 	"recorder-seat.failures":   (*assert.Recorder).Failures,
 
-	"seat.helper": assert.TB.Helper,
-	"seat.fail":   assert.TB.Fatalf,
-	"seat.record": assert.TB.Errorf,
+	"seat.helper":       assert.TB.Helper,
+	"seat.fail":         assert.TB.Fatalf,
+	"seat.record":       assert.TB.Errorf,
+	"seat.cancellation": testing.TB.Context,
+	"cancellation-of":   assert.Context,
 
 	"recorder-seat.failed":       (*assert.Recorder).Failed,
 	"recorder-seat.message":      (*assert.Recorder).Message,
@@ -569,6 +571,7 @@ var silent = map[string]string{
 	"ByIdentity":    "returns a comparison option",
 	"NewRecorder":   "constructs the recorder seat",
 	"NewControlled": "constructs the controlled clock",
+	"Context":       "returns the context of a seat",
 }
 
 // escaped is the slice that the MaxAllocs driver allocates, which escape

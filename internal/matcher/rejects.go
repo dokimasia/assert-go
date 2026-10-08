@@ -13,6 +13,8 @@ import (
 // rejection is the seat of the check that [Rejects] drives. It keeps each
 // record of the check in call order, and whether the check failed at all.
 // Its Calls keep the records of the check's calls, for the call of Rejects.
+// Its context derives from the context of the seat of Rejects, and ends
+// with the check.
 //
 // Fatalf and an aborting record end the calling goroutine once they are
 // kept, as a test's Fatalf ends a test, so the check stops at its first
@@ -23,6 +25,7 @@ import (
 // recorder imports this one.
 type rejection struct {
 	calls
+	bodyContext
 
 	mu      sync.Mutex
 	failed  bool
@@ -77,7 +80,9 @@ func (r *rejection) outcome() (records []Failure, failed bool) {
 // fn at its first failure that stops, as a test's Fatalf ends a test. A
 // message that fn passes to Fatalf or Errorf of that seat, and a fault of
 // this module, fail fn without a record. The calls of fn are recorded under
-// the call of Rejects, as its run 1.
+// the call of Rejects, as its run 1. The seat's context derives from the
+// context of seat, as [ContextOf] reads it, and Rejects cancels it when fn
+// ends.
 //
 //	got := matcher.Rejects(seat, matcher.Fatal, "an unbounded pool fails the check",
 //	    func(s matcher.Seat) { handsOutEveryItem(s, unboundedPool{}) })
@@ -97,7 +102,7 @@ func Rejects(seat Seat, mode Mode, msg string, fn func(Seat)) []Failure {
 	seat.Helper()
 
 	run := Begin(seat)
-	r := &rejection{}
+	r := &rejection{parent: seat}
 	record.Run(&r.calls, run.Slot(), nil)
 	done := make(chan struct{})
 	go func() {
@@ -105,6 +110,7 @@ func Rejects(seat Seat, mode Mode, msg string, fn func(Seat)) []Failure {
 		fn(r)
 	}()
 	<-done
+	r.end()
 	run.Slot().Take(&r.calls, record.NoPhase)
 
 	records, failed := r.outcome()

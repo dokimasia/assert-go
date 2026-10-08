@@ -61,6 +61,16 @@
 // assertion with a Recorder in place of a [testing.T], then read
 // [Recorder.Failed], [Recorder.Message] and [Recorder.Records].
 //
+// # The context of a seat
+//
+// [Context] returns the context of any seat: the one that its method
+// Context returns, as a [testing.T] states one, and context.Background()
+// for a seat without that method. A helper that takes a TB passes that
+// context to the code under test. [Recorder.WithContext] gives a recorder
+// a context. The seat that [Rejects] hands its check, and the seat of each
+// attempt of [Eventually], state a context that derives from the context of
+// the assertion's seat and ends with the body.
+//
 // # Allocation contracts
 //
 // The allocation contract of each function and method counts one passing

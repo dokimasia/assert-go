@@ -4,6 +4,7 @@
 package assert
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"sync"
@@ -23,7 +24,8 @@ type calls = record.Calls
 // that continues reports each one.
 //
 // [Recorder.Records] returns the call record of every assertion call that
-// a Recorder receives.
+// a Recorder receives. [Recorder.Context] returns the context that
+// [Recorder.WithContext] gave it, which [Context] reads.
 //
 // Call [NewRecorder] for a Recorder: the zero value is not usable.
 //
@@ -58,6 +60,8 @@ type Recorder struct {
 	// clock is what assertions read time from, or nil for the
 	// platform clock.
 	clock matcher.Clock
+	// ctx is the context of the seat, or nil for context.Background().
+	ctx context.Context
 }
 
 // NewRecorder returns a Recorder that records failures and returns
@@ -173,6 +177,37 @@ func (r *Recorder) WithClock(c matcher.Clock) *Recorder {
 	defer r.mu.Unlock()
 
 	r.clock = c
+	return r
+}
+
+// Context returns the context that [Recorder.WithContext] set, and
+// context.Background() where it set none.
+//
+// # Allocation contract
+//
+// Context allocates nothing.
+func (r *Recorder) Context() context.Context {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.ctx == nil {
+		return context.Background()
+	}
+	return r.ctx
+}
+
+// WithContext makes [Recorder.Context] return ctx, and returns the receiver
+// so the call chains onto [NewRecorder]. A helper that a test drives on the
+// Recorder then reads ctx through [Context].
+//
+// # Allocation contract
+//
+// WithContext allocates nothing.
+func (r *Recorder) WithContext(ctx context.Context) *Recorder {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.ctx = ctx
 	return r
 }
 

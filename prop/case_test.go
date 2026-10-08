@@ -62,19 +62,6 @@ var recorded = assert.Failure{
 // returns the value.
 type ledgerKey struct{}
 
-// contextSeat is a recorder seat with a context of its own, as a
-// *testing.T has.
-type contextSeat struct {
-	*assert.Recorder
-	// ctx is the context the seat states.
-	ctx context.Context
-}
-
-// Context returns the seat's context.
-func (s contextSeat) Context() context.Context {
-	return s.ctx
-}
-
 // TestCase checks the case as the seat of a body's assertions and the
 // source of its inputs: how each kind of failure ends it, and what it
 // records.
@@ -398,8 +385,7 @@ func TestCase(t *testing.T) {
 		t.Run("returns a context that derives from the context of the seat", func(t *testing.T) {
 			t.Parallel()
 			var got any
-			ctx := context.WithValue(t.Context(), ledgerKey{}, "ledger")
-			seat := contextSeat{Recorder: assert.NewRecorder(), ctx: ctx}
+			seat := assert.NewRecorder().WithContext(context.WithValue(t.Context(), ledgerKey{}, "ledger"))
 			prop.ForAll(seat, contract, func(c *prop.Case) {
 				c.Draw(prop.Integer(0, 9), drawn)
 				got = c.Context().Value(ledgerKey{})

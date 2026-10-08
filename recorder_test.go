@@ -4,6 +4,7 @@
 package assert_test
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -17,14 +18,15 @@ import (
 
 // The results of the allocation cases, which keep each call.
 var (
-	recorder      *assert.Recorder
-	failures      []assert.Failure
-	lines         []string
-	messages      []string
-	message       string
-	failed        bool
-	helpers       int
-	recorderClock assert.Clock
+	recorder        *assert.Recorder
+	failures        []assert.Failure
+	lines           []string
+	messages        []string
+	message         string
+	failed          bool
+	helpers         int
+	recorderClock   assert.Clock
+	recorderContext context.Context
 )
 
 // TestRecorder checks what a recorder records of each call of its seat.
@@ -246,6 +248,32 @@ func TestRecorderClock(t *testing.T) {
 	})
 }
 
+// TestRecorderContext checks the context of a recorder.
+func TestRecorderContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Context", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns context.Background() by default", func(t *testing.T) {
+			t.Parallel()
+
+			if got := assert.NewRecorder().Context(); got != context.Background() {
+				t.Fatalf("Context() = %v, want context.Background()", got)
+			}
+		})
+
+		t.Run("returns the context that WithContext set", func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.WithValue(t.Context(), ledgerKey{}, "ledger")
+			if got := assert.NewRecorder().WithContext(ctx).Context(); got != ctx {
+				t.Fatalf("Context() = %v, want the context that WithContext set", got)
+			}
+		})
+	})
+}
+
 // TestRecorderAllocs checks the allocation ceiling of NewRecorder and of
 // each method of a recorder.
 func TestRecorderAllocs(t *testing.T) {
@@ -269,6 +297,7 @@ func recorderCases() []alloctest.Case {
 	goexits := assert.NewRecorder()
 	f := assert.Failure{Assertion: "true", Contract: allocContract}
 	clock := assert.NewControlled(epoch)
+	ctx := context.Background()
 	return []alloctest.Case{
 		{Name: "NewRecorder", Call: func(assert.TB) { recorder = assert.NewRecorder() }, Allocs: 1},
 		{Name: "WithGoexit", Call: func(assert.TB) { goexits.WithGoexit() }},
@@ -277,6 +306,8 @@ func recorderCases() []alloctest.Case {
 		{Name: "Records", Call: func(assert.TB) { lines = full.Records() }, Allocs: 1},
 		{Name: "Clock", Call: func(assert.TB) { recorderClock = full.Clock() }},
 		{Name: "WithClock", Call: func(assert.TB) { full.WithClock(clock) }},
+		{Name: "Context", Call: func(assert.TB) { recorderContext = full.Context() }},
+		{Name: "WithContext", Call: func(assert.TB) { full.WithContext(ctx) }},
 		{Name: "Helper", Call: func(assert.TB) { full.Helper() }},
 		{Name: "Fatalf", Call: func(assert.TB) { full.Fatalf("the flag is set") }},
 		{Name: "Errorf", Call: func(assert.TB) { full.Errorf("the flag is set") }, Allocs: 1},

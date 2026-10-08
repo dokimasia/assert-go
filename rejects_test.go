@@ -4,6 +4,7 @@
 package assert_test
 
 import (
+	"context"
 	"testing"
 
 	"go.dokimi.dev/assert"
@@ -102,6 +103,20 @@ func TestRejects(t *testing.T) {
 			if got[1]["verdict"] != "pass" || got[1]["parent"] != 1.0 {
 				t.Fatalf("the second record is %v, want the check's pass under 1", got[1])
 			}
+		})
+
+		t.Run("hands the check a context that derives from the seat's and ends with the check", func(t *testing.T) {
+			t.Parallel()
+
+			var ctx context.Context
+			r := assert.NewRecorder().WithContext(context.WithValue(t.Context(), ledgerKey{}, "ledger"))
+			assert.Rejects(r, "the check fails", func(tb assert.TB) {
+				ctx = assert.Context(tb)
+				assert.True(tb, false, "the check fails")
+			})
+
+			assert.Equal(t, ctx.Value(ledgerKey{}), any("ledger"), "the check reads the value of the seat's context")
+			assert.ErrorIs(t, ctx.Err(), context.Canceled, "the check's context ends with the check")
 		})
 
 		t.Run("leaves no goroutine behind", func(t *testing.T) {

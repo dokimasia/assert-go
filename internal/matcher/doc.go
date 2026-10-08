@@ -17,7 +17,9 @@
 // [FaultReporter] takes a fault. [Note] writes a note into the log of a
 // seat, and [NoteFault] notes a fault that does not end its call. [End] ends
 // a call that reports no verdict, such as a call of a helper that prepares
-// a test, with a fault.
+// a test, with a fault. [ContextOf] reads the context of a seat. The seat
+// that [Rejects] or [Eventually] hands a body states a context that derives
+// from it and ends with the body.
 //
 // # Comparison rules
 //

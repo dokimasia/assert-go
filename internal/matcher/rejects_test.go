@@ -4,6 +4,8 @@
 package matcher_test
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"go.dokimi.dev/assert/internal/matcher"
@@ -78,6 +80,54 @@ func TestRejects(t *testing.T) {
 			})
 			if len(got) != 1 || got[0].Contract != "the goroutine's check fails" {
 				t.Fatalf("returned %+v, want the record of the goroutine's failure", got)
+			}
+		})
+
+		t.Run("hands the check a context that derives from the context of the seat", func(t *testing.T) {
+			t.Parallel()
+
+			parent, cancel := context.WithCancel(context.WithValue(t.Context(), ledgerKey{}, "ledger"))
+			defer cancel()
+			var value any
+			var live, cancelled error
+			matcher.Rejects(&contextSeat{ctx: parent}, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				ctx := matcher.ContextOf(s)
+				value, live = ctx.Value(ledgerKey{}), ctx.Err()
+				cancel()
+				cancelled = ctx.Err()
+				s.Errorf("the check fails")
+			})
+			if value != "ledger" || live != nil || !errors.Is(cancelled, context.Canceled) {
+				t.Fatalf("the check's context returned %v, and ended with %v and then %v, "+
+					"want the seat's value, and none until the seat's context was cancelled", value, live, cancelled)
+			}
+		})
+
+		t.Run("returns one context to each read, and cancels it when the check ends", func(t *testing.T) {
+			t.Parallel()
+
+			var first, second context.Context
+			matcher.Rejects(&contextSeat{ctx: t.Context()}, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				first, second = matcher.ContextOf(s), matcher.ContextOf(s)
+				s.Errorf("the check fails")
+			})
+			if first != second || !errors.Is(first.Err(), context.Canceled) {
+				t.Fatalf("the reads returned %v and %v, ended with %v, want one context that ended with the check",
+					first, second, first.Err())
+			}
+		})
+
+		t.Run("returns a cancelled context to a first read after the check ended", func(t *testing.T) {
+			t.Parallel()
+
+			var check matcher.Seat
+			matcher.Rejects(&contextSeat{ctx: t.Context()}, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				check = s
+				s.Errorf("the check fails")
+			})
+			if err := matcher.ContextOf(check).Err(); !errors.Is(err, context.Canceled) {
+				t.Fatalf("a first read after the check ended returned a context that ended with %v, "+
+					"want context.Canceled", err)
 			}
 		})
 	})
