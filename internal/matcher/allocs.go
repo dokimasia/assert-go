@@ -21,8 +21,7 @@ const testLogFlag = "test.testlogfile"
 
 // testLogNote ends the note of an allocation ceiling that only the test log
 // leaves unchecked, after the id of the assertion.
-const testLogNote = ": the ceiling is not checked, because this run writes the test log of go test's cache, " +
-	"which allocates. A run with -count=1 writes no log and checks the ceiling."
+const testLogNote = ": the ceiling is not checked under go test's test log, which allocates. Run -count=1 to check it."
 
 // gcflagsSetting is the key under which the build information records
 // the -gcflags the binary was compiled with.
