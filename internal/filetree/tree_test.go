@@ -194,13 +194,13 @@ func BenchmarkTree(b *testing.B) {
 }
 
 // treeCases returns a call of each function of a tree, with its allocation
-// ceiling, measured.
+// ceiling.
 func treeCases() []alloctest.Case {
 	tree := filetree.Tree{"a/b.txt": textFile, "c": directory}
 	return []alloctest.Case{
 		{Name: "CheckPath", Call: func(assert.TB) { errKept = filetree.CheckPath("a/b.txt") }},
-		{Name: "Check", Call: func(assert.TB) { errKept = tree.Check() }, Allocs: 1},
-		{Name: "Paths", Call: func(assert.TB) { keptPaths = tree.Paths() }, Allocs: 1},
-		{Name: "Full", Call: func(assert.TB) { keptTree = tree.Full() }, Allocs: 2},
+		{Name: "Check", Call: func(assert.TB) { errKept = tree.Check() }, Allocs: 2},
+		{Name: "Paths", Call: func(assert.TB) { keptPaths = tree.Paths() }, Allocs: 2},
+		{Name: "Full", Call: func(assert.TB) { keptTree = tree.Full() }, Allocs: 3},
 	}
 }

@@ -20,9 +20,9 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// optionAllocs are the allocations of an option that its caller keeps,
-// measured: the closure of its setting.
-const optionAllocs = 1
+// optionAllocs is the ceiling of the allocations of an option that its
+// caller keeps: the closure of its setting.
+const optionAllocs = 2
 
 // never is a label that no case counts.
 const never = "never"

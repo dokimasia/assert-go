@@ -13,13 +13,14 @@ import (
 	"go.dokimi.dev/assert/internal/prop/store"
 )
 
-// The allocations of an entry's methods, measured.
+// The allocation ceilings of an entry's methods.
 const (
-	// nameAllocs are the allocations of Name: the token, the text that
-	// joins it to the contract, and the name.
-	nameAllocs = 3
-	// marshalAllocs are the allocations of MarshalJSON on the pinned entry.
-	marshalAllocs = 5
+	// nameAllocs is the ceiling of the allocations of Name: the token, the
+	// text that joins it to the contract, and the name.
+	nameAllocs = 4
+	// marshalAllocs is the ceiling of the allocations of MarshalJSON on the
+	// pinned entry.
+	marshalAllocs = 7
 )
 
 // TestEntry checks an entry's identity, its name and its JSON against what

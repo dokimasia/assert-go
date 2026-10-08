@@ -13,9 +13,9 @@ import (
 	"go.dokimi.dev/assert/internal/fault"
 )
 
-// fromIntervalsAllocs are the allocations of FromIntervals for two entries
-// of two clients on one string key, measured.
-const fromIntervalsAllocs = 42
+// fromIntervalsAllocs is the ceiling of the allocations of FromIntervals
+// for two entries of two clients on one string key.
+const fromIntervalsAllocs = 53
 
 // fromIntervalsOp is the operation of the faults of FromIntervals.
 const fromIntervalsOp = "history.FromIntervals"

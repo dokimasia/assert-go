@@ -200,9 +200,9 @@ func BenchmarkFailure(b *testing.B) {
 }
 
 // failureCases returns a call of each function and method of failure.go,
-// with its allocation ceiling, measured: CallerWhere of the frames of this
-// call, the JSON of a record of two fields with a call site, its want and
-// its got, and the failing case of a property's record that contains it.
+// with its allocation ceiling: CallerWhere of the frames of this call, the
+// JSON of a record of two fields with a call site, its want and its got,
+// and the failing case of a property's record that contains it.
 func failureCases() []allocCase {
 	var pcs [8]uintptr
 	frames := pcs[:runtime.Callers(1, pcs[:])]
@@ -212,8 +212,8 @@ func failureCases() []allocCase {
 	}
 	property := matcher.Failure{Assertion: "prop-for-all", Detail: map[string]any{"failure": f}}
 	return []allocCase{
-		{name: "CallerWhere", call: func(matcher.Seat) { where = matcher.CallerWhere(frames) }, allocs: 1},
-		{name: "Failure.MarshalJSON", call: func(matcher.Seat) { marshalled, _ = f.MarshalJSON() }, allocs: 26},
+		{name: "CallerWhere", call: func(matcher.Seat) { where = matcher.CallerWhere(frames) }, allocs: 2},
+		{name: "Failure.MarshalJSON", call: func(matcher.Seat) { marshalled, _ = f.MarshalJSON() }, allocs: 33},
 		{name: "Failure.Want", call: func(matcher.Seat) { field, _ = f.Want() }},
 		{name: "Failure.Got", call: func(matcher.Seat) { field, _ = f.Got() }},
 		{name: "Failure.CaseFailure", call: func(matcher.Seat) { caseRecord, _ = property.CaseFailure() }},

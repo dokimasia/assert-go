@@ -11,10 +11,10 @@ import (
 	"go.dokimi.dev/assert/internal/align"
 )
 
-// editsAllocs are the allocations of Edits of two sequences of three
-// elements whose middle elements differ: the edits, and the two tables of
-// the rest of one element each.
-const editsAllocs = 3
+// editsAllocs is the ceiling of the allocations of Edits of two sequences
+// of three elements whose middle elements differ: the edits, and the two
+// tables of the rest of one element each.
+const editsAllocs = 4
 
 // sink receives the edits that a measured call returns.
 var sink []align.Edit

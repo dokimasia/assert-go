@@ -20,12 +20,12 @@ import (
 const (
 	// queueSteps is the number of sequential steps of the measured case.
 	queueSteps = 100
-	// queueCaseAllocs are the allocations of the measured case, a whole
-	// replayed case of 100 sequential steps of a queue with its spec, which
-	// checks the history 101 times, each check continuing the search of the
-	// one before it on a goroutine of its own, measured: about 15 for each
-	// check.
-	queueCaseAllocs = 1538
+	// queueCaseAllocs is the ceiling of the allocations of the measured
+	// case, a whole replayed case of 100 sequential steps of a queue with
+	// its spec, which checks the history 101 times, each check continuing
+	// the search of the one before it on a goroutine of its own: about 15
+	// for each check.
+	queueCaseAllocs = 2000
 )
 
 // digit is the generator of the inputs that the tests' actions draw.

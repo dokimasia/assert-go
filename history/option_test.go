@@ -13,9 +13,9 @@ import (
 	"go.dokimi.dev/assert/internal/fault"
 )
 
-// optionAllocs are the allocations of an option that its caller keeps,
-// measured: the closure of its setting.
-const optionAllocs = 1
+// optionAllocs is the ceiling of the allocations of an option that its
+// caller keeps: the closure of its setting.
+const optionAllocs = 2
 
 // TestOption checks each option of a check.
 func TestOption(t *testing.T) {

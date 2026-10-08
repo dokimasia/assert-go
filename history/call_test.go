@@ -11,9 +11,9 @@ import (
 	"go.dokimi.dev/assert/internal/alloctest"
 )
 
-// completionAllocs are the allocations of a first invocation without keys
-// and its completion, with the history they record into, measured.
-const completionAllocs = 9
+// completionAllocs is the ceiling of the allocations of a first invocation
+// without keys and its completion, with the history they record into.
+const completionAllocs = 12
 
 // secondCompletion is the panic of a second completion of the call at index
 // 0.

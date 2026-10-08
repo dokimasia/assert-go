@@ -118,7 +118,7 @@ func TestPlace(t *testing.T) {
 // allocates its text.
 func TestPlaceAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = prop.SettlePart.Valid() }, 0, "Valid allocates nothing")
-	assert.MaxAllocs(t, func() { _, _ = prop.SettlePart.MarshalText() }, 1, "MarshalText allocates its text")
+	assert.MaxAllocs(t, func() { _, _ = prop.SettlePart.MarshalText() }, 2, "MarshalText allocates its text")
 }
 
 // BenchmarkPlace measures Valid under a ceiling of no allocation, and
@@ -126,7 +126,7 @@ func TestPlaceAllocs(t *testing.T) {
 func BenchmarkPlace(b *testing.B) {
 	b.Run("MarshalText", func(b *testing.B) {
 		var got []byte
-		c := bench.Start(b).MaxAllocs(1)
+		c := bench.Start(b).MaxAllocs(2)
 		defer c.End()
 		for c.Loop() {
 			got, _ = prop.SettlePart.MarshalText()

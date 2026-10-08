@@ -277,7 +277,7 @@ func BenchmarkAllocs(b *testing.B) {
 }
 
 // allocsCases returns a passing call of each function of allocs.go, with
-// its allocation ceiling, measured.
+// its allocation ceiling.
 func allocsCases() []allocCase {
 	debugger := buildWith("all=-N -l")
 	return []allocCase{

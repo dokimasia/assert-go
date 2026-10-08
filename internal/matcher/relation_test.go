@@ -145,7 +145,7 @@ func BenchmarkRelation(b *testing.B) {
 }
 
 // relationCases returns a passing call of each relation assertion over
-// ints, with its allocation ceiling, measured.
+// ints, with its allocation ceiling.
 func relationCases() []allocCase {
 	var state int
 	set := func(x int) error { state = x; return nil }
@@ -179,10 +179,10 @@ func relationCases() []allocCase {
 		{name: "RoundTrip", call: func(seat matcher.Seat) {
 			matcher.RoundTrip(seat, matcher.Fatal, format, strconv.Atoi, 42, allocContract)
 		}},
-		{name: "StableOrder", allocs: 62, call: func(seat matcher.Seat) {
+		{name: "StableOrder", allocs: 78, call: func(seat matcher.Seat) {
 			matcher.StableOrder(seat, matcher.Fatal, listed, allocContract)
 		}},
-		{name: "NoDuplicates", allocs: 1, call: func(seat matcher.Seat) {
+		{name: "NoDuplicates", allocs: 2, call: func(seat matcher.Seat) {
 			matcher.NoDuplicates(seat, matcher.Fatal, listed, allocContract)
 		}},
 		{name: "Monotonic", call: func(seat matcher.Seat) {
@@ -191,7 +191,7 @@ func relationCases() []allocCase {
 		{name: "Total", call: func(seat matcher.Seat) {
 			matcher.Total(seat, matcher.Fatal, accepts, items, allocContract)
 		}},
-		{name: "NotPure", allocs: 2, call: func(seat matcher.Seat) {
+		{name: "NotPure", allocs: 3, call: func(seat matcher.Seat) {
 			matcher.NotPure(seat, matcher.Fatal, read, func() { state++ }, allocContract)
 		}},
 		{name: "FailsAfterClose", call: func(seat matcher.Seat) {

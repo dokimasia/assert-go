@@ -125,7 +125,7 @@ func BenchmarkTB(b *testing.B) {
 }
 
 // tbCases returns a call of Context on a recorder that states a context,
-// with its allocation ceiling, measured.
+// with its allocation ceiling.
 func tbCases() []alloctest.Case {
 	seat := assert.NewRecorder().WithContext(context.Background())
 	return []alloctest.Case{

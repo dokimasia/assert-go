@@ -402,14 +402,14 @@ func BenchmarkWriter(b *testing.B) {
 
 // writerCases returns a call of Render on the record of a failure of two
 // ints and of RenderFault on a fault of an operation and a field, with its
-// allocation ceiling, measured.
+// allocation ceiling.
 func writerCases() []allocCase {
 	f := matcher.Failure{
 		Assertion: "length", Contract: "every item comes back", Detail: map[string]any{"got": 2, "want": 3},
 	}
 	err := fault.In("prop.ForAll", fault.At(fault.New("the key states no value"), fault.Field("min")))
 	return []allocCase{
-		{name: "Render", call: func(matcher.Seat) { rendered = matcher.Render(f) }, allocs: 5},
-		{name: "RenderFault", call: func(matcher.Seat) { rendered = matcher.RenderFault(err) }, allocs: 2},
+		{name: "Render", call: func(matcher.Seat) { rendered = matcher.Render(f) }, allocs: 7},
+		{name: "RenderFault", call: func(matcher.Seat) { rendered = matcher.RenderFault(err) }, allocs: 3},
 	}
 }

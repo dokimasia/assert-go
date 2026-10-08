@@ -29,14 +29,14 @@ func TestLimit(t *testing.T) {
 
 // TestLimitAllocs checks that MarshalText allocates its text.
 func TestLimitAllocs(t *testing.T) {
-	assert.MaxAllocs(t, func() { _, _ = history.LimitMemo.MarshalText() }, 1, "MarshalText allocates its text")
+	assert.MaxAllocs(t, func() { _, _ = history.LimitMemo.MarshalText() }, 2, "MarshalText allocates its text")
 }
 
 // BenchmarkLimit measures MarshalText.
 func BenchmarkLimit(b *testing.B) {
 	b.Run("MarshalText", func(b *testing.B) {
 		var got []byte
-		c := bench.Start(b).MaxAllocs(1)
+		c := bench.Start(b).MaxAllocs(2)
 		defer c.End()
 		for c.Loop() {
 			got, _ = history.LimitMemo.MarshalText()

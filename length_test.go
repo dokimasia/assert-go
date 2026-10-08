@@ -53,13 +53,13 @@ func BenchmarkLength(b *testing.B) {
 	}
 }
 
-// lengthCases returns a passing call of each length assertion on a slice
-// of ints, with its allocation ceiling, measured.
+// lengthCases returns a passing call of each length assertion on a slice of
+// ints, with its allocation ceiling.
 func lengthCases() []alloctest.Case {
 	items, none := []int{1, 2, 3}, []int{}
 	return []alloctest.Case{
 		{Name: "Length", Call: func(tb assert.TB) { assert.Length(tb, items, 3, allocContract) }},
-		{Name: "Empty", Allocs: 1, Call: func(tb assert.TB) { assert.Empty(tb, none, allocContract) }},
-		{Name: "NotEmpty", Allocs: 1, Call: func(tb assert.TB) { assert.NotEmpty(tb, items, allocContract) }},
+		{Name: "Empty", Allocs: 2, Call: func(tb assert.TB) { assert.Empty(tb, none, allocContract) }},
+		{Name: "NotEmpty", Allocs: 2, Call: func(tb assert.TB) { assert.NotEmpty(tb, items, allocContract) }},
 	}
 }

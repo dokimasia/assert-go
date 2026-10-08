@@ -11,22 +11,22 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// The allocations of the combinators, measured. Each is the engine's
+// The allocation ceilings of the combinators. Each is the engine's
 // construction of the generator: the closure of its decode and of its
 // erased decode, a closure that adapts a function, and for Filter and Just
 // the closure of the inverse.
 const (
-	// mapAllocs are the allocations of Map of an integer, with the mapping
-	// of its values for the explain phase.
-	mapAllocs = 3
-	// filterAllocs are the allocations of Filter.
-	filterAllocs = 4
-	// bindAllocs are the allocations of Bind.
-	bindAllocs = 3
-	// compositeAllocs are the allocations of Composite.
-	compositeAllocs = 3
-	// justAllocs are the allocations of Just.
-	justAllocs = 3
+	// mapAllocs is the ceiling of the allocations of Map of an integer,
+	// with the mapping of its values for the explain phase.
+	mapAllocs = 4
+	// filterAllocs is the ceiling of the allocations of Filter.
+	filterAllocs = 5
+	// bindAllocs is the ceiling of the allocations of Bind.
+	bindAllocs = 4
+	// compositeAllocs is the ceiling of the allocations of Composite.
+	compositeAllocs = 4
+	// justAllocs is the ceiling of the allocations of Just.
+	justAllocs = 4
 )
 
 // TestGenerator checks the combinators that build a generator from

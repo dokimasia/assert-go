@@ -14,7 +14,7 @@ import (
 	"go.dokimi.dev/assert/internal/matcher"
 )
 
-// The allocations of Equal, measured.
+// The allocation ceilings of Equal.
 const (
 	// scalarAllocs are the allocations of Equal of two ints.
 	scalarAllocs = 0
@@ -22,9 +22,10 @@ const (
 	sliceAllocs = 0
 	// structAllocs are the allocations of Equal of two structs of ints.
 	structAllocs = 0
-	// listAllocs are the allocations of Equal of two lists of three links:
-	// the set of the pairs of links that the walk entered, and their log.
-	listAllocs = 3
+	// listAllocs is the ceiling of the allocations of Equal of two lists of
+	// three links: the set of the pairs of links that the walk entered, and
+	// their log.
+	listAllocs = 4
 )
 
 // deepLinks is the length of the lists that the depth test compares, far

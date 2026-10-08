@@ -12,15 +12,16 @@ import (
 	"go.dokimi.dev/assert/internal/alloctest"
 )
 
-// The allocations of the functions of a history, measured.
+// The allocation ceilings of the functions of a history.
 const (
-	// newAllocs are the allocations of New: the history.
-	newAllocs = 1
-	// invokeAllocs are the allocations of a first invocation of one string
-	// key, with the history it invokes on.
-	invokeAllocs = 16
-	// eventsAllocs are the allocations of Events: the copy of the events.
-	eventsAllocs = 1
+	// newAllocs is the ceiling of the allocations of New: the history.
+	newAllocs = 2
+	// invokeAllocs is the ceiling of the allocations of a first invocation
+	// of one string key, with the history it invokes on.
+	invokeAllocs = 20
+	// eventsAllocs is the ceiling of the allocations of Events: the copy of
+	// the events.
+	eventsAllocs = 2
 )
 
 // The size of the reading of a history while clients record.

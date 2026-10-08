@@ -18,26 +18,26 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// maxAllocsFormAllocs are the allocations of a passing run of 100 cases of
-// MaxAllocs, measured: the run's, and the count of each case.
-const maxAllocsFormAllocs = 834
+// maxAllocsFormAllocs is the ceiling of the allocations of a passing run of
+// 100 cases of MaxAllocs: the run's, and the count of each case.
+const maxAllocsFormAllocs = 1100
 
-// maxAllocsWithSetupFormAllocs are the allocations of a passing run of 100
-// cases of MaxAllocsWithSetup, measured: the 834 of a run of MaxAllocs, and
-// the 101 inputs that the setup builds in each case.
-const maxAllocsWithSetupFormAllocs = 10934
+// maxAllocsWithSetupFormAllocs is the ceiling of the allocations of a
+// passing run of 100 cases of MaxAllocsWithSetup: those of a run of
+// MaxAllocs, and the 101 inputs that the setup builds in each case.
+const maxAllocsWithSetupFormAllocs = 14000
 
-// formAllocs are the allocations of a passing run of 100 cases of each
-// property form of formCases, measured: the run's own, and what the form's
-// assertion and its subjects allocate in each case.
+// formAllocs are the ceilings of the allocations of a passing run of 100
+// cases of each property form of formCases: the run's own, and what the
+// form's assertion and its subjects allocate in each case.
 var formAllocs = map[string]uint64{
-	"Equal": 833, "NotEqual": 833, "True": 833, "False": 833, "Nil": 833, "NotNil": 933, "Length": 933,
-	"Empty": 1913, "NotEmpty": 2212, "Contains": 2212, "NotContains": 1913, "ContainsInOrder": 1262,
-	"IsPermutation": 2543, "HasPrefix": 1261, "HasSuffix": 1261, "Matches": 3961, "CloseTo": 932,
-	"InRange": 932, "Pairwise": 2345, "NoError": 833, "HasError": 833, "ErrorIs": 833, "ErrorIsNot": 833,
-	"ErrorAs": 1033, "Panics": 833, "NotPanics": 833, "Pure": 833, "NotPure": 836, "NilContextSafe": 833,
-	"HonoursCancellation": 1033, "HonoursDeadline": 1033, "Idempotent": 836, "Accumulates": 836,
-	"Deterministic": 833, "Commutative": 855, "Associative": 1079, "RoundTrip": 1036,
+	"Equal": 1100, "NotEqual": 1100, "True": 1100, "False": 1100, "Nil": 1100, "NotNil": 1200, "Length": 1200,
+	"Empty": 2400, "NotEmpty": 2800, "Contains": 2800, "NotContains": 2400, "ContainsInOrder": 1600,
+	"IsPermutation": 3200, "HasPrefix": 1600, "HasSuffix": 1600, "Matches": 5000, "CloseTo": 1200,
+	"InRange": 1200, "Pairwise": 3000, "NoError": 1100, "HasError": 1100, "ErrorIs": 1100, "ErrorIsNot": 1100,
+	"ErrorAs": 1300, "Panics": 1100, "NotPanics": 1100, "Pure": 1100, "NotPure": 1100, "NilContextSafe": 1100,
+	"HonoursCancellation": 1300, "HonoursDeadline": 1300, "Idempotent": 1100, "Accumulates": 1100,
+	"Deterministic": 1100, "Commutative": 1100, "Associative": 1400, "RoundTrip": 1400,
 }
 
 // errSentinel is the error that the subjects of the error forms return.

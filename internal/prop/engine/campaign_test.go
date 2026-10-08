@@ -25,10 +25,10 @@ const (
 	shortCases = 30
 	// shapeCases are the cases of a campaign over cases of four kinds.
 	shapeCases = 400
-	// campaignAllocs are the allocations of a campaign of shortCases cases
-	// that draw one digit each, its clock included, measured: about seven
-	// for each case.
-	campaignAllocs = 220
+	// campaignAllocs is the ceiling of the allocations of a campaign of
+	// shortCases cases that draw one digit each, its clock included: about
+	// seven for each case.
+	campaignAllocs = 280
 )
 
 // epoch is the time on the budget's clock when a campaign of the tests

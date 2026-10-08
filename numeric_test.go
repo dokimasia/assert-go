@@ -46,7 +46,7 @@ func BenchmarkNumeric(b *testing.B) {
 }
 
 // numericCases returns a passing call of each numeric assertion on a
-// float64, with its allocation ceiling, measured.
+// float64, with its allocation ceiling.
 func numericCases() []alloctest.Case {
 	reading := 1.05
 	return []alloctest.Case{

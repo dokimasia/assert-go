@@ -16,15 +16,16 @@ import (
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
 
-// The allocations of a run whose case of the entries ends at a refusal of
-// the next entry, measured.
+// The allocation ceilings of a run whose case of the entries ends at a
+// refusal of the next entry.
 const (
-	// refusedRunAllocs are the allocations of a run whose case of twoSteps
-	// refuses the first entry.
-	refusedRunAllocs = 11
-	// servedRunAllocs are the allocations of such a run whose case serves one
-	// value first: those of a refused run, and the queue of the value.
-	servedRunAllocs = 12
+	// refusedRunAllocs is the ceiling of the allocations of a run whose
+	// case of twoSteps refuses the first entry.
+	refusedRunAllocs = 14
+	// servedRunAllocs is the ceiling of the allocations of such a run whose
+	// case serves one value first: those of a refused run, and the queue of
+	// the value.
+	servedRunAllocs = 15
 )
 
 // refusal is the reason of the refusals that the specs of the trace make.

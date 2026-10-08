@@ -12,9 +12,9 @@ import (
 	"go.dokimi.dev/assert/internal/fault"
 )
 
-// transactionJSONAllocs are the allocations of the JSON form of committed,
-// measured.
-const transactionJSONAllocs = 55
+// transactionJSONAllocs is the ceiling of the allocations of the JSON form
+// of committed.
+const transactionJSONAllocs = 69
 
 // The typed literals of the micro-operations and of the outputs of the
 // tests of the JSON form of a transaction.

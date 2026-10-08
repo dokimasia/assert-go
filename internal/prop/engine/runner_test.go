@@ -19,22 +19,24 @@ import (
 	"go.dokimi.dev/assert/internal/record"
 )
 
-// The allocations of a run, measured.
+// The allocation ceilings of a run.
 const (
-	// runAllocs are the allocations of a passing run of 100 cases of an
-	// integer in [0, 1000]: its 136 cases, its case tree and its executor.
-	runAllocs = 485
-	// replayAllocs are the allocations of a replay of one case that draws
-	// one integer.
-	replayAllocs = 9
-	// storedAllocs are the allocations of a run of one stored case that
-	// draws one integer and passes: the case, and the list of the runs.
-	storedAllocs = 10
-	// concludeAllocs are the allocations of concluding the bridged case of
-	// 10,000 for a body that fails from 1,001: the replay that confirms it,
-	// with the list of where it made its request, the runs of its shrink and
-	// of its explanation, and the result.
-	concludeAllocs = 472
+	// runAllocs is the ceiling of the allocations of a passing run of 100
+	// cases of an integer in [0, 1000]: its 136 cases, its case tree and
+	// its executor.
+	runAllocs = 610
+	// replayAllocs is the ceiling of the allocations of a replay of one
+	// case that draws one integer.
+	replayAllocs = 12
+	// storedAllocs is the ceiling of the allocations of a run of one stored
+	// case that draws one integer and passes: the case, and the list of the
+	// runs.
+	storedAllocs = 13
+	// concludeAllocs is the ceiling of the allocations of concluding the
+	// bridged case of 10,000 for a body that fails from 1,001: the replay
+	// that confirms it, with the list of where it made its request, the
+	// runs of its shrink and of its explanation, and the result.
+	concludeAllocs = 590
 )
 
 // largestBytes are the fuzzer's bytes that the bridge decodes as 10,000

@@ -78,7 +78,7 @@ func BenchmarkSeat(b *testing.B) {
 }
 
 // seatCases returns a call of each function of seat.go, with its allocation
-// ceiling, measured.
+// ceiling.
 func seatCases() []allocCase {
 	seat := &contextSeat{ctx: context.Background()}
 	return []allocCase{

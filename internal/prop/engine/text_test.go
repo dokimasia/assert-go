@@ -12,15 +12,15 @@ import (
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
 
-// The allocations of each text generator's constructor, measured.
+// The allocation ceilings of each text generator's constructor.
 const (
-	// stringAllocs are the allocations of String and Bytes: the decode, the
-	// decode with its type erased, and the inverse.
-	stringAllocs = 3
-	// stringOverAllocs are the allocations of StringOver: its characters,
-	// their sorted copy, the decode, the decode with its type erased, and
-	// the inverse.
-	stringOverAllocs = 5
+	// stringAllocs is the ceiling of the allocations of String and Bytes:
+	// the decode, the decode with its type erased, and the inverse.
+	stringAllocs = 4
+	// stringOverAllocs is the ceiling of the allocations of StringOver: its
+	// characters, their sorted copy, the decode, the decode with its type
+	// erased, and the inverse.
+	stringOverAllocs = 7
 )
 
 // TestText checks the string and byte string generators: the values they

@@ -149,7 +149,7 @@ func BenchmarkRelation(b *testing.B) {
 }
 
 // relationCases returns a passing call of each relation assertion over
-// ints, with its allocation ceiling, measured.
+// ints, with its allocation ceiling.
 func relationCases() []alloctest.Case {
 	var state int
 	set := func(x int) error { state = x; return nil }
@@ -173,11 +173,11 @@ func relationCases() []alloctest.Case {
 		{Name: "RoundTrip", Call: func(tb assert.TB) {
 			expect.RoundTrip(tb, format, strconv.Atoi, 42, allocContract)
 		}},
-		{Name: "StableOrder", Call: func(tb assert.TB) { expect.StableOrder(tb, listed, allocContract) }, Allocs: 62},
-		{Name: "NoDuplicates", Call: func(tb assert.TB) { expect.NoDuplicates(tb, listed, allocContract) }, Allocs: 1},
+		{Name: "StableOrder", Call: func(tb assert.TB) { expect.StableOrder(tb, listed, allocContract) }, Allocs: 78},
+		{Name: "NoDuplicates", Call: func(tb assert.TB) { expect.NoDuplicates(tb, listed, allocContract) }, Allocs: 2},
 		{Name: "Monotonic", Call: func(tb assert.TB) { expect.Monotonic(tb, read, advance, 3, allocContract) }},
 		{Name: "Total", Call: func(tb assert.TB) { expect.Total(tb, accepts, items, allocContract) }},
-		{Name: "NotPure", Allocs: 2, Call: func(tb assert.TB) {
+		{Name: "NotPure", Allocs: 3, Call: func(tb assert.TB) {
 			expect.NotPure(tb, read, func() { state++ }, allocContract)
 		}},
 		{Name: "FailsAfterClose", Call: func(tb assert.TB) {

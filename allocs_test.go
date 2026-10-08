@@ -42,9 +42,8 @@ func BenchmarkAllocs(b *testing.B) {
 	}
 }
 
-// allocsCases returns a passing call of MaxAllocs and of
-// MaxAllocsWithSetup of functions that allocate nothing, with their
-// allocation ceilings, measured.
+// allocsCases returns a passing call of MaxAllocs and of MaxAllocsWithSetup
+// of functions that allocate nothing, with their allocation ceilings.
 func allocsCases() []alloctest.Case {
 	return []alloctest.Case{
 		{Name: "MaxAllocs", Call: func(tb assert.TB) { assert.MaxAllocs(tb, func() {}, 0, allocContract) }},

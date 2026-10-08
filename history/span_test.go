@@ -11,9 +11,9 @@ import (
 	"go.dokimi.dev/assert/internal/alloctest"
 )
 
-// spanJSONAllocs are the allocations of the JSON form of a known span of
-// one int argument and an int output, measured.
-const spanJSONAllocs = 20
+// spanJSONAllocs is the ceiling of the allocations of the JSON form of a
+// known span of one int argument and an int output.
+const spanJSONAllocs = 25
 
 // TestSpan checks the JSON form of a call in the record of a check, which
 // the definition fixes.

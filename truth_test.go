@@ -46,7 +46,7 @@ func BenchmarkTruth(b *testing.B) {
 }
 
 // truthCases returns a passing call of True and of False, with its
-// allocation ceiling, measured.
+// allocation ceiling.
 func truthCases() []alloctest.Case {
 	return []alloctest.Case{
 		{Name: "True", Call: func(tb assert.TB) { assert.True(tb, true, allocContract) }},

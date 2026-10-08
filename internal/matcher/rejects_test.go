@@ -149,11 +149,11 @@ func BenchmarkRejects(b *testing.B) {
 }
 
 // rejectsCases returns a passing call of Rejects of a check that fails at a
-// call of True, with its allocation ceiling, measured.
+// call of True, with its allocation ceiling.
 func rejectsCases() []allocCase {
 	check := func(s matcher.Seat) { matcher.True(s, matcher.Fatal, false, "the check fails") }
 	return []allocCase{
-		{name: "Rejects", allocs: 7, call: func(seat matcher.Seat) {
+		{name: "Rejects", allocs: 9, call: func(seat matcher.Seat) {
 			rejection = matcher.Rejects(seat, matcher.Fatal, allocContract, check)
 		}},
 	}

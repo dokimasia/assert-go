@@ -18,12 +18,14 @@ import (
 	"go.dokimi.dev/assert/internal/prop/store"
 )
 
-// The allocations of the directory functions, measured.
+// The allocation ceilings of the directory functions.
 const (
-	// loadAllocs are the allocations of Load on a directory of one entry.
-	loadAllocs = 149
-	// saveAllocs are the allocations of Save of an entry whose file exists.
-	saveAllocs = 152
+	// loadAllocs is the ceiling of the allocations of Load on a directory
+	// of one entry.
+	loadAllocs = 190
+	// saveAllocs is the ceiling of the allocations of Save of an entry
+	// whose file exists.
+	saveAllocs = 190
 )
 
 // The modes that the tests set and check.

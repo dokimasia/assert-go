@@ -100,12 +100,11 @@ func BenchmarkEnd(b *testing.B) {
 }
 
 // endCases returns a call of End on a seat of internal/matchertest, which
-// keeps the fault and the writer's text of it, with its allocation ceiling,
-// measured: the 3 allocations of the seat's ReportFault, which End adds
-// nothing to.
+// keeps the fault and the writer's text of it, with its allocation ceiling:
+// the 3 allocations of the seat's ReportFault, which End adds nothing to.
 func endCases() []allocCase {
 	err := fault.In("files.Workspace", fault.New("the tree cannot be written"))
 	return []allocCase{
-		{name: "End", call: func(seat matcher.Seat) { matcher.End(seat, err) }, allocs: 3, fails: true},
+		{name: "End", call: func(seat matcher.Seat) { matcher.End(seat, err) }, allocs: 4, fails: true},
 	}
 }

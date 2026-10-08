@@ -213,14 +213,14 @@ func BenchmarkRead(b *testing.B) {
 }
 
 // readCases returns a call of each reader of a tree, with its allocation
-// ceiling, measured.
+// ceiling.
 func readCases(tb testing.TB) []alloctest.Case {
 	tb.Helper()
 	dir := tb.TempDir()
 	assert.NoError(tb, filetree.Write(dir, filetree.Tree{"a.txt": textFile}), "the tree is written")
 	path := filepath.Join(dir, "a.txt")
 	return []alloctest.Case{
-		{Name: "Read", Call: func(assert.TB) { keptTree, errKept = filetree.Read(mapped, true) }, Allocs: 43},
-		{Name: "ReadPath", Call: func(assert.TB) { _, errKept = filetree.ReadPath(path, true) }, Allocs: 8},
+		{Name: "Read", Call: func(assert.TB) { keptTree, errKept = filetree.Read(mapped, true) }, Allocs: 54},
+		{Name: "ReadPath", Call: func(assert.TB) { _, errKept = filetree.ReadPath(path, true) }, Allocs: 10},
 	}
 }

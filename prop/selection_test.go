@@ -11,19 +11,19 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// The allocations of the selection generators, measured: the engine's
+// The allocation ceilings of the selection generators: the engine's
 // construction of the generator, the closures of its decodes and of its
 // inverse and its copy of the stated values, and for OneOf the slice of the
 // engine's generators.
 const (
-	// sampledFromAllocs are the allocations of SampledFrom.
-	sampledFromAllocs = 4
-	// oneOfAllocs are the allocations of OneOf.
-	oneOfAllocs = 5
-	// optionalAllocs are the allocations of Optional.
-	optionalAllocs = 3
-	// permutationAllocs are the allocations of Permutation.
-	permutationAllocs = 4
+	// sampledFromAllocs is the ceiling of the allocations of SampledFrom.
+	sampledFromAllocs = 5
+	// oneOfAllocs is the ceiling of the allocations of OneOf.
+	oneOfAllocs = 7
+	// optionalAllocs is the ceiling of the allocations of Optional.
+	optionalAllocs = 4
+	// permutationAllocs is the ceiling of the allocations of Permutation.
+	permutationAllocs = 5
 )
 
 // TestSelection checks the generators that select among stated values or

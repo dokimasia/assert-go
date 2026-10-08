@@ -101,11 +101,11 @@ func BenchmarkWorkspace(b *testing.B) {
 }
 
 // workspaceCases returns a call of Workspace of a tree of one file on tb,
-// with its allocation ceiling, measured.
+// with its allocation ceiling.
 func workspaceCases(tb testing.TB) []alloctest.Case {
 	tb.Helper()
 	tree := files.Tree{"a.txt": files.Text("a\n")}
 	return []alloctest.Case{
-		{Name: "Workspace", Call: func(assert.TB) { kept = files.Workspace(tb, tree) }, Allocs: 28},
+		{Name: "Workspace", Call: func(assert.TB) { kept = files.Workspace(tb, tree) }, Allocs: 48},
 	}
 }

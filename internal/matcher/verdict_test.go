@@ -520,18 +520,18 @@ func BenchmarkVerdict(b *testing.B) {
 }
 
 // verdictCases returns a call of each function and method of verdict.go on
-// a seat whose calls are not recorded, with its allocation ceiling,
-// measured. A failure states no detail, and a fault no path.
+// a seat whose calls are not recorded, with its allocation ceiling. A
+// failure states no detail, and a fault no path.
 func verdictCases() []allocCase {
 	err := fault.New("the seed is no number")
 	var run json.Marshaler = json.RawMessage(`{}`)
 	f := matcher.Failure{Assertion: "prop-for-all", Contract: allocContract}
 	return []allocCase{
 		{name: "Pass", call: func(seat matcher.Seat) { matcher.Pass(seat, matcher.Fatal, "true", allocContract) }},
-		{name: "Fail", allocs: 4, fails: true, call: func(seat matcher.Seat) {
+		{name: "Fail", allocs: 5, fails: true, call: func(seat matcher.Seat) {
 			matcher.Fail(seat, matcher.Fatal, "true", allocContract, nil)
 		}},
-		{name: "Fault", allocs: 4, fails: true, call: func(seat matcher.Seat) {
+		{name: "Fault", allocs: 5, fails: true, call: func(seat matcher.Seat) {
 			matcher.Fault(seat, matcher.Fatal, "true", allocContract, err)
 		}},
 		{name: "Begin", call: func(seat matcher.Seat) { _ = matcher.Begin(seat) }},
@@ -539,16 +539,16 @@ func verdictCases() []allocCase {
 		{name: "Running.Pass", call: func(seat matcher.Seat) {
 			matcher.Begin(seat).Pass(matcher.Fatal, "eventually", allocContract)
 		}},
-		{name: "Running.Fail", allocs: 4, fails: true, call: func(seat matcher.Seat) {
+		{name: "Running.Fail", allocs: 5, fails: true, call: func(seat matcher.Seat) {
 			matcher.Begin(seat).Fail(matcher.Fatal, "eventually", allocContract, nil)
 		}},
 		{name: "Running.PassRun", call: func(seat matcher.Seat) {
 			matcher.Begin(seat).PassRun(matcher.Fatal, "prop-for-all", allocContract, matcher.Where{}, run)
 		}},
-		{name: "Running.FailRun", allocs: 2, fails: true, call: func(seat matcher.Seat) {
+		{name: "Running.FailRun", allocs: 3, fails: true, call: func(seat matcher.Seat) {
 			matcher.Begin(seat).FailRun(matcher.Fatal, f, run)
 		}},
-		{name: "Running.Fault", allocs: 4, fails: true, call: func(seat matcher.Seat) {
+		{name: "Running.Fault", allocs: 5, fails: true, call: func(seat matcher.Seat) {
 			matcher.Begin(seat).Fault(matcher.Fatal, "eventually", allocContract, err)
 		}},
 	}

@@ -289,9 +289,8 @@ func BenchmarkRecorder(b *testing.B) {
 }
 
 // recorderCases returns a call of NewRecorder and of each method of a
-// recorder that a failure of Equal reached, with its allocation ceiling,
-// measured. The recorder keeps the first fatal message, so a later Fatalf
-// formats none.
+// recorder that a failing Equal calls, with its allocation ceiling. The
+// recorder keeps the first fatal message, so a later Fatalf formats none.
 func recorderCases() []alloctest.Case {
 	full := assert.NewRecorder()
 	assert.Equal(full, 1, 2, "the values match")
@@ -300,21 +299,21 @@ func recorderCases() []alloctest.Case {
 	clock := assert.NewControlled(epoch)
 	ctx := context.Background()
 	return []alloctest.Case{
-		{Name: "NewRecorder", Call: func(assert.TB) { recorder = assert.NewRecorder() }, Allocs: 1},
+		{Name: "NewRecorder", Call: func(assert.TB) { recorder = assert.NewRecorder() }, Allocs: 2},
 		{Name: "WithGoexit", Call: func(assert.TB) { goexits.WithGoexit() }},
-		{Name: "Report", Call: func(assert.TB) { full.Report(f, false) }, Allocs: 2},
-		{Name: "Failures", Call: func(assert.TB) { failures = full.Failures() }, Allocs: 1},
-		{Name: "Records", Call: func(assert.TB) { lines = full.Records() }, Allocs: 1},
+		{Name: "Report", Call: func(assert.TB) { full.Report(f, false) }, Allocs: 3},
+		{Name: "Failures", Call: func(assert.TB) { failures = full.Failures() }, Allocs: 2},
+		{Name: "Records", Call: func(assert.TB) { lines = full.Records() }, Allocs: 2},
 		{Name: "Clock", Call: func(assert.TB) { recorderClock = full.Clock() }},
 		{Name: "WithClock", Call: func(assert.TB) { full.WithClock(clock) }},
 		{Name: "Context", Call: func(assert.TB) { recorderContext = full.Context() }},
 		{Name: "WithContext", Call: func(assert.TB) { full.WithContext(ctx) }},
 		{Name: "Helper", Call: func(assert.TB) { full.Helper() }},
 		{Name: "Fatalf", Call: func(assert.TB) { full.Fatalf("the flag is set") }},
-		{Name: "Errorf", Call: func(assert.TB) { full.Errorf("the flag is set") }, Allocs: 1},
+		{Name: "Errorf", Call: func(assert.TB) { full.Errorf("the flag is set") }, Allocs: 2},
 		{Name: "Failed", Call: func(assert.TB) { failed = full.Failed() }},
 		{Name: "Message", Call: func(assert.TB) { message = full.Message() }},
-		{Name: "Messages", Call: func(assert.TB) { messages = full.Messages() }, Allocs: 1},
+		{Name: "Messages", Call: func(assert.TB) { messages = full.Messages() }, Allocs: 2},
 		{Name: "HelperCalls", Call: func(assert.TB) { helpers = full.HelperCalls() }},
 	}
 }

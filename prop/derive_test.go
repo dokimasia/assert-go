@@ -13,20 +13,20 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// The allocations of the derivations, measured.
+// The allocation ceilings of the derivations.
 const (
 	// ofAllocs are the allocations of Of of a type that a call read before:
 	// none, because Of reads each type once.
 	ofAllocs = 0
-	// shapeOfAllocs are the allocations of ShapeOf of an order: its read with
-	// the path of each part, the read of the shape file, and the text. The
-	// count varies by one between runs of the test binary, and this is the
-	// higher.
-	shapeOfAllocs = 387
-	// ofShapeAllocs are the allocations of OfShape of a record of an int and a
-	// bool: the read of the shape file, the parse of its JSON, and the
-	// converters with the path of each field.
-	ofShapeAllocs = 160
+	// shapeOfAllocs is the ceiling of the allocations of ShapeOf of an
+	// order: its read with the path of each part, the read of the shape
+	// file, and the text. The count varies by one between runs of the test
+	// binary.
+	shapeOfAllocs = 490
+	// ofShapeAllocs is the ceiling of the allocations of OfShape of a
+	// record of an int and a bool: the read of the shape file, the parse of
+	// its JSON, and the converters with the path of each field.
+	ofShapeAllocs = 200
 )
 
 // recordOfTwo is the shape file of a record of an int and a bool.

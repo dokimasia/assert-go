@@ -15,18 +15,19 @@ import (
 	"go.dokimi.dev/assert/internal/prop/random"
 )
 
-// The allocations of each number generator's constructor, measured.
+// The allocation ceilings of each number generator's constructor.
 const (
-	// integerAllocs are the allocations of Integer and Duration: the
-	// decode, the decode with its type erased, the conversion of a choice
-	// value to the generator's type, and the inverse.
-	integerAllocs = 4
-	// floatAllocs are the allocations of Float: the decode, the decode with
-	// its type erased, and the inverse.
-	floatAllocs = 3
-	// booleanAllocs are the allocations of Boolean: the decode and the
-	// decode with its type erased. The inverse captures nothing.
-	booleanAllocs = 2
+	// integerAllocs is the ceiling of the allocations of Integer and
+	// Duration: the decode, the decode with its type erased, the conversion
+	// of a choice value to the generator's type, and the inverse.
+	integerAllocs = 5
+	// floatAllocs is the ceiling of the allocations of Float: the decode,
+	// the decode with its type erased, and the inverse.
+	floatAllocs = 4
+	// booleanAllocs is the ceiling of the allocations of Boolean: the
+	// decode and the decode with its type erased. The inverse captures
+	// nothing.
+	booleanAllocs = 3
 )
 
 // pinnedReuse are the first twelve integers over the signed 64-bit range

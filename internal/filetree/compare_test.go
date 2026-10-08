@@ -132,11 +132,11 @@ func BenchmarkCompare(b *testing.B) {
 }
 
 // compareCases returns a call of Differing of a tree read with an equal
-// wanted tree, with its allocation ceiling, measured.
+// wanted tree, with its allocation ceiling.
 func compareCases() []alloctest.Case {
 	want := filetree.Tree{"a.txt": textFile, "docs/b.md": fileOf("# b\n")}
 	got := filetree.Tree{"a.txt": textFile, "docs": directory, "docs/b.md": fileOf("# b\n")}
 	return []alloctest.Case{
-		{Name: "Differing", Call: func(assert.TB) { keptPaths = filetree.Differing(want, got, false) }, Allocs: 2},
+		{Name: "Differing", Call: func(assert.TB) { keptPaths = filetree.Differing(want, got, false) }, Allocs: 3},
 	}
 }

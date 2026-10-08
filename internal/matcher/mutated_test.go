@@ -103,7 +103,7 @@ func BenchmarkMutated(b *testing.B) {
 }
 
 // mutatedCases returns a call of each function of mutated.go, with its
-// allocation ceiling, measured.
+// allocation ceiling.
 func mutatedCases() []allocCase {
 	return []allocCase{
 		{name: "Mutated", call: func(matcher.Seat) { mutatedBinary = matcher.Mutated() }},

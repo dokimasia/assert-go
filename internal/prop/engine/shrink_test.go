@@ -15,23 +15,23 @@ import (
 	"go.dokimi.dev/assert/internal/prop/token"
 )
 
-// shrinkAllocs are the allocations of a run from a stored failing case of
-// 2000 that shrinks to 1001 and explains it, measured: 26 cases of about 18
-// allocations each, the record of the stored case's run, 5 for the
+// shrinkAllocs is the ceiling of the allocations of a run from a stored
+// failing case of 2000 that shrinks to 1001 and explains it: 26 cases of
+// about 18 allocations each, the record of the stored case's run, 5 for the
 // delete-and-lower round that ends the shrink, whose one integer is at
 // index 0, and the list of where the replay that confirms the failure made
 // its request. The shrink's cases reuse the storage of spare cases, so each
 // allocates its recorder, its goroutine and its candidate's choices, nodes
 // and token, and not the growth of its record.
-const shrinkAllocs = 479
+const shrinkAllocs = 600
 
-// spentAllocs are the allocations of a run from a stored failing case of
-// 512 choices whose budget of one run is spent by its first candidate,
-// measured: the run of the stored case and the run of the candidate, each
+// spentAllocs is the ceiling of the allocations of a run from a stored
+// failing case of 512 choices whose budget of one run is spent by its first
+// candidate: the run of the stored case and the run of the candidate, each
 // of 512 draws, and the list of where the replay that confirms the failure
 // made its requests. No pass that starts after the budget is spent builds a
 // candidate.
-const spentAllocs = 4309
+const spentAllocs = 5400
 
 // TestShrink checks shrinking through whole runs: the minimal case of each
 // failure, the shared budget of runs and time, and the order of every

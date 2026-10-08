@@ -11,9 +11,9 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// sizeAllocs are the allocations of MinSize and MaxSize, measured: the
+// sizeAllocs is the ceiling of the allocations of MinSize and MaxSize: the
 // closure of the bound, which escapes with the option a caller keeps.
-const sizeAllocs = 1
+const sizeAllocs = 2
 
 // TestSize checks the bounds on the length of a list, a dict, a string and
 // a byte string.

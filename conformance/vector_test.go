@@ -32,18 +32,19 @@ const firstVector = "behaviour/passes-a-body-that-never-fails"
 // vector to check.
 const emptyToken = `{"choices":[],"token":"prop1:"}`
 
-// The allocations of the functions of a vector, measured once the JSON
-// decoder has cached the functions of their types.
+// The allocation ceilings of the functions of a vector, measured once the
+// JSON decoder has cached the functions of their types.
 const (
 	// validAllocs are the allocations of Valid.
 	validAllocs = 0
-	// vectorsAllocs are the allocations of Vectors: the 1,609 of its
-	// contract, the two that the JSON decoder's pooled state adds, and one
-	// that a collection during the count adds when it empties the pool.
-	vectorsAllocs = 1612
-	// checkAllocs are the allocations of Check on emptyToken: the struct
-	// that the vector decodes into, and the token that Encode returns.
-	checkAllocs = 2
+	// vectorsAllocs is the ceiling of the allocations of Vectors: those of
+	// its contract, the two that the JSON decoder's pooled state adds, and
+	// one that a collection during the count adds when it empties the pool.
+	vectorsAllocs = 2100
+	// checkAllocs is the ceiling of the allocations of Check on emptyToken:
+	// the struct that the vector decodes into, and the token that Encode
+	// returns.
+	checkAllocs = 3
 )
 
 // TestVector runs every vector of the property engine against this

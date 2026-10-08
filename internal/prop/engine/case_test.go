@@ -19,33 +19,34 @@ import (
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
 
-// The allocations of the case's methods, measured.
+// The allocation ceilings of the case's methods.
 const (
-	// reportAllocs are the allocations of a recording Report: the rendered
+	// reportAllocs is the ceiling of the allocations of a recording Report:
+	// the rendered record and the message the recorder formats from it.
+	reportAllocs = 3
+	// errorfAllocs is the ceiling of the allocations of Errorf: the
+	// message, the frames searched for the caller's code, the rendered
 	// record and the message the recorder formats from it.
-	reportAllocs = 2
-	// errorfAllocs are the allocations of Errorf: the message, the frames
-	// searched for the caller's code, the rendered record and the message
-	// the recorder formats from it.
-	errorfAllocs = 5
-	// fatalCaseAllocs are the allocations of a whole replayed case whose
-	// body calls Fatalf.
-	fatalCaseAllocs = 10
-	// historyCaseAllocs are the allocations of a whole replayed case whose
-	// body calls History: the case's own three, and the history.
-	historyCaseAllocs = 4
-	// targetsAllocs are the allocations of Targets: the map of the copy and
-	// its storage.
-	targetsAllocs = 2
-	// contextCaseAllocs are the allocations of a whole replayed case whose
-	// body calls Context: the case's own three, and the context with its
-	// cancel function.
-	contextCaseAllocs = 5
-	// countedCaseAllocs are the allocations of a whole replayed case whose
-	// body counts one value: the case's own three, the owner, the case's
-	// map of counts with its storage, the owner's stack, and the function
-	// that ends the count.
-	countedCaseAllocs = 8
+	errorfAllocs = 7
+	// fatalCaseAllocs is the ceiling of the allocations of a whole replayed
+	// case whose body calls Fatalf.
+	fatalCaseAllocs = 13
+	// historyCaseAllocs is the ceiling of the allocations of a whole
+	// replayed case whose body calls History: the case's own three, and the
+	// history.
+	historyCaseAllocs = 5
+	// targetsAllocs is the ceiling of the allocations of Targets: the map
+	// of the copy and its storage.
+	targetsAllocs = 3
+	// contextCaseAllocs is the ceiling of the allocations of a whole
+	// replayed case whose body calls Context: the case's own three, and the
+	// context with its cancel function.
+	contextCaseAllocs = 7
+	// countedCaseAllocs is the ceiling of the allocations of a whole
+	// replayed case whose body counts one value: the case's own three, the
+	// owner, the case's map of counts with its storage, the owner's stack,
+	// and the function that ends the count.
+	countedCaseAllocs = 10
 )
 
 // owner is the owner of a count of a test body. Its field gives it a size,

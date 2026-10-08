@@ -34,18 +34,21 @@ const fourWorkers = 4
 
 // The allocations that the specs of more than one file measure.
 const (
-	// drawAllocs are the allocations of a whole case that replays one draw,
-	// its goroutine and its recorder included.
-	drawAllocs = 9
-	// copyAllocs are the allocations of an accessor: the copy it returns.
-	copyAllocs = 1
-	// valueCaseAllocs are the allocations of a whole replayed case whose
-	// body makes one choice, through its source, Integer or Structure.
-	valueCaseAllocs = 5
-	// spanCaseAllocs are the allocations of a whole replayed case whose
-	// body makes one choice inside a span: those of a value case, and the
-	// growth of the case's spans and of its stack of open spans.
-	spanCaseAllocs = 7
+	// drawAllocs is the ceiling of the allocations of a whole case that
+	// replays one draw, its goroutine and its recorder included.
+	drawAllocs = 12
+	// copyAllocs is the ceiling of the allocations of an accessor: the copy
+	// it returns.
+	copyAllocs = 2
+	// valueCaseAllocs is the ceiling of the allocations of a whole replayed
+	// case whose body makes one choice, through its source, Integer or
+	// Structure.
+	valueCaseAllocs = 7
+	// spanCaseAllocs is the ceiling of the allocations of a whole replayed
+	// case whose body makes one choice inside a span: those of a value
+	// case, and the growth of the case's spans and of its stack of open
+	// spans.
+	spanCaseAllocs = 9
 )
 
 // The first values past the members of the engine's enums.

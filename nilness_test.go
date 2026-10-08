@@ -46,7 +46,7 @@ func BenchmarkNilness(b *testing.B) {
 }
 
 // nilnessCases returns a passing call of Nil on a nil pointer and of NotNil
-// on a pointer, with its allocation ceiling, measured.
+// on a pointer, with its allocation ceiling.
 func nilnessCases() []alloctest.Case {
 	var absent *int
 	present := new(int)

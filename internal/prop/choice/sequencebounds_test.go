@@ -225,7 +225,7 @@ func BenchmarkSequenceBounds(b *testing.B) {
 
 	b.Run("Target", func(b *testing.B) {
 		var got []uint32
-		c := bench.Start(b).MaxAllocs(1)
+		c := bench.Start(b).MaxAllocs(2)
 		defer c.End()
 		for c.Loop() {
 			got = bounds.Target()
@@ -247,7 +247,7 @@ func BenchmarkSequenceBounds(b *testing.B) {
 	b.Run("Coerce", func(b *testing.B) {
 		var got []uint32
 		recorded := sequenceChoice(1, 2)
-		c := bench.Start(b).MaxAllocs(1)
+		c := bench.Start(b).MaxAllocs(2)
 		defer c.End()
 		for c.Loop() {
 			got = bounds.Coerce(recorded)

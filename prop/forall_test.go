@@ -17,11 +17,11 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// forAllAllocs are the allocations of a passing run of 100 cases that draw
-// one integer each, measured: the engine's 485 for the run's cases, and two
-// for the closures that adapt the body to the engine's case and give each
-// case a context.
-const forAllAllocs = 487
+// forAllAllocs is the ceiling of the allocations of a passing run of 100
+// cases that draw one integer each: the engine's allocations for the run's
+// cases, and two for the closures that adapt the body to the engine's case
+// and give each case a context.
+const forAllAllocs = 620
 
 // forAllID is the assertion of a failing run's record, which the
 // definition pins.

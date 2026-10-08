@@ -19,18 +19,18 @@ import (
 	"go.dokimi.dev/assert/internal/matcher"
 )
 
-// linearizableAllocs are the allocations of a passing check of the register
-// over a write and a read, measured, the goroutine that runs the search
-// included.
-const linearizableAllocs = 39
+// linearizableAllocs is the ceiling of the allocations of a passing check
+// of the register over a write and a read, the goroutine that runs the
+// search included.
+const linearizableAllocs = 49
 
-// The allocations of a write that a history records and of the check that
-// continues the search of the check before it, measured, the goroutine that
-// runs the search included, and the writes after which the case starts a
-// history of its own, so that a benchmark of many iterations keeps its
-// history short.
+// The allocation ceiling of a write that a history records and of the check
+// that continues the search of the check before it, the goroutine that runs
+// the search included, and the writes after which the case starts a history
+// of its own, so that a benchmark of many iterations keeps its history
+// short.
 const (
-	resumedAllocs = 11
+	resumedAllocs = 14
 	resumedWrites = 1000
 )
 

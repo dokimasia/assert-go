@@ -12,15 +12,15 @@ import (
 	"go.dokimi.dev/assert/internal/fault"
 )
 
-// The allocations of the functions of a path, measured.
+// The allocation ceilings of the functions of a path.
 const (
-	// stringAllocs are the allocations of String for a path whose keys
-	// have texts of 64 bytes or fewer: the text it returns.
-	stringAllocs = 1
-	// longKeyAllocs are the allocations of String for a path with one key
-	// whose text is longer than 64 bytes: the text it returns, and the
-	// key's text formatted twice.
-	longKeyAllocs = 3
+	// stringAllocs is the ceiling of the allocations of String for a path
+	// whose keys have texts of 64 bytes or fewer: the text it returns.
+	stringAllocs = 2
+	// longKeyAllocs is the ceiling of the allocations of String for a path
+	// with one key whose text is longer than 64 bytes: the text it returns,
+	// and the key's text formatted twice.
+	longKeyAllocs = 4
 )
 
 // longKey is a key whose quoted text is longer than 64 bytes.

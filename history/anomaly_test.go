@@ -45,7 +45,7 @@ func TestAnomaly(t *testing.T) {
 // MarshalText allocates its text.
 func TestAnomalyAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = history.G2.Valid() }, 0, "Valid allocates nothing")
-	assert.MaxAllocs(t, func() { _, _ = history.G2.MarshalText() }, 1, "MarshalText allocates its text")
+	assert.MaxAllocs(t, func() { _, _ = history.G2.MarshalText() }, 2, "MarshalText allocates its text")
 }
 
 // BenchmarkAnomaly measures Valid under a ceiling of no allocation, and
@@ -53,7 +53,7 @@ func TestAnomalyAllocs(t *testing.T) {
 func BenchmarkAnomaly(b *testing.B) {
 	b.Run("MarshalText", func(b *testing.B) {
 		var got []byte
-		c := bench.Start(b).MaxAllocs(1)
+		c := bench.Start(b).MaxAllocs(2)
 		defer c.End()
 		for c.Loop() {
 			got, _ = history.G2.MarshalText()

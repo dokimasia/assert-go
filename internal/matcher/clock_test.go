@@ -149,13 +149,12 @@ func BenchmarkClock(b *testing.B) {
 }
 
 // clockCases returns a call of each function and method of clock.go, with
-// its allocation ceiling, measured. Sleep sleeps for no time, so it
-// returns at once.
+// its allocation ceiling. Sleep sleeps for no time, so it returns at once.
 func clockCases() []allocCase {
 	c := matcher.NewControlled(clockEpoch)
 	return []allocCase{
 		{name: "ClockOf", call: func(seat matcher.Seat) { clockOf = matcher.ClockOf(seat) }},
-		{name: "NewControlled", call: func(matcher.Seat) { controlled = matcher.NewControlled(clockEpoch) }, allocs: 2},
+		{name: "NewControlled", call: func(matcher.Seat) { controlled = matcher.NewControlled(clockEpoch) }, allocs: 3},
 		{name: "Controlled.Now", call: func(matcher.Seat) { instant = c.Now() }},
 		{name: "Controlled.Advance", call: func(matcher.Seat) { c.Advance(time.Second) }},
 		{name: "Controlled.Sleep", call: func(matcher.Seat) { c.Sleep(0) }},

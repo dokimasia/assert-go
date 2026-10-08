@@ -11,10 +11,10 @@ import (
 	"go.dokimi.dev/assert/internal/prop/pattern"
 )
 
-// parseAllocs are the allocations of Parse on the pattern of a hexadecimal
-// identifier, measured: the parser and its characters, and the parsed
+// parseAllocs is the ceiling of the allocations of Parse on the pattern of
+// a hexadecimal identifier: the parser and its characters, and the parsed
 // pieces and classes.
-const parseAllocs = 16
+const parseAllocs = 20
 
 // identifier is the pattern of the benchmark and the allocation check.
 const identifier = `[a-f0-9]{4}-\d{2}`

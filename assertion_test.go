@@ -241,9 +241,9 @@ func BenchmarkAssertion(b *testing.B) {
 	}
 }
 
-// assertionCases returns a call of That and a call of That with one
-// passing method of each kind, on the inputs of the functions' cases, with
-// its allocation ceiling, measured.
+// assertionCases returns a call of That and a call of That with one passing
+// method of each kind, on the inputs of the functions' cases, with its
+// allocation ceiling.
 func assertionCases() []alloctest.Case {
 	items, none := []int{1, 2, 3}, []int{}
 	needles := []string{"cart", "items"}
@@ -253,41 +253,41 @@ func assertionCases() []alloctest.Case {
 	var succeeded error
 	wrapped := fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", matchertest.ErrSample))
 	return []alloctest.Case{
-		{Name: "That", Call: func(tb assert.TB) { chain = assert.That(tb, 7) }, Allocs: 1},
+		{Name: "That", Call: func(tb assert.TB) { chain = assert.That(tb, 7) }, Allocs: 2},
 		{Name: "Equal", Call: func(tb assert.TB) { assert.That(tb, 7).Equal(7, allocContract) }},
 		{Name: "NotEqual", Call: func(tb assert.TB) { assert.That(tb, 7).NotEqual(8, allocContract) }},
 		{Name: "Nil", Call: func(tb assert.TB) { assert.That(tb, absent).Nil(allocContract) }},
 		{Name: "NotNil", Call: func(tb assert.TB) { assert.That(tb, present).NotNil(allocContract) }},
 		{Name: "Length", Call: func(tb assert.TB) { assert.That(tb, items).Length(3, allocContract) }},
-		{Name: "Empty", Allocs: 1, Call: func(tb assert.TB) { assert.That(tb, none).Empty(allocContract) }},
-		{Name: "NotEmpty", Allocs: 1, Call: func(tb assert.TB) { assert.That(tb, items).NotEmpty(allocContract) }},
-		{Name: "Contains", Allocs: 1, Call: func(tb assert.TB) {
+		{Name: "Empty", Allocs: 2, Call: func(tb assert.TB) { assert.That(tb, none).Empty(allocContract) }},
+		{Name: "NotEmpty", Allocs: 2, Call: func(tb assert.TB) { assert.That(tb, items).NotEmpty(allocContract) }},
+		{Name: "Contains", Allocs: 2, Call: func(tb assert.TB) {
 			assert.That(tb, "a cart of three items").Contains("cart", allocContract)
 		}},
-		{Name: "NotContains", Allocs: 1, Call: func(tb assert.TB) {
+		{Name: "NotContains", Allocs: 2, Call: func(tb assert.TB) {
 			assert.That(tb, "a cart of three items").NotContains("truck", allocContract)
 		}},
-		{Name: "ContainsInOrder", Allocs: 1, Call: func(tb assert.TB) {
+		{Name: "ContainsInOrder", Allocs: 2, Call: func(tb assert.TB) {
 			assert.That(tb, "a cart of three items").ContainsInOrder(needles, allocContract)
 		}},
-		{Name: "HasPrefix", Allocs: 1, Call: func(tb assert.TB) {
+		{Name: "HasPrefix", Allocs: 2, Call: func(tb assert.TB) {
 			assert.That(tb, "store: missing").HasPrefix("store: ", allocContract)
 		}},
-		{Name: "HasSuffix", Allocs: 1, Call: func(tb assert.TB) {
+		{Name: "HasSuffix", Allocs: 2, Call: func(tb assert.TB) {
 			assert.That(tb, "store: missing").HasSuffix("missing", allocContract)
 		}},
-		{Name: "Matches", Allocs: 63, Call: func(tb assert.TB) {
+		{Name: "Matches", Allocs: 79, Call: func(tb assert.TB) {
 			assert.That(tb, "order 42").Matches(`^order \d+$`, allocContract)
 		}},
 		{
 			Name:   "CloseTo",
 			Call:   func(tb assert.TB) { assert.That(tb, reading).CloseTo(1, 0.1, allocContract) },
-			Allocs: 1,
+			Allocs: 2,
 		},
 		{
 			Name:   "InRange",
 			Call:   func(tb assert.TB) { assert.That(tb, reading).InRange(0, 2, allocContract) },
-			Allocs: 1,
+			Allocs: 2,
 		},
 		{Name: "NoError", Call: func(tb assert.TB) { assert.That(tb, succeeded).NoError(allocContract) }},
 		{Name: "HasError", Call: func(tb assert.TB) { assert.That(tb, wrapped).HasError(allocContract) }},

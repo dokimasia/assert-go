@@ -267,12 +267,12 @@ func BenchmarkTree(b *testing.B) {
 
 // treeCases returns a passing call of MatchTree of the output api against
 // its golden tree, which it writes under the working directory, with its
-// allocation ceiling, measured.
+// allocation ceiling.
 func treeCases(tb testing.TB) []alloctest.Case {
 	tb.Helper()
 	assert.NoError(tb, os.MkdirAll(apiDir, 0o755), "the golden directory is made")
 	assert.NoError(tb, filetree.Write(apiDir, apiTree), "the golden tree is written")
 	return []alloctest.Case{
-		{Name: "MatchTree", Call: func(tb assert.TB) { golden.MatchTree(tb, "api", api, checking) }, Allocs: 122},
+		{Name: "MatchTree", Call: func(tb assert.TB) { golden.MatchTree(tb, "api", api, checking) }, Allocs: 160},
 	}
 }

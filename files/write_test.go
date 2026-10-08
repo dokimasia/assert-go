@@ -70,13 +70,13 @@ func BenchmarkWrite(b *testing.B) {
 	}
 }
 
-// writeCases returns a call of Write of one short file over a file, with its
-// allocation ceiling, measured.
+// writeCases returns a call of Write of one short file over a file, with
+// its allocation ceiling.
 func writeCases(tb testing.TB) []alloctest.Case {
 	tb.Helper()
 	dir := files.Workspace(tb, files.Tree{"a.txt": files.Text("a\n")})
 	tree := files.Tree{"a.txt": files.Text("b\n")}
 	return []alloctest.Case{
-		{Name: "Write", Call: func(tb assert.TB) { files.Write(tb, dir, tree) }, Allocs: 28},
+		{Name: "Write", Call: func(tb assert.TB) { files.Write(tb, dir, tree) }, Allocs: 60},
 	}
 }

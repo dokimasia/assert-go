@@ -196,7 +196,7 @@ func BenchmarkTree(b *testing.B) {
 
 	b.Run("New", func(b *testing.B) {
 		var got *tree.Tree
-		c := bench.Start(b).MaxAllocs(3)
+		c := bench.Start(b).MaxAllocs(4)
 		defer c.End()
 		for c.Loop() {
 			got = tree.New(tree.NodeLimit)
@@ -236,7 +236,7 @@ func BenchmarkTree(b *testing.B) {
 
 	b.Run("Walk", func(b *testing.B) {
 		var got *tree.Walker
-		c := bench.Start(b).MaxAllocs(2)
+		c := bench.Start(b).MaxAllocs(3)
 		defer c.End()
 		for c.Loop() {
 			got = tr.Walk()

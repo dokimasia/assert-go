@@ -286,15 +286,15 @@ func BenchmarkCompare(b *testing.B) {
 }
 
 // compareCases returns a passing call of each comparison of the tree in
-// memory, with its allocation ceiling, measured.
+// memory, with its allocation ceiling.
 func compareCases() []alloctest.Case {
 	return []alloctest.Case{
-		{Name: "Equal", Call: func(tb assert.TB) { files.Equal(tb, mapped, mappedTree, "the tree") }, Allocs: 43},
-		{Name: "Contains", Call: func(tb assert.TB) { files.Contains(tb, mapped, mappedTree, "the tree") }, Allocs: 43},
+		{Name: "Equal", Call: func(tb assert.TB) { files.Equal(tb, mapped, mappedTree, "the tree") }, Allocs: 54},
+		{Name: "Contains", Call: func(tb assert.TB) { files.Contains(tb, mapped, mappedTree, "the tree") }, Allocs: 54},
 		{
 			Name:   "Unchanged",
 			Call:   func(tb assert.TB) { files.Unchanged(tb, mapped, func() {}, "the tree") },
-			Allocs: 78,
+			Allocs: 98,
 		},
 	}
 }

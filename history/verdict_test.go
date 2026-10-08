@@ -29,14 +29,14 @@ func TestVerdict(t *testing.T) {
 
 // TestVerdictAllocs checks that MarshalText allocates its text.
 func TestVerdictAllocs(t *testing.T) {
-	assert.MaxAllocs(t, func() { _, _ = history.Undecided.MarshalText() }, 1, "MarshalText allocates its text")
+	assert.MaxAllocs(t, func() { _, _ = history.Undecided.MarshalText() }, 2, "MarshalText allocates its text")
 }
 
 // BenchmarkVerdict measures MarshalText.
 func BenchmarkVerdict(b *testing.B) {
 	b.Run("MarshalText", func(b *testing.B) {
 		var got []byte
-		c := bench.Start(b).MaxAllocs(1)
+		c := bench.Start(b).MaxAllocs(2)
 		defer c.End()
 		for c.Loop() {
 			got, _ = history.Undecided.MarshalText()

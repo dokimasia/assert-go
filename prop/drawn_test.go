@@ -78,9 +78,9 @@ func TestDrawn(t *testing.T) {
 	})
 }
 
-// drawnJSONAllocs are the allocations of MarshalJSON on a draw of an
-// integer whose value matters, measured.
-const drawnJSONAllocs = 20
+// drawnJSONAllocs is the ceiling of the allocations of MarshalJSON on a
+// draw of an integer whose value matters.
+const drawnJSONAllocs = 25
 
 // TestDrawnAllocs checks that Valid allocates nothing, and the ceiling
 // of MarshalJSON.

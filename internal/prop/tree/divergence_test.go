@@ -58,7 +58,7 @@ func BenchmarkDivergenceError(b *testing.B) {
 		var got string
 		digit := choice.Bounds{}
 		d := &tree.DivergenceError{Index: 12, Recorded: &digit, Requested: &digit}
-		c := bench.Start(b).MaxAllocs(2)
+		c := bench.Start(b).MaxAllocs(3)
 		defer c.End()
 		for c.Loop() {
 			got = d.Error()

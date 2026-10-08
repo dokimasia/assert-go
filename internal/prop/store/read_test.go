@@ -18,8 +18,8 @@ import (
 	"go.dokimi.dev/assert/internal/prop/token"
 )
 
-// readAllocs are the allocations of Read on the pinned entry, measured.
-const readAllocs = 135
+// readAllocs is the ceiling of the allocations of Read on the pinned entry.
+const readAllocs = 170
 
 // FuzzRead checks that Read returns one of its four verdicts for any
 // bytes, and does not panic. The error wraps ErrLater for Skip and

@@ -94,10 +94,9 @@ func BenchmarkClock(b *testing.B) {
 	}
 }
 
-// clockCases returns a call of NewControlled, with its allocation ceiling,
-// measured.
+// clockCases returns a call of NewControlled, with its allocation ceiling.
 func clockCases() []alloctest.Case {
 	return []alloctest.Case{
-		{Name: "NewControlled", Call: func(assert.TB) { controlled = assert.NewControlled(epoch) }, Allocs: 2},
+		{Name: "NewControlled", Call: func(assert.TB) { controlled = assert.NewControlled(epoch) }, Allocs: 3},
 	}
 }

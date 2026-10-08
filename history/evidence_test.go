@@ -12,13 +12,14 @@ import (
 	"go.dokimi.dev/assert/internal/alloctest"
 )
 
-// The allocations of the JSON form of each kind of evidence, measured.
+// The allocation ceilings of the JSON form of each kind of evidence.
 const (
-	// edgeJSONAllocs are the allocations of the JSON form of rwEdge.
-	edgeJSONAllocs = 24
-	// observationJSONAllocs are the allocations of the JSON form of
-	// inconsistentRead.
-	observationJSONAllocs = 39
+	// edgeJSONAllocs is the ceiling of the allocations of the JSON form of
+	// rwEdge.
+	edgeJSONAllocs = 30
+	// observationJSONAllocs is the ceiling of the allocations of the JSON
+	// form of inconsistentRead.
+	observationJSONAllocs = 49
 )
 
 // The typed literals of the keys, the values and the lists of the tests of

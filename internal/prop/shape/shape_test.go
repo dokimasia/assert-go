@@ -15,17 +15,19 @@ import (
 	"go.dokimi.dev/assert/internal/prop/shape"
 )
 
-// The allocations of the reader, measured.
+// The allocation ceilings of the reader.
 const (
-	// readAllocs are the allocations of Read of a record of an int and a
-	// bool: the parsed document, the reader, and the generators.
-	readAllocs = 97
-	// readWithAllocs are the allocations of ReadWith of that record and one
-	// external generator: those of Read, and the growth of the reader's
+	// readAllocs is the ceiling of the allocations of Read of a record of
+	// an int and a bool: the parsed document, the reader, and the
 	// generators.
-	readWithAllocs = 98
-	// shapesAllocs are the allocations of Shapes: its list of ids.
-	shapesAllocs = 1
+	readAllocs = 130
+	// readWithAllocs is the ceiling of the allocations of ReadWith of that
+	// record and one external generator: those of Read, and the growth of
+	// the reader's generators.
+	readWithAllocs = 130
+	// shapesAllocs is the ceiling of the allocations of Shapes: its list of
+	// ids.
+	shapesAllocs = 2
 )
 
 // infinite is the reason of a definition without a finite value.

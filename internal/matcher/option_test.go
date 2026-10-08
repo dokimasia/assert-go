@@ -121,8 +121,8 @@ func BenchmarkOption(b *testing.B) {
 	benchAllocs(b, optionCases())
 }
 
-// optionCases returns a call of each function and method of option.go,
-// with its allocation ceiling, measured.
+// optionCases returns a call of each function and method of option.go, with
+// its allocation ceiling.
 func optionCases() []allocCase {
 	empty := matcher.EquateEmpty()
 	return []allocCase{

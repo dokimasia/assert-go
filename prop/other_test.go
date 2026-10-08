@@ -87,10 +87,10 @@ var other = prop.Other{
 	Choices:        "prop1:ADQ",
 }
 
-// otherJSONAllocs are the allocations of MarshalJSON on the further failure
-// of the definition's vector, its one draw boxed as an entry of the JSON
-// included, measured.
-const otherJSONAllocs = 20
+// otherJSONAllocs is the ceiling of the allocations of MarshalJSON on the
+// further failure of the definition's vector, its one draw boxed as an
+// entry of the JSON included.
+const otherJSONAllocs = 25
 
 // TestOtherAllocs checks the ceiling of MarshalJSON.
 func TestOtherAllocs(t *testing.T) {

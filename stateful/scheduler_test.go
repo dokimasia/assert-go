@@ -14,22 +14,24 @@ import (
 	"go.dokimi.dev/assert/stateful"
 )
 
-// The allocations of a whole replayed case that uses a scheduler, measured.
-// A case that starts a task allocates up to two more when the runtime makes
+// The allocation ceilings of a whole replayed case that uses a scheduler. A
+// case that starts a task allocates up to two more when the runtime makes
 // the goroutine of the case or of the task rather than reusing one, and its
 // ceiling includes the two.
 const (
-	// schedulerCaseAllocs are those of a case that makes a scheduler: the
-	// case's own three, the scheduler, its channel, its cleanup and the
-	// growth of the case's cleanups.
-	schedulerCaseAllocs = 7
-	// spawnCaseAllocs are those of a case that spawns one task and never
-	// runs it: 11, a scheduler case's, the task, its channel, its
-	// goroutine's start and the growth of the ready tasks.
-	spawnCaseAllocs = 13
-	// runCaseAllocs are those of a case that spawns one task and runs it:
-	// 13, a spawning case's and the release's choice.
-	runCaseAllocs = 15
+	// schedulerCaseAllocs is the ceiling of the allocations of a case that
+	// makes a scheduler: the case's own three, the scheduler, its channel,
+	// its cleanup and the growth of the case's cleanups.
+	schedulerCaseAllocs = 9
+	// spawnCaseAllocs is the ceiling of the allocations of a case that
+	// spawns one task and never runs it: those of a scheduler case, the
+	// task, its channel, its goroutine's start and the growth of the ready
+	// tasks.
+	spawnCaseAllocs = 17
+	// runCaseAllocs is the ceiling of the allocations of a case that spawns
+	// one task and runs it: those of a spawning case, and the release's
+	// choice.
+	runCaseAllocs = 19
 )
 
 // TestScheduler checks the releases of a scheduler: the order of the ready

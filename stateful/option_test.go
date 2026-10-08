@@ -15,9 +15,9 @@ import (
 	"go.dokimi.dev/assert/stateful"
 )
 
-// optionAllocs are the allocations of an option that its call keeps: the
-// closure of its setting, measured.
-const optionAllocs = 1
+// optionAllocs is the ceiling of the allocations of an option that its call
+// keeps: the closure of its setting.
+const optionAllocs = 2
 
 // optionCases is the number of random cases whose first flag the tests of
 // Mean compare with the random package's coin.

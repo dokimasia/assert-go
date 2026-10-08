@@ -80,12 +80,12 @@ func BenchmarkSentence(b *testing.B) {
 }
 
 // sentenceCases returns a call of Sentence of a record of one changed file,
-// with its allocation ceiling, measured.
+// with its allocation ceiling.
 func sentenceCases() []alloctest.Case {
 	f := matcher.Failure{Contract: "the tree is built", Detail: filetree.Record{
 		Want: filetree.Tree{"a.txt": fileOf("b\n")}, Got: filetree.Tree{"a.txt": textFile}, Differences: 1,
 	}.Fields()}
 	return []alloctest.Case{
-		{Name: "Sentence", Call: func(assert.TB) { kept = filetree.Sentence(f) }, Allocs: 11},
+		{Name: "Sentence", Call: func(assert.TB) { kept = filetree.Sentence(f) }, Allocs: 14},
 	}
 }

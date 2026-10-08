@@ -13,7 +13,7 @@ import (
 	"go.dokimi.dev/assert/internal/matcher"
 )
 
-// The allocations of Hash, measured.
+// The allocation ceilings of Hash.
 const (
 	// hashScalarAllocs are the allocations of Hash of an int.
 	hashScalarAllocs = 0
@@ -21,9 +21,10 @@ const (
 	hashSliceAllocs = 0
 	// hashStructAllocs are the allocations of Hash of a struct of ints.
 	hashStructAllocs = 0
-	// hashMapAllocs are the allocations of Hash of a map of three ints: the
-	// map's iterator, and the copies of keys and values that it returns.
-	hashMapAllocs = 9
+	// hashMapAllocs is the ceiling of the allocations of Hash of a map of
+	// three ints: the map's iterator, and the copies of keys and values
+	// that it returns.
+	hashMapAllocs = 12
 )
 
 // mapRuns is the number of times a test hashes one map, each time over the

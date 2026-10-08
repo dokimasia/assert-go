@@ -11,11 +11,11 @@ import (
 	"go.dokimi.dev/assert/internal/alloctest"
 )
 
-// The allocation ceilings of the spec, measured.
+// The allocation ceilings of the spec.
 const (
-	// specFromAllocs are the allocations of SpecFrom: the closure of the
-	// spec's Next.
-	specFromAllocs = 1
+	// specFromAllocs is the ceiling of the allocations of SpecFrom: the
+	// closure of the spec's Next.
+	specFromAllocs = 2
 	// returnedAllocs are the allocations of Returned of a known int output.
 	returnedAllocs = 0
 )

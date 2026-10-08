@@ -20,19 +20,20 @@ var errEmpty = errors.New("test: the bounds admit no value")
 // escapes to the heap as it does when a caller returns it.
 var sink error
 
-// The allocations of the functions of a fault, measured with a result that
-// escapes.
+// The allocation ceilings of the functions of a fault, measured with a
+// result that escapes.
 const (
-	// newAllocs are the allocations of New and Of: the fault and its
-	// reason.
-	newAllocs = 2
-	// atAllocs are the allocations of At: the fault and its path.
-	atAllocs = 2
-	// inAllocs are the allocations of In: the fault.
-	inAllocs = 1
-	// errorAllocs are the allocations of Error of a fault of every part:
-	// the text of its path and the text it returns.
-	errorAllocs = 2
+	// newAllocs is the ceiling of the allocations of New and Of: the fault
+	// and its reason.
+	newAllocs = 3
+	// atAllocs is the ceiling of the allocations of At: the fault and its
+	// path.
+	atAllocs = 3
+	// inAllocs is the ceiling of the allocations of In: the fault.
+	inAllocs = 2
+	// errorAllocs is the ceiling of the allocations of Error of a fault of
+	// every part: the text of its path and the text it returns.
+	errorAllocs = 3
 )
 
 // TestFault checks how a fault is built, how it gains its path and its

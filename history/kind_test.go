@@ -42,7 +42,7 @@ func TestKind(t *testing.T) {
 // allocates its text.
 func TestKindAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = history.Unknown.Valid() }, 0, "Valid allocates nothing")
-	assert.MaxAllocs(t, func() { _, _ = history.Unknown.MarshalText() }, 1, "MarshalText allocates its text")
+	assert.MaxAllocs(t, func() { _, _ = history.Unknown.MarshalText() }, 2, "MarshalText allocates its text")
 }
 
 // BenchmarkKind measures Valid under a ceiling of no allocation, and
@@ -50,7 +50,7 @@ func TestKindAllocs(t *testing.T) {
 func BenchmarkKind(b *testing.B) {
 	b.Run("MarshalText", func(b *testing.B) {
 		var got []byte
-		c := bench.Start(b).MaxAllocs(1)
+		c := bench.Start(b).MaxAllocs(2)
 		defer c.End()
 		for c.Loop() {
 			got, _ = history.Unknown.MarshalText()

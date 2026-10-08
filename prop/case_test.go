@@ -16,35 +16,37 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// The allocations of the case's methods, measured.
+// The allocation ceilings of the case's methods.
 const (
-	// reportAllocs are the allocations of a recording Report: the rendered
+	// reportAllocs is the ceiling of the allocations of a recording Report:
+	// the rendered record and the message the recorder formats from it.
+	reportAllocs = 3
+	// errorfAllocs is the ceiling of the allocations of Errorf: the
+	// message, the frames searched for the caller's code, the rendered
 	// record and the message the recorder formats from it.
-	reportAllocs = 2
-	// errorfAllocs are the allocations of Errorf: the message, the frames
-	// searched for the caller's code, the rendered record and the message
-	// the recorder formats from it.
-	errorfAllocs = 5
-	// fatalfRunAllocs are the allocations of a run that replays one case
-	// whose body calls Fatalf, on a seat that keeps the run's record: those
-	// of a replay, the message and its frames, the run's record, and the two
-	// closures that adapt the body and give its case a context.
-	fatalfRunAllocs = 44
-	// drawRunAllocs are the allocations of a run that replays one case whose
-	// body draws one integer: the engine's 9 for the replay, one for the
-	// token's choices, and two for the closures that adapt the body and give
-	// its case a context.
-	drawRunAllocs = 12
-	// logfAllocs are the allocations of Logf: the message it formats.
-	logfAllocs = 1
-	// contextRunAllocs are the allocations of a run that replays one case
-	// whose body draws one integer and calls Context: those of
-	// drawRunAllocs, and the context with its cancel function.
-	contextRunAllocs = 14
-	// historyRunAllocs are the allocations of a run that replays one case
-	// whose body draws one integer and calls History: those of
-	// drawRunAllocs, and the history.
-	historyRunAllocs = 13
+	errorfAllocs = 7
+	// fatalfRunAllocs is the ceiling of the allocations of a run that
+	// replays one case whose body calls Fatalf, on a seat that keeps the
+	// run's record: those of a replay, the message and its frames, the
+	// run's record, and the two closures that adapt the body and give its
+	// case a context.
+	fatalfRunAllocs = 63
+	// drawRunAllocs is the ceiling of the allocations of a run that replays
+	// one case whose body draws one integer: the engine's allocations for
+	// the replay, one for the token's choices, and two for the closures that
+	// adapt the body and give its case a context.
+	drawRunAllocs = 15
+	// logfAllocs is the ceiling of the allocations of Logf: the message it
+	// formats.
+	logfAllocs = 2
+	// contextRunAllocs is the ceiling of the allocations of a run that
+	// replays one case whose body draws one integer and calls Context:
+	// those of drawRunAllocs, and the context with its cancel function.
+	contextRunAllocs = 18
+	// historyRunAllocs is the ceiling of the allocations of a run that
+	// replays one case whose body draws one integer and calls History:
+	// those of drawRunAllocs, and the history.
+	historyRunAllocs = 17
 )
 
 // closing is the label of a draw that a cleanup makes.

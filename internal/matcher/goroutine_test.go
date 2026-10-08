@@ -53,11 +53,11 @@ func BenchmarkGoroutine(b *testing.B) {
 }
 
 // goroutineCases returns a passing call of each function of goroutine.go,
-// with its allocation ceiling, measured: a leak check that finds no
-// labelled goroutine.
+// with its allocation ceiling: a leak check that finds no labelled
+// goroutine.
 func goroutineCases() []allocCase {
 	return []allocCase{
-		{name: "NoGoroutineLeaks", allocs: 163, call: func(seat matcher.Seat) {
+		{name: "NoGoroutineLeaks", allocs: 210, call: func(seat matcher.Seat) {
 			matcher.NoGoroutineLeaks(seat, matcher.Fatal, leakMsg)()
 		}},
 	}

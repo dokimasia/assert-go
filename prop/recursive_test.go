@@ -11,11 +11,11 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// recursiveAllocs are the allocations of Recursive, measured: the engine's
-// recursion, the closures of its decodes and of the inverses of a position
-// and of the whole, the adapter of extend, and the extension that extend
-// builds.
-const recursiveAllocs = 9
+// recursiveAllocs is the ceiling of the allocations of Recursive: the
+// engine's recursion, the closures of its decodes and of the inverses of a
+// position and of the whole, the adapter of extend, and the extension that
+// extend builds.
+const recursiveAllocs = 12
 
 // TestRecursive checks the generator of values whose positions are values
 // of the generator itself, and the bound on their base values.

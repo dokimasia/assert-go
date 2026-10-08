@@ -15,17 +15,18 @@ import (
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
 
-// The allocations of one execution of a body that draws one integer,
-// measured.
+// The allocation ceilings of one execution of a body that draws one
+// integer.
 const (
-	// generateAllocs are the allocations of a generated case, its provider
-	// and its record of reused values included.
-	generateAllocs = 12
-	// bridgeAllocs are the allocations of a case decoded from bytes.
-	bridgeAllocs = 9
-	// withContextAllocs are the allocations of WithContext: the body it
-	// returns.
-	withContextAllocs = 1
+	// generateAllocs is the ceiling of the allocations of a generated case,
+	// its provider and its record of reused values included.
+	generateAllocs = 15
+	// bridgeAllocs is the ceiling of the allocations of a case decoded from
+	// bytes.
+	bridgeAllocs = 12
+	// withContextAllocs is the ceiling of the allocations of WithContext:
+	// the body it returns.
+	withContextAllocs = 2
 )
 
 // ledgerKey is the key of a value in the context that WithContext takes.

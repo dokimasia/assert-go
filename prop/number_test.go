@@ -14,19 +14,19 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// The allocations of the number generators, measured. Each is the
-// engine's construction of the generator: the closure of its decode, of its
-// erased decode and of its inverse, and for an integer the closure that
-// converts a choice to its value.
+// The allocation ceilings of the number generators. Each is the engine's
+// construction of the generator: the closure of its decode, of its erased
+// decode and of its inverse, and for an integer the closure that converts a
+// choice to its value.
 const (
-	// integerAllocs are the allocations of Integer.
-	integerAllocs = 4
-	// durationAllocs are the allocations of Duration.
-	durationAllocs = 4
-	// floatAllocs are the allocations of Float.
-	floatAllocs = 3
-	// booleanAllocs are the allocations of Boolean.
-	booleanAllocs = 3
+	// integerAllocs is the ceiling of the allocations of Integer.
+	integerAllocs = 5
+	// durationAllocs is the ceiling of the allocations of Duration.
+	durationAllocs = 5
+	// floatAllocs is the ceiling of the allocations of Float.
+	floatAllocs = 4
+	// booleanAllocs is the ceiling of the allocations of Boolean.
+	booleanAllocs = 4
 )
 
 // cents is an integer type defined over int64, as an amount of money.

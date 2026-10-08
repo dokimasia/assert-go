@@ -12,14 +12,14 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// The allocations of the collection generators, measured. Each is the
+// The allocation ceilings of the collection generators. Each is the
 // engine's construction of the generator: the closures of its decodes and
 // of its inverse.
 const (
-	// listAllocs are the allocations of List.
-	listAllocs = 4
-	// dictAllocs are the allocations of Dict.
-	dictAllocs = 6
+	// listAllocs is the ceiling of the allocations of List.
+	listAllocs = 5
+	// dictAllocs is the ceiling of the allocations of Dict.
+	dictAllocs = 8
 )
 
 // TestCollection checks the list and dict generators and the option that

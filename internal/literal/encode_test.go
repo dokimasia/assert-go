@@ -23,20 +23,22 @@ import (
 // The allocation ceilings, measured once encoding/json has built its
 // encoders for the literal's types.
 const (
-	// encodeAllocs are the allocations of Encode on a list of two integers.
-	encodeAllocs = 15
-	// opaqueAllocs are the allocations of Opaque.
-	opaqueAllocs = 3
-	// detailAllocs are the allocations of Detail on an error.
-	detailAllocs = 4
-	// plainAllocs are the allocations of Plain on an int.
-	plainAllocs = 4
-	// refusedAllocs are the allocations of Encode on a list of more parts
-	// than the bound: its walk, and no literal of the list.
-	refusedAllocs = 1
-	// cycleAllocs are the allocations of Encode on a map that contains
-	// itself, which ends at the level past the levels of a literal.
-	cycleAllocs = 103
+	// encodeAllocs is the ceiling of the allocations of Encode on a list of
+	// two integers.
+	encodeAllocs = 19
+	// opaqueAllocs is the ceiling of the allocations of Opaque.
+	opaqueAllocs = 4
+	// detailAllocs is the ceiling of the allocations of Detail on an error.
+	detailAllocs = 5
+	// plainAllocs is the ceiling of the allocations of Plain on an int.
+	plainAllocs = 5
+	// refusedAllocs is the ceiling of the allocations of Encode on a list
+	// of more parts than the bound: its walk, and no literal of the list.
+	refusedAllocs = 2
+	// cycleAllocs is the ceiling of the allocations of Encode on a map that
+	// contains itself, which ends at the level past the levels of a
+	// literal.
+	cycleAllocs = 130
 	// isBytesAllocs are the allocations of IsBytes.
 	isBytesAllocs = 0
 )

@@ -62,9 +62,9 @@ func BenchmarkContains(b *testing.B) {
 }
 
 // containsCases returns a passing call of each containment assertion, with
-// its allocation ceiling, measured: text for the assertions over text, and
-// slices of three ints for Permutation. Contains also runs on a slice whose
-// last element is the needle, and ContainsInOrder on bytes.
+// its allocation ceiling: text for the assertions over text, and slices of
+// three ints for Permutation. Contains also runs on a slice whose last
+// element is the needle, and ContainsInOrder on bytes.
 func containsCases() []alloctest.Case {
 	needles := []string{"cart", "items"}
 	got, want := []int{1, 2, 3}, []int{3, 1, 2}
@@ -76,7 +76,7 @@ func containsCases() []alloctest.Case {
 		{
 			Name:   "Contains of a slice",
 			Call:   func(tb assert.TB) { expect.Contains(tb, got, 3, allocContract) },
-			Allocs: 1,
+			Allocs: 2,
 		},
 		{Name: "NotContains", Call: func(tb assert.TB) {
 			expect.NotContains(tb, "a cart of three items", "truck", allocContract)
@@ -84,13 +84,13 @@ func containsCases() []alloctest.Case {
 		{Name: "ContainsInOrder", Call: func(tb assert.TB) {
 			expect.ContainsInOrder(tb, "a cart of three items", needles, allocContract)
 		}},
-		{Name: "ContainsInOrder of bytes", Allocs: 2, Call: func(tb assert.TB) {
+		{Name: "ContainsInOrder of bytes", Allocs: 3, Call: func(tb assert.TB) {
 			expect.ContainsInOrder(tb, bytes, needles, allocContract)
 		}},
 		{
 			Name:   "Permutation",
 			Call:   func(tb assert.TB) { expect.Permutation(tb, got, want, allocContract) },
-			Allocs: 2,
+			Allocs: 3,
 		},
 	}
 }

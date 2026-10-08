@@ -74,8 +74,8 @@ func BenchmarkErrors(b *testing.B) {
 }
 
 // errorsCases returns a passing call of each error assertion, with its
-// allocation ceiling, measured: on a sentinel wrapped twice where the
-// assertion reads a chain.
+// allocation ceiling: on a sentinel wrapped twice where the assertion reads
+// a chain.
 func errorsCases() []alloctest.Case {
 	wrapped := fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", matchertest.ErrSample))
 	wrappedTyped := matchertest.WrappedTyped()
@@ -89,7 +89,7 @@ func errorsCases() []alloctest.Case {
 		{Name: "ErrorIsNot", Call: func(tb assert.TB) {
 			expect.ErrorIsNot(tb, wrapped, matchertest.ErrOther, allocContract)
 		}},
-		{Name: "ErrorAs", Allocs: 1, Call: func(tb assert.TB) {
+		{Name: "ErrorAs", Allocs: 2, Call: func(tb assert.TB) {
 			typed = expect.ErrorAs[*matchertest.TypedError](tb, wrappedTyped, allocContract)
 		}},
 	}

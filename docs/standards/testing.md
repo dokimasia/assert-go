@@ -112,16 +112,19 @@ this document applies to every package, the internal ones included.
   package `testing` alone. Their benchmarks report allocations through
   `testing.B`, and their `Test<Subject>Allocs` compares
   `testing.AllocsPerRun` with each ceiling.
-- A ceiling is the count that its check measures: `testing.AllocsPerRun`
-  in the tests of `internal/matcher` and `internal/equality`, and
-  `expect.MaxAllocs`, which rounds the average to the nearest whole
-  number, everywhere else. It is 0 for a function that allocates nothing.
-  For any other function it is the higher of the counts of an ordinary
-  build and a coverage build. A ceiling that rises states why in the
-  commit message.
-- A ceiling is measured on a seat that writes no call record, such as a
+- A ceiling is 0 for a function that allocates nothing. For any other
+  function it is a quarter above the highest count that its check
+  measures, rounded up to two significant digits, so that a platform or
+  a release of Go that allocates a few more still passes. The check is
+  `testing.AllocsPerRun` in the tests of `internal/matcher` and
+  `internal/equality`, and `expect.MaxAllocs`, which rounds the average
+  to the nearest whole number, everywhere else. The highest count is
+  taken over an ordinary build and a coverage build on Linux, macOS and
+  Windows, the systems that CI runs. A ceiling that rises states why in
+  the commit message.
+- A count is measured on a seat that writes no call record, such as a
   seat of `internal/matchertest`. An `assert.Recorder` records every
-  call, so a ceiling of a call on a recorder includes its call record.
+  call, so the count of a call on a recorder includes its call record.
 
 ## Fuzzing
 

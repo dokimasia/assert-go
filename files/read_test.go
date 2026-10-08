@@ -85,11 +85,11 @@ func BenchmarkRead(b *testing.B) {
 }
 
 // readCases returns a call of Read of a short file, with its allocation
-// ceiling, measured.
+// ceiling.
 func readCases(tb testing.TB) []alloctest.Case {
 	tb.Helper()
 	path := filepath.Join(files.Workspace(tb, files.Tree{"a.txt": files.Text("a\n")}), "a.txt")
 	return []alloctest.Case{
-		{Name: "Read", Call: func(tb assert.TB) { kept = files.Read(tb, path) }, Allocs: 8},
+		{Name: "Read", Call: func(tb assert.TB) { kept = files.Read(tb, path) }, Allocs: 10},
 	}
 }

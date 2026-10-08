@@ -13,11 +13,12 @@ import (
 
 // The allocation ceilings of the functions of Calls.
 const (
-	// addAllocs are the allocations of Add on a recorder's Calls, which
-	// encode the record of a passing call with a call site.
-	addAllocs = 9
-	// linesAllocs are the allocations of Lines: the slice it returns.
-	linesAllocs = 1
+	// addAllocs is the ceiling of the allocations of Add on a recorder's
+	// Calls, which encode the record of a passing call with a call site.
+	addAllocs = 12
+	// linesAllocs is the ceiling of the allocations of Lines: the slice it
+	// returns.
+	linesAllocs = 2
 )
 
 // TestCalls checks how Calls find, number, keep and cut the records of

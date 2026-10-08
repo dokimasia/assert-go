@@ -446,7 +446,7 @@ func BenchmarkJSON(b *testing.B) {
 }
 
 // jsonCases returns a passing call of MatchJSONField, with its allocation
-// ceiling, measured. It writes the golden file of the call into dir.
+// ceiling. It writes the golden file of the call into dir.
 func jsonCases(tb testing.TB, dir string) []alloctest.Case {
 	tb.Helper()
 	path := filepath.Join(dir, "fields.json")
@@ -455,7 +455,7 @@ func jsonCases(tb testing.TB, dir string) []alloctest.Case {
 	return []alloctest.Case{{
 		Name:   "MatchJSONField",
 		Call:   func(tb assert.TB) { golden.MatchJSONField(tb, path, "count", got, checking) },
-		Allocs: 41,
+		Allocs: 55,
 	}}
 }
 

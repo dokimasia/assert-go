@@ -11,24 +11,25 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// The allocations of the text generators, measured. Each is the engine's
+// The allocation ceilings of the text generators. Each is the engine's
 // construction of the generator: the closures of its decodes and of its
 // inverse, and what it keeps of its alphabet or its pattern.
 const (
-	// stringAllocs are the allocations of String over the default alphabet.
-	stringAllocs = 4
-	// alphabetStringAllocs are the allocations of String over a stated
-	// alphabet: those of String, and the alphabet's characters with the
-	// sorted copy that checks them for a repeat.
-	alphabetStringAllocs = 6
+	// stringAllocs is the ceiling of the allocations of String over the
+	// default alphabet.
+	stringAllocs = 5
+	// alphabetStringAllocs is the ceiling of the allocations of String over
+	// a stated alphabet: those of String, and the alphabet's characters
+	// with the sorted copy that checks them for a repeat.
+	alphabetStringAllocs = 8
 	// alphabetAllocs are the allocations of Alphabet.
 	alphabetAllocs = 0
-	// bytesAllocs are the allocations of Bytes.
-	bytesAllocs = 4
-	// stringMatchingAllocs are the allocations of StringMatching for the
-	// pattern [a-c]{2,5}: the parsed pattern, the decoder built from it, and
-	// the inverse.
-	stringMatchingAllocs = 14
+	// bytesAllocs is the ceiling of the allocations of Bytes.
+	bytesAllocs = 5
+	// stringMatchingAllocs is the ceiling of the allocations of
+	// StringMatching for the pattern [a-c]{2,5}: the parsed pattern, the
+	// decoder built from it, and the inverse.
+	stringMatchingAllocs = 18
 )
 
 // outsidePrefix starts the panic of StringMatching for a pattern outside

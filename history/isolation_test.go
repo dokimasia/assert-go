@@ -18,14 +18,14 @@ import (
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
-// The allocations of a passing check, measured.
+// The allocation ceilings of a passing check.
 const (
-	// serializableAllocs are the allocations of Serializable over
-	// serialHistory.
-	serializableAllocs = 89
-	// snapshotIsolationAllocs are the allocations of HasSnapshotIsolation
-	// over skewHistory.
-	snapshotIsolationAllocs = 86
+	// serializableAllocs is the ceiling of the allocations of Serializable
+	// over serialHistory.
+	serializableAllocs = 120
+	// snapshotIsolationAllocs is the ceiling of the allocations of
+	// HasSnapshotIsolation over skewHistory.
+	snapshotIsolationAllocs = 110
 )
 
 // writeSkewJSON is the detail of the record of Serializable over writeSkew,

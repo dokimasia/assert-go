@@ -14,30 +14,32 @@ import (
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
 
-// The allocations of the combinators, measured.
+// The allocation ceilings of the combinators.
 const (
-	// newGeneratorAllocs are the allocations of NewGenerator and
-	// NewInvertible: the decode with its type erased.
-	newGeneratorAllocs = 1
-	// combinatorAllocs are the allocations of Bind and Composite: the
-	// decode and the decode with its type erased.
-	combinatorAllocs = 2
-	// justAllocs are the allocations of Just: the decode, the decode with
-	// its type erased, and the inverse.
-	justAllocs = 3
-	// mapAllocs are the allocations of Map of an integer: the decode, the
-	// decode with its type erased, and the mapping of its values for the
-	// explain phase.
-	mapAllocs = 3
-	// mapBackAllocs are the allocations of MapBack of an integer: the
-	// allocations of Map, the inverse, and the neutral value of a draw.
-	mapBackAllocs = 5
-	// eraseAllocs are the allocations of Erase of a generator with an
-	// inverse: the inverse with its type erased.
-	eraseAllocs = 1
-	// filterAllocs are the allocations of Filter: its attempt, the decode,
-	// the decode with its type erased, and the inverse.
-	filterAllocs = 4
+	// newGeneratorAllocs is the ceiling of the allocations of NewGenerator
+	// and NewInvertible: the decode with its type erased.
+	newGeneratorAllocs = 2
+	// combinatorAllocs is the ceiling of the allocations of Bind and
+	// Composite: the decode and the decode with its type erased.
+	combinatorAllocs = 3
+	// justAllocs is the ceiling of the allocations of Just: the decode, the
+	// decode with its type erased, and the inverse.
+	justAllocs = 4
+	// mapAllocs is the ceiling of the allocations of Map of an integer: the
+	// decode, the decode with its type erased, and the mapping of its
+	// values for the explain phase.
+	mapAllocs = 4
+	// mapBackAllocs is the ceiling of the allocations of MapBack of an
+	// integer: the allocations of Map, the inverse, and the neutral value
+	// of a draw.
+	mapBackAllocs = 7
+	// eraseAllocs is the ceiling of the allocations of Erase of a generator
+	// with an inverse: the inverse with its type erased.
+	eraseAllocs = 2
+	// filterAllocs is the ceiling of the allocations of Filter: its
+	// attempt, the decode, the decode with its type erased, and the
+	// inverse.
+	filterAllocs = 5
 )
 
 // TestGenerator checks the combinators, the draw that records a value, and

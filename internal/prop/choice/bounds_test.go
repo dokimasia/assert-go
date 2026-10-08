@@ -316,9 +316,9 @@ func TestBounds(t *testing.T) {
 	})
 }
 
-// marshalAllocs are the allocations of MarshalJSON on integer bounds of
-// the whole signed range.
-const marshalAllocs = 15
+// marshalAllocs is the ceiling of the allocations of MarshalJSON on integer
+// bounds of the whole signed range.
+const marshalAllocs = 19
 
 // TestBoundsAllocs checks that no operation of Bounds allocates, but
 // for a sequence's target, the coercion of a sequence that does not fit,
@@ -330,9 +330,9 @@ func TestBoundsAllocs(t *testing.T) {
 	float := choice.OfFloat(floatBounds(t, -math.MaxFloat64, math.SmallestNonzeroFloat64, choice.AdmitNaN,
 		choice.Width64))
 	sequence := choice.OfSequence(choice.MustSequenceBounds(math.MaxUint32, sizes(t, 0, math.MaxInt64)))
-	assert.MaxAllocs(t, func() { _ = integer.String() }, 1, "String allocates the text of integer bounds")
-	assert.MaxAllocs(t, func() { _ = float.String() }, 1, "String allocates the text of float bounds with NaN")
-	assert.MaxAllocs(t, func() { _ = sequence.String() }, 1, "String allocates the text of sequence bounds")
+	assert.MaxAllocs(t, func() { _ = integer.String() }, 2, "String allocates the text of integer bounds")
+	assert.MaxAllocs(t, func() { _ = float.String() }, 2, "String allocates the text of float bounds with NaN")
+	assert.MaxAllocs(t, func() { _ = sequence.String() }, 2, "String allocates the text of sequence bounds")
 	assert.MaxAllocs(t, func() { _ = choice.OfInteger(integerBounds) }, 0, "OfInteger allocates nothing")
 	assert.MaxAllocs(t, func() { _ = choice.OfFloat(choice.FloatBounds{}) }, 0, "OfFloat allocates nothing")
 	assert.MaxAllocs(t, func() { _ = choice.OfSequence(choice.SequenceBounds{}) }, 0, "OfSequence allocates nothing")
@@ -466,7 +466,7 @@ func BenchmarkBounds(b *testing.B) {
 
 	b.Run("String", func(b *testing.B) {
 		var got string
-		c := bench.Start(b).MaxAllocs(1)
+		c := bench.Start(b).MaxAllocs(2)
 		defer c.End()
 		for c.Loop() {
 			got = bounds.String()

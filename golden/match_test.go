@@ -270,8 +270,8 @@ func BenchmarkMatch(b *testing.B) {
 }
 
 // matchCases returns a passing call of each function of match.go, with its
-// allocation ceiling, measured. It writes the golden file of the calls
-// under dir, the working directory of the test.
+// allocation ceiling. It writes the golden file of the calls under dir, the
+// working directory of the test.
 func matchCases(tb testing.TB, dir string) []alloctest.Case {
 	tb.Helper()
 	conventional := filepath.Join(dir, "testdata", "golden")
@@ -281,8 +281,8 @@ func matchCases(tb testing.TB, dir string) []alloctest.Case {
 	got := []byte(goldenContent)
 	return []alloctest.Case{
 		{Name: "ShouldUpdate", Call: func(assert.TB) { updated = golden.ShouldUpdate() }},
-		{Name: "Match", Call: func(tb assert.TB) { golden.Match(tb, goldenName, got, checking) }, Allocs: 10},
-		{Name: "MatchAt", Call: func(tb assert.TB) { golden.MatchAt(tb, path, got, checking) }, Allocs: 9},
+		{Name: "Match", Call: func(tb assert.TB) { golden.Match(tb, goldenName, got, checking) }, Allocs: 17},
+		{Name: "MatchAt", Call: func(tb assert.TB) { golden.MatchAt(tb, path, got, checking) }, Allocs: 12},
 	}
 }
 

@@ -448,14 +448,14 @@ func BenchmarkWrite(b *testing.B) {
 }
 
 // writeCases returns a call of each writer of an empty tree into an empty
-// directory, which writes nothing, with its allocation ceiling, measured.
+// directory, which writes nothing, with its allocation ceiling.
 func writeCases(tb testing.TB) []alloctest.Case {
 	tb.Helper()
 	dir := tb.TempDir()
 	return []alloctest.Case{
-		{Name: "Write", Call: func(assert.TB) { errKept = filetree.Write(dir, filetree.Tree{}) }, Allocs: 5},
-		{Name: "Update", Call: func(assert.TB) { errKept = filetree.Update(dir, filetree.Tree{}) }, Allocs: 18},
-		{Name: "Overwrite", Call: func(assert.TB) { errKept = filetree.Overwrite(dir, filetree.Tree{}) }, Allocs: 5},
-		{Name: "Unlock", Call: func(assert.TB) { filetree.Unlock(dir) }, Allocs: 8},
+		{Name: "Write", Call: func(assert.TB) { errKept = filetree.Write(dir, filetree.Tree{}) }, Allocs: 7},
+		{Name: "Update", Call: func(assert.TB) { errKept = filetree.Update(dir, filetree.Tree{}) }, Allocs: 25},
+		{Name: "Overwrite", Call: func(assert.TB) { errKept = filetree.Overwrite(dir, filetree.Tree{}) }, Allocs: 7},
+		{Name: "Unlock", Call: func(assert.TB) { filetree.Unlock(dir) }, Allocs: 13},
 	}
 }

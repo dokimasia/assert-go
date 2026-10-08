@@ -18,7 +18,7 @@ type Case struct {
 	Name string
 	// Call calls the function on tb, a seat that writes no call record.
 	Call func(tb assert.TB)
-	// Allocs is the ceiling: the allocations of one call, measured.
+	// Allocs is the ceiling of the allocations of one call.
 	Allocs uint64
 }
 

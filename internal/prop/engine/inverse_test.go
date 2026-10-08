@@ -16,29 +16,31 @@ import (
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
 
-// The allocations of running a generator backwards, measured.
+// The allocation ceilings of running a generator backwards.
 const (
-	// invertAllocs are the allocations of Invert of a digit: the step and
-	// the choice, and the replay that checks them, with its body, its case,
-	// its goroutine, its recorder and its record.
-	invertAllocs = 16
-	// inverseAllocs are the allocations of Inverse of a digit: its one step.
-	inverseAllocs = 1
-	// decodeCaseAllocs are the allocations of a whole replayed case that
-	// decodes a digit: those of a case that makes a choice in a span, and
-	// the replayed record.
-	decodeCaseAllocs = 8
-	// collectionStepsAllocs are the allocations of CollectionSteps of one
-	// item: the growth of its steps.
-	collectionStepsAllocs = 3
-	// listItemsAllocs are the allocations of ListItems of two integers: the
-	// list, and a copy of each element that reflect boxes, with the
-	// interface of the slice it reads.
-	listItemsAllocs = 4
-	// sameValueAllocs are the allocations of SameValue of two lists of two
-	// integers: the interfaces of the two lists, and for the canonical key of
-	// each the growth of its bytes, the path that it enters and its text.
-	sameValueAllocs = 12
+	// invertAllocs is the ceiling of the allocations of Invert of a digit:
+	// the step and the choice, and the replay that checks them, with its
+	// body, its case, its goroutine, its recorder and its record.
+	invertAllocs = 20
+	// inverseAllocs is the ceiling of the allocations of Inverse of a
+	// digit: its one step.
+	inverseAllocs = 2
+	// decodeCaseAllocs is the ceiling of the allocations of a whole
+	// replayed case that decodes a digit: those of a case that makes a
+	// choice in a span, and the replayed record.
+	decodeCaseAllocs = 10
+	// collectionStepsAllocs is the ceiling of the allocations of
+	// CollectionSteps of one item: the growth of its steps.
+	collectionStepsAllocs = 4
+	// listItemsAllocs is the ceiling of the allocations of ListItems of two
+	// integers: the list, and a copy of each element that reflect boxes,
+	// with the interface of the slice it reads.
+	listItemsAllocs = 5
+	// sameValueAllocs is the ceiling of the allocations of SameValue of two
+	// lists of two integers: the interfaces of the two lists, and for the
+	// canonical key of each the growth of its bytes, the path that it
+	// enters and its text.
+	sameValueAllocs = 15
 )
 
 // point is a struct whose typed literal is a map of its fields.

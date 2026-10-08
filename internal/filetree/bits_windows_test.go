@@ -63,6 +63,6 @@ func BenchmarkBits(b *testing.B) {
 // its reason here.
 func bitsCases() []alloctest.Case {
 	return []alloctest.Case{
-		{Name: "ModesUnrecorded", Call: func(assert.TB) { errKept = filetree.ModesUnrecorded() }, Allocs: 2},
+		{Name: "ModesUnrecorded", Call: func(assert.TB) { errKept = filetree.ModesUnrecorded() }, Allocs: 3},
 	}
 }

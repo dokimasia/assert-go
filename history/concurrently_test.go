@@ -15,9 +15,9 @@ import (
 	"go.dokimi.dev/assert/internal/alloctest"
 )
 
-// concurrentlyAllocs are the allocations of Concurrently for one client
-// whose body returns at once, measured.
-const concurrentlyAllocs = 8
+// concurrentlyAllocs is the ceiling of the allocations of Concurrently for
+// one client whose body returns at once.
+const concurrentlyAllocs = 10
 
 // The times of the driver's tests.
 const (

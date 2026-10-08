@@ -13,9 +13,9 @@ import (
 	"go.dokimi.dev/assert/internal/literal"
 )
 
-// canonicalAllocs are the allocations of Canonical on a list of two
-// integers: the builder's growth and the formatting of each part.
-const canonicalAllocs = 5
+// canonicalAllocs is the ceiling of the allocations of Canonical on a list
+// of two integers: the builder's growth and the formatting of each part.
+const canonicalAllocs = 7
 
 // TestCanonical checks the text of each kind of value under the
 // definition's equality.

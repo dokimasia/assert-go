@@ -11,14 +11,14 @@ import (
 	"go.dokimi.dev/assert/internal/alloctest"
 )
 
-// The allocations of the JSON form of an event, measured.
+// The allocation ceilings of the JSON form of an event.
 const (
-	// invocationJSONAllocs are the allocations of MarshalJSON for an
-	// invocation of one int argument on one string key.
-	invocationJSONAllocs = 21
-	// completionJSONAllocs are the allocations of MarshalJSON for an ok
-	// completion with an int output.
-	completionJSONAllocs = 11
+	// invocationJSONAllocs is the ceiling of the allocations of MarshalJSON
+	// for an invocation of one int argument on one string key.
+	invocationJSONAllocs = 27
+	// completionJSONAllocs is the ceiling of the allocations of MarshalJSON
+	// for an ok completion with an int output.
+	completionJSONAllocs = 14
 )
 
 // TestEvent checks the JSON form of an event, which the definition fixes.

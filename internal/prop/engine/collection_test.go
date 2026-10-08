@@ -15,23 +15,23 @@ import (
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
 
-// The allocations of each collection generator's constructor, measured.
+// The allocation ceilings of each collection generator's constructor.
 const (
-	// listAllocs are the allocations of List and UniqueList: the decode,
-	// the decode with its type erased, and the inverse.
-	listAllocs = 3
-	// dictAllocs are the allocations of Dict: the decode of an entry, the
-	// key of an entry, the decode, the decode with its type erased, and the
-	// inverse.
-	dictAllocs = 5
-	// collectCaseAllocs are the allocations of a whole replayed case that
-	// collects one element of one choice: three choices, the element's span
-	// and the collection's set of keys.
-	collectCaseAllocs = 12
-	// elementsCaseAllocs are the allocations of a whole replayed case that
-	// decodes one element of one choice with Elements: those of a collected
-	// case, and the list of the elements.
-	elementsCaseAllocs = 13
+	// listAllocs is the ceiling of the allocations of List and UniqueList:
+	// the decode, the decode with its type erased, and the inverse.
+	listAllocs = 4
+	// dictAllocs is the ceiling of the allocations of Dict: the decode of
+	// an entry, the key of an entry, the decode, the decode with its type
+	// erased, and the inverse.
+	dictAllocs = 7
+	// collectCaseAllocs is the ceiling of the allocations of a whole
+	// replayed case that collects one element of one choice: three choices,
+	// the element's span and the collection's set of keys.
+	collectCaseAllocs = 15
+	// elementsCaseAllocs is the ceiling of the allocations of a whole
+	// replayed case that decodes one element of one choice with Elements:
+	// those of a collected case, and the list of the elements.
+	elementsCaseAllocs = 17
 )
 
 // rejectedPairs are the choices of a collection with a minimum length of

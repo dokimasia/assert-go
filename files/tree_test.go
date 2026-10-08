@@ -111,12 +111,12 @@ func BenchmarkTree(b *testing.B) {
 }
 
 // treeCases returns a call of each method of a tree, of every kind of
-// entry, with its allocation ceiling, measured.
+// entry, with its allocation ceiling.
 func treeCases() []alloctest.Case {
 	raw := []byte(everyKind)
 	var tree files.Tree
 	return []alloctest.Case{
-		{Name: "MarshalJSON", Call: func(assert.TB) { keptBytes, errKept = everyKindTree.MarshalJSON() }, Allocs: 14},
-		{Name: "UnmarshalJSON", Call: func(assert.TB) { errKept = tree.UnmarshalJSON(raw) }, Allocs: 122},
+		{Name: "MarshalJSON", Call: func(assert.TB) { keptBytes, errKept = everyKindTree.MarshalJSON() }, Allocs: 18},
+		{Name: "UnmarshalJSON", Call: func(assert.TB) { errKept = tree.UnmarshalJSON(raw) }, Allocs: 160},
 	}
 }

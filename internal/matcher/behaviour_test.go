@@ -226,19 +226,19 @@ func BenchmarkBehaviour(b *testing.B) {
 }
 
 // behaviourCases returns a passing call of each behaviour assertion, with
-// its allocation ceiling, measured. Each subject returns at once.
+// its allocation ceiling. Each subject returns at once.
 func behaviourCases() []allocCase {
 	honours := func(ctx context.Context) error { return ctx.Err() }
 	quick := func(context.Context) error { return nil }
 	observe := func() int { return 1 }
 	return []allocCase{
-		{name: "HonoursCancellation", allocs: 2, call: func(seat matcher.Seat) {
+		{name: "HonoursCancellation", allocs: 3, call: func(seat matcher.Seat) {
 			matcher.HonoursCancellation(seat, matcher.Fatal, honours, allocContract)
 		}},
-		{name: "HonoursDeadline", allocs: 2, call: func(seat matcher.Seat) {
+		{name: "HonoursDeadline", allocs: 3, call: func(seat matcher.Seat) {
 			matcher.HonoursDeadline(seat, matcher.Fatal, honours, allocContract)
 		}},
-		{name: "CompletesWithin", allocs: 14, call: func(seat matcher.Seat) {
+		{name: "CompletesWithin", allocs: 18, call: func(seat matcher.Seat) {
 			matcher.CompletesWithin(seat, matcher.Fatal, time.Minute, quick, allocContract)
 		}},
 		{name: "Pure", call: func(seat matcher.Seat) {

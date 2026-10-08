@@ -46,16 +46,17 @@ const (
 // thousand are the bounds [0, 999] of the one choice of a repeated case.
 var thousand = choice.MustIntegerBounds(choice.Int{}, choice.UintOf(999))
 
-// The allocations of a whole replayed case whose body records a step or
-// asks for runs, measured.
+// The allocation ceilings of a whole replayed case whose body records a
+// step or asks for runs.
 const (
-	// stepCaseAllocs are the allocations of a case that records one step: the
-	// case's own three, and the growth of its steps.
-	stepCaseAllocs = 4
-	// repeatCaseAllocs are the allocations of a case that asks for two runs
-	// and passes both: the own three of the case and of its repeat, and the
-	// list of the two runs, whose calls the property's record takes.
-	repeatCaseAllocs = 7
+	// stepCaseAllocs is the ceiling of the allocations of a case that
+	// records one step: the case's own three, and the growth of its steps.
+	stepCaseAllocs = 5
+	// repeatCaseAllocs is the ceiling of the allocations of a case that
+	// asks for two runs and passes both: the own three of the case and of
+	// its repeat, and the list of the two runs, whose calls the property's
+	// record takes.
+	repeatCaseAllocs = 9
 )
 
 // stepWeights are the weights of the actions that a step's index chooses

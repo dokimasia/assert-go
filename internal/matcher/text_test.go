@@ -50,8 +50,8 @@ func BenchmarkText(b *testing.B) {
 	benchAllocs(b, textCases())
 }
 
-// textCases returns a passing call of each text assertion on a string,
-// with its allocation ceiling, measured.
+// textCases returns a passing call of each text assertion on a string, with
+// its allocation ceiling.
 func textCases() []allocCase {
 	return []allocCase{
 		{name: "HasPrefix", call: func(seat matcher.Seat) {
@@ -60,7 +60,7 @@ func textCases() []allocCase {
 		{name: "HasSuffix", call: func(seat matcher.Seat) {
 			matcher.HasSuffix(seat, matcher.Fatal, "store: missing", "missing", allocContract)
 		}},
-		{name: "Matches", allocs: 62, call: func(seat matcher.Seat) {
+		{name: "Matches", allocs: 78, call: func(seat matcher.Seat) {
 			matcher.Matches(seat, matcher.Fatal, "order 42", `^order \d+$`, allocContract)
 		}},
 	}

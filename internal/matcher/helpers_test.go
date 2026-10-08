@@ -75,7 +75,7 @@ type allocCase struct {
 	name string
 	// call calls the function on seat, which writes no call record.
 	call func(seat matcher.Seat)
-	// allocs is the ceiling: the allocations of one call, measured.
+	// allocs is the ceiling of the allocations of one call.
 	allocs float64
 	// fails reports whether the call reports a failure or a fault, as every
 	// call of Fail does.

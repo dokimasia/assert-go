@@ -102,11 +102,11 @@ func BenchmarkEntry(b *testing.B) {
 }
 
 // entryCases returns a call of each function of an entry, with its
-// allocation ceiling, measured.
+// allocation ceiling.
 func entryCases() []alloctest.Case {
 	return []alloctest.Case{
 		{Name: "Name", Call: func(assert.TB) { kept = filetree.File.Name() }},
 		{Name: "Executable", Call: func(assert.TB) { keptBool = executableFile.Executable() }},
-		{Name: "GoString", Call: func(assert.TB) { kept = textFile.GoString() }, Allocs: 2},
+		{Name: "GoString", Call: func(assert.TB) { kept = textFile.GoString() }, Allocs: 3},
 	}
 }

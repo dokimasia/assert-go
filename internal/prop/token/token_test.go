@@ -367,14 +367,14 @@ func TestToken(t *testing.T) {
 	})
 }
 
-// The allocations of the encoder and the decoder of the pinned choices,
-// measured.
+// The allocation ceilings of the encoder and the decoder of the pinned
+// choices.
 const (
-	// encodeAllocs are the allocations of Encode: the token.
-	encodeAllocs = 1
-	// decodeAllocs are the allocations of Decode: the choices and the
-	// elements of the one sequence.
-	decodeAllocs = 2
+	// encodeAllocs is the ceiling of the allocations of Encode: the token.
+	encodeAllocs = 2
+	// decodeAllocs is the ceiling of the allocations of Decode: the choices
+	// and the elements of the one sequence.
+	decodeAllocs = 3
 )
 
 // TestTokenAllocs checks that Append allocates nothing into a slice

@@ -15,10 +15,10 @@ import (
 	"go.dokimi.dev/assert/internal/matcher"
 )
 
-// diffAllocs are the allocations of Diff of two structs that differ in one
-// of two fields: a step of the path for each field, the steps of the
-// difference's path, and the difference.
-const diffAllocs = 4
+// diffAllocs is the ceiling of the allocations of Diff of two structs that
+// differ in one of two fields: a step of the path for each field, the steps
+// of the difference's path, and the difference.
+const diffAllocs = 5
 
 // manyDifferences is the limit of a Diff that finds every difference of
 // the values of a case.

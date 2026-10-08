@@ -393,12 +393,12 @@ func BenchmarkWaiting(b *testing.B) {
 }
 
 // waitingCases returns a call of each retrying assertion that passes at its
-// first attempt, with its allocation ceiling, measured.
+// first attempt, with its allocation ceiling.
 func waitingCases() []allocCase {
 	settled := func(matcher.Seat) {}
 	ready := func() bool { return true }
 	return []allocCase{
-		{name: "Eventually", allocs: 4, call: func(seat matcher.Seat) {
+		{name: "Eventually", allocs: 5, call: func(seat matcher.Seat) {
 			matcher.Eventually(seat, matcher.Fatal, time.Second, time.Millisecond, settled, allocContract)
 		}},
 		{name: "EventuallyTrue", call: func(seat matcher.Seat) {

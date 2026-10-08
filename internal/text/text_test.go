@@ -15,25 +15,25 @@ import (
 	"go.dokimi.dev/assert/internal/text"
 )
 
-// The allocations of Sprintf, measured.
+// The allocation ceilings of Sprintf.
 const (
-	// scalarAllocs are the allocations of a format with scalar arguments:
-	// the text that fmt.Sprintf returns.
-	scalarAllocs = 1
-	// structAllocs are the allocations of a format with a struct of a map
-	// and a slice of scalars, whose walk allocates nothing: what fmt
-	// allocates for the struct, its map and its text.
-	structAllocs = 6
-	// fprintfAllocs are the allocations of Fprintf of scalars into a reset
-	// builder: the builder's storage.
-	fprintfAllocs = 1
-	// decimalAllocs are the allocations of a format with a whole float of a
-	// million or more: fmt's text, the copy of the arguments, the float as
-	// an argument, its directive and its text.
-	decimalAllocs = 5
-	// nestedAllocs are the allocations of a format with a map of slices,
-	// measured: the 5 of fmt, and 3 of the walk.
-	nestedAllocs = 8
+	// scalarAllocs is the ceiling of the allocations of a format with
+	// scalar arguments: the text that fmt.Sprintf returns.
+	scalarAllocs = 2
+	// structAllocs is the ceiling of the allocations of a format with a
+	// struct of a map and a slice of scalars, whose walk allocates nothing:
+	// what fmt allocates for the struct, its map and its text.
+	structAllocs = 8
+	// fprintfAllocs is the ceiling of the allocations of Fprintf of scalars
+	// into a reset builder: the builder's storage.
+	fprintfAllocs = 2
+	// decimalAllocs is the ceiling of the allocations of a format with a
+	// whole float of a million or more: fmt's text, the copy of the
+	// arguments, the float as an argument, its directive and its text.
+	decimalAllocs = 7
+	// nestedAllocs is the ceiling of the allocations of a format with a map
+	// of slices: the 5 of fmt, and 3 of the walk.
+	nestedAllocs = 10
 )
 
 // allocRuns is the number of calls whose allocations testing.AllocsPerRun

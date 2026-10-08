@@ -157,15 +157,15 @@ func BenchmarkRecord(b *testing.B) {
 }
 
 // recordCases returns a call of each function of a record, with its
-// allocation ceiling, measured.
+// allocation ceiling.
 func recordCases() []alloctest.Case {
 	want := filetree.Tree{"a.txt": fileOf("b\n")}
 	paths := []string{"a.txt"}
 	r := filetree.NewRecord(want, read, paths)
 	return []alloctest.Case{
-		{Name: "NewRecord", Call: func(assert.TB) { keptRecord = filetree.NewRecord(want, read, paths) }, Allocs: 6},
-		{Name: "Missing", Call: func(assert.TB) { keptRecord = filetree.Missing(read) }, Allocs: 3},
-		{Name: "Fields", Call: func(assert.TB) { keptFields = r.Fields() }, Allocs: 2},
-		{Name: "MarshalJSON", Call: func(assert.TB) { keptBytes, errKept = r.MarshalJSON() }, Allocs: 25},
+		{Name: "NewRecord", Call: func(assert.TB) { keptRecord = filetree.NewRecord(want, read, paths) }, Allocs: 8},
+		{Name: "Missing", Call: func(assert.TB) { keptRecord = filetree.Missing(read) }, Allocs: 4},
+		{Name: "Fields", Call: func(assert.TB) { keptFields = r.Fields() }, Allocs: 3},
+		{Name: "MarshalJSON", Call: func(assert.TB) { keptBytes, errKept = r.MarshalJSON() }, Allocs: 32},
 	}
 }

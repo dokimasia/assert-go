@@ -115,13 +115,13 @@ func BenchmarkEntry(b *testing.B) {
 }
 
 // entryCases returns a call of each constructor of an entry, with its
-// allocation ceiling, measured.
+// allocation ceiling.
 func entryCases() []alloctest.Case {
 	content := []byte("a\n")
 	file := files.Text("a\n")
 	return []alloctest.Case{
 		{Name: "Text", Call: func(assert.TB) { keptEntry = files.Text("a\n") }},
-		{Name: "Bytes", Call: func(assert.TB) { keptEntry = files.Bytes(content) }, Allocs: 1},
+		{Name: "Bytes", Call: func(assert.TB) { keptEntry = files.Bytes(content) }, Allocs: 2},
 		{Name: "Executable", Call: func(assert.TB) { keptEntry = files.Executable("#!/bin/sh\n") }},
 		{Name: "Dir", Call: func(assert.TB) { keptEntry = files.Dir() }},
 		{Name: "Link", Call: func(assert.TB) { keptEntry = files.Link("a.txt") }},

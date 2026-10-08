@@ -46,7 +46,7 @@ func BenchmarkEqual(b *testing.B) {
 }
 
 // equalCases returns a passing call of Equal and of NotEqual on two ints,
-// with its allocation ceiling, measured.
+// with its allocation ceiling.
 func equalCases() []alloctest.Case {
 	return []alloctest.Case{
 		{Name: "Equal", Call: func(tb assert.TB) { assert.Equal(tb, 7, 7, allocContract) }},

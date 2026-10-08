@@ -58,9 +58,9 @@ func BenchmarkContains(b *testing.B) {
 }
 
 // containsCases returns a passing call of each containment assertion, with
-// its allocation ceiling, measured: text for the assertions over text, and
-// slices of three ints for Permutation. Contains also runs on a slice whose
-// last element is the needle, and ContainsInOrder on bytes.
+// its allocation ceiling: text for the assertions over text, and slices of
+// three ints for Permutation. Contains also runs on a slice whose last
+// element is the needle, and ContainsInOrder on bytes.
 func containsCases() []allocCase {
 	needles := []string{"cart", "items"}
 	got, want := []int{1, 2, 3}, []int{3, 1, 2}
@@ -69,10 +69,10 @@ func containsCases() []allocCase {
 		{name: "Contains", call: func(seat matcher.Seat) {
 			matcher.Contains(seat, matcher.Fatal, "a cart of three items", "cart", allocContract)
 		}},
-		{name: "Contains of a slice", allocs: 1, call: func(seat matcher.Seat) {
+		{name: "Contains of a slice", allocs: 2, call: func(seat matcher.Seat) {
 			matcher.Contains(seat, matcher.Fatal, got, 3, allocContract)
 		}},
-		{name: "ContainsInOrder of bytes", allocs: 2, call: func(seat matcher.Seat) {
+		{name: "ContainsInOrder of bytes", allocs: 3, call: func(seat matcher.Seat) {
 			matcher.ContainsInOrder(seat, matcher.Fatal, bytes, needles, allocContract)
 		}},
 		{name: "NotContains", call: func(seat matcher.Seat) {
@@ -81,7 +81,7 @@ func containsCases() []allocCase {
 		{name: "ContainsInOrder", call: func(seat matcher.Seat) {
 			matcher.ContainsInOrder(seat, matcher.Fatal, "a cart of three items", needles, allocContract)
 		}},
-		{name: "Permutation", allocs: 2, call: func(seat matcher.Seat) {
+		{name: "Permutation", allocs: 3, call: func(seat matcher.Seat) {
 			matcher.Permutation(seat, matcher.Fatal, got, want, allocContract)
 		}},
 	}

@@ -44,7 +44,7 @@ func BenchmarkOrder(b *testing.B) {
 }
 
 // orderCases returns a passing call of Pairwise on three ascending ints,
-// with its allocation ceiling, measured.
+// with its allocation ceiling.
 func orderCases() []allocCase {
 	items := []int{1, 2, 3}
 	ascending := func(earlier, later int) bool { return earlier < later }

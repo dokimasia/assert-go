@@ -30,16 +30,16 @@ const (
 	referenceSeed = 7
 )
 
-// The allocations of string-matching, measured.
+// The allocation ceilings of string-matching.
 const (
-	// stringMatchingAllocs are the allocations of StringMatching on the
-	// pattern of a hexadecimal identifier: the parser and its characters,
-	// the parsed pieces and classes, the decoders built from them, and the
-	// generator's decodes and inverse.
-	stringMatchingAllocs = 25
-	// drawAllocs are the allocations of a whole replayed case that draws a
-	// string of that pattern from no choices.
-	drawAllocs = 25
+	// stringMatchingAllocs is the ceiling of the allocations of
+	// StringMatching on the pattern of a hexadecimal identifier: the parser
+	// and its characters, the parsed pieces and classes, the decoders built
+	// from them, and the generator's decodes and inverse.
+	stringMatchingAllocs = 32
+	// drawAllocs is the ceiling of the allocations of a whole replayed case
+	// that draws a string of that pattern from no choices.
+	drawAllocs = 32
 )
 
 // identifier is the pattern of the benchmarks and the allocation checks.

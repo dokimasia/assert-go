@@ -98,7 +98,7 @@ func BenchmarkOption(b *testing.B) {
 }
 
 // optionCases returns a call of each constructor of an option, with its
-// allocation ceiling, measured.
+// allocation ceiling.
 func optionCases() []alloctest.Case {
 	return []alloctest.Case{
 		{Name: "EquateEmpty", Call: func(assert.TB) { option = expect.EquateEmpty() }},

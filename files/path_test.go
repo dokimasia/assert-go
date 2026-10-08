@@ -201,8 +201,8 @@ func BenchmarkPath(b *testing.B) {
 }
 
 // pathCases returns a passing call of each assertion of one path, with its
-// allocation ceiling, measured. HasMode passes only where the file systems
-// record permission bits.
+// allocation ceiling. HasMode passes only where the file systems record
+// permission bits.
 func pathCases(tb testing.TB) []alloctest.Case {
 	tb.Helper()
 	mustRecordModes(tb)
@@ -210,11 +210,11 @@ func pathCases(tb testing.TB) []alloctest.Case {
 	at := func(name string) string { return filepath.Join(dir, name) }
 	absent, file, keys, current := at("b.txt"), at("a.txt"), at("keys"), at("current")
 	return []alloctest.Case{
-		{Name: "Absent", Call: func(tb assert.TB) { files.Absent(tb, absent, "gone") }, Allocs: 3},
-		{Name: "IsFile", Call: func(tb assert.TB) { files.IsFile(tb, file, "a file") }, Allocs: 2},
-		{Name: "IsDir", Call: func(tb assert.TB) { files.IsDir(tb, keys, "a directory") }, Allocs: 2},
-		{Name: "LinksTo", Call: func(tb assert.TB) { files.LinksTo(tb, current, "a.txt", "a link") }, Allocs: 5},
-		{Name: "HasContent", Call: func(tb assert.TB) { files.HasContent(tb, file, "a\n", "the content") }, Allocs: 8},
-		{Name: "HasMode", Call: func(tb assert.TB) { files.HasMode(tb, keys, 0o700, "private") }, Allocs: 2},
+		{Name: "Absent", Call: func(tb assert.TB) { files.Absent(tb, absent, "gone") }, Allocs: 4},
+		{Name: "IsFile", Call: func(tb assert.TB) { files.IsFile(tb, file, "a file") }, Allocs: 3},
+		{Name: "IsDir", Call: func(tb assert.TB) { files.IsDir(tb, keys, "a directory") }, Allocs: 3},
+		{Name: "LinksTo", Call: func(tb assert.TB) { files.LinksTo(tb, current, "a.txt", "a link") }, Allocs: 7},
+		{Name: "HasContent", Call: func(tb assert.TB) { files.HasContent(tb, file, "a\n", "the content") }, Allocs: 10},
+		{Name: "HasMode", Call: func(tb assert.TB) { files.HasMode(tb, keys, 0o700, "private") }, Allocs: 3},
 	}
 }

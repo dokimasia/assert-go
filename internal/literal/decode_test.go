@@ -20,10 +20,10 @@ import (
 // Objects.Decode on a reference to an integer whose id it decoded before,
 // which allocates the copies of the reference's id and value text.
 const (
-	decodeAllocs        = 17
-	intAllocs           = 3
-	floatAllocs         = 1
-	objectsDecodeAllocs = 2
+	decodeAllocs        = 22
+	intAllocs           = 4
+	floatAllocs         = 2
+	objectsDecodeAllocs = 3
 )
 
 // referenceToOne is the literal of a reference of the id a to the integer 1.

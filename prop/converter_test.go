@@ -56,16 +56,16 @@ const everyShape = `{"shape":"record","fields":[` +
 	`["tree",{"shape":"ref","name":"t"}]],` +
 	`"definitions":{"t":{"shape":"list","of":{"shape":"ref","name":"t"},"max_size":2}}}`
 
-// The allocations of a decode of one value through the generator that Of
-// returns, measured: the replay of its case, the value that the shape's
+// The allocation ceilings of a decode of one value through the generator
+// that Of returns: the replay of its case, the value that the shape's
 // generator boxes, and the value that Of returns. A converter stores an
 // integer and a float by its kind, and allocates no converted number.
 const (
-	int8DecodeAllocs    = 13
-	uint64DecodeAllocs  = 12
-	float32DecodeAllocs = 14
-	float64DecodeAllocs = 14
-	charDecodeAllocs    = 18
+	int8DecodeAllocs    = 17
+	uint64DecodeAllocs  = 15
+	float32DecodeAllocs = 18
+	float64DecodeAllocs = 18
+	charDecodeAllocs    = 23
 )
 
 // The types whose generators the converter tests run back.

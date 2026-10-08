@@ -55,10 +55,9 @@ func BenchmarkRecorder(b *testing.B) {
 	}
 }
 
-// recorderCases returns a call of NewRecorder, with its allocation ceiling,
-// measured.
+// recorderCases returns a call of NewRecorder, with its allocation ceiling.
 func recorderCases() []alloctest.Case {
 	return []alloctest.Case{
-		{Name: "NewRecorder", Call: func(assert.TB) { recorder = expect.NewRecorder() }, Allocs: 1},
+		{Name: "NewRecorder", Call: func(assert.TB) { recorder = expect.NewRecorder() }, Allocs: 2},
 	}
 }

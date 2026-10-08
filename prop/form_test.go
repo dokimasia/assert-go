@@ -16,15 +16,14 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// The allocations of the options of a form that its caller keeps,
-// measured.
+// The allocation ceilings of the options of a form that its caller keeps.
 const (
-	// usingAllocs are the allocations of Using: the generator with its type
-	// erased, its inverse, and the option.
-	usingAllocs = 3
-	// exampleAllocs are the allocations of Example and of Examples of one
-	// value: the list of values and the option.
-	exampleAllocs = 2
+	// usingAllocs is the ceiling of the allocations of Using: the generator
+	// with its type erased, its inverse, and the option.
+	usingAllocs = 4
+	// exampleAllocs is the ceiling of the allocations of Example and of
+	// Examples of one value: the list of values and the option.
+	exampleAllocs = 3
 )
 
 // TestForm checks the options that a property form takes: the run's

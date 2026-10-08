@@ -13,20 +13,22 @@ import (
 	"go.dokimi.dev/assert/internal/matcher"
 )
 
-// The allocations of the comparisons of maps, measured.
+// The allocation ceilings of the comparisons of maps.
 const (
-	// mapAllocs are the allocations of Equal of two maps of two string keys:
-	// the iterator of one map, and the copies of the keys and the values
-	// that reflect reads.
-	mapAllocs = 6
-	// lookupAllocs are the allocations of HasKey of a string in a map of
-	// string keys: the copy of the value that the map index reads.
-	lookupAllocs = 1
-	// anyMapAllocs are the allocations of Equal of two maps of two interface
-	// keys of scalars, which a map index looks up as it looks up strings: the
-	// iterators of the walk that checks the keys and of the walk that looks
-	// them up, and the copies of the keys and the values that reflect reads.
-	anyMapAllocs = 11
+	// mapAllocs is the ceiling of the allocations of Equal of two maps of
+	// two string keys: the iterator of one map, and the copies of the keys
+	// and the values that reflect reads.
+	mapAllocs = 8
+	// lookupAllocs is the ceiling of the allocations of HasKey of a string
+	// in a map of string keys: the copy of the value that the map index
+	// reads.
+	lookupAllocs = 2
+	// anyMapAllocs is the ceiling of the allocations of Equal of two maps
+	// of two interface keys of scalars, which a map index looks up as it
+	// looks up strings: the iterators of the walk that checks the keys and
+	// of the walk that looks them up, and the copies of the keys and the
+	// values that reflect reads.
+	anyMapAllocs = 14
 )
 
 // pair is a map key of two links, compared field by field.

@@ -13,12 +13,12 @@ import (
 
 // The allocation ceilings of a slot.
 const (
-	// beginAllocs are the allocations of Begin on a recorder: the slot and
-	// its entry.
-	beginAllocs = 2
-	// writeAllocs are the allocations of Write on a recorder: the encoded
-	// record.
-	writeAllocs = 6
+	// beginAllocs is the ceiling of the allocations of Begin on a recorder:
+	// the slot and its entry.
+	beginAllocs = 3
+	// writeAllocs is the ceiling of the allocations of Write on a recorder:
+	// the encoded record.
+	writeAllocs = 8
 )
 
 // TestSlot checks how a call that runs a body takes its number, the calls

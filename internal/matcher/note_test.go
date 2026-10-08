@@ -143,7 +143,7 @@ func BenchmarkNote(b *testing.B) {
 
 // noteCases returns a call of Note and of NoteFault on a seat of
 // internal/matchertest, which has no log and takes a fault as the error it
-// is, with its allocation ceiling, measured.
+// is, with its allocation ceiling.
 func noteCases() []allocCase {
 	err := fault.In("prop.ForAll", fault.New("the stored case decodes to other values"))
 	return []allocCase{

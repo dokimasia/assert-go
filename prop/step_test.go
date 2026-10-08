@@ -13,9 +13,9 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// stepJSONAllocs are the allocations of MarshalJSON on a step of a
-// concurrent section, measured.
-const stepJSONAllocs = 4
+// stepJSONAllocs is the ceiling of the allocations of MarshalJSON on a step
+// of a concurrent section.
+const stepJSONAllocs = 5
 
 // TestStep checks the JSON of a step of a counterexample, and its line in
 // the sentence of a run's record.

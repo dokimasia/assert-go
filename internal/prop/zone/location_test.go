@@ -14,9 +14,9 @@ import (
 	"go.dokimi.dev/assert/internal/prop/zone"
 )
 
-// locationsAllocs are the allocations of Locations of a load that allocates
-// nothing: the map of sixteen zones.
-const locationsAllocs = 4
+// locationsAllocs is the ceiling of the allocations of Locations of a load
+// that allocates nothing: the map of sixteen zones.
+const locationsAllocs = 5
 
 // errMissing is the error of a load that lacks a zone.
 var errMissing = errors.New("zone_test: no such file")

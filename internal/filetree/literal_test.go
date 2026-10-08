@@ -227,13 +227,13 @@ func BenchmarkLiteral(b *testing.B) {
 	}
 }
 
-// literalCases returns a call of each function of the codec, of the tree
-// of every kind of entry, with its allocation ceiling, measured.
+// literalCases returns a call of each function of the codec, of the tree of
+// every kind of entry, with its allocation ceiling.
 func literalCases() []alloctest.Case {
 	raw := []byte(everyKind)
 	return []alloctest.Case{
-		{Name: "MarshalJSON", Call: func(assert.TB) { keptBytes, errKept = everyKindTree.MarshalJSON() }, Allocs: 13},
-		{Name: "Encode", Call: func(assert.TB) { keptBytes, errKept = everyKindTree.Encode() }, Allocs: 13},
-		{Name: "Decode", Call: func(assert.TB) { keptTree, errKept = filetree.Decode(raw) }, Allocs: 120},
+		{Name: "MarshalJSON", Call: func(assert.TB) { keptBytes, errKept = everyKindTree.MarshalJSON() }, Allocs: 17},
+		{Name: "Encode", Call: func(assert.TB) { keptBytes, errKept = everyKindTree.Encode() }, Allocs: 17},
+		{Name: "Decode", Call: func(assert.TB) { keptTree, errKept = filetree.Decode(raw) }, Allocs: 150},
 	}
 }

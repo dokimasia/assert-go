@@ -75,7 +75,7 @@ func (*endlessSeat) ReportMetric(float64, string) {}
 var started *bench.Contract
 
 // contractCases returns a call of each function and method of a contract,
-// with its allocation ceiling, measured.
+// with its allocation ceiling.
 func contractCases() []alloctest.Case {
 	b := &endlessSeat{}
 	stated := bench.Start(b)
@@ -86,7 +86,7 @@ func contractCases() []alloctest.Case {
 		ended.Loop()
 	}
 	return []alloctest.Case{
-		{Name: "Start", Call: func(assert.TB) { started = bench.Start(b) }, Allocs: 1},
+		{Name: "Start", Call: func(assert.TB) { started = bench.Start(b) }, Allocs: 2},
 		{Name: "MaxLatency", Call: func(assert.TB) { stated.MaxLatency(time.Second) }},
 		{Name: "MaxMean", Call: func(assert.TB) { stated.MaxMean(time.Second) }},
 		{Name: "MaxAllocs", Call: func(assert.TB) { stated.MaxAllocs(1) }},
@@ -94,7 +94,7 @@ func contractCases() []alloctest.Case {
 		{Name: "Warmup", Call: func(assert.TB) { stated.Warmup(1) }},
 		{Name: "Loop", Call: func(assert.TB) { running.Loop() }},
 		{Name: "Excluding", Call: func(assert.TB) { running.Excluding(noop) }},
-		{Name: "End", Call: func(assert.TB) { ended.End() }, Allocs: 1},
+		{Name: "End", Call: func(assert.TB) { ended.End() }, Allocs: 2},
 	}
 }
 

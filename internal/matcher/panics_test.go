@@ -44,8 +44,7 @@ func BenchmarkPanics(b *testing.B) {
 }
 
 // panicsCases returns a passing call of each panic assertion, with its
-// allocation ceiling, measured. The subject of Panics panics with a
-// constant text.
+// allocation ceiling. The subject of Panics panics with a constant text.
 func panicsCases() []allocCase {
 	panicking := func() { panic("the key is empty") }
 	return []allocCase{
