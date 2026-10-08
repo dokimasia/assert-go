@@ -90,7 +90,7 @@ func leakCheck(order func(leaked []string)) matchertest.LeakInvoke {
 
 // scoped returns the function of each goroutine whose header in a dump of
 // every stack states the label of scope. The header states a goroutine's
-// labels, because this module states go 1.27.0, whose traceback prints
+// labels, because this module states go 1.27.1, whose traceback prints
 // them. It reads the dump of the stacks and not the goroutine profile that
 // the matcher reads, so the suite checks the matcher against a second
 // implementation.

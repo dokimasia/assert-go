@@ -3,7 +3,7 @@
 
 module example.test/lint
 
-go 1.27.0
+go 1.27.1
 
 require go.dokimi.dev/assert v0.0.0-00010101000000-000000000000
 
