@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package conformance
@@ -160,8 +160,9 @@ func numeric(v reflect.Value) (*big.Float, bool) {
 			return nil, false
 		}
 		return new(big.Float).SetFloat64(f), true
+	default:
+		return nil, false
 	}
-	return nil, false
 }
 
 // same reports whether v has the canonical text key.
@@ -251,14 +252,16 @@ func toFloat(i *big.Int) float64 {
 // map of n or more elements, a string counted in characters.
 func lengthAtLeast(v any, n *big.Float) bool {
 	rv := reflect.ValueOf(v)
-	length := -1
+	var length int
 	switch rv.Kind() {
 	case reflect.Slice, reflect.Map:
 		length = rv.Len()
 	case reflect.String:
 		length = utf8.RuneCountInString(rv.String())
+	default:
+		return false
 	}
-	return length >= 0 && new(big.Float).SetInt64(int64(length)).Cmp(n) >= 0
+	return new(big.Float).SetInt64(int64(length)).Cmp(n) >= 0
 }
 
 // contains reports whether v is a list with an element of the canonical

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package conformance
@@ -123,6 +123,8 @@ func (f functions) permutation(tb assert.TB, a []any, m string, o []assert.Optio
 
 // chain is the chain of a surface, of the value examined as an any. Each
 // method returns the chain, so C is the chain's own type.
+//
+//nolint:interfacebloat // the interface has the methods of the chain that the surfaces export
 type chain[C any] interface {
 	Equal(want any, msg string, opts ...assert.Option) C
 	NotEqual(want any, msg string, opts ...assert.Option) C

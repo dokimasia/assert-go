@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package conformance
@@ -182,6 +182,7 @@ func comparePass(c call, stated map[string]json.RawMessage, within func(budget i
 	}
 	if under.Verdict != expectFail || d.Limit == nil || *d.Limit != limit ||
 		d.Outcome != want.Outcome || d.Partitions != want.Partitions || d.Steps != want.Steps {
+
 		return fault.At(fault.New("the check within %d steps ends as %s with %s, want %s",
 			steps-1, under.Verdict, jsonOf(d), jsonOf(want)), path...)
 	}

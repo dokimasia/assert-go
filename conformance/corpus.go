@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package conformance
@@ -201,7 +201,8 @@ func (c Case) checkRecord(f assert.Failure) error {
 // differs returns f at the case's ID and at the members of the case that
 // the outcome differs from.
 func (c Case) differs(f *fault.Error, members ...string) error {
-	path := []fault.Segment{fault.Field(c.ID)}
+	path := make([]fault.Segment, 0, 1+len(members))
+	path = append(path, fault.Field(c.ID))
 	for _, m := range members {
 		path = append(path, fault.Field(m))
 	}

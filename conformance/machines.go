@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package conformance
@@ -289,16 +289,16 @@ func queueSubject(c *prop.Case, o machineOptions, losesOnWrap bool) {
 	stateful.Steps(c, stateful.Machine[[]int]{
 		Spec: boundedQueue(capacity),
 		Actions: []stateful.Action[[]int]{{
-			Name:  "put",
+			Name:  putOp,
 			Input: func(c *prop.Case, _ []int) any { return c.Draw(queued, "v") },
 			Run: func(c *prop.Case, client int, v any) {
-				call := c.History().Invoke(client, "put", []any{v})
+				call := c.History().Invoke(client, putOp, []any{v})
 				call.OK(q.put(v.(int)))
 			},
 		}, {
-			Name: "get",
+			Name: getOp,
 			Run: func(c *prop.Case, client int, _ any) {
-				call := c.History().Invoke(client, "get", nil)
+				call := c.History().Invoke(client, getOp, nil)
 				call.OK(q.get())
 			},
 		}},
@@ -315,10 +315,10 @@ func boundedQueue(capacity int) history.Spec[[]int] {
 	return history.Spec[[]int]{
 		Initial: func() []int { return []int{} },
 		Next: func(state []int, op history.Operation) [][]int {
-			if op.Name == "put" && len(state) == capacity {
+			if op.Name == putOp && len(state) == capacity {
 				return [][]int{state}
 			}
-			if op.Name == "put" {
+			if op.Name == putOp {
 				return [][]int{append(slices.Clip(state), op.Args[0].(int))}
 			}
 			if len(state) == 0 {
@@ -342,10 +342,10 @@ var counterSpec = history.Spec[int]{
 		if op.Name == "reset" {
 			return []int{0}
 		}
-		if op.Name == "read" && op.Output == any(state) {
+		if op.Name == readOp && op.Output == any(state) {
 			return []int{state}
 		}
-		if op.Name != "read" && op.Output == any(state+1) {
+		if op.Name != readOp && op.Output == any(state+1) {
 			return []int{state + 1}
 		}
 		return nil
@@ -360,9 +360,9 @@ func counterOverflows(c *prop.Case, o machineOptions) {
 	stateful.Steps(c, stateful.Machine[int]{
 		Spec: counterSpec,
 		Actions: []stateful.Action[int]{{
-			Name: "increment",
+			Name: incrementOp,
 			Run: func(c *prop.Case, client int, _ any) {
-				call := c.History().Invoke(client, "increment", nil)
+				call := c.History().Invoke(client, incrementOp, nil)
 				count = (count + 1) % overflow
 				call.OK(count)
 			},
@@ -388,10 +388,10 @@ func refusingCounter(c *prop.Case, o machineOptions, increments *int) {
 	stateful.Steps(c, stateful.Machine[int]{
 		Spec: counterSpec,
 		Actions: []stateful.Action[int]{{
-			Name:    "increment",
+			Name:    incrementOp,
 			Enabled: func(state int) bool { return state < limit },
 			Run: func(c *prop.Case, client int, _ any) {
-				call := c.History().Invoke(client, "increment", nil)
+				call := c.History().Invoke(client, incrementOp, nil)
 				*increments++
 				if *increments == refusal {
 					*increments = 0
@@ -402,9 +402,9 @@ func refusingCounter(c *prop.Case, o machineOptions, increments *int) {
 				call.OK(count)
 			},
 		}, {
-			Name: "read",
+			Name: readOp,
 			Run: func(c *prop.Case, client int, _ any) {
-				c.History().Invoke(client, "read", nil).OK(count)
+				c.History().Invoke(client, readOp, nil).OK(count)
 			},
 		}},
 	}, o.steps...)
@@ -427,7 +427,7 @@ func storeLosesOnCrash(c *prop.Case, o machineOptions) {
 	written := 0
 	stateful.Steps(c, stateful.Machine[struct{}]{
 		Actions: []stateful.Action[struct{}]{{
-			Name: "put",
+			Name: putOp,
 			Input: func(c *prop.Case, _ struct{}) any {
 				key := c.Draw(storeKeys, "key")
 				written += 1
@@ -435,7 +435,7 @@ func storeLosesOnCrash(c *prop.Case, o machineOptions) {
 			},
 			Run: func(c *prop.Case, client int, input any) {
 				p := input.(storedPut)
-				call := c.History().Invoke(client, "put", []any{p.key, p.value})
+				call := c.History().Invoke(client, putOp, []any{p.key, p.value})
 				buffer[p.key] = p.value
 				call.OK(nil)
 				acknowledged[p.key] = p.value
@@ -474,9 +474,9 @@ func sharedCounter(c *prop.Case, o machineOptions, racy bool) {
 	stateful.Steps(c, stateful.Machine[int]{
 		Spec: counterSpec,
 		Actions: []stateful.Action[int]{{
-			Name: "increment",
+			Name: incrementOp,
 			Run: func(c *prop.Case, client int, _ any) {
-				call := c.History().Invoke(client, "increment", nil)
+				call := c.History().Invoke(client, incrementOp, nil)
 				read := count
 				if racy {
 					s.Yield()

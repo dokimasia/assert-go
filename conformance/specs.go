@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package conformance
@@ -37,6 +37,34 @@ var Specs = map[string]history.Spec[any]{
 	"lossy-register": {Initial: func() any { return nil }, Next: lossyRegister},
 }
 
+// The names of the operations of the specs, which the machines invoke too.
+const (
+	// readOp reads the state of a register or a counter.
+	readOp = "read"
+	// writeOp stores a value in a register.
+	writeOp = "write"
+	// casOp sets a register to a value when it holds another.
+	casOp = "cas"
+	// getOp reads the value under a key.
+	getOp = "get"
+	// putOp stores a value, under a key or in a queue.
+	putOp = "put"
+	// appendOp appends a text to the value under a key.
+	appendOp = "append"
+	// addOp adds a value to a set.
+	addOp = "add"
+	// containsOp reads whether a set has a value.
+	containsOp = "contains"
+	// removeOp removes a value from a set.
+	removeOp = "remove"
+	// incrementOp adds one to a counter.
+	incrementOp = "increment"
+	// enqueueOp adds a value at the tail of a queue.
+	enqueueOp = "enqueue"
+	// dequeueOp removes the head of a queue.
+	dequeueOp = "dequeue"
+)
+
 // undefined returns the panic value of op, an operation that the spec of
 // the name does not define.
 func undefined(name string, op history.Operation) string {
@@ -53,7 +81,7 @@ func sameCanonical(a, b any) bool {
 // readRegister steps a register's read, which outputs the state and changes
 // nothing. It panics on any other operation of the spec of the name.
 func readRegister(state any, op history.Operation, name string) []any {
-	if op.Name != "read" {
+	if op.Name != readOp {
 		panic(undefined(name, op))
 	}
 	if !op.Known || sameCanonical(op.Output, state) {
@@ -65,7 +93,7 @@ func readRegister(state any, op history.Operation, name string) []any {
 // register steps the register: a write stores its value, and a read outputs
 // it.
 func register(state any, op history.Operation) []any {
-	if op.Name == "write" {
+	if op.Name == writeOp {
 		return []any{op.Args[0]}
 	}
 	return readRegister(state, op, "register")
@@ -77,9 +105,9 @@ func register(state any, op history.Operation) []any {
 // state otherwise.
 func casRegister(state any, op history.Operation) []any {
 	switch op.Name {
-	case "write":
+	case writeOp:
 		return register(state, op)
-	case "cas":
+	case casOp:
 		matches := sameCanonical(state, op.Args[0])
 		if op.Known && op.Output != matches {
 			return nil
@@ -95,7 +123,7 @@ func casRegister(state any, op history.Operation) []any {
 // lossyRegister steps the register whose write may be lost: a write leaves
 // the new value, then the old one.
 func lossyRegister(state any, op history.Operation) []any {
-	if op.Name == "write" {
+	if op.Name == writeOp {
 		return []any{op.Args[0], state}
 	}
 	return readRegister(state, op, "lossy-register")
@@ -109,14 +137,14 @@ func keyValue(state any, op history.Operation) []any {
 	name := op.Args[0]
 	held := lookup(pairs, name)
 	switch op.Name {
-	case "get":
+	case getOp:
 		if !op.Known || sameCanonical(op.Output, held) {
 			return []any{state}
 		}
 		return nil
-	case "put":
+	case putOp:
 		return []any{withValue(pairs, name, op.Args[1])}
-	case "append":
+	case appendOp:
 		return []any{withValue(pairs, name, held.(string)+op.Args[1].(string))}
 	}
 	panic(undefined("key-value", op))
@@ -156,9 +184,9 @@ func withValue(pairs literal.Pairs, name, value any) literal.Pairs {
 func queue(state any, op history.Operation) []any {
 	items := state.([]any)
 	switch op.Name {
-	case "enqueue":
+	case enqueueOp:
 		return []any{append(slices.Clip(items), op.Args[0])}
-	case "dequeue":
+	case dequeueOp:
 		if len(items) == 0 {
 			if !op.Known || op.Output == nil {
 				return []any{state}
@@ -182,17 +210,17 @@ func set(state any, op history.Operation) []any {
 	value := op.Args[0]
 	present := slices.ContainsFunc(items, func(held any) bool { return sameCanonical(value, held) })
 	switch op.Name {
-	case "add":
+	case addOp:
 		if present {
 			return []any{state}
 		}
 		return []any{append(slices.Clip(items), value)}
-	case "contains":
+	case containsOp:
 		if !op.Known || op.Output == present {
 			return []any{state}
 		}
 		return nil
-	case "remove":
+	case removeOp:
 		if op.Known && op.Output != present {
 			return nil
 		}

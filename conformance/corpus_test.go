@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package conformance_test
@@ -378,7 +378,7 @@ func TestCorpus(t *testing.T) {
 func options(t *testing.T, tc conformance.Case, overlay conformance.OverlayDoc) []assert.Option {
 	t.Helper()
 
-	var out []assert.Option
+	out := make([]assert.Option, 0, len(tc.Options))
 	for _, id := range tc.Options {
 		if overlay.DeclinesRelaxation(id) {
 			t.Skipf("declared skip: the overlay declines the relaxation %s", id)

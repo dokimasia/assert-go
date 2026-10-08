@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package conformance
@@ -284,7 +284,7 @@ func normalEntries(entries []entrySpec, explained bool) ([]any, error) {
 // JSON null.
 func normalLiteral(raw json.RawMessage) (any, error) {
 	if string(raw) == jsonNull {
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil is the value of JSON null
 	}
 	v, err := literal.Decode(raw)
 	if err != nil {
@@ -298,7 +298,7 @@ func normalLiteral(raw json.RawMessage) (any, error) {
 // as itself, a fingerprint as a uint64, and nil for null.
 func normalSide(raw json.RawMessage) (any, error) {
 	if string(raw) == jsonNull {
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil is the value of JSON null
 	}
 	var identity string
 	if json.Unmarshal(raw, &identity) == nil {

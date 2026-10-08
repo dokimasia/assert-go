@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package conformance
@@ -58,6 +58,8 @@ type generatorSpec struct {
 	Max json.RawMessage `json:"max"`
 	// AllowNaN makes NaN a value of float.
 	AllowNaN bool `json:"allow_nan"`
+	// Unique makes a list discard an element equal to an earlier one.
+	Unique bool `json:"unique"`
 	// Width is the width of float, 64 when nil.
 	Width *int `json:"width"`
 	// P is the probability of true of boolean, as [numerator,
@@ -77,8 +79,6 @@ type generatorSpec struct {
 	MinSize *int `json:"min_size"`
 	// MaxSize is the longest length, unbounded when nil.
 	MaxSize *int `json:"max_size"`
-	// Unique makes a list discard an element equal to an earlier one.
-	Unique bool `json:"unique"`
 	// Alphabet are the characters of string, the default alphabet when
 	// nil.
 	Alphabet *string `json:"alphabet"`

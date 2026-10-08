@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package conformance
@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -440,8 +441,10 @@ func eachFile(dir string, do func(path string) error) error {
 // leavesFilesAlone reads every file of the tree in dir, and writes nothing.
 func leavesFilesAlone(dir string) error {
 	return eachFile(dir, func(path string) error {
-		_, err := os.ReadFile(path)
-		return err
+		if _, err := os.ReadFile(path); err != nil {
+			return fmt.Errorf("conformance: read a file of the tree: %w", err)
+		}
+		return nil
 	})
 }
 
@@ -451,22 +454,32 @@ func rewritesFiles(dir string) error {
 	return eachFile(dir, func(path string) error {
 		content, err := os.ReadFile(path)
 		if err != nil {
-			return err
+			return fmt.Errorf("conformance: read a file of the tree: %w", err)
 		}
 		// A file that exists keeps its mode.
-		return os.WriteFile(path, content, 0)
+		//nolint:gosec // the path is a file of the temporary tree that the walk reads
+		if err := os.WriteFile(path, content, 0); err != nil {
+			return fmt.Errorf("conformance: write a file of the tree: %w", err)
+		}
+		return nil
 	})
 }
 
 // writesAFile writes the file new.txt, with the text new, at the root of the
 // tree in dir.
 func writesAFile(dir string) error {
-	return os.WriteFile(filepath.Join(dir, "new.txt"), []byte("new"), newFileMode)
+	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("new"), newFileMode); err != nil {
+		return fmt.Errorf("conformance: write new.txt: %w", err)
+	}
+	return nil
 }
 
 // writesALargeFile writes the file large.bin at the root of the tree in dir:
 // one byte of the letter a more than a record states in full.
 func writesALargeFile(dir string) error {
 	content := bytes.Repeat([]byte("a"), filetree.ContentLimit+1)
-	return os.WriteFile(filepath.Join(dir, "large.bin"), content, newFileMode)
+	if err := os.WriteFile(filepath.Join(dir, "large.bin"), content, newFileMode); err != nil {
+		return fmt.Errorf("conformance: write large.bin: %w", err)
+	}
+	return nil
 }

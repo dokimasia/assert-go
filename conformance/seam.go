@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package conformance
@@ -233,7 +233,8 @@ func fromIntervals(entries []intervalEntry, refused *int) (*history.History, err
 	var f *fault.Error
 	if refused != nil && errors.Is(err, history.ErrInterval) && errors.As(err, &f) &&
 		slices.Equal(f.Path, fault.Path{fault.Index(*refused)}) {
-		return nil, nil
+
+		return nil, nil //nolint:nilnil // a refusal that the vector expects builds no history
 	}
 	return nil, fault.At(fault.New("from-intervals returns %v, want a refusal of %s", err, jsonOf(refused)),
 		fault.Field(refusedMember))

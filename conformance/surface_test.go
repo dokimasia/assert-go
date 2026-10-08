@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package conformance_test
@@ -710,7 +710,7 @@ var recordingMethods = map[string]func(tb assert.TB){
 	"NotNil":          func(tb assert.TB) { expect.That[any](tb, nil).NotNil(rejected) },
 }
 
-// TestSurfaceRecording drives every reporting member of the recording
+// TestSurfaceRecordingAllocs drives every reporting member of the recording
 // surface with an input it rejects. Each member must report through
 // Errorf and never through Fatalf, and its record must name the member
 // the driver is keyed by. The shared suites accept a failure from
@@ -721,7 +721,7 @@ var recordingMethods = map[string]func(tb assert.TB){
 //
 // It does not run in parallel, because the MaxAllocs and MaxAllocsWithSetup
 // drivers count the allocations of the whole process.
-func TestSurfaceRecording(t *testing.T) {
+func TestSurfaceRecordingAllocs(t *testing.T) {
 	members, err := conformance.Members(conformance.Recording)
 	if err != nil {
 		t.Fatalf("the recording surface can be read: %v", err)
@@ -884,17 +884,17 @@ var abortingMethods = map[string]func(tb assert.TB){
 	"NotNil":          func(tb assert.TB) { assert.That[any](tb, nil).NotNil(rejected) },
 }
 
-// TestSurfaceAborting drives every reporting member of the aborting surface
+// TestSurfaceAbortingAllocs drives every reporting member of the aborting surface
 // with an input it rejects. Each member must report through Fatalf and
 // never through Errorf, and its record must name the member the driver is
-// keyed by. It is the twin of TestSurfaceRecording, and it does not run in
+// keyed by. It is the twin of TestSurfaceRecordingAllocs, and it does not run in
 // parallel for the same reasons.
 //
 // The member list comes from the surface's source and the chain's method
 // set, so a member added without a driver fails here. A member that
 // reports nothing is excused by silent, or by a type of the naming table's
 // surface section.
-func TestSurfaceAborting(t *testing.T) {
+func TestSurfaceAbortingAllocs(t *testing.T) {
 	members, err := conformance.Members(conformance.Aborting)
 	if err != nil {
 		t.Fatalf("the aborting surface can be read: %v", err)

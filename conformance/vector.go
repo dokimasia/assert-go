@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package conformance
@@ -263,7 +263,7 @@ func Vectors() []Vector {
 		names = append(names, matches...)
 	}
 	slices.SortFunc(names, func(a, b string) int { return strings.Compare(path.Base(a), path.Base(b)) })
-	var out []Vector
+	var out []Vector //nolint:prealloc // the number of cases is known only after each file is read
 	for _, name := range names {
 		var file struct {
 			Kind  VectorKind        `json:"kind"`
