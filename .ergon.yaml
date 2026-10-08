@@ -198,6 +198,6 @@ go:
         uses: actions/setup-go
         commit: b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         release: v7.0.0
-    runners: [ubuntu-26.04]
+    runners: []
     versions: []
     timeout: 30
