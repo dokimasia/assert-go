@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package lint
@@ -12,7 +12,7 @@ import (
 
 // collectionEquals are the functions that report whether two slices or maps
 // are equal, counting a nil value equal to an empty one.
-var collectionEquals = [][2]string{{"bytes", "Equal"}, {"slices", "Equal"}, {"maps", "Equal"}}
+var collectionEquals = [][2]string{{bytesPath, equalName}, {slicesPath, equalName}, {"maps", equalName}}
 
 // compare reports True or False of == or != between two values of basic
 // types: booleans, numbers and strings. It suggests Equal or NotEqual, which
@@ -26,9 +26,9 @@ func compare(p *pass, c check) bool {
 	if p.constant(x) {
 		x, y = y, x
 	}
-	name := "Equal"
+	name := equalName
 	if op == token.NEQ {
-		name = "NotEqual"
+		name = notEqualName
 	}
 	p.report(c.node, "compare", name, c.rewrite(name, p.source(x)+", "+p.source(y)))
 	return true
@@ -46,9 +46,9 @@ func equalFunc(p *pass, c check) bool {
 		if !ok || !basicElements(p.TypesInfo.TypeOf(n.Fun).(*types.Signature).Params().At(0).Type()) {
 			continue
 		}
-		name := "Equal"
+		name := equalName
 		if !c.holds {
-			name = "NotEqual"
+			name = notEqualName
 		}
 		var fixes []analysis.SuggestedFix
 		if types.Identical(p.TypesInfo.TypeOf(n.Args[0]), p.TypesInfo.TypeOf(n.Args[1])) {
@@ -68,9 +68,9 @@ func deepEqual(p *pass, c check) bool {
 	if !ok {
 		return false
 	}
-	name := "Equal"
+	name := equalName
 	if !c.holds {
-		name = "NotEqual"
+		name = notEqualName
 	}
 	var fixes []analysis.SuggestedFix
 	t := p.TypesInfo.TypeOf(n.Args[0])

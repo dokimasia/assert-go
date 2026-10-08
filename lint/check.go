@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package lint
@@ -24,6 +24,30 @@ const (
 	expectPath = "go.dokimi.dev/assert/expect"
 )
 
+// The names of the assertions that the rules name in more than one place.
+const (
+	trueName     = "True"
+	falseName    = "False"
+	equalName    = "Equal"
+	notEqualName = "NotEqual"
+	emptyName    = "Empty"
+	notEmptyName = "NotEmpty"
+	lengthName   = "Length"
+)
+
+// The rules of the purity assertions, which each name the other.
+const (
+	pureRule    = "pure"
+	notPureRule = "not-pure"
+)
+
+// The packages of the standard library whose functions the rules read.
+const (
+	bytesPath   = "bytes"
+	slicesPath  = "slices"
+	stringsPath = "strings"
+)
+
 // failures are the methods of a test that fail it.
 var failures = []string{"Error", "Errorf", "Fatal", "Fatalf", "Fail", "FailNow"}
 
@@ -45,7 +69,12 @@ var mirrors = map[token.Token]token.Token{
 
 // equalFuncs are the functions whose call reports whether two values are
 // equal, as an equality reads them.
-var equalFuncs = [][2]string{{"reflect", "DeepEqual"}, {"bytes", "Equal"}, {"slices", "Equal"}, {"maps", "Equal"}}
+var equalFuncs = [][2]string{
+	{"reflect", "DeepEqual"},
+	{bytesPath, equalName},
+	{slicesPath, equalName},
+	{"maps", equalName},
+}
 
 // check is a check that a test states: a call of an assertion, or an if
 // check, an if statement without else whose body is one failure of a test.
@@ -67,8 +96,6 @@ type check struct {
 	// qualifier is the name of fn's package as the call writes it, and empty
 	// where name is nil.
 	qualifier string
-	// stmt reports whether the call is a statement of its own.
-	stmt bool
 	// tb is the test that the check fails.
 	tb ast.Expr
 	// cond is the condition of a call of True or False or of an if check,
@@ -78,6 +105,8 @@ type check struct {
 	// and false for False and an if check, inverted by each negation that
 	// cond lost.
 	holds bool
+	// stmt reports whether the call is a statement of its own.
+	stmt bool
 }
 
 // equality is a check that two values are equal, or that they differ.
@@ -112,8 +141,8 @@ func (p *pass) assertion(n *ast.CallExpr) (check, bool) {
 	if sel, ok := n.Fun.(*ast.SelectorExpr); ok {
 		c.name, c.qualifier = sel.Sel, sel.X.(*ast.Ident).Name
 	}
-	if c.is("True", "False") {
-		c.cond, c.holds = normalize(n.Args[1], fn.Name() == "True")
+	if c.is(trueName, falseName) {
+		c.cond, c.holds = normalize(n.Args[1], fn.Name() == trueName)
 	}
 	return c, true
 }
@@ -254,8 +283,8 @@ func (c check) values() []ast.Expr {
 // equality returns the equality that c states: Equal or NotEqual without
 // options, or a condition of ==, !=, or a function of equalFuncs.
 func (p *pass) equality(c check) (equality, bool) {
-	if c.is("Equal", "NotEqual") && len(c.call.Args) == 4 {
-		return equality{c.call.Args[1], c.call.Args[2], c.fn.Name() == "Equal"}, true
+	if c.is(equalName, notEqualName) && len(c.call.Args) == 4 {
+		return equality{c.call.Args[1], c.call.Args[2], c.fn.Name() == equalName}, true
 	}
 	if x, y, op, ok := c.comparison(); ok && (op == token.EQL || op == token.NEQ) {
 		return equality{x, y, op == token.EQL}, true
@@ -284,8 +313,9 @@ func listed(cursor inspector.Cursor) bool {
 	switch cursor.ParentEdgeKind() {
 	case edge.BlockStmt_List, edge.CaseClause_Body, edge.CommClause_Body:
 		return true
+	default:
+		return false
 	}
-	return false
 }
 
 // before returns the statements before the statement at cursor in its list,

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package lint_test
@@ -24,11 +24,12 @@ func TestAnalyzer(t *testing.T) {
 				t.Errorf("Name is %q, want %q", lint.Analyzer.Name, "assertlint")
 			}
 		})
-		var tests []fixture
-		for _, assertion := range []string{
+		uncovered := []string{
 			"accumulates", "bench-max-latency", "golden-match-json-field", "golden-match-tree",
 			"tree-equal", "tree-contains", "tree-unchanged", "linearizable", "serializable", "snapshot-isolation",
-		} {
+		}
+		tests := make([]fixture, 0, len(uncovered))
+		for _, assertion := range uncovered {
 			tests = append(tests, fixture{
 				name: "reports no call of " + assertion + ", which no rule covers",
 				give: "./" + assertion,

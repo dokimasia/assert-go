@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package lint
@@ -39,7 +39,7 @@ func nilCheck(p *pass, c check) bool {
 // suggests the assertion that nilCheck suggests for the value's type. Equal
 // compares such a value with nil as == does.
 func equalNil(p *pass, c check) bool {
-	if !c.is("Equal", "NotEqual") || len(c.call.Args) != 4 {
+	if !c.is(equalName, notEqualName) || len(c.call.Args) != 4 {
 		return false
 	}
 	x, y := c.call.Args[1], c.call.Args[2]
@@ -49,7 +49,7 @@ func equalNil(p *pass, c check) bool {
 	if !p.TypesInfo.Types[y].IsNil() {
 		return false
 	}
-	_, name, ok := nilAssertion(p.TypesInfo.TypeOf(x), c.is("Equal"))
+	_, name, ok := nilAssertion(p.TypesInfo.TypeOf(x), c.is(equalName))
 	if !ok {
 		return false
 	}

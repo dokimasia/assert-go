@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package lint
@@ -21,8 +21,8 @@ type count struct {
 // emptiness maps each comparison of a length with a constant that Empty or
 // NotEmpty states to that assertion.
 var emptiness = map[count]string{
-	{token.EQL, 0}: "Empty", {token.LEQ, 0}: "Empty", {token.LSS, 1}: "Empty",
-	{token.NEQ, 0}: "NotEmpty", {token.GTR, 0}: "NotEmpty", {token.GEQ, 1}: "NotEmpty",
+	{token.EQL, 0}: emptyName, {token.LEQ, 0}: emptyName, {token.LSS, 1}: emptyName,
+	{token.NEQ, 0}: notEmptyName, {token.GTR, 0}: notEmptyName, {token.GEQ, 1}: notEmptyName,
 }
 
 // length reports a check of a length that Length, Empty or NotEmpty states:
@@ -46,13 +46,13 @@ func length(p *pass, c check) bool {
 		name = emptiness[count{op, v}]
 	}
 	if name == "" && op == token.EQL {
-		name = "Length"
+		name = lengthName
 	}
 	if name == "" || c.is(name) || viaLen && !p.counted(x, name) {
 		return false
 	}
 	args := p.source(x)
-	if name == "Length" {
+	if name == lengthName {
 		args += ", " + p.source(n)
 	}
 	p.report(c.node, "length", name, c.rewrite(name, args))
@@ -67,15 +67,15 @@ func length(p *pass, c check) bool {
 func (p *pass) lengthCheck(c check) (x, n ast.Expr, op token.Token, viaLen bool) {
 	var a, b ast.Expr
 	switch {
-	case c.is("Length"):
+	case c.is(lengthName):
 		return c.call.Args[1], c.call.Args[2], token.EQL, false
-	case c.is("Equal", "NotEqual"):
+	case c.is(equalName, notEqualName):
 		// A call with options compares as no check of a length does.
 		if len(c.call.Args) != 4 {
 			return nil, nil, 0, false
 		}
 		a, b, op = c.call.Args[1], c.call.Args[2], token.EQL
-		if c.is("NotEqual") {
+		if c.is(notEqualName) {
 			op = token.NEQ
 		}
 	default:
@@ -107,7 +107,7 @@ func (p *pass) counted(x ast.Expr, name string) bool {
 	case *types.Slice, *types.Array, *types.Map, *types.Chan:
 		return true
 	case *types.Basic:
-		return name != "Length"
+		return name != lengthName
 	}
 	return false
 }

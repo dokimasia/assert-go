@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package lint
@@ -53,18 +53,18 @@ var statementRules = []struct {
 	nodes []ast.Node
 	rule  func(p *pass, cursor inspector.Cursor)
 }{
-	{[]ast.Node{(*ast.ExprStmt)(nil)}, chain},
-	{[]ast.Node{(*ast.RangeStmt)(nil)}, total},
-	{loopNodes, poisoned},
-	{loopNodes, noDuplicates},
-	{loopNodes, monotonic},
-	{loopNodes, eventually},
-	{loopNodes, forAll},
-	{[]ast.Node{(*ast.SelectStmt)(nil)}, completesWithin},
-	{[]ast.Node{(*ast.CallExpr)(nil)}, updateFlag},
-	{[]ast.Node{(*ast.CallExpr)(nil)}, quick},
-	{[]ast.Node{(*ast.CallExpr)(nil)}, propertyForm},
-	{[]ast.Node{(*ast.CallExpr)(nil)}, machine},
+	{nodes: []ast.Node{(*ast.ExprStmt)(nil)}, rule: chain},
+	{nodes: []ast.Node{(*ast.RangeStmt)(nil)}, rule: total},
+	{nodes: loopNodes, rule: poisoned},
+	{nodes: loopNodes, rule: noDuplicates},
+	{nodes: loopNodes, rule: monotonic},
+	{nodes: loopNodes, rule: eventually},
+	{nodes: loopNodes, rule: forAll},
+	{nodes: []ast.Node{(*ast.SelectStmt)(nil)}, rule: completesWithin},
+	{nodes: []ast.Node{(*ast.CallExpr)(nil)}, rule: updateFlag},
+	{nodes: []ast.Node{(*ast.CallExpr)(nil)}, rule: quick},
+	{nodes: []ast.Node{(*ast.CallExpr)(nil)}, rule: propertyForm},
+	{nodes: []ast.Node{(*ast.CallExpr)(nil)}, rule: machine},
 }
 
 // pass is one run of the analyzer over a package.
@@ -118,7 +118,7 @@ func run(ap *analysis.Pass) (any, error) {
 		}
 	}
 	p.reportUnused()
-	return nil, nil
+	return nil, nil //nolint:nilnil // the analyzer reports diagnostics and returns no result
 }
 
 // briefLength is the most characters of a node's text that a diagnostic
@@ -147,6 +147,7 @@ func (p *pass) brief(n ast.Node) string {
 			id, ok := lhs.(*ast.Ident)
 			return !ok || id.Name != "_"
 		}) {
+
 			return p.brief(s.Rhs[0])
 		}
 	}
@@ -164,9 +165,9 @@ func (p *pass) brief(n ast.Node) string {
 // without a report, and True or False of c's condition where no rule names
 // one.
 func (p *pass) named(c check) string {
-	name := "False"
+	name := falseName
 	if c.holds {
-		name = "True"
+		name = trueName
 	}
 	saved := p.naming
 	p.naming = &name

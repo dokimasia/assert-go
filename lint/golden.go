@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package lint
@@ -73,19 +73,20 @@ func (p *pass) content(e ast.Expr) bool {
 // trailing slash: a constant with that prefix, or a join whose leading
 // constant elements form one.
 func (p *pass) under(e ast.Expr, dir string) bool {
-	joined := ""
+	var joined strings.Builder
 	if n, ok := ast.Unparen(e).(*ast.CallExpr); ok && slices.Contains(joins, p.callee(n)) {
 		for _, arg := range n.Args {
 			value := p.TypesInfo.Types[arg].Value
 			if value == nil {
 				break
 			}
-			joined += constant.StringVal(value) + "/"
+			joined.WriteString(constant.StringVal(value))
+			joined.WriteByte('/')
 		}
 	} else if value := p.TypesInfo.Types[e].Value; value != nil {
-		joined = constant.StringVal(value)
+		joined.WriteString(constant.StringVal(value))
 	}
-	return strings.HasPrefix(joined, dir)
+	return strings.HasPrefix(joined.String(), dir)
 }
 
 // updateFlag reports the definition of a flag -update in a test file. A

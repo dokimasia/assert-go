@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package lint
@@ -189,6 +189,8 @@ func (p *pass) limit(x ast.Expr, b bound) (string, bool) {
 		v, text = v+1, text+"+1"
 	case token.LSS:
 		v, text = v-1, text+"-1"
+	default:
+		// An inclusive bound, >= or <=, is the value itself.
 	}
 	switch {
 	case literal(b.value):

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package lint
@@ -80,6 +80,7 @@ func propertyForm(p *pass, cursor inspector.Cursor) {
 		taken := counterpart(form.Signature().Params(), params, i)
 		if drawn != nil && p.reads(c.call.Args[i], nil, drawn) && taken != nil &&
 			arity(taken.Type()) <= arity(params.At(i).Type()) {
+
 			return
 		}
 	}

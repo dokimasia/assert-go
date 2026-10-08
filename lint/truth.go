@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package lint
@@ -28,9 +28,9 @@ import (
 // each operand, so it also requires that neither calls a function or
 // receives from a channel.
 func conjunction(p *pass, c check) bool {
-	op, assertion := token.LOR, "False"
+	op, assertion := token.LOR, falseName
 	if c.holds {
-		op, assertion = token.LAND, "True"
+		op, assertion = token.LAND, trueName
 	}
 	terms := operands(c.cond, op)
 	if len(terms) < 2 || c.call == nil && p.polls(c.cursor) {
@@ -66,9 +66,9 @@ func condition(p *pass, c check) bool {
 	if c.call != nil || p.polls(c.cursor) {
 		return false
 	}
-	name := "False"
+	name := falseName
 	if c.holds {
-		name = "True"
+		name = trueName
 	}
 	if guard, ok := c.cond.(*ast.BinaryExpr); ok && guard.Op == token.LAND {
 		last, holds := normalize(guard.Y, false)

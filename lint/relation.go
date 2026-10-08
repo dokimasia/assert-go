@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package lint
@@ -45,7 +45,7 @@ func commutative(p *pass, c check) bool {
 		return false
 	}
 	var fixes []analysis.SuggestedFix
-	if c.is("Equal") && p.combinable(x) && pure(x.Fun) && pure(x.Args[0]) && pure(x.Args[1]) {
+	if c.is(equalName) && p.combinable(x) && pure(x.Fun) && pure(x.Args[0]) && pure(x.Args[1]) {
 		fixes = c.rewrite("Commutative", f+", "+a+", "+b)
 	}
 	p.report(c.node, "commutative", "Commutative", fixes)
@@ -69,7 +69,7 @@ func associative(p *pass, c check) bool {
 		return false
 	}
 	var fixes []analysis.SuggestedFix
-	if c.is("Equal") && first && p.combinable(l.call) && pure(l.f) && pure(l.a) && pure(l.b) && pure(l.c) {
+	if c.is(equalName) && first && p.combinable(l.call) && pure(l.f) && pure(l.a) && pure(l.b) && pure(l.c) {
 		fixes = c.rewrite("Associative", p.arguments(l))
 	}
 	p.report(c.node, "associative", "Associative", fixes)
@@ -154,6 +154,7 @@ func (p *pass) inverts(stmt inspector.Cursor, input, back ast.Expr) (f, g *ast.C
 		if !ok || p.builtin(f) || p.constructor(f) || !slices.ContainsFunc(f.Args, func(in ast.Expr) bool {
 			return p.source(in) == want
 		}) {
+
 			continue
 		}
 		if p.direct(from, at, stmt) && !p.readAfter(from, g, p.variable(p.operand(arg))) {
@@ -232,6 +233,7 @@ func repetition(p *pass, c check) bool {
 	second, isSecond := p.reading(stmt, e.y)
 	if !isFirst || !isSecond || p.source(first.call) != p.source(second.call) ||
 		p.changed(first.at, stmt, e.x) || p.changed(second.at, stmt, e.y) {
+
 		return false
 	}
 	firstValue, secondValue := e.x, e.y
@@ -247,7 +249,7 @@ func repetition(p *pass, c check) bool {
 		return true
 	}
 	quiet := func(s ast.Node) bool { return p.still(s, first.call) }
-	rule, name := "pure", "Pure"
+	rule, name := pureRule, "Pure"
 	next, _ := following(first.at, stmt, quiet)
 	switch {
 	case first.at == second.at || next == second.at:
@@ -258,14 +260,14 @@ func repetition(p *pass, c check) bool {
 	case p.repeats(first.at, second.at, quiet):
 		rule, name = "idempotent", "Idempotent"
 	case !e.equal:
-		rule, name = "not-pure", "NotPure"
+		rule, name = notPureRule, "NotPure"
 	}
-	if !e.equal && rule != "not-pure" {
+	if !e.equal && rule != notPureRule {
 		return false
 	}
 	matched := name + " of " + p.brief(first.call)
 	switch rule {
-	case "pure", "not-pure":
+	case pureRule, notPureRule:
 		matched += ", around " + p.steps(first.at, second.at, second.at, quiet)
 	case "idempotent":
 		repeated, _ := preceding(first.at, quiet)
@@ -281,9 +283,9 @@ func repetition(p *pass, c check) bool {
 // the check with an observation that returns a copy of value, around the
 // statements up to the check, and NotPure where the readings differ.
 func (p *pass) reportCopy(c check, equal bool, value ast.Expr, from, second, stmt inspector.Cursor) {
-	rule, name := "not-pure", "NotPure"
+	rule, name := notPureRule, "NotPure"
 	if equal {
-		rule, name = "pure", "Pure"
+		rule, name = pureRule, "Pure"
 	}
 	quiet := func(s ast.Node) bool { return p.still(s, value) }
 	p.report(c.node, rule, name+" of a copy of "+p.source(value)+", around "+p.steps(from, stmt, second, quiet), nil)
@@ -362,6 +364,7 @@ func (p *pass) observed(e ast.Expr) map[*types.Var]bool {
 		if id, isIdent := node.(*ast.Ident); isIdent {
 			if v, isVar := p.TypesInfo.Uses[id].(*types.Var); isVar &&
 				types.NewMethodSet(v.Type()).Lookup(nil, "Helper") == nil {
+
 				read[v] = true
 			}
 		}
@@ -640,6 +643,7 @@ func (p *pass) closes(s ast.Node, receiver ast.Expr) *ast.CallExpr {
 		case *ast.CallExpr:
 			if sel, ok := n.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Close" && len(n.Args) == 0 &&
 				p.source(sel.X) == want {
+
 				found = n
 			}
 		}

@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package lint
@@ -100,6 +100,7 @@ func (p *pass) literalEnded(stmt inspector.Cursor, e ast.Expr, sentinel string) 
 		if !isCall || !slices.ContainsFunc(n.Args, func(arg ast.Expr) bool {
 			return p.ended(s, arg, sentinel, sourceDepth) && kept(arg)
 		}) {
+
 			return nil, false
 		}
 		if first == nil {

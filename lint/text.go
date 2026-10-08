@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package lint
@@ -14,10 +14,10 @@ import (
 var affixes = []struct {
 	path, name, rule string
 }{
-	{"strings", "HasPrefix", "has-prefix"},
-	{"bytes", "HasPrefix", "has-prefix"},
-	{"strings", "HasSuffix", "has-suffix"},
-	{"bytes", "HasSuffix", "has-suffix"},
+	{stringsPath, "HasPrefix", "has-prefix"},
+	{bytesPath, "HasPrefix", "has-prefix"},
+	{stringsPath, "HasSuffix", "has-suffix"},
+	{bytesPath, "HasSuffix", "has-suffix"},
 }
 
 // matchFuncs are the functions that report whether a regular expression
@@ -35,7 +35,7 @@ func prefix(p *pass, c check) bool {
 			continue
 		}
 		affix := p.source(n.Args[1])
-		if f.path == "bytes" {
+		if f.path == bytesPath {
 			affix = p.asString(n.Args[1])
 		}
 		p.report(c.node, f.rule, f.name, c.rewrite(f.name, p.source(n.Args[0])+", "+affix))

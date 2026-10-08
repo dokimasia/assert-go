@@ -1,4 +1,4 @@
-// Copyright ThesmOS B.V. 2026
+// Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
 package lint
@@ -16,7 +16,7 @@ import (
 
 // containsFuncs are the packages whose function Contains reports whether a
 // haystack contains a needle.
-var containsFuncs = []string{"strings", "bytes", "slices"}
+var containsFuncs = []string{stringsPath, bytesPath, slicesPath}
 
 // sorts are the functions that sort the slice of their first argument in
 // place.
@@ -48,7 +48,7 @@ func contains(p *pass, c check) bool {
 			continue
 		}
 		var fixes []analysis.SuggestedFix
-		if path != "slices" || textless(p.TypesInfo.TypeOf(n.Args[1])) {
+		if path != slicesPath || textless(p.TypesInfo.TypeOf(n.Args[1])) {
 			fixes = c.rewrite(name, p.source(n.Args[0])+", "+p.source(n.Args[1]))
 		}
 		p.report(c.node, "contains", name, fixes)
@@ -131,8 +131,8 @@ func containsInOrder(p *pass, c check) bool {
 	if op == token.GTR || op == token.GEQ {
 		x, y, op = y, x, mirrors[op]
 	}
-	a, isA := p.callOf(x, "strings", "Index")
-	b, isB := p.callOf(y, "strings", "Index")
+	a, isA := p.callOf(x, stringsPath, "Index")
+	b, isB := p.callOf(y, stringsPath, "Index")
 	if !ok || op != token.LSS && op != token.LEQ || !isA || !isB || p.source(a.Args[0]) != p.source(b.Args[0]) {
 		return false
 	}
