@@ -1,7 +1,7 @@
 // Copyright Dokimasia B.V. 2026
 // SPDX-License-Identifier: MIT
 
-go 1.27.0
+go 1.27.1
 
 use (
 	.
