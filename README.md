@@ -149,6 +149,7 @@ assert.Equal(t, want, any(store.ErrDuplicate), "the check wants the duplicate er
 | `go.dokimi.dev/assert/stateful` | machines that take the steps of a property's case against the sequential specification of their subject, and the task scheduler |
 | `go.dokimi.dev/assert/conformance` | this library checked against the standard |
 | `go.dokimi.dev/assert/lint` | an analyzer of the checks that a test writes by hand, and the command `assertlint`, in a module of their own |
+| `go.dokimi.dev/assert/lint/golangci` | the analyzer as the module plugin `assertlint` of golangci-lint, in a module of its own |
 
 ## Golden files
 
@@ -515,6 +516,38 @@ command applies every fix and prints nothing. Run it again without `-fix`
 to list the checks that have no fix.
 `go vet -vettool=$(command -v assertlint)` and
 `go fix -fixtool=$(command -v assertlint)` run the analyzer as well.
+
+golangci-lint runs the analyzer as the module plugin `assertlint` of
+`go.dokimi.dev/assert/lint/golangci`. `golangci-lint custom` builds the
+binary `custom-gcl` from a `.custom-gcl.yml`:
+
+```yaml
+version: v2.14.0
+plugins:
+  - module: go.dokimi.dev/assert/lint/golangci
+    version: v0.1.0
+```
+
+Enable the linter in `.golangci.yml`, and set both limits to 0. By default
+golangci-lint shows 3 reports of one text and 50 reports of one linter:
+
+```yaml
+version: "2"
+linters:
+  enable:
+    - assertlint
+  settings:
+    custom:
+      assertlint:
+        type: module
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+```
+
+`custom-gcl run --fix` applies the same fixes as `assertlint -fix`.
+golangci-lint v2.14.0 keeps the reports of an earlier plugin version in its
+cache, so run `custom-gcl cache clean` after you change the version.
 
 To keep a check that a rule reports, annotate its line with the rules and
 the reason. On a line of its own, the annotation covers the next line:

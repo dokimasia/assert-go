@@ -15,6 +15,8 @@
 // go.dokimi.dev/assert and its packages. 21 of the rules suggest a fix, and a
 // fix applies only where the rewrite keeps the check's meaning in every case.
 // The command assertlint runs the analyzer, and applies the fixes under -fix.
+// The module go.dokimi.dev/assert/lint/golangci registers the analyzer with
+// golangci-lint as the module plugin assertlint.
 //
 // # Checks
 //
