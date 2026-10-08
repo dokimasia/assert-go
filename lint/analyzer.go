@@ -28,23 +28,20 @@ var Analyzer = &analysis.Analyzer{
 
 // checkRules are the rules over a check, in the order in which they claim
 // it. The first rule that reports a check ends the search, so no check has
-// two diagnostics of these rules. init assigns them, because conjunction
-// names the assertion of each operand through them.
-var checkRules []func(p *pass, c check) bool
-
-func init() {
-	checkRules = []func(p *pass, c check) bool{
-		panics, nilContextSafe, inRange, conjunction,
-		honoursCancellation, honoursDeadline, pathAbsent, afterClose, errorsIs, errorsAs, sentinel,
-		fileKind, hasMode, linksTo, fileContent,
-		measurement,
-		commutative, associative, roundTrip, repetition, permutation,
-		rejects,
-		equalFunc, deepEqual, nilCheck, equalNil, length, contains, membership, containsInOrder, prefix, matches,
-		closeTo, pairwise,
-		order, compare,
-		condition,
-	}
+// two diagnostics of these rules. conjunction names the assertion of each
+// operand through the rules. It reads them from the pass, because a rule
+// that referred to checkRules would make its initializer depend on itself.
+var checkRules = []func(p *pass, c check) bool{
+	panics, nilContextSafe, inRange, conjunction,
+	honoursCancellation, honoursDeadline, pathAbsent, afterClose, errorsIs, errorsAs, sentinel,
+	fileKind, hasMode, linksTo, fileContent,
+	measurement,
+	commutative, associative, roundTrip, repetition, permutation,
+	rejects,
+	equalFunc, deepEqual, nilCheck, equalNil, length, contains, membership, containsInOrder, prefix, matches,
+	closeTo, pairwise,
+	order, compare,
+	condition,
 }
 
 // loopNodes are the types of a loop.
@@ -73,6 +70,8 @@ var statementRules = []struct {
 // pass is one run of the analyzer over a package.
 type pass struct {
 	*analysis.Pass
+	// rules are the rules over a check, checkRules, which named asks.
+	rules []func(p *pass, c check) bool
 	// origins maps each variable to the calls that assign it or receive its
 	// address.
 	origins map[types.Object][]*ast.CallExpr
@@ -94,12 +93,12 @@ type pass struct {
 // reports each rule of an annotation that left out none.
 func run(ap *analysis.Pass) (any, error) {
 	in := ap.ResultOf[inspect.Analyzer].(*inspector.Inspector)
-	p := &pass{Pass: ap, fixed: make(map[*ast.CallExpr]bool)}
+	p := &pass{Pass: ap, rules: checkRules, fixed: make(map[*ast.CallExpr]bool)}
 	p.skips = p.annotations()
 	p.origins, p.lookups = origins(p, in)
 	for cursor := range in.Root().Preorder((*ast.CallExpr)(nil), (*ast.IfStmt)(nil)) {
 		if c, ok := p.check(cursor); ok {
-			for _, rule := range checkRules {
+			for _, rule := range p.rules {
 				if rule(p, c) {
 					break
 				}
@@ -172,7 +171,7 @@ func (p *pass) named(c check) string {
 	saved := p.naming
 	p.naming = &name
 	defer func() { p.naming = saved }()
-	for _, rule := range checkRules {
+	for _, rule := range p.rules {
 		if rule(p, c) {
 			break
 		}
