@@ -28,3 +28,7 @@ func matched(t *testing.T, s string, b []byte) {
 	}
 	assert.False(t, id.MatchString(s), "the id is no user's")
 }
+
+func combined(t *testing.T, s string, admin bool) {
+	assert.True(t, admin || id.MatchString(s), "the id is an admin's or a user's")
+}

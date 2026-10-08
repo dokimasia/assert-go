@@ -23,4 +23,11 @@ func stat(t *testing.T, path string) {
 	if info.Mode().Perm() != 0o600 {                                              // want `has-mode: state the check with files.HasMode`
 		t.Fatalf("the key has the mode %v", info.Mode())
 	}
+	if fs.FileMode(0o600) != info.Mode().Perm() { // want `has-mode: state the check with files\.HasMode of info\.Mode\(\)\.Perm\(\)`
+		t.Fatalf("the key has the mode %v", info.Mode())
+	}
+}
+
+func bit(t *testing.T, info fs.FileInfo) {
+	assert.NotEqual(t, info.Mode().Perm()&0o100, fs.FileMode(0), "the owner may run the file")
 }

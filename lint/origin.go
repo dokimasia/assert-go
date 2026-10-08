@@ -209,14 +209,24 @@ func (p *pass) addressed(s ast.Node, v *types.Var) *ast.CallExpr {
 	return found
 }
 
+// sourceOf returns the source of e that calls one of the functions names, by
+// full name, and nil where none does. Unlike produced, it does not read a
+// call inside e, so a value that e computes from such a call, such as one bit
+// of a mode or the base name of a link's target, has no such source.
+func (p *pass) sourceOf(e ast.Expr, names ...string) *ast.CallExpr {
+	for _, n := range p.sources(e) {
+		if slices.Contains(names, p.callee(n)) {
+			return n
+		}
+	}
+	return nil
+}
+
 // produced returns the call of one of the functions names, by full name,
 // that produces a value that e reads: a call inside e, or a source of a
 // variable that e reads. It returns nil where no such call produces a value
-// that e reads, and for a nil e, which reads no value.
+// that e reads.
 func (p *pass) produced(e ast.Expr, names ...string) *ast.CallExpr {
-	if e == nil {
-		return nil
-	}
 	var found *ast.CallExpr
 	ast.Inspect(e, func(n ast.Node) bool {
 		var candidates []*ast.CallExpr

@@ -121,9 +121,11 @@
 //   - is-dir, is-file: True of IsDir of an fs.FileInfo or an fs.FileMode, and
 //     of IsRegular of an fs.FileMode. files.IsDir and files.IsFile state the
 //     check.
-//   - has-mode: an equality of Perm of an fs.FileMode. files.HasMode states
-//     the check.
-//   - links-to: an equality of a value whose origin is os.Readlink.
+//   - has-mode: an equality of the value of Perm of an fs.FileMode, and not
+//     of a value that the check computes from it, such as one bit.
+//     files.HasMode states the check.
+//   - links-to: an equality of a value whose origin is os.Readlink, and not
+//     of a value that the check computes from it, such as its base name.
 //     files.LinksTo states the check.
 //   - has-content, golden-match: an equality of the text that os.ReadFile
 //     reads. golden.Match states it for a file under testdata/golden,
@@ -202,7 +204,8 @@
 //     their suffix forms. HasPrefix and HasSuffix state the check, and the fix
 //     calls them.
 //   - matches: True of regexp.MatchString, or of MatchString or Match of a
-//     *regexp.Regexp. Matches states the check.
+//     *regexp.Regexp, where the condition is the match or a variable that it
+//     assigns. Matches states the check.
 //   - close-to: math.Abs(a-b) <= tol or math.Abs(a-b) < tol. CloseTo states
 //     the check. Its fix applies to <=.
 //   - pairwise: True of slices.IsSorted, slices.IsSortedFunc, or a function

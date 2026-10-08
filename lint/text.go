@@ -70,11 +70,12 @@ func isBytes(t types.Type) bool {
 }
 
 // matches reports True of a match of a regular expression, through
-// regexp.MatchString or a method of a *regexp.Regexp. Matches states it. It
-// suggests no fix: Matches reads a pattern of the portable subset, in which
-// $ matches at the end of the text alone and . matches no line terminator.
+// regexp.MatchString or a method of a *regexp.Regexp, where the condition is
+// the match or a variable that it assigns. Matches states it. It suggests no
+// fix: Matches reads a pattern of the portable subset, in which $ matches at
+// the end of the text alone and . matches no line terminator.
 func matches(p *pass, c check) bool {
-	n := p.produced(c.cond, matchFuncs...)
+	n := p.sourceOf(c.cond, matchFuncs...)
 	if n == nil || !c.holds {
 		return false
 	}

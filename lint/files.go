@@ -52,28 +52,29 @@ func fileKind(p *pass, c check) bool {
 	return ok
 }
 
-// hasMode reports an equality of Perm of an fs.FileMode. files.HasMode states
-// the permission bits of the entry at a path.
+// hasMode reports an equality of the value of Perm of an fs.FileMode.
+// files.HasMode states all nine permission bits of the entry at a path.
 func hasMode(p *pass, c check) bool {
 	return p.reportEquality(c, "(io/fs.FileMode).Perm", "has-mode", "files.HasMode")
 }
 
-// linksTo reports an equality of a value that os.Readlink produces.
-// files.LinksTo states the target of the link at a path.
+// linksTo reports an equality of a value that os.Readlink returns.
+// files.LinksTo states the whole target of the link at a path.
 func linksTo(p *pass, c check) bool {
 	return p.reportEquality(c, "os.Readlink", "links-to", "files.LinksTo")
 }
 
-// reportEquality reports, under the rule, an equality of a value that the
-// function name produces, which the assertion states.
+// reportEquality reports, under the rule, an equality of an operand whose
+// source is a call of the function name, which the assertion states. An
+// operand that the check computes from such a call has no such source.
 func (p *pass) reportEquality(c check, name, rule, assertion string) bool {
 	e, ok := p.equality(c)
 	if !ok {
 		return false
 	}
-	n := p.produced(e.x, name)
+	n := p.sourceOf(e.x, name)
 	if n == nil {
-		n = p.produced(e.y, name)
+		n = p.sourceOf(e.y, name)
 	}
 	if n == nil {
 		return false
