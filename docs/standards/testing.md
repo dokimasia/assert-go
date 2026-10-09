@@ -81,10 +81,12 @@ this document applies to every package, the internal ones included.
 
 ## Mutation
 
-- `gremlins` mutates the code. The mutation stage of `ergon check`
-  requires a 100% score and 100% mutator coverage for `internal/matcher`,
-  `internal/equality` and `conformance`. The other packages are measured
-  on demand, against the same bar.
+- `dokimi-mutate-go` mutates the code, and `make mutate-go` runs it on
+  demand. The run fails on a mutant that the tests do not detect,
+  including a mutant that no test covers.
+- `internal/matcher`, `internal/equality` and `conformance` require a
+  score of 100%. The other packages are measured against the same bar,
+  one at a time with `ergon tool run go.dokimi-mutate-go -- ./internal/text`.
 - A mutant under which every test passes is a missing assertion, or
   code whose behaviour no caller can observe. Add the assertion, or
   delete the code.
@@ -131,8 +133,10 @@ this document applies to every package, the internal ones included.
 - A function that decodes bytes or text from outside the program has a
   `Fuzz<Function>` target, such as the decoders of typed literals,
   tokens, store entries and shape files.
-- `go test` runs every seed of the corpus. A fuzzing campaign runs on
-  demand.
+- `go test` runs every seed of the corpus.
+- `nightly.yml` fuzzes every target each night, for the time that
+  `go.fuzz.time` of `.ergon.yaml` states. A longer campaign runs on
+  demand, such as `make fuzz-go GO_FUZZ_TIME=10m`.
 
 ## Verdicts
 

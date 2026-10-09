@@ -24,15 +24,15 @@ A tool checks a rule wherever one can. Review checks every other rule.
 
 | Rule | Checked by |
 |---|---|
-| Formatting and import groups | `gofumpt`, `gci`, `goimports` and `golines`, through `ergon lint` |
+| Formatting and import groups | `gofmt`, `gofumpt`, `gci`, `goimports` and `golines`, through `make lint` |
 | A test helper marks its frame | `thelper` |
 | A test runs in parallel | `tparallel` |
 | A test takes its context from the test | `usetesting` |
-| 100% statement coverage of every package | The coverage stage of `ergon check` |
-| 100% mutation score of `internal/matcher`, `internal/equality` and `conformance` | The mutation stage of `ergon check` |
-| The text of `errors.New` starts with the package name | `ergon lint error-prefix` |
-| A skipped test states an expiry date | `ergon lint skip-expiry` |
-| A source file starts with the license header | `ergon lint license` |
+| 100% statement coverage of every package | Review |
+| 100% mutation score of `internal/matcher`, `internal/equality` and `conformance` | `make mutate-go`, on demand |
+| The text of `errors.New` starts with the package name | `errorprefix` of `ergon-go-vet`, through `make lint` |
+| A skipped test states an expiry date | `skipexpiry` of `ergon-go-vet`, through `make lint` |
+| A source file starts with the license header | `ergon license check` |
 | The public names match the definition's naming table | The completeness gate in `conformance` |
 | Every allocation ceiling is met | The `Allocs` tests and the benchmark contracts |
 | Every other rule of these standards | Review |
