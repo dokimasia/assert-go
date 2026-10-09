@@ -24,10 +24,16 @@ Thumbs.db
 *.local
 secrets.json
 
+# ergon release
+# The publish plan of the release workflow, which a build of a release must not see as a change
+/publish-plan.json
+
 # Go
 bin/
 coverage.out
 *.test
+# The artifacts of ergon release pack, which a build of a release must not see as changes
+/dist/
 
 # The output of builds and of coverage, and the coverage directory of the earlier ergon
 dist/
