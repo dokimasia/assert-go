@@ -9,4 +9,4 @@ use (
 	./lint/golangci
 )
 
-replace go.dokimi.dev/assert/lint v0.1.0 => ./lint
+replace go.dokimi.dev/assert/lint v0.1.1 => ./lint
