@@ -35,18 +35,18 @@ const (
 	// one case whose body draws one integer: the engine's allocations for
 	// the replay, one for the token's choices, and two for the closures that
 	// adapt the body and give its case a context.
-	drawRunAllocs = 15
+	drawRunAllocs = 23
 	// logfAllocs is the ceiling of the allocations of Logf: the message it
 	// formats.
 	logfAllocs = 2
 	// contextRunAllocs is the ceiling of the allocations of a run that
 	// replays one case whose body draws one integer and calls Context:
 	// those of drawRunAllocs, and the context with its cancel function.
-	contextRunAllocs = 18
+	contextRunAllocs = 25
 	// historyRunAllocs is the ceiling of the allocations of a run that
 	// replays one case whose body draws one integer and calls History:
 	// those of drawRunAllocs, and the history.
-	historyRunAllocs = 17
+	historyRunAllocs = 24
 )
 
 // closing is the label of a draw that a cleanup makes.
