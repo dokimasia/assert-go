@@ -3,7 +3,7 @@
 
 module go.dokimi.dev/assert/lint/golangci
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/golangci/plugin-module-register v0.1.2

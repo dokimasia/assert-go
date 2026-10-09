@@ -109,7 +109,7 @@ func workspace(t *testing.T) string {
 	if err := os.CopyFS(dir, os.DirFS(fixture)); err != nil {
 		t.Fatalf("copy the fixture: %v", err)
 	}
-	module := "module example.test/command\n\ngo 1.27.1\n\n" +
+	module := "module example.test/command\n\ngo 1.27.2\n\n" +
 		"require go.dokimi.dev/assert v0.0.0-00010101000000-000000000000\n\n" +
 		"replace go.dokimi.dev/assert => " + filepath.ToSlash(root) + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(module), 0o644); err != nil {

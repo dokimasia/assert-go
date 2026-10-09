@@ -3,7 +3,7 @@
 
 module go.dokimi.dev/assert/lint
 
-go 1.26.0
+go 1.26.9
 
 require golang.org/x/tools v0.51.0
 
