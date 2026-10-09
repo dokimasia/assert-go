@@ -7,6 +7,6 @@ go 1.27.2
 
 require (
 	github.com/golangci/plugin-module-register v0.1.2
-	go.dokimi.dev/assert/lint v0.1.0
+	go.dokimi.dev/assert/lint v0.1.1
 	golang.org/x/tools v0.51.0
 )
