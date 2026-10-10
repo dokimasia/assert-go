@@ -16,8 +16,8 @@ import (
 	"go.dokimi.dev/assert/internal/filetree"
 )
 
-// The values that a measured call returns, kept so that the compiler keeps
-// the call.
+// The values that the measured calls return. The compiler keeps a call
+// whose result a test stores here.
 var (
 	kept       string
 	keptBool   bool
@@ -29,42 +29,41 @@ var (
 	keptFields map[string]any
 )
 
-// The entries that several tests state.
+// The entries that more than one test states.
 var (
-	// textFile is a file of the text a and a line end, which states no mode.
+	// textFile is a file whose content is "a\n". Its mode is not stated.
 	textFile = filetree.Entry{Kind: filetree.File, Content: "a\n"}
 	// executableFile is a script that its owner may execute.
 	executableFile = filetree.Entry{Kind: filetree.File, Content: "#!/bin/sh\n", Mode: filetree.OwnerExecute}
-	// directory is a directory that states no mode.
+	// directory is a directory whose mode is not stated.
 	directory = filetree.Entry{Kind: filetree.Dir}
 )
 
 // The modes of the files and directories that the tests read and write.
 const (
-	// fileMode is the mode of a file that a workspace writes where a tree
-	// states none.
+	// fileMode is the default mode of a file that a workspace writes.
 	fileMode fs.FileMode = 0o644
-	// dirMode is the mode of a directory that a workspace writes where a
-	// tree states none.
+	// dirMode is the default mode of a directory that a workspace writes.
 	dirMode fs.FileMode = 0o755
-	// privateMode is a mode that only the owner may read and write.
+	// privateMode is the mode of a file that only its owner may read and
+	// write.
 	privateMode fs.FileMode = 0o600
-	// ownerWrite is the permission bit that lets the owner write a file,
-	// which Windows records as the file's read-only attribute.
+	// ownerWrite is the permission bit that lets the owner write a file.
+	// Windows records this bit in the read-only attribute of the file.
 	ownerWrite fs.FileMode = 0o200
 )
 
-// fileOf returns a file of content that states no mode.
+// fileOf returns a file whose content is content. Its mode is not stated.
 func fileOf(content string) filetree.Entry {
 	return filetree.Entry{Kind: filetree.File, Content: content}
 }
 
-// fileWith returns a file of content that states mode.
+// fileWith returns a file whose content is content. Its stated mode is mode.
 func fileWith(content string, mode fs.FileMode) filetree.Entry {
 	return filetree.Entry{Kind: filetree.File, Content: content, Mode: mode, Stated: true}
 }
 
-// dirWith returns a directory that states mode.
+// dirWith returns a directory whose stated mode is mode.
 func dirWith(mode fs.FileMode) filetree.Entry {
 	return filetree.Entry{Kind: filetree.Dir, Mode: mode, Stated: true}
 }
@@ -74,8 +73,9 @@ func linkTo(target string) filetree.Entry {
 	return filetree.Entry{Kind: filetree.Link, Target: target}
 }
 
-// mustRecordModes skips tb on a platform whose file systems record no
-// permission bits, where a tree reads no mode and no execute bit.
+// mustRecordModes skips tb on a platform whose file systems do not record
+// permission bits. The entries that Read returns there do not have a mode
+// or an execute bit.
 func mustRecordModes(tb testing.TB) {
 	tb.Helper()
 	if err := filetree.ModesUnrecorded(); err != nil {
@@ -102,7 +102,7 @@ func written(t *testing.T, tree filetree.Tree) string {
 	return dir
 }
 
-// readBack returns the tree in dir, with its modes.
+// readBack returns the tree in dir. The tree includes the mode of each entry.
 func readBack(t *testing.T, dir string) filetree.Tree {
 	t.Helper()
 
@@ -114,9 +114,10 @@ func readBack(t *testing.T, dir string) filetree.Tree {
 // longName is a name longer than any file system accepts in one entry.
 var longName = strings.Repeat("n", 300)
 
-// failingFS is a file system whose entries fail: the information of the
-// entry named info, and the reading of the file named read. Every other
-// entry is the entry of the map it embeds.
+// failingFS is a file system with two entries that fail. Info returns
+// errFailing for the entry named info. ReadFile returns an error that wraps
+// errFailing for the file named read. Every other entry is the entry of the
+// map that failingFS embeds.
 type failingFS struct {
 	fstest.MapFS
 
@@ -124,7 +125,7 @@ type failingFS struct {
 	read string
 }
 
-// errFailing is the error of the entries of a failingFS that fail.
+// errFailing is the error that the failing entries of a failingFS return.
 var errFailing = errors.New("filetree: the entry fails")
 
 // ReadFile reads the file name, and fails for the file named read.
@@ -132,11 +133,11 @@ func (f failingFS) ReadFile(name string) ([]byte, error) {
 	if name == f.read {
 		return nil, &fs.PathError{Op: "read", Path: name, Err: errFailing}
 	}
-	return f.MapFS.ReadFile(name) //nolint:wrapcheck // the fake returns the errors of the file system it wraps
+	return f.MapFS.ReadFile(name)
 }
 
-// ReadDir reads the directory name, whose entry named info fails to state
-// its information.
+// ReadDir reads the directory name. It replaces the entry named info with a
+// failingEntry.
 func (f failingFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	entries, err := f.MapFS.ReadDir(name)
 	for i, e := range entries {
@@ -144,25 +145,26 @@ func (f failingFS) ReadDir(name string) ([]fs.DirEntry, error) {
 			entries[i] = failingEntry{e}
 		}
 	}
-	return entries, err //nolint:wrapcheck // the fake returns the errors of the file system it wraps
+	return entries, err
 }
 
-// failingEntry is a directory entry whose information fails.
+// failingEntry is a directory entry whose Info method returns errFailing.
 type failingEntry struct {
 	fs.DirEntry
 }
 
-// Info fails.
+// Info returns errFailing.
 func (failingEntry) Info() (fs.FileInfo, error) {
 	return nil, errFailing
 }
 
-// linklessFS is a file system that reads no link: it implements fs.FS alone.
+// linklessFS is a file system that implements fs.FS alone. A caller cannot
+// read a link through it.
 type linklessFS struct {
 	fsys fs.FS
 }
 
 // Open opens name in the file system that it wraps.
 func (f linklessFS) Open(name string) (fs.File, error) {
-	return f.fsys.Open(name) //nolint:wrapcheck // the fake returns the errors of the file system it wraps
+	return f.fsys.Open(name)
 }

@@ -102,14 +102,19 @@ signs:
     artifacts: checksum
 
 # syft writes an SPDX SBOM of each archive and each package, which checksums.txt lists.
+# It reads the license of each Go module of a binary from the module proxy. GOPRIVATE names the
+# modules of the release, which ergon release pack passes in ERGON_MODULES, so syft does not ask
+# the proxy for a version before the publish creates its tag.
 sboms:
   - id: archives
     cmd: ergon
     args: [tool, run, go.syft, --, "$artifact", --output, "spdx-json=$document", --enrich, all]
+    env: ["GOPRIVATE={{ .Env.ERGON_MODULES }}"]
     artifacts: archive
   - id: packages
     cmd: ergon
     args: [tool, run, go.syft, --, "$artifact", --output, "spdx-json=$document", --enrich, all]
+    env: ["GOPRIVATE={{ .Env.ERGON_MODULES }}"]
     artifacts: package
 
 # ergon release ci homebrew commits each cask to the tap after the publish. The hook removes the
