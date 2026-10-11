@@ -27,3 +27,5 @@ they record why not.
 | [0014](0014-an-analyzer-of-hand-written-checks.md) | An analyzer of hand-written checks | Accepted |
 | [0015](0015-definition-7-in-go.md) | Definition 7.0.0 in Go | Accepted |
 | [0016](0016-definition-7-2-in-go.md) | Definition 7.2.0 in Go | Accepted |
+| [0017](0017-testing-the-consumers-before-a-release.md) | Testing the consumers before a release | Accepted |
+| [0018](0018-definition-8-in-go.md) | Definition 8.0.0 in Go | Accepted |
