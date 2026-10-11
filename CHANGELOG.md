@@ -1,5 +1,12 @@
 # go.dokimi.dev/assert
 
+## 0.2.0
+
+### Minor Changes
+
+- 7860800: **Breaking:** Admit one allocation at a ceiling of 0, count up to three times, and state `total` in the failure of `MaxAllocs` and `MaxAllocsWithSetup`.
+- 7860800: Implement definition 8.0.0 and write its version into every call record.
+
 ## 0.1.1
 
 ### Patch Changes
