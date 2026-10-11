@@ -89,6 +89,14 @@ how a concept is implemented once, and how code is documented.
 - Each type has one receiver name of one or two letters.
 - A name does not abbreviate, except `ctx`, `err`, `tb`, `t` and `b`,
   which Go code uses throughout.
+- A change that removes or renames a public name keeps the old name for
+  the next minor release. The old name calls the new one, and its doc
+  comment has a paragraph that begins with `Deprecated:`.
+- A change that renames an environment variable reads both the old and
+  the new variable for the next minor release.
+- A change of meaning that a new major version of the definition requires
+  does not keep the old meaning. Its changeset starts with
+  `**Breaking:**`.
 
 ## Doc comments
 
