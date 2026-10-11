@@ -119,11 +119,12 @@ this document applies to every package, the internal ones included.
   measures, rounded up to two significant digits, so that a platform or
   a release of Go that allocates a few more still passes. The check is
   `testing.AllocsPerRun` in the tests of `internal/matcher` and
-  `internal/equality`, and `expect.MaxAllocs`, which rounds the average
-  to the nearest whole number, everywhere else. The highest count is
-  taken over an ordinary build and a coverage build on Linux, macOS and
-  Windows, the systems that CI runs. A ceiling that rises states why in
-  the commit message.
+  `internal/equality`, and `expect.MaxAllocs` everywhere else.
+  `expect.MaxAllocs` admits one allocation in all for a ceiling of 0, and
+  rounds the average to the nearest whole number for any other ceiling.
+  The highest count is taken over an ordinary build and a coverage build
+  on Linux, macOS and Windows, the systems that CI runs. A ceiling that
+  rises states why in the commit message.
 - A count is measured on a seat that writes no call record, such as a
   seat of `internal/matchertest`. An `assert.Recorder` records every
   call, so the count of a call on a recorder includes its call record.

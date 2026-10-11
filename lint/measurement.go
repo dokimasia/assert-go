@@ -19,10 +19,9 @@ var measures = []struct {
 
 // measurement reports a check of a value of a function of measures. The
 // assertion measures as the definition fixes it: MaxAllocs counts 100 calls
-// and rounds their average to the nearest whole number, NoGoroutineLeaks
-// follows the goroutines that its scope starts, and a contract measures the
-// iterations of its benchmark. The rule suggests no fix, because the
-// hand-written check measures otherwise.
+// up to three times, NoGoroutineLeaks follows the goroutines that its scope
+// starts, and a contract measures the iterations of its benchmark. The rule
+// suggests no fix, because the hand-written check measures otherwise.
 //
 // Of a call of an assertion, the rule reads the value under test, the first
 // value: a measurement that a check takes as its ceiling, such as the count

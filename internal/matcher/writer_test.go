@@ -116,6 +116,14 @@ func TestWriter(t *testing.T) {
 				want: "every item comes back: want 3, got 2",
 			},
 			{
+				name: "names the total of an allocation ceiling after want and got",
+				give: matcher.Failure{
+					Assertion: "max-allocs", Contract: "Get allocates nothing per call",
+					Detail: map[string]any{"total": uint64(25), "got": uint64(0), "want": uint64(0)},
+				},
+				want: "Get allocates nothing per call: want 0, got 0, total 25",
+			},
+			{
 				name: "sorts a field it does not know after the ones it does",
 				give: matcher.Failure{
 					Assertion: "made-up", Contract: "the contract",

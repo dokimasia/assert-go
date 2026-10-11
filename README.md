@@ -258,10 +258,12 @@ func TestGetAllocs(t *testing.T) {
 
 It calls the function once to warm it and counts the next 100 calls on
 one processor. The count covers the whole process, so the test that
-calls it does not call `t.Parallel`. The average is rounded to the
-nearest whole number, and a half rounds up. A ceiling of 0 then fails a
-function that allocates on 50 of the 100 calls, such as one that leaks a
-value of a pool whose stock served one call.
+calls it does not call `t.Parallel`. A ceiling of 0 admits one
+allocation in all, so it fails a function that allocates on 2 of the 100
+calls. Any other ceiling compares with the average per call, rounded to
+the nearest whole number, and a half rounds up. A count that exceeds the
+ceiling is taken again, three times at most, so a function that grows a
+slice in the first count passes at the second.
 
 `MaxAllocsWithSetup` counts a function whose input a setup builds before
 each call, such as a decoder that consumes its buffer. It counts the same
@@ -660,8 +662,8 @@ the relation, except where the relation requires a failure.
 
 | Name | What it states |
 |---|---|
-| `MaxAllocs` | A callable makes at most a stated number of heap allocations per call. One call warms it first, and the count is the average over the calls after it, rounded to the nearest whole number, with a half rounded up. |
-| `MaxAllocsWithSetup` | A callable makes at most a stated number of heap allocations per call on an input that a setup builds before each call. The setup is not counted. One setup and one call warm both first, and the count is the average over the calls after them, rounded to the nearest whole number, with a half rounded up. |
+| `MaxAllocs` | A callable makes at most a stated number of heap allocations per call. One call warms it first, and a count covers the 100 calls after it. A ceiling of 0 admits one allocation in all. Any other ceiling compares with the average per call, rounded to the nearest whole number, and a half rounds up. A count that exceeds the ceiling is taken again, three times at most. |
+| `MaxAllocsWithSetup` | A callable makes at most a stated number of heap allocations per call on an input that a setup builds before each call. The setup is not counted. One setup and one call warm both first, and each count is checked as `MaxAllocs` checks it. |
 
 ### Golden files
 

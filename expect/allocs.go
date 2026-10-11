@@ -9,16 +9,21 @@ import (
 )
 
 // MaxAllocs calls fn once to warm it and counts the heap allocations of the
-// next 100 calls. It records a failure and lets the test continue when
-// their average, rounded to the nearest whole number, exceeds ceiling. The
-// failure names the ceiling and the count.
+// next 100 calls. A ceiling of 0 admits one allocation in all. Any other
+// ceiling admits an average per call that rounds to at most ceiling, and a
+// half rounds up. When a count exceeds ceiling, MaxAllocs counts again,
+// three times at most. It records a failure and lets the test continue when
+// no count meets ceiling. The failure has the ceiling as want, the rounded
+// average of the count with the lowest total as got, and the allocations of
+// that count as total.
 //
 //	expect.MaxAllocs(t, func() { _, _ = store.Get(ctx, id) }, 0,
 //	    "Get allocates nothing per call once the store is warm")
 //
-// A half rounds up, so a function that allocates on 50 of the 100 calls
-// fails a ceiling of 0. A value that a pool's stock serves on one call and
-// that leaks on every other fails it too.
+// A function that allocates on 2 of the 100 calls fails a ceiling of 0. The
+// one allocation that a ceiling of 0 admits covers an allocation that the
+// runtime makes while a count runs. A function that grows a slice in the
+// first count passes at the second count when the slice no longer grows.
 //
 // It is the test form of the benchmark ceiling
 // [go.dokimi.dev/assert/bench.Contract.MaxAllocs], so the ordinary test
@@ -29,10 +34,10 @@ import (
 // In a build with the race detector, msan or asan, in one whose -gcflags
 // turn off optimisation or inlining, and in a test binary that a mutation
 // run instrumented, which runs with DOKIMI_MUTATE_INSTRUMENTED in its
-// environment, it calls fn as an ordinary build does and checks no
-// ceiling. Those builds allocate differently from an ordinary build. The
-// ordinary build of one mutant, which a mutation run builds to confirm a
-// survivor, checks the ceiling.
+// environment, it calls fn 101 times and checks no ceiling. Those builds
+// allocate differently from an ordinary build. The ordinary build of one
+// mutant, which a mutation run builds to confirm a survivor, checks the
+// ceiling.
 //
 // It checks no ceiling either in a run that writes the test log of go test,
 // which go test passes to every run whose result it can cache. The log
@@ -48,8 +53,8 @@ import (
 //
 // # Allocation contract
 //
-// A passing call allocates nothing besides what the 101 calls of fn
-// allocate, and the note in a run that writes the test log.
+// A passing call allocates nothing besides what the calls of fn allocate,
+// and the note in a run that writes the test log.
 func MaxAllocs(tb assert.TB, fn func(), ceiling uint64, msg string) {
 	tb.Helper()
 	matcher.MaxAllocs(tb, matcher.Soft, fn, ceiling, msg)
@@ -58,9 +63,9 @@ func MaxAllocs(tb assert.TB, fn func(), ceiling uint64, msg string) {
 // MaxAllocsWithSetup calls setup, and fn on the input that setup returns,
 // once to warm both. It then counts the heap allocations of the next 100
 // calls of fn, each on an input that a call of setup builds outside the
-// count. It records a failure and lets the test continue when their
-// average, rounded to the nearest whole number with a half rounded up,
-// exceeds ceiling. The failure names the ceiling and the count.
+// count. It checks each count as [MaxAllocs] does. It records a failure and
+// lets the test continue when no count meets ceiling. The failure has the
+// fields of a failure of MaxAllocs.
 //
 //	expect.MaxAllocsWithSetup(t, freshStore, (*Store).Settle, 4,
 //	    "settling a store allocates at most four times")
@@ -73,8 +78,8 @@ func MaxAllocs(tb assert.TB, fn func(), ceiling uint64, msg string) {
 // # Builds that allocate differently
 //
 // In the builds and the runs where [MaxAllocs] checks no ceiling, it calls
-// setup and fn as an ordinary build does and checks no ceiling either. It
-// writes the note of MaxAllocs in a run that writes the test log.
+// setup and fn 101 times each and checks no ceiling either. It writes the
+// note of MaxAllocs in a run that writes the test log.
 //
 // # Parallel tests
 //
@@ -83,8 +88,8 @@ func MaxAllocs(tb assert.TB, fn func(), ceiling uint64, msg string) {
 //
 // # Allocation contract
 //
-// A passing call allocates nothing besides what the 101 calls of setup and
-// of fn allocate, and the note in a run that writes the test log.
+// A passing call allocates nothing besides what the calls of setup and of
+// fn allocate, and the note in a run that writes the test log.
 func MaxAllocsWithSetup[T any](tb assert.TB, setup func() T, fn func(T), ceiling uint64, msg string) {
 	tb.Helper()
 	matcher.MaxAllocsWithSetup(tb, matcher.Soft, setup, fn, ceiling, msg)

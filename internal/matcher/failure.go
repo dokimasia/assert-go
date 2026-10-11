@@ -50,6 +50,9 @@ const (
 	secondField = "second"
 	// attemptsField is the number of attempts of a waiting assertion.
 	attemptsField = "attempts"
+	// totalField is the allocations of the counted calls of an allocation
+	// ceiling.
+	totalField = "total"
 )
 
 // Failure is what a failing assertion reports.

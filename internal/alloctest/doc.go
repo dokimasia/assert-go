@@ -7,11 +7,12 @@
 //
 // A case is one passing call of a function on a seat that writes no call
 // record, with the ceiling of its allocations.
-// [go.dokimi.dev/assert/expect.MaxAllocs] counts the allocations of a call
-// as their average, rounded to the nearest whole number. The ceiling is 0
-// for a call that allocates nothing. For any other call it is a quarter
-// above the highest count that Linux, macOS and Windows measure, rounded up
-// to two significant digits.
+// [go.dokimi.dev/assert/expect.MaxAllocs] admits one allocation in all for a
+// ceiling of 0. It compares any other ceiling with the average per call,
+// rounded to the nearest whole number. The ceiling is 0 for a call that
+// allocates nothing. For any other call it is a quarter above the highest
+// count that Linux, macOS and Windows measure, rounded up to two significant
+// digits.
 //
 //	func truthCases() []alloctest.Case {
 //	    return []alloctest.Case{
