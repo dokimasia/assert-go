@@ -173,8 +173,13 @@ func (c *Contract) MaxMean(d time.Duration) *Contract {
 // run instrumented, [Contract.End] publishes the count and does not check
 // the ceiling, because those builds allocate differently from a
 // production build.
-// [go.dokimi.dev/assert.MaxAllocs] states the same ceiling in a test,
-// which the ordinary test run checks.
+//
+// [go.dokimi.dev/assert.MaxAllocs] states a ceiling on the calls of a
+// function in a test, which the ordinary test run checks. The two forms
+// differ at a ceiling of zero. assert.MaxAllocs admits one allocation in all
+// of the 100 calls that it counts, so it fails a function that allocates on
+// 2 of them. This ceiling rounds the 0.02 allocations per iteration of such
+// a body to zero and passes it.
 //
 // # Allocation contract
 //

@@ -23,7 +23,9 @@ import "go.dokimi.dev/assert/internal/matcher"
 //
 // It is the test form of the benchmark ceiling
 // [go.dokimi.dev/assert/bench.Contract.MaxAllocs], so the ordinary test
-// run checks it.
+// run checks it. The two forms differ at a ceiling of 0. The benchmark
+// rounds the average per iteration, so it passes a body that allocates on
+// fewer than half of its iterations.
 //
 // # Builds that allocate differently
 //
