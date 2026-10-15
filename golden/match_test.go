@@ -4,15 +4,20 @@
 package golden_test
 
 import (
+	"bytes"
+	"errors"
 	"flag"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/files"
 	"go.dokimi.dev/assert/golden"
 	"go.dokimi.dev/assert/internal/alloctest"
+	"go.dokimi.dev/assert/internal/childtest"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
@@ -23,6 +28,19 @@ const (
 	goldenName    = "output.txt"
 	goldenContent = "recorded output"
 )
+
+// The update of a child process whose write fails.
+const (
+	// childPath is the variable whose value is the path of the golden file
+	// that the child updates.
+	childPath = "DOKIMI_ASSERT_GOLDEN_PATH"
+	// writeLimit is the size in bytes of a file past which a write of the
+	// child fails.
+	writeLimit = 64
+)
+
+// overLimit is an output of 100 bytes, more than writeLimit.
+var overLimit = bytes.Repeat([]byte("a line of the new output\n"), 4)
 
 // updated keeps what ShouldUpdate returns, so the compiler keeps the call.
 var updated bool
@@ -129,7 +147,66 @@ func TestMatch(t *testing.T) {
 			golden.MatchAt(r, path, []byte("current"), updating)
 
 			assert.Equal(t, verdicts(t, r), []string{"pass"}, "updating over stale content passes")
-			assert.Equal(t, read(t, path), "current", "the file contains the new output")
+			files.Equal(t, os.DirFS(filepath.Dir(path)), files.Tree{"golden.txt": files.Text("current")},
+				"the file contains the new output, and no temporary file remains")
+		})
+
+		t.Run("replaces the file that a link names while updating", func(t *testing.T) {
+			t.Parallel()
+
+			path := written(t, "stale")
+			dir := filepath.Dir(path)
+			assert.NoError(t, os.Symlink("golden.txt", filepath.Join(dir, "link.txt")), "the link can be made")
+			r := assert.NewRecorder()
+			golden.MatchAt(r, filepath.Join(dir, "link.txt"), []byte("current"), updating)
+
+			assert.Equal(t, verdicts(t, r), []string{"pass"}, "updating through a link passes")
+			files.Equal(t, os.DirFS(dir),
+				files.Tree{"golden.txt": files.Text("current"), "link.txt": files.Link("golden.txt")},
+				"the linked file contains the new output, and the link remains")
+		})
+
+		t.Run("keeps the mode of the golden file while updating", func(t *testing.T) {
+			t.Parallel()
+			mustRecordModes(t)
+
+			path := written(t, "stale")
+			assert.NoError(t, os.Chmod(path, 0o600), "the golden file gets its mode")
+			r := assert.NewRecorder()
+			golden.MatchAt(r, path, []byte("current"), updating)
+
+			assert.Equal(t, verdicts(t, r), []string{"pass"}, "updating over stale content passes")
+			files.HasMode(t, path, 0o600, "the golden file keeps its mode")
+		})
+
+		t.Run("writes a missing file with the mode 0o644 while updating", func(t *testing.T) {
+			t.Parallel()
+			mustRecordModes(t)
+
+			path := filepath.Join(t.TempDir(), "created.txt")
+			r := assert.NewRecorder()
+			golden.MatchAt(r, path, []byte("fresh output"), updating)
+
+			assert.Equal(t, verdicts(t, r), []string{"pass"}, "updating a missing file passes")
+			files.HasMode(t, path, 0o644, "the new golden file has the mode 0o644")
+		})
+
+		t.Run("keeps the golden file when the write of an update fails", func(t *testing.T) {
+			t.Parallel()
+			if childtest.InChild(t) {
+				childtest.LimitFileSize(t, writeLimit)
+				golden.MatchAt(t, os.Getenv(childPath), overLimit, updating)
+				return
+			}
+			if !childtest.CanLimitFileSize {
+				t.Skip("the system sets no limit on the size of a file")
+			}
+			path := written(t, "recorded output")
+			out, err := childtest.Run(t, t.Name(), childPath+"="+path)
+			var exit *exec.ExitError
+			assert.True(t, errors.As(err, &exit), "the update fails at the limit:\n"+out)
+			files.Equal(t, os.DirFS(filepath.Dir(path)), files.Tree{"golden.txt": files.Text("recorded output")},
+				"the golden file keeps its content, and no temporary file remains")
 		})
 
 		t.Run("passes matching content and leaves the file while updating", func(t *testing.T) {

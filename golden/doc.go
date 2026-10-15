@@ -24,6 +24,12 @@
 // Read the diff before updating. A golden file updated without reading
 // it records whatever the code does now, and then asserts nothing.
 //
+// An update writes the new content into a temporary file beside the golden
+// file and renames it over the golden file, so an update that fails leaves
+// the golden file as it was. A golden file that is a link stays a link, and
+// the update replaces the file that it links to. A golden file keeps its
+// mode, and a new one gets the mode 0o644.
+//
 // # Scrubbing
 //
 // Output that contains a timestamp, a digest or a generated identifier

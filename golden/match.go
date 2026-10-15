@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -22,9 +23,13 @@ const conventionalDir = "testdata/golden"
 // Permissions for a golden file this package writes, and for the
 // directory it creates for one.
 const (
-	filePerm = 0o644
-	dirPerm  = 0o755
+	filePerm fs.FileMode = 0o644
+	dirPerm  fs.FileMode = 0o755
 )
+
+// maxLinks is the most links that an update follows from the path of a golden
+// file to the file that it writes.
+const maxLinks = 255
 
 // update is registered once, so a package using this can be run with
 // -update. One registration in this package keeps one flag for the whole
@@ -101,17 +106,58 @@ func (c call) fault(err error, format string, args ...any) {
 }
 
 // write writes content as the call's golden file, in the directory that it
-// creates when the directory is missing, and passes. A directory that
-// cannot be created leaves the file unwritten, and the fault states both
-// errors.
+// creates when the directory is missing, and passes. It writes a temporary
+// file beside the file of the golden path, and renames it over that file. A
+// directory that cannot be created leaves the file unwritten, and the fault
+// states both errors.
 func (c call) write(content string) {
 	c.tb.Helper()
 	dirErr := os.MkdirAll(filepath.Dir(c.path), dirPerm)
-	if err := os.WriteFile(c.path, []byte(content), filePerm); err != nil {
+	path := target(c.path)
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err == nil {
+		err = replace(f, path, content)
+	}
+	if err != nil {
 		c.fault(errors.Join(dirErr, err), "the golden file cannot be written")
 		return
 	}
 	c.pass()
+}
+
+// target returns the file that a write of path writes: the end of the links
+// that path starts, or path itself when it is no link.
+func target(path string) string {
+	for range maxLinks {
+		next, err := os.Readlink(path)
+		if err != nil {
+			break
+		}
+		if !filepath.IsAbs(next) {
+			next = filepath.Join(filepath.Dir(path), next)
+		}
+		path = next
+	}
+	return path
+}
+
+// replace writes content into the temporary file f, and renames f over path.
+// A write that fails removes f and leaves path as it was. The file keeps the
+// mode of the file that it replaces, and a new file gets filePerm.
+func replace(f *os.File, path, content string) error {
+	mode := filePerm
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	_, err := f.WriteString(content)
+	err = errors.Join(err, f.Close(), os.Chmod(f.Name(), mode))
+	if err == nil {
+		err = os.Rename(f.Name(), path)
+	}
+	if err != nil {
+		return errors.Join(err, os.Remove(f.Name()))
+	}
+	return nil
 }
 
 // Match compares got against testdata/golden/name, relative to the
