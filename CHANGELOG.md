@@ -1,5 +1,19 @@
 # go.dokimi.dev/assert
 
+## 0.3.0
+
+### Minor Changes
+
+- cbb413f: **Breaking:** Time the iterations of a contract only under a latency ceiling, and panic for `MaxLatency` or `MaxMean` after the body has run.
+
+### Patch Changes
+
+- 5e9902f: Compare two slices of bytes in one step, as `bytes.Equal` does.
+- c82a1c3: Document how `MaxAllocs` and `bench.Contract.MaxAllocs` differ at a ceiling of 0.
+- 5297b64: Measure the budget of a campaign, the time of a shrink and the time limit of a history check in real time inside a `testing/synctest` bubble.
+- d6af09b: Write a changed file of a golden tree through a temporary file and a rename, so a failed update leaves the file as it was.
+- 208ba37: Write an updated golden file through a temporary file and a rename, so a failed update leaves the golden file as it was.
+
 ## 0.2.0
 
 ### Minor Changes
