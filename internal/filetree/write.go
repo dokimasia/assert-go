@@ -4,6 +4,7 @@
 package filetree
 
 import (
+	"crypto/rand"
 	"errors"
 	"io/fs"
 	"os"
@@ -19,6 +20,10 @@ const (
 	createFile fs.FileMode = 0o600
 	createDir  fs.FileMode = 0o700
 )
+
+// tempPrefix starts the name of the temporary file that an update writes
+// beside a file that it replaces.
+const tempPrefix = ".dokimi-update-"
 
 // step is one operation of a write: the path that it writes, and the
 // operation on the root of the directory.
@@ -65,6 +70,12 @@ func Write(dir string, t Tree) error {
 // the link points to. It compares no mode, and writes each file and each
 // directory with the mode that Write sets where a tree states none.
 //
+// A file that t states with another content or another execute bit is
+// written into a temporary file beside it, which Update renames over the
+// file once the write succeeds. A write that fails leaves the file as it
+// was. A process that ends during the write can leave the temporary file
+// behind.
+//
 // # Errors
 //
 // It returns the fault of [Tree.Check] for a tree that breaks a rule of a
@@ -74,8 +85,8 @@ func Write(dir string, t Tree) error {
 //
 // # Allocation contract
 //
-// Update allocates the tree in dir, what Write allocates, and what the file
-// system's calls allocate.
+// Update allocates the tree in dir, what Write allocates, the name of each
+// temporary file, and what the file system's calls allocate.
 func Update(dir string, t Tree) error {
 	if err := t.Check(); err != nil {
 		return err
@@ -89,15 +100,42 @@ func Update(dir string, t Tree) error {
 	}
 	wanted := withoutModes(t.Full())
 	var steps []step
+	// kept are the entries that the update keeps, and the files that it
+	// replaces where they are.
 	kept := Tree{}
 	for _, path := range slices.Backward(current.Paths()) {
-		if w, ok := wanted[path]; ok && !differs(w, current[path]) {
+		w, ok := wanted[path]
+		if ok && !differs(w, current[path]) {
 			kept[path] = w
+			continue
+		}
+		if ok && w.Kind == File && current[path].Kind == File {
+			kept[path] = w
+			steps = append(steps, step{path: path, run: replaceFile(path, w)})
 			continue
 		}
 		steps = append(steps, step{path: path, run: func(root *os.Root) error { return root.RemoveAll(path) }})
 	}
 	return apply(dir, func(*os.Root) ([]step, error) { return creating(wanted, kept, steps...), nil })
+}
+
+// replaceFile returns the operation that writes the file e over the file at
+// path. It writes e into a temporary file in the directory of path, and
+// renames the temporary file over path once the write succeeds. A write that
+// fails removes the temporary file and leaves the file at path as it was.
+func replaceFile(path string, e Entry) func(root *os.Root) error {
+	return func(root *os.Root) error {
+		temp := filepath.Join(filepath.Dir(path), tempPrefix+rand.Text())
+		err := writeFile(root, temp, os.O_CREATE|os.O_EXCL, e)
+		if err == nil {
+			err = root.Rename(temp, path)
+		}
+		if err == nil {
+			return nil
+		}
+		_ = root.Remove(temp)
+		return fault.New("the file cannot be replaced").Because(err)
+	}
 }
 
 // Overwrite writes t into dir, a directory that exists, as files.Write does.

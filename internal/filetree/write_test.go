@@ -8,13 +8,28 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/alloctest"
+	"go.dokimi.dev/assert/internal/childtest"
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/filetree"
 )
+
+// The update of a child process whose write fails.
+const (
+	// childDir is the variable whose value is the directory that the child
+	// updates.
+	childDir = "DOKIMI_ASSERT_FILETREE_DIR"
+	// writeLimit is the size in bytes of a file past which a write of the
+	// child fails.
+	writeLimit = 64
+)
+
+// overLimit is a content of 100 bytes, more than writeLimit.
+var overLimit = strings.Repeat("a line of the new output\n", 4)
 
 // TestWrite checks the writes of a workspace and of an update of a golden
 // tree, and the unlocking of a directory for its removal.
@@ -166,6 +181,24 @@ func TestWrite(t *testing.T) {
 				filetree.Tree{"keep.txt": textFile},
 				"the entry that the removed link points to stays",
 			)
+		})
+
+		t.Run("keeps a file whose replacement fails to write", func(t *testing.T) {
+			t.Parallel()
+			if childtest.InChild(t) {
+				childtest.LimitFileSize(t, writeLimit)
+				err := filetree.Update(os.Getenv(childDir), filetree.Tree{"a.txt": fileOf(overLimit)})
+				expectFault(t, err, fault.Path{fault.Key("a.txt")}, "the entry cannot be written")
+				return
+			}
+			if !childtest.CanLimitFileSize {
+				t.Skip("the system sets no limit on the size of a file")
+			}
+			dir := written(t, filetree.Tree{"a.txt": fileOf("old\n")})
+			out, err := childtest.Run(t, t.Name(), childDir+"="+dir)
+			assert.NoError(t, err, "the child passes:\n"+out)
+			assert.Equal(t, readBack(t, dir), filetree.Tree{"a.txt": fileWith("old\n", fileMode)},
+				"the file keeps its content, and no temporary file remains")
 		})
 
 		t.Run("leaves an entry that equals the tree's as it is, its mode included", func(t *testing.T) {

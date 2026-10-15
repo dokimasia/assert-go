@@ -57,6 +57,9 @@ func init() {
 // passes. It removes each entry that the output lacks, writes each entry
 // that the directory lacks or has in another form, and writes the scrubbed
 // content. It removes a link, and never the entry that the link points to.
+// It writes a file that changes into a temporary file beside it and renames
+// the temporary file over it, so a write that fails leaves the file as it
+// was.
 //
 // # Errors
 //
