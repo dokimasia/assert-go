@@ -176,6 +176,7 @@ func (c *comparison) floats(a, b float64) bool {
 
 // pointers compares two pointers: both nil, or targets that compare equal.
 func (c *comparison) pointers(x, y reflect.Value) (frame, bool) {
+	//dokimi:mutate-skip sbr-delete,lcr-left,lcr-right: begin compares the invalid target of a nil pointer as this check does
 	if x.IsNil() || y.IsNil() {
 		return frame{}, x.IsNil() && y.IsNil()
 	}
@@ -195,6 +196,7 @@ func (c *comparison) slices(x, y reflect.Value) (frame, bool) {
 	if x.Len() != y.Len() {
 		return frame{}, false
 	}
+	//dokimi:mutate-skip lcr-right,ror-false: the frame of two empty slices has no part, and compares them equal
 	if x.Len() == 0 || c.met(x, y) {
 		return frame{}, true
 	}
@@ -212,6 +214,7 @@ func (c *comparison) slices(x, y reflect.Value) (frame, bool) {
 // values. A path from a map's key to a container passes through a pointer,
 // and the walk records the pointer.
 func (c *comparison) met(x, y reflect.Value) bool {
+	//dokimi:mutate-skip sbr-delete: a recorded pair that the walk cannot meet again changes only the allocations
 	if !canRepeat(x.Type().Elem()) {
 		return false
 	}
@@ -224,6 +227,7 @@ func (c *comparison) met(x, y reflect.Value) bool {
 	}
 	if c.visited == nil {
 		c.visited = make(map[visit]struct{})
+		//dokimi:mutate-skip sbr-delete: the capacity of the log changes only the allocations
 		c.log = make([]visit, 0, logBuffer)
 	}
 	c.visited[v] = struct{}{}
@@ -242,6 +246,7 @@ func (c *comparison) try(compare func() bool) bool {
 	for _, v := range c.log[mark:] {
 		delete(c.visited, v)
 	}
+	//dokimi:mutate-skip sbr-delete: only an enclosing trial that fails deletes these visits again, and it deletes them anyway
 	c.log = c.log[:mark]
 	return false
 }

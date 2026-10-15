@@ -91,6 +91,7 @@ func (h *hasher) value(v reflect.Value, depth int) {
 	}
 	switch v.Kind() {
 	case reflect.Bool:
+		//dokimi:mutate-skip uoi-not: true and false hash apart when each hashes as the other
 		h.text(strconv.FormatBool(v.Bool()))
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		h.mix(uint64(v.Int()))
@@ -160,6 +161,7 @@ func (h *hasher) slice(v reflect.Value, depth int) {
 // one level down, until the walk may read no more parts.
 func (h *hasher) each(v reflect.Value, n, depth int) {
 	for i := range n {
+		//dokimi:mutate-skip sbr-delete,ror-false: value does not read a part past the bound, so the loop is only slower
 		if h.parts == 0 {
 			return
 		}
@@ -179,6 +181,7 @@ func (h *hasher) entries(v reflect.Value, depth int) {
 	}
 	n := v.Len()
 	h.mix(uint64(n))
+	//dokimi:mutate-skip lcr-left,ror-false: entries of no parts add a word that depends on the length alone
 	if n == 0 || h.parts < n {
 		return
 	}
@@ -189,6 +192,7 @@ func (h *hasher) entries(v reflect.Value, depth int) {
 		entry := hasher{sum: offset64, parts: share}
 		entry.value(it.Key(), depth+1)
 		entry.value(it.Value(), depth+1)
+		//dokimi:mutate-skip aor: the negated sum keeps apart the maps that the sum keeps apart
 		sum += entry.sum
 	}
 	h.mix(sum)

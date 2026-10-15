@@ -221,6 +221,36 @@ func TestHash(t *testing.T) {
 			},
 			{name: "hashes a nil slice and an empty one apart", giveX: []int(nil), giveY: []int{}},
 			{name: "hashes slices of another element apart", giveX: []int{1, 2}, giveY: []int{1, 3}},
+			{
+				name:  "hashes arrays of a nil interface in other places apart",
+				giveX: [2]any{nil, 5},
+				giveY: [2]any{5, nil},
+			},
+			{
+				name:  "hashes arrays of a nil pointer in other places apart",
+				giveX: [2]*int{nil, new(1)},
+				giveY: [2]*int{new(1), nil},
+			},
+			{
+				name:  "hashes arrays of a nil slice in other places apart",
+				giveX: [2][]int{nil, {1}},
+				giveY: [2][]int{{1}, nil},
+			},
+			{
+				name:  "hashes arrays of a nil map in other places apart",
+				giveX: [2]map[int]int{nil, {}},
+				giveY: [2]map[int]int{{}, nil},
+			},
+			{
+				name:  "hashes arrays of slices split at another index apart",
+				giveX: [2][]int{{1, 2}, {}},
+				giveY: [2][]int{{1}, {2}},
+			},
+			{
+				name:  "hashes arrays of strings split at another byte apart",
+				giveX: [2]string{"ab", ""},
+				giveY: [2]string{"a", "b"},
+			},
 			{name: "reads the 256th part", giveX: counting(254, -1), giveY: counting(254, -2)},
 			{name: "reads the 8th level", giveX: deep(7, 1), giveY: deep(7, 2)},
 			{name: "reads the 8th level behind pointers", giveX: pointers(7, 1), giveY: pointers(7, 2)},

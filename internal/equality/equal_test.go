@@ -94,6 +94,10 @@ func TestEqual(t *testing.T) {
 		twoLoop.Next.Next = twoLoop
 		selfList, otherSelfList := []any{nil}, []any{nil}
 		selfList[0], otherSelfList[0] = selfList, otherSelfList
+		selfArray, otherSelfArray := &[1]any{}, &[1]any{}
+		selfArray[0], otherSelfArray[0] = selfArray, otherSelfArray
+		selfHolder, otherSelfHolder := &holder{}, &holder{}
+		selfHolder.V, otherSelfHolder.V = selfHolder, otherSelfHolder
 		endsInOne, endsInTwo := []any{nil, 1}, []any{nil, 2}
 		now := time.Now()
 		object, twin := new(1), new(1)
@@ -274,6 +278,18 @@ func TestEqual(t *testing.T) {
 				name:  "reports two slices that contain themselves equal",
 				giveX: selfList,
 				giveY: otherSelfList,
+				want:  true,
+			},
+			{
+				name:  "reports two arrays that contain a pointer to themselves equal",
+				giveX: selfArray,
+				giveY: otherSelfArray,
+				want:  true,
+			},
+			{
+				name:  "reports two structs that contain a pointer to themselves in an interface equal",
+				giveX: selfHolder,
+				giveY: otherSelfHolder,
 				want:  true,
 			},
 			{

@@ -98,6 +98,16 @@ func TestMaps(t *testing.T) {
 				giveY: map[string]int{"a": 1},
 			},
 			{
+				name:  "reports a map unequal to a longer map that contains its entries",
+				giveX: map[string]int{"a": 1},
+				giveY: map[string]int{"a": 1, "b": 2},
+			},
+			{
+				name:  "reports maps unequal whose nil values have other keys",
+				giveX: map[int]any{1: nil},
+				giveY: map[int]any{2: nil},
+			},
+			{
 				name:  "matches pointer keys by their targets",
 				giveX: map[*link]int{{ID: 1}: 1, {ID: 2}: 2},
 				giveY: map[*link]int{{ID: 2}: 2, {ID: 1}: 1},
@@ -188,6 +198,18 @@ func TestMaps(t *testing.T) {
 				giveX: map[spot]int{{X: 1}: 1},
 				giveY: map[spot]int{{X: 2}: 1},
 			},
+			{
+				name:  "matches array keys of pointers by their targets",
+				giveX: map[[1]*link]int{{{ID: 1}}: 1},
+				giveY: map[[1]*link]int{{{ID: 1}}: 1},
+				want:  true,
+			},
+			{
+				name:  "matches struct keys of pointers by their targets",
+				giveX: map[pair]int{{A: &link{ID: 1}, B: &link{ID: 2}}: 1},
+				giveY: map[pair]int{{A: &link{ID: 1}, B: &link{ID: 2}}: 1},
+				want:  true,
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -277,6 +299,14 @@ func TestMaps(t *testing.T) {
 				}
 			})
 		}
+
+		t.Run("finds a key inside a value of an interface type", func(t *testing.T) {
+			t.Parallel()
+			key := reflect.ValueOf(holder{V: "a"}).Field(0)
+			if !equality.HasKey(reflect.ValueOf(map[string]int{"a": 1}), key, equality.Rules{}) {
+				t.Fatal("HasKey reports false, want true")
+			}
+		})
 	})
 }
 

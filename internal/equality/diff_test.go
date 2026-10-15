@@ -129,9 +129,15 @@ func TestDiff(t *testing.T) {
 		selfList[0], otherList[0] = selfList, otherList
 		selfMap, otherMap := map[string]any{"n": 1}, map[string]any{"n": 2}
 		selfMap["self"], otherMap["self"] = selfMap, otherMap
+		twoCycle := &link{ID: 1, Next: &link{ID: 2}}
+		twoCycle.Next.Next = twoCycle
+		otherTwoCycle := &link{ID: 1, Next: &link{ID: 3}}
+		otherTwoCycle.Next.Next = otherTwoCycle
+		endsInTwo, endsInThree := []int{1, 2}, []int{1, 3}
 		nodes := [2]link{{ID: 1}, {ID: 2}}
 		first, second := &nodes[0], &nodes[1]
 		key := "&equality_test.link{ID:1, Next:(*equality_test.link)(nil)}"
+		secondKey := "&equality_test.link{ID:2, Next:(*equality_test.link)(nil)}"
 		tests := []struct {
 			name      string
 			giveX     any
@@ -147,6 +153,12 @@ func TestDiff(t *testing.T) {
 				giveX: 1,
 				giveY: int64(1),
 				want:  []string{": -int(1) +int64(1)"},
+			},
+			{
+				name:  "returns two structs of different types whole",
+				giveX: hidden{1, 2},
+				giveY: spot{X: 1, Y: 2},
+				want:  []string{": -equality_test.hidden({1 2}) +equality_test.spot({1 2})"},
 			},
 			{
 				name:  "returns nil and a value whole",
@@ -177,6 +189,12 @@ func TestDiff(t *testing.T) {
 				giveX: (*link)(nil),
 				giveY: &link{ID: 1},
 				want:  []string{": -*equality_test.link(<nil>) +*equality_test.link(&{1 <nil>})"},
+			},
+			{
+				name:  "returns a pointer and a nil pointer whole",
+				giveX: &link{ID: 1},
+				giveY: (*link)(nil),
+				want:  []string{": -*equality_test.link(&{1 <nil>}) +*equality_test.link(<nil>)"},
 			},
 			{
 				name:  "returns each element of two arrays that differs",
@@ -227,6 +245,12 @@ func TestDiff(t *testing.T) {
 				want:  []string{"[0]: -int(1) +int(9)", "[4]: -int(5) +int(8)"},
 			},
 			{
+				name:  "ends a run of edits at a kept element",
+				giveX: []int{1, 2, 3},
+				giveY: []int{2, 3, 4},
+				want:  []string{"[0]: -int(1)", "[2]: +int(4)"},
+			},
+			{
 				name:  "descends into a pair of elements",
 				giveX: []link{{ID: 1}, {ID: 2}},
 				giveY: []link{{ID: 1}, {ID: 3}},
@@ -237,6 +261,18 @@ func TestDiff(t *testing.T) {
 				giveX: []int(nil),
 				giveY: []int{},
 				want:  []string{": -[]int([]) +[]int([])"},
+			},
+			{
+				name:  "returns a slice and a nil slice whole",
+				giveX: []int{1},
+				giveY: []int(nil),
+				want:  []string{": -[]int([1]) +[]int([])"},
+			},
+			{
+				name:  "descends into a slice after a shorter slice of its array",
+				giveX: [2][]int{endsInTwo[:1], endsInTwo},
+				giveY: [2][]int{endsInThree[:1], endsInThree},
+				want:  []string{"[1][1]: -int(2) +int(3)"},
 			},
 			{
 				name:      "returns no differences for a nil slice and an empty one under EquateEmpty",
@@ -289,6 +325,12 @@ func TestDiff(t *testing.T) {
 				want:  []string{`["a"]: +interface {}(<nil>)`},
 			},
 			{
+				name:  "returns a nil value of a key that only x has",
+				giveX: map[string]any{"a": nil},
+				giveY: map[string]any{},
+				want:  []string{`["a"]: -interface {}(<nil>)`},
+			},
+			{
 				name:  "returns a NaN key as removed and added",
 				giveX: map[float64]int{nan: 1},
 				giveY: map[float64]int{nan: 1},
@@ -314,6 +356,18 @@ func TestDiff(t *testing.T) {
 				want:  []string{"[" + key + "]: -int(1) +int(9)"},
 			},
 			{
+				name:  "returns an entry of an equal key that y has once more",
+				giveX: map[*link]int{{ID: 1}: 1},
+				giveY: map[*link]int{{ID: 1}: 1, {ID: 1}: 1},
+				want:  []string{"[" + key + "]: +int(1)"},
+			},
+			{
+				name:  "orders a nil key that only y has first",
+				giveX: map[any]int{1: 1},
+				giveY: map[any]int{nil: 1},
+				want:  []string{"[interface {}(nil)]: +int(1)", "[1]: -int(1)"},
+			},
+			{
 				name:  "orders the keys of an interface type by type, then by value, after nil",
 				giveX: map[any]int{"a": 1, 2: 1, 1: 1, nil: 1},
 				giveY: map[any]int{"a": 2, 2: 2, 1: 2, nil: 2},
@@ -335,6 +389,12 @@ func TestDiff(t *testing.T) {
 				giveX: map[uint]int{2: 1, 1: 1},
 				giveY: map[uint]int{2: 2, 1: 2},
 				want:  []string{"[0x1]: -int(1) +int(2)", "[0x2]: -int(1) +int(2)"},
+			},
+			{
+				name:  "orders float keys by value",
+				giveX: map[float64]int{2.5: 1},
+				giveY: map[float64]int{1.5: 1},
+				want:  []string{"[1.5]: +int(1)", "[2.5]: -int(1)"},
 			},
 			{
 				name:  "orders complex keys by their real parts, then by their imaginary parts",
@@ -367,10 +427,13 @@ func TestDiff(t *testing.T) {
 				name:  "orders pointer keys by address",
 				giveX: map[*link]int{first: 1, second: 1},
 				giveY: map[*link]int{second: 2, first: 2},
-				want: []string{
-					"[" + key + "]: -int(1) +int(2)",
-					"[&equality_test.link{ID:2, Next:(*equality_test.link)(nil)}]: -int(1) +int(2)",
-				},
+				want:  []string{"[" + key + "]: -int(1) +int(2)", "[" + secondKey + "]: -int(1) +int(2)"},
+			},
+			{
+				name:  "orders pointer keys of other targets by address",
+				giveX: map[*link]int{second: 1},
+				giveY: map[*link]int{first: 1},
+				want:  []string{"[" + key + "]: +int(1)", "[" + secondKey + "]: -int(1)"},
 			},
 			{
 				name:  "returns a nil map and an empty one whole",
@@ -379,10 +442,22 @@ func TestDiff(t *testing.T) {
 				want:  []string{": -map[string]int(map[]) +map[string]int(map[])"},
 			},
 			{
+				name:  "returns a map and a nil map whole",
+				giveX: map[string]int{"a": 1},
+				giveY: map[string]int(nil),
+				want:  []string{": -map[string]int(map[a:1]) +map[string]int(map[])"},
+			},
+			{
 				name:  "returns each difference of two lists that contain themselves once",
 				giveX: selfLoop,
 				giveY: otherLoop,
 				want:  []string{".ID: -int(1) +int(2)"},
+			},
+			{
+				name:  "returns each difference of two cycles of two links once",
+				giveX: twoCycle,
+				giveY: otherTwoCycle,
+				want:  []string{".Next.ID: -int(2) +int(3)"},
 			},
 			{
 				name:  "returns each difference of two slices that contain themselves once",

@@ -54,11 +54,11 @@ type Step struct {
 //     with an invalid other side. A run of elements that each side has
 //     alone pairs up in order, and each pair descends at its index in x.
 //   - Maps pair their entries by key: through a map index when == agrees
-//     with Equal on every key of both maps, and otherwise each entry of x
-//     with an equal entry of y first, and then with an entry of an equal
-//     key. The walk descends into the values of each pair. An entry that
-//     one side has alone differs at its key, with an invalid other side.
-//     The places of a map follow the order of its keys.
+//     with Equal on every key of x, and otherwise each entry of x with an
+//     equal entry of y first, and then with an entry of an equal key. The
+//     walk descends into the values of each pair. An entry that one side
+//     has alone differs at its key, with an invalid other side. The places
+//     of a map follow the order of its keys.
 //
 // A nil interface is a value of its own, and never an invalid side. The
 // walk descends into each pair of pointers, maps or slices once, so two
@@ -123,6 +123,7 @@ func (t *trail) steps() []Step {
 // walk adds the differences of x and y at path, depth levels below the
 // roots.
 func (d *differ) walk(path *trail, x, y reflect.Value, depth int) {
+	//dokimi:mutate-skip ror-false,sbr-delete: add does not add a difference past the limit, so the walk only takes longer
 	if len(d.found) == d.limit {
 		return
 	}
@@ -248,12 +249,14 @@ func (d *differ) maps(path *trail, x, y reflect.Value, depth int) {
 }
 
 // entries returns the entries of the maps x and y paired by key, the
-// entries of x first. When == agrees with Equal on every key of both maps,
-// a map index pairs them. Otherwise each entry of x pairs with an equal
-// entry of y first, and then with an entry of an equal key.
+// entries of x first. When == agrees with Equal on every key of x, a map
+// index pairs them. A key of y of another type equals no key of x. Otherwise
+// each entry of x pairs with an equal entry of y first, and then with an
+// entry of an equal key.
 func (d *differ) entries(x, y reflect.Value) []entry {
 	var entries []entry
-	if c := (comparison{rules: d.rules}); c.keysLookUp(x) && c.keysLookUp(y) {
+	//dokimi:mutate-skip sbr-delete: the pairing by Equal returns the entries that the map index pairs, only slower
+	if c := (comparison{rules: d.rules}); c.keysLookUp(x) {
 		for it := x.MapRange(); it.Next(); {
 			entries = append(entries, entry{key: it.Key(), x: it.Value(), y: y.MapIndex(it.Key())})
 		}

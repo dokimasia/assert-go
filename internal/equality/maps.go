@@ -25,6 +25,7 @@ func HasKey(m, key reflect.Value, r Rules) bool {
 	if !accepts(m.Type().Key(), key) {
 		return false
 	}
+	//dokimi:mutate-skip lcr-false,sbr-delete: a comparison with each key finds what the map index finds, only slower
 	if key.IsValid() && lookup(key.Type(), r) {
 		return m.MapIndex(key).IsValid()
 	}
@@ -47,9 +48,11 @@ func (c *comparison) maps(x, y reflect.Value) bool {
 	if x.Len() != y.Len() {
 		return false
 	}
+	//dokimi:mutate-skip lcr-right,ror-false: two empty maps compare equal by their entries as well
 	if x.Len() == 0 || c.met(x, y) {
 		return true
 	}
+	//dokimi:mutate-skip sbr-delete: the match of the entries returns the verdict of the lookup, only slower
 	if c.keysLookUp(x) {
 		return c.lookUp(x, y)
 	}
@@ -60,15 +63,19 @@ func (c *comparison) maps(x, y reflect.Value) bool {
 // with equal, so a map index of y finds each key of y that equals it.
 func (c *comparison) keysLookUp(x reflect.Value) bool {
 	t := x.Type().Key()
+	//dokimi:mutate-skip ror-true,ror-false,sbr-delete: either branch refuses a map whose keys a map index can miss
 	if t.Kind() != reflect.Interface {
+		//dokimi:mutate-skip sbr-zero: the match of the entries returns the verdict of the lookup, only slower
 		return lookup(t, c.rules)
 	}
 	for it := x.MapRange(); it.Next(); {
 		k := inside(it.Key())
+		//dokimi:mutate-skip lcr-left: the match of the entries returns the verdict of the lookup, only slower
 		if k.IsValid() && !lookup(k.Type(), c.rules) {
 			return false
 		}
 	}
+	//dokimi:mutate-skip sbr-zero: the match of the entries returns the verdict of the lookup, only slower
 	return true
 }
 
@@ -135,10 +142,13 @@ func lookup(t reflect.Type, r Rules) bool {
 	case reflect.Bool, reflect.String, reflect.Chan, reflect.UnsafePointer,
 		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		//dokimi:mutate-skip sbr-zero: a comparison with each key finds what the map index finds, only slower
 		return true
 	case reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+		//dokimi:mutate-skip sbr-zero: a comparison with each key finds what the map index finds, only slower
 		return !r.EquateNaNs
 	case reflect.Array:
+		//dokimi:mutate-skip sbr-zero: a comparison with each key finds what the map index finds, only slower
 		return lookup(t.Elem(), r)
 	case reflect.Struct:
 		zero := reflect.Zero(t)
@@ -147,6 +157,7 @@ func lookup(t reflect.Type, r Rules) bool {
 				return false
 			}
 		}
+		//dokimi:mutate-skip sbr-zero: a comparison with each key finds what the map index finds, only slower
 		return true
 	default:
 		return false
