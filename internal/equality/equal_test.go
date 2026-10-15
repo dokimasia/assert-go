@@ -22,6 +22,9 @@ const (
 	sliceAllocs = 0
 	// structAllocs are the allocations of Equal of two structs of ints.
 	structAllocs = 0
+	// pointerAllocs are the allocations of Equal of two pointers to structs
+	// of ints.
+	pointerAllocs = 0
 	// listAllocs is the ceiling of the allocations of Equal of two lists of
 	// three links: the set of the pairs of links that the walk entered, and
 	// their log.
@@ -279,6 +282,7 @@ func TestEqual(t *testing.T) {
 				giveY: views{Short: endsInTwo[:1], Long: endsInTwo},
 			},
 			{name: "reports pointers to equal arrays equal", giveX: &[2]int{1, 2}, giveY: &[2]int{1, 2}, want: true},
+			{name: "reports pointers to equal structs equal", giveX: &hidden{1, 2}, giveY: &hidden{1, 2}, want: true},
 			{
 				name:  "reports pointers to arrays of pointers to equal values equal",
 				giveX: &[1]*int{new(1)},
@@ -417,6 +421,7 @@ func TestEqualAllocs(t *testing.T) {
 		{name: "two slices of ints", x: []int{1, 2, 3}, y: []int{1, 2, 3}, allocs: sliceAllocs},
 		{name: "two slices of bytes", x: []byte("abc"), y: []byte("abc"), allocs: sliceAllocs},
 		{name: "two structs", x: hidden{1, 2}, y: hidden{1, 2}, allocs: structAllocs},
+		{name: "two pointers to structs", x: &hidden{1, 2}, y: &hidden{1, 2}, allocs: pointerAllocs},
 		{name: "two lists of three links", x: list(3, 2), y: list(3, 2), allocs: listAllocs},
 	}
 	for _, v := range values {

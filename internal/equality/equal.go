@@ -208,9 +208,11 @@ func (c *comparison) slices(x, y reflect.Value) (frame, bool) {
 // met reports whether the walk entered the pair of containers x and y
 // before, and records the pair when it did not. A pair whose parts cannot
 // contain a container cannot be met again inside itself, and is not
-// recorded.
+// recorded. The parts are a pointer's target, a slice's elements and a map's
+// values. A path from a map's key to a container passes through a pointer,
+// and the walk records the pointer.
 func (c *comparison) met(x, y reflect.Value) bool {
-	if !partsRepeat(x.Type()) {
+	if !canRepeat(x.Type().Elem()) {
 		return false
 	}
 	v := visit{x: x.Pointer(), y: y.Pointer(), typ: x.Type()}
@@ -264,16 +266,6 @@ func inside(v reflect.Value) reflect.Value {
 		return v.Elem()
 	}
 	return v
-}
-
-// partsRepeat reports whether the parts of a container of type t, a
-// pointer's target, a slice's elements, or a map's keys and values, can
-// contain a container.
-func partsRepeat(t reflect.Type) bool {
-	if t.Kind() == reflect.Map {
-		return canRepeat(t.Key()) || canRepeat(t.Elem())
-	}
-	return canRepeat(t.Elem())
 }
 
 // canRepeat reports whether a value of type t can contain a pointer, a map,
