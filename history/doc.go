@@ -96,6 +96,6 @@
 // # Dependency position
 //
 // Imports the root package of this module, its internal equality, fault,
-// literal, matcher and text packages, and the standard library. The
-// property engine and the conformance package import it.
+// literal, matcher, realtime and text packages, and the standard library.
+// The property engine and the conformance package import it.
 package history

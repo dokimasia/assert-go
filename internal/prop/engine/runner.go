@@ -11,6 +11,7 @@ import (
 	"go.dokimi.dev/assert/internal/prop/coverage"
 	"go.dokimi.dev/assert/internal/prop/token"
 	"go.dokimi.dev/assert/internal/prop/tree"
+	"go.dokimi.dev/assert/internal/realtime"
 	"go.dokimi.dev/assert/internal/record"
 )
 
@@ -85,6 +86,13 @@ type Shortfall struct {
 	Verdict coverage.Verdict
 }
 
+// LimitClock is the clock that a limit of a run is measured on: the budget of
+// a campaign and the time of a shrink.
+type LimitClock interface {
+	// Now returns the current instant.
+	Now() time.Time
+}
+
 // Settings are what a run is asked to do.
 type Settings struct {
 	// Seed is the seed of the random cases.
@@ -110,11 +118,11 @@ type Settings struct {
 	// ShrinkTime is the time that shrinking and explaining may take, on
 	// ShrinkClock. A time of 0 sets no limit.
 	ShrinkTime time.Duration
-	// ShrinkClock is the clock that ShrinkTime is measured on, and the
-	// platform clock, assert.System, when nil. The cap bounds the job and
-	// states nothing about the property, so it does not read Clock, which
-	// advances only when the test advances it.
-	ShrinkClock assert.Clock
+	// ShrinkClock is the clock that ShrinkTime is measured on, and the real
+	// time of the process, realtime.Clock, when nil. The cap bounds the job
+	// and states nothing about the property, so it does not read Clock,
+	// which advances only when the test advances it.
+	ShrinkClock LimitClock
 	// Explain reports whether the run explains its counterexample.
 	Explain bool
 	// Clock is the clock of the test, which every case reads, and the
@@ -133,9 +141,9 @@ type Settings struct {
 	// Budget is how long a [Campaign] explores, on BudgetClock. A run
 	// ignores it.
 	Budget time.Duration
-	// BudgetClock is the clock that Budget is measured on, and the platform
-	// clock, assert.System, when nil.
-	BudgetClock assert.Clock
+	// BudgetClock is the clock that Budget is measured on, and the real time
+	// of the process, realtime.Clock, when nil.
+	BudgetClock LimitClock
 	// Concluded receives each failure that a campaign concludes, as it
 	// concludes it: a counterexample of the failure's minimal case, with the
 	// other failures that its shrink found. It is nil for a campaign that
@@ -528,17 +536,17 @@ func prefixCases(cases int) int {
 	return min(cases/prefixDivisor, maxPrefixCases)
 }
 
-// withClocks returns s with the platform clock for each clock it does not
-// state.
+// withClocks returns s with the platform clock as the test's clock, and the
+// real time of the process for each limit, where s states no clock.
 func withClocks(s Settings) Settings {
 	if s.Clock == nil {
 		s.Clock = assert.System{}
 	}
 	if s.ShrinkClock == nil {
-		s.ShrinkClock = assert.System{}
+		s.ShrinkClock = realtime.Clock{}
 	}
 	if s.BudgetClock == nil {
-		s.BudgetClock = assert.System{}
+		s.BudgetClock = realtime.Clock{}
 	}
 	return s
 }

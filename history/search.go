@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/realtime"
 )
 
 // clockSteps is the number of steps between two readings of the deadline.
@@ -40,8 +41,8 @@ const (
 // reads, and the checker's cancellation of the searches that it no longer
 // needs.
 type deadline struct {
-	// end is when the time limit passes, on the platform clock, and the zero
-	// time for a check without one.
+	// end is when the time limit passes, in the real time of the process,
+	// and the zero time for a check without one.
 	end time.Time
 	// cancelled reports whether the checker has cancelled the searches.
 	cancelled atomic.Bool
@@ -50,7 +51,7 @@ type deadline struct {
 // passed reports whether a search of the check stops: the checker cancelled
 // it, or the time limit has passed.
 func (d *deadline) passed() bool {
-	return d.cancelled.Load() || (!d.end.IsZero() && time.Now().After(d.end))
+	return d.cancelled.Load() || (!d.end.IsZero() && realtime.Clock{}.Now().After(d.end))
 }
 
 // ending is how the search of one partition ended: its verdict, its steps

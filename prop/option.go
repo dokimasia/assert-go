@@ -97,9 +97,10 @@ func Shrink(runs int) Option {
 }
 
 // ShrinkTime sets the time that shrinking and explaining may take, 30
-// seconds by default, measured on the platform clock and not on the seat's.
-// A shrink that runs out of time reports the smallest case it found. A time
-// of 0 sets no limit. It panics for a negative time.
+// seconds by default, measured in real time and not on the seat's clock. A
+// testing/synctest bubble does not fake that time. A shrink that runs out of
+// time reports the smallest case it found. A time of 0 sets no limit. It
+// panics for a negative time.
 func ShrinkTime(d time.Duration) Option {
 	if d < 0 {
 		panic(fmt.Sprintf("prop: ShrinkTime(%v) is below 0", d))

@@ -8,11 +8,11 @@ import (
 	"reflect"
 	"runtime"
 	"sync"
-	"time"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/matcher"
+	"go.dokimi.dev/assert/internal/realtime"
 )
 
 // linearizableOp is the operation of Linearizable, which names its faults.
@@ -160,7 +160,7 @@ func (h *History) noteHashless() bool {
 func check[S any](h *History, ops operations[S], c config) (detail[S], error) {
 	d := &deadline{}
 	if c.timeLimit > 0 {
-		d.end = time.Now().Add(c.timeLimit)
+		d.end = realtime.Clock{}.Now().Add(c.timeLimit)
 	}
 	if cp, resumable := c.resume.(*Checkpoint[S]); resumable {
 		return resumed(h, ops, c, d, cp)

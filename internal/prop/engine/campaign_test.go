@@ -6,6 +6,7 @@ package engine_test
 import (
 	"strconv"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"go.dokimi.dev/assert"
@@ -305,6 +306,20 @@ func TestCampaign(t *testing.T) {
 			r := campaigned(func(c *engine.Case) { engine.Draw(c, digit, drawn) }, s, shortCases)
 			assert.Equal(t, r, engine.Result{Refused: r.Refused}, "the refusal, and nothing else")
 			assert.NotNil(t, r.Refused, "a refusal")
+		})
+
+		t.Run("measures its budget in real time inside a synctest bubble", func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				s := settled()
+				s.Budget = 10 * time.Millisecond
+				cases := 0
+				engine.Campaign(func(c *engine.Case) {
+					engine.Draw(c, digit, drawn)
+					cases++
+				}, s)
+				assert.True(t, cases > 0, "the campaign runs cases, and ends after 10 ms of real time")
+			})
 		})
 	})
 }

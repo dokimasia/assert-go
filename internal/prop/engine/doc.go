@@ -112,14 +112,17 @@
 // # Clocks
 //
 // Every case reads [Settings.Clock], the test's clock. [Settings.ShrinkTime]
-// is measured on [Settings.ShrinkClock], the platform clock by default. A
-// test's controlled clock advances only when the test advances it, so a
-// cap on that clock would never end a shrink.
+// is measured on [Settings.ShrinkClock], and [Settings.Budget] on
+// [Settings.BudgetClock]. Both are the real time of the process by default,
+// which a testing/synctest bubble does not fake. A test's controlled clock
+// advances only when the test advances it, and a bubble's clock only when
+// every goroutine of the bubble is durably blocked, so a cap on either clock
+// might never end a shrink or a campaign.
 //
 // # Dependency position
 //
 // Imports the root package of this module and its history package, its
-// internal matcher, fault, literal, record and cycle packages, its choice,
-// random, alphabet, token, coverage and tree packages, and the standard
-// library.
+// internal matcher, fault, literal, record, realtime and cycle packages, its
+// choice, random, alphabet, token, coverage and tree packages, and the
+// standard library.
 package engine

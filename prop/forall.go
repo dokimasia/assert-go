@@ -41,8 +41,8 @@ func duplicate(op, dir, contract string) error {
 //
 // Under the campaign profile, which DOKIMI_ASSERT_PROP_PROFILE=campaign
 // names, ForAll runs a campaign instead of a run, for as long as
-// DOKIMI_ASSERT_PROP_BUDGET states in whole seconds, on the platform clock.
-// It tries the case of Draws and the stored cases, and then explores: a
+// DOKIMI_ASSERT_PROP_BUDGET states in whole seconds of real time. A
+// testing/synctest bubble does not fake that time. It tries the case of Draws and the stored cases, and then explores: a
 // valid case that counts a new label, records a new fingerprint or records
 // a better score with [Case.Target] joins the campaign's pool, and three
 // cases in four mutate a member of the pool. Each failure of an identity of

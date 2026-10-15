@@ -153,7 +153,8 @@
 //
 // The campaign profile runs every property of [ForAll] and of a form as a
 // campaign: a search that runs for as long as DOKIMI_ASSERT_PROP_BUDGET
-// states in whole seconds, on the platform clock. A case that counts a new
+// states in whole seconds of real time. A testing/synctest bubble does not
+// fake that time. A case that counts a new
 // label, records a new fingerprint or records a better score with
 // [Case.Target] joins the campaign's pool, and most later cases mutate a
 // member of the pool. The campaign shrinks, explains and stores each

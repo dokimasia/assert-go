@@ -62,9 +62,9 @@ func MemoLimit(bits int64) Option {
 	}}
 }
 
-// TimeLimit sets the time that the whole check may take, measured on the
-// platform clock and not on the seat's. A time of 0, the default, sets no
-// limit. The search of each partition reads the clock before its first step
+// TimeLimit sets the time that the whole check may take, measured in the
+// real time of the process and not on the seat's clock. A testing/synctest
+// bubble does not fake that time. A time of 0, the default, sets no limit. The search of each partition reads the clock before its first step
 // and every 1,024 steps after it, and once the time has passed it ends as
 // [Undecided] with [LimitTime]. A time limit makes the outcome depend on the
 // machine. It panics for a negative time.
