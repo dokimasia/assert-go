@@ -4,7 +4,8 @@
 // Package childtest runs a test of a test binary in a child process of that
 // binary, for a check that needs a process of its own: a check of a value
 // that the module reads once per process, of the output that a test writes,
-// or of a panic that ends the process.
+// of a panic that ends the process, or of a write past a limit on the size of
+// a file, which applies to the whole process.
 //
 // # Dependency position
 //
