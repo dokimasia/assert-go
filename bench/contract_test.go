@@ -81,9 +81,13 @@ func contractCases() []alloctest.Case {
 	stated := bench.Start(b)
 	running := bench.Start(b)
 	running.Loop()
+	timing := bench.Start(b).MaxLatency(time.Hour)
+	timing.Loop()
 	ended := bench.Start(b)
+	timed := bench.Start(b).MaxLatency(time.Hour)
 	for range iterations {
 		ended.Loop()
+		timed.Loop()
 	}
 	return []alloctest.Case{
 		{Name: "Start", Call: func(assert.TB) { started = bench.Start(b) }, Allocs: 2},
@@ -93,8 +97,10 @@ func contractCases() []alloctest.Case {
 		{Name: "MaxBytes", Call: func(assert.TB) { stated.MaxBytes(1) }},
 		{Name: "Warmup", Call: func(assert.TB) { stated.Warmup(1) }},
 		{Name: "Loop", Call: func(assert.TB) { running.Loop() }},
+		{Name: "Loop under a latency ceiling", Call: func(assert.TB) { timing.Loop() }},
 		{Name: "Excluding", Call: func(assert.TB) { running.Excluding(noop) }},
-		{Name: "End", Call: func(assert.TB) { ended.End() }, Allocs: 2},
+		{Name: "End", Call: func(assert.TB) { ended.End() }},
+		{Name: "End under a latency ceiling", Call: func(assert.TB) { timed.End() }, Allocs: 7},
 	}
 }
 
@@ -132,10 +138,24 @@ func TestContract(t *testing.T) {
 			assert.Length(t, seat.verdicts(t), 0, "a run of no iterations checks no ceiling")
 		})
 
-		t.Run("publishes a metric under every unit", func(t *testing.T) {
+		t.Run("publishes the counts per iteration without a latency ceiling", func(t *testing.T) {
 			t.Parallel()
 
 			seat := run(iterations, unconstrained, noop)
+
+			published := map[string]bool{}
+			for _, unit := range []string{"p99-ns/op", "mean-ns/op", "allocs/op", "bytes/op"} {
+				_, published[unit] = seat.metric(unit)
+			}
+			assert.Equal(t, published,
+				map[string]bool{"p99-ns/op": false, "mean-ns/op": false, "allocs/op": true, "bytes/op": true},
+				"a contract without a latency ceiling publishes the counts and no latency")
+		})
+
+		t.Run("publishes the latency under a latency ceiling", func(t *testing.T) {
+			t.Parallel()
+
+			seat := run(iterations, func(c *bench.Contract) *bench.Contract { return c.MaxMean(time.Hour) }, noop)
 
 			for _, unit := range []string{"p99-ns/op", "mean-ns/op", "allocs/op", "bytes/op"} {
 				_, published := seat.metric(unit)
@@ -284,6 +304,32 @@ func TestContract(t *testing.T) {
 
 			c := bench.Start(newBenchSeat(1))
 			assert.Equal(t, c.MaxLatency(time.Second), c, "MaxLatency returns the receiver")
+		})
+
+		t.Run("panics after Loop has run", func(t *testing.T) {
+			t.Parallel()
+
+			c := bench.Start(newBenchSeat(1))
+			c.Loop()
+			raised := assert.Panics(t, func() { c.MaxLatency(time.Second) },
+				"a latency ceiling after the first iteration is a usage error")
+			assert.Equal(t, raised, any("bench: MaxLatency after the contract has run its body"),
+				"the message names the call")
+		})
+	})
+
+	t.Run("MaxMean", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("panics after Loop has run", func(t *testing.T) {
+			t.Parallel()
+
+			c := bench.Start(newBenchSeat(1))
+			c.Loop()
+			raised := assert.Panics(t, func() { c.MaxMean(time.Second) },
+				"a latency ceiling after the first iteration is a usage error")
+			assert.Equal(t, raised, any("bench: MaxMean after the contract has run its body"),
+				"the message names the call")
 		})
 	})
 
@@ -467,6 +513,19 @@ func TestContractCountingAllocs(t *testing.T) {
 				"the allocation of the one measured iteration exceeds a ceiling of zero in a build that checks it")
 		})
 
+		t.Run("adds no bytes to testing's count without a latency ceiling", func(t *testing.T) {
+			result, _ := benchmark(t, "10000x", func(b bench.B, _ int) {
+				c := bench.Start(b).MaxAllocs(0)
+				for c.Loop() {
+					noop()
+				}
+				c.End()
+			})
+
+			assert.True(t, result.AllocedBytesPerOp() == 0 || !matcher.AllocationsCounted(),
+				"testing counts no byte for a body that allocates nothing, in a build that counts them")
+		})
+
 		t.Run("leaves the code after the loop out of the allocation ceilings", func(t *testing.T) {
 			seat := newBenchSeat(iterations)
 
@@ -538,7 +597,7 @@ func TestContractCountingAllocs(t *testing.T) {
 		t.Run("counts the time of the iteration that the body leaves", func(t *testing.T) {
 			seat := newBenchSeat(iterations)
 
-			c := bench.Start(seat)
+			c := bench.Start(seat).MaxMean(time.Hour)
 			for calls := 1; c.Loop(); calls++ {
 				if calls == 2 {
 					time.Sleep(10 * time.Millisecond)
@@ -652,7 +711,8 @@ func TestContractCountingAllocs(t *testing.T) {
 		})
 
 		t.Run("takes the time of a call inside another call out once", func(t *testing.T) {
-			seat := runExcluding(4, func(c *bench.Contract) *bench.Contract { return c }, func(c *bench.Contract) {
+			hour := func(c *bench.Contract) *bench.Contract { return c.MaxMean(time.Hour) }
+			seat := runExcluding(4, hour, func(c *bench.Contract) {
 				c.Excluding(func() { c.Excluding(func() { time.Sleep(10 * time.Millisecond) }) })
 			})
 
@@ -690,6 +750,16 @@ func TestContractAfterRunParallelProcess(t *testing.T) {
 			name: "Warmup",
 			give: func(c *bench.Contract) { c.Warmup(1) },
 			want: "bench: Warmup after the contract has run its body",
+		},
+		{
+			name: "MaxLatency",
+			give: func(c *bench.Contract) { c.MaxLatency(time.Second) },
+			want: "bench: MaxLatency after the contract has run its body",
+		},
+		{
+			name: "MaxMean",
+			give: func(c *bench.Contract) { c.MaxMean(time.Second) },
+			want: "bench: MaxMean after the contract has run its body",
 		},
 	}
 	for _, tt := range tests {

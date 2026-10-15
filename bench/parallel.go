@@ -50,8 +50,9 @@ const benchtimeFlag = "test.benchtime"
 // goroutine, before any goroutine runs on. The ceilings count neither the
 // goroutines, nor the handles, nor what a body does before its first
 // iteration or after its last. The goroutines run the iterations of
-// [Contract.Warmup] before the measurement, its count in all. Each
-// iteration is timed on its goroutine, from one call of Next to the next.
+// [Contract.Warmup] before the measurement, its count in all. Under a
+// latency ceiling each iteration is timed on its goroutine from one call of
+// Next to the next. Next reads no clock without a latency ceiling.
 // [Contract.MaxLatency] bounds the p99 of the durations of every iteration
 // and [Contract.MaxMean] their mean. [Contract.MaxAllocs] and
 // [Contract.MaxBytes] bound the allocations and the bytes of the
@@ -96,9 +97,9 @@ const benchtimeFlag = "test.benchtime"
 //
 // # Allocation contract
 //
-// RunParallel allocates one duration for each of the b.N iterations, a
-// handle for each goroutine, and the goroutines, before the measurement
-// starts. [PB.Next] allocates nothing.
+// RunParallel allocates a handle for each goroutine, the goroutines, and
+// under a latency ceiling one duration for each of the b.N iterations,
+// before the measurement starts. [PB.Next] allocates nothing.
 func (c *Contract) RunParallel(body func(*PB)) {
 	b, ok := c.b.(*testing.B)
 	if !ok {
@@ -108,8 +109,9 @@ func (c *Contract) RunParallel(body func(*PB)) {
 		panic("bench: RunParallel after the contract has run its body")
 	}
 	c.ran, c.parallel = true, true
+	c.timing = c.latencyStated || c.meanStated
 
-	r := newParallelRun(b.N, c.warmup, runtime.GOMAXPROCS(0))
+	r := newParallelRun(b.N, c.warmup, runtime.GOMAXPROCS(0), c.timing)
 	for i := range r.pbs {
 		go r.work(i, body)
 	}
@@ -137,7 +139,7 @@ func (c *Contract) RunParallel(body func(*PB)) {
 			panic("bench: RunParallel's body returned before Next reported false")
 		}
 	}
-	c.each = r.durations
+	c.each, c.iterations = r.durations, b.N
 }
 
 // PB hands out the iterations of one goroutine of a parallel body, and
@@ -177,8 +179,8 @@ type PB struct {
 //
 // Next allocates nothing.
 func (pb *PB) Next() bool {
-	now := time.Now()
 	r := pb.run
+	now := r.now()
 	if pb.timing {
 		r.durations[pb.index] = now.Sub(pb.started)
 		pb.timing = false
@@ -191,7 +193,7 @@ func (pb *PB) Next() bool {
 			return true
 		}
 		pb.arrive()
-		now = time.Now()
+		now = r.now()
 	}
 	if pb.next == pb.end {
 		end := r.taken.Add(r.grain)
@@ -206,7 +208,7 @@ func (pb *PB) Next() bool {
 	}
 	pb.index = pb.next
 	pb.next++
-	pb.timing, pb.started = true, now
+	pb.timing, pb.started = r.timed, now
 	return true
 }
 
@@ -227,7 +229,10 @@ type parallelRun struct {
 	// taken counts the measured iterations that the goroutines have taken,
 	// and warmup the warm-up iterations that remain.
 	taken, warmup atomic.Int64
-	// durations is the duration of each measured iteration, by its index.
+	// timed reports whether the goroutines time their iterations, and
+	// durations is the duration of each measured iteration, by its index,
+	// while timed is set.
+	timed     bool
 	durations []time.Duration
 	// pbs are the goroutines' handles, and panics what each goroutine's body
 	// panicked with.
@@ -245,16 +250,20 @@ type parallelRun struct {
 }
 
 // newParallelRun returns a run of n measured iterations, after warmup
-// warm-up iterations, on the given number of goroutines.
-func newParallelRun(n, warmup, goroutines int) *parallelRun {
+// warm-up iterations, on the given number of goroutines, which time their
+// iterations when timed is set.
+func newParallelRun(n, warmup, goroutines int, timed bool) *parallelRun {
 	r := &parallelRun{
-		n:         int64(n),
-		grain:     int64(min(max(n/(goroutines*grainsPerGoroutine), 1), maxGrain)),
-		durations: make([]time.Duration, n),
-		pbs:       make([]PB, goroutines),
-		panics:    make([]any, goroutines),
-		release:   make(chan struct{}),
-		measured:  make(chan struct{}),
+		n:        int64(n),
+		grain:    int64(min(max(n/(goroutines*grainsPerGoroutine), 1), maxGrain)),
+		timed:    timed,
+		pbs:      make([]PB, goroutines),
+		panics:   make([]any, goroutines),
+		release:  make(chan struct{}),
+		measured: make(chan struct{}),
+	}
+	if timed {
+		r.durations = make([]time.Duration, n)
 	}
 	r.warmup.Store(int64(warmup))
 	r.ready.Add(goroutines)
@@ -264,6 +273,14 @@ func newParallelRun(n, warmup, goroutines int) *parallelRun {
 		r.pbs[i].run = r
 	}
 	return r
+}
+
+// now returns the time while the run is timed, and the zero time otherwise.
+func (r *parallelRun) now() time.Time {
+	if !r.timed {
+		return time.Time{}
+	}
+	return time.Now()
 }
 
 // work runs body on the handle of goroutine i. A body that ends before it

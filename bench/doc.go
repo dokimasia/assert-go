@@ -34,6 +34,10 @@
 // available in every language implementing this standard. See
 // [Contract.MaxLatency] and [Contract.MaxAllocs].
 //
+// A contract times its iterations only when it states a latency ceiling.
+// A contract with allocation ceilings alone reads no clock in its loop and
+// keeps no duration, so testing's ns/op and B/op contain neither.
+//
 // A contract is checked only when benchmarks run. An allocation ceiling
 // that the ordinary test run checks is [go.dokimi.dev/assert.MaxAllocs].
 //

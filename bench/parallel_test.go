@@ -183,7 +183,7 @@ func TestParallelAllocs(t *testing.T) {
 		t.Run("leaves each goroutine's wait for the warm-up out of its first iteration", func(t *testing.T) {
 			result, _ := benchmark(t, "100x", func(b bench.B, _ int) {
 				var warmed atomic.Bool
-				c := bench.Start(b).Warmup(1)
+				c := bench.Start(b).Warmup(1).MaxLatency(time.Hour)
 				c.RunParallel(func(pb *bench.PB) {
 					for pb.Next() {
 						if warmed.CompareAndSwap(false, true) {
@@ -200,9 +200,25 @@ func TestParallelAllocs(t *testing.T) {
 				"the p99 latency leaves out the 500 ms for which the other goroutines wait at the start")
 		})
 
-		t.Run("publishes the latency and the counts of the run", func(t *testing.T) {
+		t.Run("publishes the counts of the run without a latency ceiling", func(t *testing.T) {
 			result, _ := benchmark(t, "100x", func(b bench.B, _ int) {
 				c := bench.Start(b)
+				c.RunParallel(spin)
+				c.End()
+			})
+
+			published := map[string]bool{}
+			for _, unit := range []string{"p99-ns/op", "mean-ns/op", "allocs/op", "bytes/op"} {
+				_, published[unit] = result.Extra[unit]
+			}
+			assert.Equal(t, published,
+				map[string]bool{"p99-ns/op": false, "mean-ns/op": false, "allocs/op": true, "bytes/op": true},
+				"a contract without a latency ceiling publishes the counts and no latency")
+		})
+
+		t.Run("publishes the latency and the counts of the run under a latency ceiling", func(t *testing.T) {
+			result, _ := benchmark(t, "100x", func(b bench.B, _ int) {
+				c := bench.Start(b).MaxMean(time.Hour)
 				c.RunParallel(func(pb *bench.PB) {
 					for pb.Next() {
 						time.Sleep(time.Millisecond)

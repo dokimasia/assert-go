@@ -65,8 +65,13 @@ type Contract struct {
 	// run.
 	warmup, warmed int
 
-	// each contains one duration per iteration. [Contract.End] reads the
-	// quantile and the mean from it.
+	// iterations is the number of measured iterations.
+	iterations int
+	// timing reports whether the contract times each measured iteration. The
+	// first measured iteration sets it for a stated latency ceiling.
+	timing bool
+	// each contains the duration of each measured iteration while timing is
+	// set. [Contract.End] reads the quantile and the mean from it.
 	each []time.Duration
 	// started is the time the current iteration began. It is zero before
 	// the first iteration.
@@ -122,10 +127,20 @@ func Start(b B) *Contract {
 // mean ceiling does not bound. [Contract.MaxMean] states a ceiling on the
 // mean.
 //
+// A contract times its iterations only under a latency ceiling, so state it
+// before the body runs.
+//
+// # Panics
+//
+// MaxLatency panics after [Contract.Loop] or [Contract.RunParallel] has run.
+//
 // # Allocation contract
 //
 // MaxLatency allocates nothing.
 func (c *Contract) MaxLatency(d time.Duration) *Contract {
+	if c.ran {
+		panic("bench: MaxLatency after the contract has run its body")
+	}
 	c.maxLatency, c.latencyStated = d, true
 	return c
 }
@@ -135,12 +150,19 @@ func (c *Contract) MaxLatency(d time.Duration) *Contract {
 //
 // State it together with [Contract.MaxLatency]. A mean ceiling alone
 // passes a benchmark whose tail latency grows while its mean does not
-// change.
+// change. State it before the body runs, as MaxLatency.
+//
+// # Panics
+//
+// MaxMean panics after [Contract.Loop] or [Contract.RunParallel] has run.
 //
 // # Allocation contract
 //
 // MaxMean allocates nothing.
 func (c *Contract) MaxMean(d time.Duration) *Contract {
+	if c.ran {
+		panic("bench: MaxMean after the contract has run its body")
+	}
 	c.maxMean, c.meanStated = d, true
 	return c
 }
@@ -250,7 +272,9 @@ func (c *Contract) MaxBytes(n uint64) *Contract {
 //	    _, _ = store.Get(ctx, id)
 //	}
 //
-// Loop times each iteration for the latency ceilings. It reads the
+// Loop times each iteration under a latency ceiling, [Contract.MaxLatency]
+// or [Contract.MaxMean]. Without one it reads no clock and keeps no
+// duration, so testing's ns/op and B/op contain neither. It reads the
 // allocation counters before the first measured iteration and after the
 // last, so the allocation ceilings count neither the setup before the
 // loop, nor the iterations of [Contract.Warmup], nor the code after it.
@@ -262,9 +286,9 @@ func (c *Contract) MaxBytes(n uint64) *Contract {
 //
 // # Allocation contract
 //
-// Loop allocates nothing per iteration, amortized over the growth of the
-// durations that it keeps. It takes that growth out of the count of the
-// allocation ceilings.
+// Loop allocates nothing per iteration. Under a latency ceiling it keeps
+// the duration of each iteration in a slice whose growth is amortized, and
+// it takes that growth out of the count of the allocation ceilings.
 func (c *Contract) Loop() bool {
 	if c.parallel {
 		panic("bench: Loop after RunParallel")
@@ -275,15 +299,12 @@ func (c *Contract) Loop() bool {
 		return true
 	}
 	if c.measuring {
-		elapsed := time.Since(c.started) - c.excluded
-		c.excluded = 0
-
-		// A growth of each is the contract's allocation, not the body's.
-		if len(c.each) == cap(c.each) {
-			c.excludeHeap(func() { c.each = slices.Grow(c.each, 1) })
+		c.iterations++
+		if c.timing {
+			c.lap()
 		}
-		c.each = append(c.each, elapsed)
 	} else {
+		c.timing = c.latencyStated || c.meanStated
 		c.heapAtStart, c.bytesAtStart = heap()
 		c.measuring = true
 	}
@@ -293,7 +314,9 @@ func (c *Contract) Loop() bool {
 		c.measuring = false
 		return false
 	}
-	c.started = time.Now()
+	if c.timing {
+		c.started = time.Now()
+	}
 	return true
 }
 
@@ -315,11 +338,16 @@ func (c *Contract) Loop() bool {
 // After [Contract.RunParallel], End checks the ceilings of the run that
 // testing reports and of no earlier one, as RunParallel states.
 //
+// End publishes the allocations and the bytes per iteration as allocs/op
+// and bytes/op. Under a latency ceiling it also publishes the p99 and the
+// mean latency as p99-ns/op and mean-ns/op.
+//
 // # Allocation contract
 //
-// End allocates a sorted copy of the durations of the iterations: one
-// allocation. A ceiling that the benchmark exceeded allocates its record
-// as well.
+// End allocates nothing for a contract without a ceiling. Under a latency
+// ceiling it allocates a sorted copy of the durations of the iterations.
+// Each stated ceiling allocates the detail of its verdict, and a ceiling
+// that the benchmark exceeded allocates its record as well.
 func (c *Contract) End() {
 	c.b.Helper()
 
@@ -327,21 +355,25 @@ func (c *Contract) End() {
 		elapsed := time.Since(c.started) - c.excluded
 		c.heapAtEnd, c.bytesAtEnd = heap()
 		c.measuring = false
-		c.each = append(c.each, elapsed)
+		c.iterations++
+		if c.timing {
+			c.each = append(c.each, elapsed)
+		}
 	}
-	if len(c.each) == 0 {
+	if c.iterations == 0 {
 		return
 	}
 
 	allocs, bytes := c.perIteration()
-	sorted := slices.Clone(c.each)
-	slices.Sort(sorted)
-
-	tail := quantile(sorted, p99)
-	mean := total(sorted) / time.Duration(len(sorted))
-
-	c.b.ReportMetric(float64(tail.Nanoseconds()), unitP99Latency)
-	c.b.ReportMetric(float64(mean.Nanoseconds()), unitMeanLatency)
+	var tail, mean time.Duration
+	if c.timing {
+		sorted := slices.Clone(c.each)
+		slices.Sort(sorted)
+		tail = quantile(sorted, p99)
+		mean = total(sorted) / time.Duration(len(sorted))
+		c.b.ReportMetric(float64(tail.Nanoseconds()), unitP99Latency)
+		c.b.ReportMetric(float64(mean.Nanoseconds()), unitMeanLatency)
+	}
 	c.b.ReportMetric(allocs, unitAllocs)
 	c.b.ReportMetric(bytes, unitBytes)
 
@@ -407,6 +439,19 @@ func (c *Contract) Excluding(work func()) {
 	c.excluded += time.Since(startedAt)
 }
 
+// lap keeps the duration of the iteration that ends now, without the time
+// that [Contract.Excluding] took out of it.
+func (c *Contract) lap() {
+	elapsed := time.Since(c.started) - c.excluded
+	c.excluded = 0
+
+	// A growth of each is the contract's allocation, not the body's.
+	if len(c.each) == cap(c.each) {
+		c.excludeHeap(func() { c.each = slices.Grow(c.each, 1) })
+	}
+	c.each = append(c.each, elapsed)
+}
+
 // check reports the verdict of the ceiling of assertion: a failure with
 // detail when the measurement exceeded the ceiling, and a pass otherwise.
 func (c *Contract) check(assertion, contract string, exceeded bool, detail map[string]any) {
@@ -421,7 +466,7 @@ func (c *Contract) check(assertion, contract string, exceeded bool, detail map[s
 // perIteration returns the allocations and the bytes per iteration, over
 // the counters that the loop's end read.
 func (c *Contract) perIteration() (allocs, bytes float64) {
-	n := float64(len(c.each))
+	n := float64(c.iterations)
 
 	// The excluded allocations are subtracted, so the result covers the
 	// measured work and not the whole loop body.

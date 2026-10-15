@@ -156,6 +156,7 @@ type Error struct {
   package and names the call.
 - A contract of `bench` panics when a caller breaks its contract:
   `Warmup` with a negative count or after the contract has run its body,
+  `MaxLatency` and `MaxMean` after the contract has run its body,
   `RunParallel` of a benchmark that is no `*testing.B` or after the
   contract has run its body, a body of `RunParallel` that returns before
   `Next` reports false, and `Loop` after `RunParallel`. Each message
