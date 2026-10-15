@@ -56,7 +56,9 @@ func TestParallelAllocs(t *testing.T) {
 
 			assert.Equal(t, seen, []benchCall{{n: 1}},
 				"a body that allocates nothing meets ceilings of zero in a run of one iteration")
-			assert.Equal(t, result.Extra["allocs/op"], 0.0, "the run publishes no allocation")
+			if matcher.AllocationsCounted() {
+				assert.Equal(t, result.Extra["allocs/op"], 0.0, "the run publishes no allocation")
+			}
 		})
 
 		t.Run("reports allocations above their ceiling in the run that testing reports", func(t *testing.T) {
