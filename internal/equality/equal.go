@@ -4,6 +4,7 @@
 package equality
 
 import (
+	"bytes"
 	"math"
 	"reflect"
 )
@@ -37,8 +38,9 @@ const logBuffer = 8
 //
 // The walk compares the elements of arrays and slices, the fields of
 // structs and the targets of pointers from a stack of its own, so the depth
-// of a value costs heap memory and not the goroutine's stack. A map compares
-// its entries in a nested walk.
+// of a value costs heap memory and not the goroutine's stack. It compares two
+// slices of bytes in one step, as bytes.Equal does. A map compares its
+// entries in a nested walk.
 //
 // # Allocation contract
 //
@@ -184,7 +186,8 @@ func (c *comparison) pointers(x, y reflect.Value) (frame, bool) {
 }
 
 // slices compares two slices: both nil, or neither nil with equal elements.
-// Under EquateEmpty, nil equals empty.
+// Under EquateEmpty, nil equals empty. Two slices of bytes compare in one
+// step, because no rule changes whether two bytes are equal.
 func (c *comparison) slices(x, y reflect.Value) (frame, bool) {
 	if x.IsNil() != y.IsNil() {
 		return frame{}, c.rules.EquateEmpty && x.Len() == 0 && y.Len() == 0
@@ -194,6 +197,10 @@ func (c *comparison) slices(x, y reflect.Value) (frame, bool) {
 	}
 	if x.Len() == 0 || c.met(x, y) {
 		return frame{}, true
+	}
+	//dokimi:mutate-skip sbr-delete,ror-false: the walk of the elements returns the same verdict, only slower
+	if x.Type().Elem().Kind() == reflect.Uint8 {
+		return frame{}, bytes.Equal(x.Bytes(), y.Bytes())
 	}
 	return frame{x: x, y: y, parts: x.Len()}, true
 }

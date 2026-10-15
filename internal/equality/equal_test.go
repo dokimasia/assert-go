@@ -32,6 +32,10 @@ const (
 // more levels than a recursive walk fits in deepStack.
 const deepLinks = 100_000
 
+// benchBytes is the length of the slices of bytes that BenchmarkEqual
+// compares: 1 MiB.
+const benchBytes = 1 << 20
+
 // deepStack is the most bytes of stack that the goroutine of the depth test
 // may use.
 const deepStack = 1 << 20
@@ -40,6 +44,9 @@ const deepStack = 1 << 20
 type views struct {
 	Short, Long []any
 }
+
+// octet is a named type of the kind uint8.
+type octet uint8
 
 // always is a type whose Equal method reports every two values equal.
 type always struct {
@@ -222,6 +229,19 @@ func TestEqual(t *testing.T) {
 			{name: "reports slices of other lengths unequal", giveX: []int{1, 2}, giveY: []int{1}},
 			{name: "reports slices of a different last element unequal", giveX: []int{1, 2}, giveY: []int{1, 3}},
 			{name: "reports slices of a different first element unequal", giveX: []int{1, 2}, giveY: []int{3, 2}},
+			{name: "reports two equal slices of bytes equal", giveX: []byte("abc"), giveY: []byte("abc"), want: true},
+			{
+				name:  "reports slices of bytes of a different element unequal",
+				giveX: []byte("abc"),
+				giveY: []byte("abd"),
+			},
+			{name: "reports a nil slice of bytes unequal to an empty one", giveX: []byte(nil), giveY: []byte{}},
+			{
+				name:  "reports two equal slices of a named byte type equal",
+				giveX: []octet{1, 2},
+				giveY: []octet{1, 2},
+				want:  true,
+			},
 			{name: "reports values unequal whose Equal method reports them equal", giveX: always{1}, giveY: always{2}},
 			{
 				name:  "compares the fields of values whose Equal method panics",
@@ -395,6 +415,7 @@ func TestEqualAllocs(t *testing.T) {
 	}{
 		{name: "two ints", x: 1, y: 1, allocs: scalarAllocs},
 		{name: "two slices of ints", x: []int{1, 2, 3}, y: []int{1, 2, 3}, allocs: sliceAllocs},
+		{name: "two slices of bytes", x: []byte("abc"), y: []byte("abc"), allocs: sliceAllocs},
 		{name: "two structs", x: hidden{1, 2}, y: hidden{1, 2}, allocs: structAllocs},
 		{name: "two lists of three links", x: list(3, 2), y: list(3, 2), allocs: listAllocs},
 	}
@@ -407,11 +428,20 @@ func TestEqualAllocs(t *testing.T) {
 	}
 }
 
-// BenchmarkEqual measures Equal on two slices of ints and on two lists of
-// links.
+// BenchmarkEqual measures Equal on two slices of ints, on two equal slices
+// of 1 MiB of bytes, and on two lists of links.
 func BenchmarkEqual(b *testing.B) {
 	b.Run("slices", func(b *testing.B) {
 		x, y := reflect.ValueOf([]int{1, 2, 3}), reflect.ValueOf([]int{1, 2, 3})
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = equality.Equal(x, y, equality.Rules{})
+		}
+	})
+
+	b.Run("bytes", func(b *testing.B) {
+		x, y := reflect.ValueOf(make([]byte, benchBytes)), reflect.ValueOf(make([]byte, benchBytes))
+		b.SetBytes(benchBytes)
 		b.ReportAllocs()
 		for b.Loop() {
 			_ = equality.Equal(x, y, equality.Rules{})
