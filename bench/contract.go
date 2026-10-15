@@ -301,7 +301,14 @@ func (c *Contract) Loop() bool {
 	if c.measuring {
 		c.iterations++
 		if c.timing {
-			c.lap()
+			elapsed := time.Since(c.started) - c.excluded
+			c.excluded = 0
+
+			// A growth of each is the contract's allocation, not the body's.
+			if len(c.each) == cap(c.each) {
+				c.excludeHeap(func() { c.each = slices.Grow(c.each, 1) })
+			}
+			c.each = append(c.each, elapsed)
 		}
 	} else {
 		c.timing = c.latencyStated || c.meanStated
@@ -437,19 +444,6 @@ func (c *Contract) Excluding(work func()) {
 	startedAt := time.Now()
 	c.excludeHeap(work)
 	c.excluded += time.Since(startedAt)
-}
-
-// lap keeps the duration of the iteration that ends now, without the time
-// that [Contract.Excluding] took out of it.
-func (c *Contract) lap() {
-	elapsed := time.Since(c.started) - c.excluded
-	c.excluded = 0
-
-	// A growth of each is the contract's allocation, not the body's.
-	if len(c.each) == cap(c.each) {
-		c.excludeHeap(func() { c.each = slices.Grow(c.each, 1) })
-	}
-	c.each = append(c.each, elapsed)
 }
 
 // check reports the verdict of the ceiling of assertion: a failure with

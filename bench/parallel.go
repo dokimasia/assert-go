@@ -180,7 +180,10 @@ type PB struct {
 // Next allocates nothing.
 func (pb *PB) Next() bool {
 	r := pb.run
-	now := r.now()
+	var now time.Time
+	if r.timed {
+		now = time.Now()
+	}
 	if pb.timing {
 		r.durations[pb.index] = now.Sub(pb.started)
 		pb.timing = false
@@ -193,7 +196,9 @@ func (pb *PB) Next() bool {
 			return true
 		}
 		pb.arrive()
-		now = r.now()
+		if r.timed {
+			now = time.Now()
+		}
 	}
 	if pb.next == pb.end {
 		end := r.taken.Add(r.grain)
@@ -273,14 +278,6 @@ func newParallelRun(n, warmup, goroutines int, timed bool) *parallelRun {
 		r.pbs[i].run = r
 	}
 	return r
-}
-
-// now returns the time while the run is timed, and the zero time otherwise.
-func (r *parallelRun) now() time.Time {
-	if !r.timed {
-		return time.Time{}
-	}
-	return time.Now()
 }
 
 // work runs body on the handle of goroutine i. A body that ends before it
