@@ -1,5 +1,11 @@
 # go.dokimi.dev/assert
 
+## 0.3.1
+
+### Patch Changes
+
+- 919b412: Fix `bench.Contract.Excluding` to stop the timer of `testing.B` while its work runs.
+
 ## 0.3.0
 
 ### Minor Changes
