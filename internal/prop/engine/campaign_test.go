@@ -313,12 +313,13 @@ func TestCampaign(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				s := settled()
 				s.Budget = 10 * time.Millisecond
+				s.Draws = []engine.Entry{{Label: drawn, Value: 4}}
 				cases := 0
 				engine.Campaign(func(c *engine.Case) {
 					engine.Draw(c, digit, drawn)
 					cases++
 				}, s)
-				assert.True(t, cases > 0, "the campaign runs cases, and ends after 10 ms of real time")
+				assert.True(t, cases > 0, "the campaign runs the case of Draws, and ends after 10 ms of real time")
 			})
 		})
 	})
