@@ -732,6 +732,38 @@ func TestContractCountingAllocs(t *testing.T) {
 
 			assert.True(t, seat.Failed(), "iterations of a millisecond exceed a mean of 0.9 milliseconds")
 		})
+
+		t.Run("leaves its allocations out of the bytes that testing counts", func(t *testing.T) {
+			result, _ := benchmark(t, "100x", func(b bench.B, _ int) {
+				c := bench.Start(b)
+				for c.Loop() {
+					c.Excluding(heavyFixture)
+				}
+				c.End()
+			})
+
+			assert.True(t, result.AllocedBytesPerOp() == 0 || !matcher.AllocationsCounted(),
+				"testing counts no byte of an excluded fixture, in a build that counts them")
+		})
+	})
+}
+
+// TestContractTimerProcess checks what the timer of testing measures of a
+// contract's loop, in benchmarks of testing that run in this process. It does
+// not run in parallel, because it sets -benchtime, a flag of the process.
+func TestContractTimerProcess(t *testing.T) {
+	t.Run("Excluding", func(t *testing.T) {
+		t.Run("stops the timer of testing while its work runs", func(t *testing.T) {
+			result, _ := benchmark(t, "4x", func(b bench.B, _ int) {
+				c := bench.Start(b)
+				for c.Loop() {
+					c.Excluding(func() { time.Sleep(10 * time.Millisecond) })
+				}
+				c.End()
+			})
+
+			assert.True(t, result.T < 10*time.Millisecond, "testing times none of the four excluded sleeps of 10 ms")
+		})
 	})
 }
 

@@ -26,3 +26,12 @@ type B interface {
 	// contract publishes what it measured beside the ceiling.
 	ReportMetric(n float64, unit string)
 }
+
+// timer is the timer of a benchmark. [testing.B] has one, and B does not
+// require it. [Contract.Excluding] stops it while its work runs.
+type timer interface {
+	// StopTimer stops the timer and the allocation counts of the benchmark.
+	StopTimer()
+	// StartTimer starts them again.
+	StartTimer()
+}

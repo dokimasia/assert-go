@@ -425,6 +425,13 @@ func (c *Contract) End() {
 //	    store.Settle()
 //	}
 //
+// Excluding stops the timer of a [testing.B] while work runs. testing's
+// ns/op and B/op then leave the work out as well. testing sizes a run by
+// the time that its timer measures, so a benchmark whose excluded work takes
+// far longer than its operation runs many iterations. State their number
+// for such a benchmark with -benchtime=Nx. A benchmark without StopTimer and
+// StartTimer keeps its timer running.
+//
 // Before the first [Contract.Loop] and after the last, Excluding runs
 // work and takes nothing out, because no iteration is being measured. A
 // call inside the work of another call runs its work and takes nothing out
@@ -440,10 +447,19 @@ func (c *Contract) Excluding(work func()) {
 	}
 
 	c.excluding = true
-	defer func() { c.excluding = false }()
 	startedAt := time.Now()
+	paused, pauses := c.b.(timer)
+	if pauses {
+		paused.StopTimer()
+	}
+	defer func() {
+		if pauses {
+			paused.StartTimer()
+		}
+		c.excluded += time.Since(startedAt)
+		c.excluding = false
+	}()
 	c.excludeHeap(work)
-	c.excluded += time.Since(startedAt)
 }
 
 // check reports the verdict of the ceiling of assertion: a failure with
