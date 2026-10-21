@@ -1,5 +1,13 @@
 # go.dokimi.dev/assert
 
+## 0.5.0
+
+### Minor Changes
+
+- 869c053: **Breaking:** Deprecate `prop.Bubble`, which now returns `prop.Around(synctest.Test)`.
+- 869c053: Implement definition 9.0.0 and write its version into every call record.
+- 869c053: Add `prop.Around` to run each run of a property's body inside a wrapper, such as `synctest.Test`.
+
 ## 0.4.0
 
 ### Minor Changes
