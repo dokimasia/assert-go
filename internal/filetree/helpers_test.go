@@ -6,7 +6,10 @@ package filetree_test
 import (
 	"errors"
 	"io/fs"
+	"maps"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -100,6 +103,88 @@ func written(t *testing.T, tree filetree.Tree) string {
 	t.Cleanup(func() { filetree.Unlock(dir) })
 	assert.NoError(t, filetree.Write(dir, tree), "the tree is written")
 	return dir
+}
+
+// linkCase is a write of a link to a directory whose one file is f.txt. Its
+// name states the behaviour of the case, and give makes the write and returns
+// the path of the link.
+type linkCase struct {
+	name string
+	give func(t *testing.T) string
+}
+
+// linkCases returns the writes of a link to a directory by the function that
+// makes the link, Write or Overwrite.
+func linkCases() map[string][]linkCase {
+	return map[string][]linkCase{
+		"Write": {
+			{
+				name: "makes a link to a directory of the tree whose path sorts after the link",
+				give: func(t *testing.T) string {
+					t.Helper()
+					return filepath.Join(written(t, filetree.Tree{"a": linkTo("z"), "z/f.txt": textFile}), "a")
+				},
+			},
+			{
+				name: "makes a link to a directory outside the tree by its absolute path",
+				give: func(t *testing.T) string {
+					t.Helper()
+					outside := written(t, filetree.Tree{"f.txt": textFile})
+					return filepath.Join(written(t, filetree.Tree{"a": linkTo(filepath.ToSlash(outside))}), "a")
+				},
+			},
+		},
+		"Overwrite": {
+			{
+				name: "replaces a link by a link to a directory that it creates whose path sorts after the link",
+				give: func(t *testing.T) string {
+					t.Helper()
+					dir := written(t, filetree.Tree{"a": linkTo("missing")})
+					assert.NoError(t, filetree.Overwrite(dir, filetree.Tree{"a": linkTo("z"), "z/f.txt": textFile}),
+						"the tree is written over the directory")
+					return filepath.Join(dir, "a")
+				},
+			},
+			{
+				name: "replaces a link by a link to a directory outside the tree by a relative path",
+				give: func(t *testing.T) string {
+					t.Helper()
+					parent := written(t, filetree.Tree{"in/a": linkTo("missing"), "out/f.txt": textFile})
+					dir := filepath.Join(parent, "in")
+					assert.NoError(t, filetree.Overwrite(dir, filetree.Tree{"a": linkTo("../out")}),
+						"the tree is written over the directory")
+					return filepath.Join(dir, "a")
+				},
+			},
+		},
+	}
+}
+
+// checkLinks runs each case of linkCases under a subtest of its function, and
+// checks that the directory is listed through the link with its one file.
+func checkLinks(t *testing.T) {
+	t.Helper()
+
+	tests := linkCases()
+	for _, function := range slices.Sorted(maps.Keys(tests)) {
+		t.Run(function, func(t *testing.T) {
+			t.Parallel()
+
+			for _, tt := range tests[function] {
+				t.Run(tt.name, func(t *testing.T) {
+					t.Parallel()
+
+					entries, err := os.ReadDir(tt.give(t))
+					assert.NoError(t, err, "the directory is listed through the link")
+					names := make([]string, len(entries))
+					for i, e := range entries {
+						names[i] = e.Name()
+					}
+					assert.Equal(t, names, []string{"f.txt"}, "the file of the directory")
+				})
+			}
+		})
+	}
 }
 
 // readBack returns the tree in dir. The tree includes the mode of each entry.

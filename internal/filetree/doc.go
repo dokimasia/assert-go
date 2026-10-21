@@ -32,6 +32,12 @@
 // Windows does not honour it. Windows stores the target of a link with backslashes, and
 // [Read] and [ReadPath] return it with slashes, as a tree states it.
 //
+// Windows makes a link either a file link or a directory link, and lists no
+// directory through a file link. [Write], [Overwrite] and [Update] make each
+// link after every file and every directory. On Windows they make each link
+// with os.Symlink. os.Symlink makes a directory link to any target that is a
+// directory, and os.Root.Symlink only to a directory inside the root.
+//
 // # Dependency position
 //
 // Imports fault, literal for the literals of a record's null and its count,

@@ -77,6 +77,16 @@ func TestWrite(t *testing.T) {
 			)
 		})
 
+		t.Run("sets the mode of each directory after the directories below it", func(t *testing.T) {
+			t.Parallel()
+			mustRecordModes(t)
+
+			dir := written(t, filetree.Tree{"a": dirWith(privateMode), "a/b": dirWith(0o700)})
+			info, err := os.Lstat(filepath.Join(dir, "a"))
+			assert.NoError(t, err, "the parent is there")
+			assert.Equal(t, info.Mode().Perm(), privateMode, "the parent's stated mode, without the search bit")
+		})
+
 		t.Run("sets the owner's write bit of each file, the one bit that Windows records", func(t *testing.T) {
 			t.Parallel()
 
@@ -116,6 +126,17 @@ func TestWrite(t *testing.T) {
 
 			err := filetree.Write(filepath.Join(t.TempDir(), "missing"), filetree.Tree{"a.txt": textFile})
 			expectFault(t, err, nil, "the directory cannot be opened")
+		})
+
+		t.Run("writes every file and every directory before any link", func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			for _, name := range []string{"a", "b.txt"} {
+				assert.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("kept"), privateMode), name+" is there")
+			}
+			err := filetree.Write(dir, filetree.Tree{"a": linkTo("b.txt"), "b.txt": textFile})
+			expectFault(t, err, fault.Path{fault.Key("b.txt")}, "the entry cannot be written")
 		})
 
 		tests := []struct {

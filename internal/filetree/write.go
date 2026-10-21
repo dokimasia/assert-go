@@ -35,7 +35,11 @@ type step struct {
 // Write writes t into dir, a directory that exists, as a workspace does. It
 // creates every entry and writes over none: a file of its content, a
 // directory, and a link of its target, inside or outside dir, which it never
-// follows. It writes through os.Root, so no entry is written outside dir.
+// follows. It writes every file and every directory before any link, so the
+// target of a link in t is there when the link is made. It writes through
+// os.Root, so no entry is written outside dir. On Windows it makes each link
+// with [os.Symlink], so a link to a directory is a directory link. Each link
+// is then in a directory that the write created.
 //
 // Each file and each directory gets its stated mode, and where it states
 // none [FileMode], [ExecutableMode] or [DirMode]. Write sets the mode of a
@@ -60,7 +64,7 @@ func Write(dir string, t Tree) error {
 	if err := t.Check(); err != nil {
 		return err
 	}
-	return apply(dir, func(*os.Root) ([]step, error) { return creating(t.Full(), nil), nil })
+	return apply(dir, func(*os.Root) ([]step, error) { return creating(t.Full(), nil, nil, nil), nil })
 }
 
 // Update makes dir equal t, as an update of a golden tree does. It creates
@@ -116,7 +120,7 @@ func Update(dir string, t Tree) error {
 		}
 		steps = append(steps, step{path: path, run: func(root *os.Root) error { return root.RemoveAll(path) }})
 	}
-	return apply(dir, func(*os.Root) ([]step, error) { return creating(wanted, kept, steps...), nil })
+	return apply(dir, func(*os.Root) ([]step, error) { return creating(wanted, kept, steps, nil), nil })
 }
 
 // replaceFile returns the operation that writes the file e over the file at
@@ -148,8 +152,10 @@ func replaceFile(path string, e Entry) func(root *os.Root) error {
 // [DirMode], each directory after every entry below it. A parent that t
 // implies keeps its mode where it exists. Every entry that t does not state
 // keeps its content and its mode. Overwrite writes through os.Root and never
-// follows a link: it replaces a link by removing the link itself. On Windows
-// only the owner's write bit of a file's mode takes effect, as with [Write].
+// follows a link: it replaces a link by removing the link itself. It makes
+// each link after every file and every directory, and that order applies to
+// a link that replaces a link as well. On Windows it makes each link as Write
+// does, and only the owner's write bit of a file's mode takes effect there.
 //
 // # Errors
 //
@@ -176,18 +182,19 @@ func Overwrite(dir string, t Tree) error {
 }
 
 // overwriting reads the entry at each path of the full tree of t in root, in
-// path order, and returns the operations that write t over them: the
-// replacement of each file and each link that is there, the operations of
-// [Write] for each entry that is missing, and then the mode of each directory
-// that is there and that t states, deepest first. No directory that is there
-// is below one that the write creates, so the modes of the created
-// directories come first. It returns the fault of the first entry that it
-// refuses, before any operation runs.
+// path order, and returns the operations that write t over them. The
+// operations replace each file that is there, and create each missing entry
+// as [Write] does. They replace each link that is there together with the
+// links that Write makes. Then they set the mode of each directory that is
+// there and that t states, deepest first. No directory that is there is below
+// one that the write creates, so the modes of the created directories come
+// first. It returns the fault of the first entry that it refuses, before any
+// operation runs.
 func overwriting(root *os.Root, t Tree) ([]step, error) {
 	full := t.Full()
 	there := Tree{}
 	read := map[string]fs.FileInfo{}
-	var replaced, modes []step
+	var replaced, relinked, modes []step
 	for _, path := range full.Paths() {
 		e := full[path]
 		info, err := root.Lstat(path)
@@ -201,14 +208,19 @@ func overwriting(root *os.Root, t Tree) ([]step, error) {
 			return nil, fault.At(err, fault.Key(path))
 		}
 		there[path], read[path] = e, info
-		if e.Kind != Dir {
+		switch e.Kind {
+		case Link:
+			relinked = append(relinked, step{path: path, run: replace(path, e)})
+		case File:
 			replaced = append(replaced, step{path: path, run: replace(path, e)})
-		} else if _, stated := t[path]; stated {
-			modes = append(modes, step{path: path, run: dirMode(path, e)})
+		default:
+			if _, stated := t[path]; stated {
+				modes = append(modes, step{path: path, run: dirMode(path, e)})
+			}
 		}
 	}
 	slices.Reverse(modes)
-	return append(creating(full, there, replaced...), modes...), nil
+	return append(creating(full, there, replaced, relinked), modes...), nil
 }
 
 // refusal returns a fault for the entry of info, where a tree states e: an
@@ -241,7 +253,7 @@ func replace(path string, e Entry) func(root *os.Root) error {
 			if err := root.Remove(path); err != nil {
 				return fault.New("the link cannot be removed").Because(err)
 			}
-			return root.Symlink(e.Target, path)
+			return symlink(root, e.Target, path)
 		}
 	}
 	return func(root *os.Root) error {
@@ -250,9 +262,12 @@ func replace(path string, e Entry) func(root *os.Root) error {
 }
 
 // creating returns the operations that write each entry of full that kept
-// lacks, after the operations before: each entry in path order, and then the
-// mode of each directory that it writes, deepest first.
-func creating(full, kept Tree, before ...step) []step {
+// lacks, after the operations before. The files and the directories come
+// first, in path order. The operations links and the link of each entry
+// follow, and then the mode of each directory that it writes, deepest first.
+// So the target of a link in full is there when the link is made. On Windows
+// the target decides the kind of the link.
+func creating(full, kept Tree, before, links []step) []step {
 	steps := before
 	var modes []step
 	for _, path := range full.Paths() {
@@ -260,13 +275,19 @@ func creating(full, kept Tree, before ...step) []step {
 			continue
 		}
 		e := full[path]
-		steps = append(steps, step{path: path, run: create(path, e)})
-		if e.Kind == Dir {
+		s := step{path: path, run: create(path, e)}
+		switch e.Kind {
+		case Link:
+			links = append(links, s)
+		case Dir:
+			steps = append(steps, s)
 			modes = append(modes, step{path: path, run: dirMode(path, e)})
+		default:
+			steps = append(steps, s)
 		}
 	}
 	slices.Reverse(modes)
-	return append(steps, modes...)
+	return slices.Concat(steps, links, modes)
 }
 
 // create returns the operation that creates the entry e at path: a file
@@ -277,7 +298,7 @@ func create(path string, e Entry) func(root *os.Root) error {
 		return func(root *os.Root) error { return root.Mkdir(path, createDir) }
 	}
 	if e.Kind == Link {
-		return func(root *os.Root) error { return root.Symlink(e.Target, path) }
+		return func(root *os.Root) error { return symlink(root, e.Target, path) }
 	}
 	return func(root *os.Root) error { return writeFile(root, path, os.O_CREATE|os.O_EXCL, e) }
 }
