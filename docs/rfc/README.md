@@ -29,3 +29,5 @@ they record why not.
 | [0016](0016-definition-7-2-in-go.md) | Definition 7.2.0 in Go | Accepted |
 | [0017](0017-testing-the-consumers-before-a-release.md) | Testing the consumers before a release | Accepted |
 | [0018](0018-definition-8-in-go.md) | Definition 8.0.0 in Go | Accepted |
+| [0019](0019-seats-that-wrap-a-seat.md) | Seats that wrap a seat | Draft |
+| [0020](0020-properties-in-a-synctest-bubble.md) | Properties in a synctest bubble | Draft |
