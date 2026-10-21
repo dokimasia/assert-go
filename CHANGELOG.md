@@ -1,5 +1,12 @@
 # go.dokimi.dev/assert
 
+## 0.4.0
+
+### Minor Changes
+
+- e35bb35: Add `prop.Bubble` to run each run of a property's body in a `testing/synctest` bubble of its own, under `ForAll`, the forms and `Fuzz`.
+- 5967735: Add `Unwrap() TB` to a seat that wraps another, so that an assertion on the wrapper uses the call records and methods of the wrapped seat.
+
 ## 0.3.1
 
 ### Patch Changes
