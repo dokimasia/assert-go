@@ -1,5 +1,11 @@
 # go.dokimi.dev/assert
 
+## 0.5.1
+
+### Patch Changes
+
+- c617260: Fix `files.Workspace`, `files.Write` and `golden.MatchTree` to make a link to a directory a directory link on Windows.
+
 ## 0.5.0
 
 ### Minor Changes
