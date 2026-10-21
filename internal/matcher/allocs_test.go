@@ -261,7 +261,9 @@ func TestAllocationsCounted(t *testing.T) {
 			}
 			return
 		}
-		runChild(t, mutantVariable+"=12")
+		// 0 is the number of a control run, so the child of a test binary
+		// that a mutation run instrumented runs no mutant.
+		runChild(t, mutantVariable+"=0")
 	})
 }
 

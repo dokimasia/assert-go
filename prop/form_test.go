@@ -369,13 +369,3 @@ func BenchmarkForm(b *testing.B) {
 		assert.NotNil(b, got, "the option")
 	})
 }
-
-// valuesOfDraws returns the values of the entries of a counterexample of
-// draws, in order.
-func valuesOfDraws(entries []prop.Entry) []any {
-	out := make([]any, len(entries))
-	for i, e := range entries {
-		out[i] = e.(prop.Drawn).Value
-	}
-	return out
-}

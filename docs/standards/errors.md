@@ -33,9 +33,11 @@ recorded run, and never parse the text.
 - A property reports one record of its assertion, `prop-for-all` or the
   form's id, whose detail contains the ten fields that the definition
   declares for a run.
-- When the test's seat implements `Reporter`, it receives the record.
-  Otherwise it receives the writer's text of the record, through
-  `Fatalf` for the aborting surface and `Errorf` for the recording one.
+- The first seat of the seat's chain that implements `Reporter` receives
+  the record. The chain is the seat, then the seat that its method
+  `Unwrap() TB` returns, and so on. For a chain without a `Reporter`, the
+  seat receives the writer's text of the record, through `Fatalf` for the
+  aborting surface and `Errorf` for the recording one.
 
 ## Call records
 
@@ -52,7 +54,8 @@ default.
   every case of a property, every attempt of `Eventually`, and the check
   that `Rejects` runs. A property writes the call records of its cases
   in the order of a run on one worker, with the phase of each case.
-- A test's seat receives a call record through `Attr`, under the key
+- The first seat of the seat's chain that keeps call records receives a
+  call record. A test's seat receives it through `Attr`, under the key
   `dokimi.assert.<seq>`. `go test -json` turns it into an `attr` event of
   the test, beside the events that state the test's status. A call
   record whose line does not fit the 4,096-byte line buffer of
@@ -114,11 +117,12 @@ type Error struct {
   match errors with `errors.Is` and `errors.As`, and compare the fault's
   fields.
 - Misuse of `ForAll`, such as a seed variable that is no number, is a
-  fault that ends the call. A seat that implements
-  `matcher.FaultReporter` receives the fault as the error it is, as a
-  `Reporter` receives a failure's record. Any other seat receives the
-  writer's text of the fault through `Fatalf`. The call record of a
-  recorded run states the verdict `error` and the same text.
+  fault that ends the call. The first seat of the seat's chain that
+  implements `matcher.FaultReporter` receives the fault as the error it
+  is, as a `Reporter` receives a failure's record. For a chain without
+  one, the seat receives the writer's text of the fault through `Fatalf`.
+  The call record of a recorded run states the verdict `error` and the
+  same text.
 - A helper that is no assertion, such as `files.Workspace` and
   `files.Read`, ends its call with a fault through `matcher.End`. The
   seat receives the fault as it receives the fault of an assertion, and
@@ -166,9 +170,13 @@ type Error struct {
   nine permission bits, and for an entry that is no file and no
   directory. Its message starts with the package and names the call:
   `files: WithMode(0o1000) states a bit beyond the nine permission bits`.
+- A property under `Bubble` raises again a panic of `synctest.Test` that
+  refuses a run before the run starts, such as the panic of a call inside
+  a bubble, on the goroutine of the call.
 - No other code panics on purpose.
 - A `recover` exists only where a panic is what the code observes: an
-  assertion about panics, the end of a property's case, a body of
+  assertion about panics, the end of a property's case, the bubble of a
+  case under `Bubble`, whose deadlock fails the case, a body of
   `Concurrently`, a goroutine of `RunParallel`, a function of the spec in
   `Linearizable`, a task of the task scheduler, whose panic `Run` raises
   again, and a call of the history that the seam runner of `conformance`
@@ -206,12 +214,12 @@ type Writer interface {
   from `internal/filetree`.
   The table of sentences is complete before any test starts, so the
   writer reads it without a lock.
-- `matcher.Note` writes a note's text into the log of a seat that has
-  `Logf`. `matcher.NoteFault` passes a fault that does not end the call
-  to a `matcher.FaultReporter`, and writes the writer's text of the fault
-  into the log of any other seat that has `Logf`. `prop` reports through
-  them the notes of a failing case and each fault of a store that does
-  not end the call.
+- `matcher.Note` writes a note's text into the log of the first seat of
+  the seat's chain that has `Logf`. `matcher.NoteFault` passes a fault
+  that does not end the call to the first `matcher.FaultReporter` of the
+  chain. For a chain without one, it writes the writer's text of the
+  fault into that log. `prop` reports through them the notes of a failing
+  case and each fault of a store that does not end the call.
 - The package that declares a type of a record's detail, such as
   `prop.Drawn`, implements the type's text and its typed literal. The
   writer and the encoder of call records call them, and treat every

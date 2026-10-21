@@ -133,6 +133,14 @@ type Settings struct {
 	// more workers reports what a run on one reports, and its body must be
 	// safe to run concurrently with itself.
 	Workers int
+	// Around runs each run of the body, and nil runs it where the runner
+	// is. It calls run once, and returns once run has returned. The
+	// goroutine of the body starts inside run and ends before run returns,
+	// its cleanups included. A panic of Around after it called run fails the
+	// case as a panic of its body does. The runner raises a panic of Around
+	// before run again. prop runs each run in a testing/synctest bubble of
+	// its own through it.
+	Around func(run func())
 	// Slot is the slot of the property's call record, which takes the
 	// calls of every case that a run on one worker runs, in that order and
 	// with the phase of each case. It is nil for a property that is not

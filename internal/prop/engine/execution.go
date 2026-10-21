@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sync/atomic"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/prop/choice"
@@ -113,10 +114,10 @@ func Replay(body Body, choices []choice.Choice, clock assert.Clock) Execution {
 
 // Bridge calls body once on a case decoded from a fuzzer's bytes, outside
 // the case tree, with the cap of s.MaxChoices, or of [MaxChoices] when s
-// states none, and reads the clock of s. The slot of s takes the calls of
-// the case under the phase fuzz.
+// states none, and reads the clock of s. It runs the case inside
+// s.Around. The slot of s takes the calls of the case under the phase fuzz.
 func Bridge(body Body, data []byte, s Settings) Execution {
-	limits := Settings{MaxChoices: cmp.Or(s.MaxChoices, MaxChoices), Clock: s.Clock, Slot: s.Slot}
+	limits := Settings{MaxChoices: cmp.Or(s.MaxChoices, MaxChoices), Clock: s.Clock, Slot: s.Slot, Around: s.Around}
 	e := execute(body, &bridging{data: data}, limits)
 	e.take(s.Slot, record.Fuzz)
 	return e
@@ -169,12 +170,38 @@ func repeat(e Execution, body Body, limit int) Execution {
 }
 
 // runOnce calls body once on c, on a goroutine of its own, and returns how
-// the case ended.
+// the case ended. Under [Settings.Around], it runs the case as runAround
+// does.
 func runOnce(c *Case, body Body) Execution {
+	if around := c.settings.Around; around != nil {
+		runAround(c, body, around)
+		return executionOf(c)
+	}
 	c.done.Add(1)
 	go c.run(body)
 	c.done.Wait()
 	return executionOf(c)
+}
+
+// runAround calls body once on c, on a goroutine that it starts inside the
+// run that around calls, and waits inside that run until the goroutine has
+// ended. The goroutine signals its end on a channel that the run makes, so a
+// goroutine that never ends, as in a bubble that deadlocked, leaves nothing
+// that a later run of c uses. A panic of around after it called the run
+// fails the case as a panic of its body does. runAround raises a panic of
+// around before the run again.
+func runAround(c *Case, body Body, around func(run func())) {
+	var started atomic.Bool
+	defer c.recoverAround(&started)
+	around(func() {
+		started.Store(true)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			c.call(body)
+		}()
+		<-done
+	})
 }
 
 // entered walks the case of e, which ran outside the case tree and kept its

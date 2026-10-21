@@ -4,8 +4,11 @@
 package prop
 
 import (
+	"context"
 	"encoding/json"
 	"runtime"
+	"testing"
+	"testing/synctest"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/fault"
@@ -15,6 +18,7 @@ import (
 	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/internal/prop/store"
 	"go.dokimi.dev/assert/internal/prop/token"
+	"go.dokimi.dev/assert/internal/wrap"
 )
 
 // callerSkip is the number of frames that [caller] skips: runtime.Callers,
@@ -27,6 +31,9 @@ const callerSkip = 3
 const (
 	// drawsOption is the option that states the entries of a case.
 	drawsOption = "Draws"
+	// bubbleOption is the option that runs each run of the body in a bubble
+	// of its own.
+	bubbleOption = "Bubble"
 	// valueMember is the member of an entry of Draws that states its value.
 	valueMember = "value"
 	// clientMember is the member of a step entry of Draws that states its
@@ -55,11 +62,14 @@ type property struct {
 	// replay are the choices that the token to replay records, when
 	// replaying is set.
 	replay []choice.Choice
-	// replaying reports whether the call replays a token.
-	replaying bool
 	// dir is the directory of the call's store, and empty for a call without
 	// one.
 	dir string
+	// replaying reports whether the call replays a token.
+	replaying bool
+	// bubble reports whether each run of the body runs in a testing/synctest
+	// bubble of its own.
+	bubble bool
 }
 
 // newProperty returns the property of the operation op of a call at pc on
@@ -105,7 +115,13 @@ func newProperty(tb assert.TB, op, contract string, pc uintptr, c config) (prope
 			Draws:        entries,
 			Budget:       budget,
 		},
-		dir: directoryOf(tb, c),
+		dir:    directoryOf(tb, c),
+		bubble: c.bubble,
+	}
+	if c.bubble {
+		// synctest.Test fails the test through FailNow, which runs on the
+		// goroutine of the test alone, so the runs of a bubble run on it.
+		p.settings.Workers = 1
 	}
 	if tok, source, ok := tokenOf(c); ok {
 		if p.replay, err = token.Decode(tok); err != nil {
@@ -114,6 +130,28 @@ func newProperty(tb assert.TB, op, contract string, pc uintptr, c config) (prope
 		p.replaying = true
 	}
 	return p, nil
+}
+
+// runsOn returns the settings and the body of the runs of the property p on
+// tb, whose cases derive their context from the context of tb. Under Bubble,
+// each run of the body runs in a testing/synctest bubble of its own on the
+// first seat of the chain of tb that is a *testing.T. The cases then derive
+// their context from context.Background(), because a context of the test is
+// outside the bubble. It reports false under Bubble for a chain without a
+// *testing.T.
+func (p property) runsOn(tb assert.TB, body func(*Case)) (engine.Settings, engine.Body, bool) {
+	s := p.settings
+	if !p.bubble {
+		return s, bodyOf(matcher.ContextOf(tb), body), true
+	}
+	t, ok := wrap.As[*testing.T](tb)
+	if !ok {
+		return engine.Settings{}, nil, false
+	}
+	s.Around = func(run func()) {
+		synctest.Test(t, func(*testing.T) { run() })
+	}
+	return s, bodyOf(context.Background(), body), true
 }
 
 // drawEntries returns the entries of Draws that text states: a JSON array
@@ -207,9 +245,9 @@ func (p property) save(r engine.Result) []error {
 // report reports the verdict of the property's call run on tb, from r, the
 // result of its run. A run that passed passes, and its record states the
 // detail of the run. A run that did not pass writes the notes of its
-// failing case into the log of tb, and then fails with its record: an
-// [assert.Reporter] seat receives the record as an aborting failure, and any
-// other seat its sentence through Fatalf.
+// failing case into the log of tb, and then fails with its record. The first
+// [assert.Reporter] of the chain of tb receives the record as an aborting
+// failure, and a chain without one receives its sentence through Fatalf.
 func (p property) report(tb assert.TB, run matcher.Running, r engine.Result) {
 	tb.Helper()
 	if r.Outcome == engine.Passed {

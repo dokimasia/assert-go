@@ -5,10 +5,13 @@ package prop
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 
+	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/prop/engine"
+	"go.dokimi.dev/assert/internal/prop/store"
 )
 
 // fuzzOp is the operation of Fuzz, which names its faults.
@@ -53,6 +56,15 @@ const fuzzOp = "prop.Fuzz"
 //
 // Fuzz ends the call on f with a fault, without registering the target, for
 // each fault for which ForAll ends its call without a run.
+//
+// Under [Bubble], each run of the case of an input, its replay, its shrink
+// and its explanation runs in a bubble of its own on the test of the input.
+// A *testing.F has no *testing.T for synctest.Test, so the call on f
+// replays no stored case, and notes the faults of the files of the store
+// alone. The first input that the process runs replays the stored cases
+// before its own case, as a call of its own on its test. A failing stored
+// case fails that input with its record, as found, and the case of the
+// input does not run.
 func Fuzz(f *testing.F, contract string, body func(*Case), opts ...Option) {
 	f.Helper()
 	run := matcher.Begin(f)
@@ -61,17 +73,6 @@ func Fuzz(f *testing.F, contract string, body func(*Case), opts ...Option) {
 		run.Fault(matcher.Fatal, forAllID, contract, err)
 		return
 	}
-	p.replayStored(f, run, body)
-	f.Fuzz(func(t *testing.T, data []byte) {
-		p.input(inputSeat{T: t}, bodyOf(t.Context(), body), data)
-	})
-}
-
-// replayStored replays the stored cases of the property p on f, as the call
-// run, and reports the run, as [Fuzz] states. A report that does not pass
-// ends the call on f.
-func (p property) replayStored(f *testing.F, run matcher.Running, body func(*Case)) {
-	f.Helper()
 	if !claim(f, p.dir, p.contract) {
 		p.fault(f, run, duplicate(p.op, p.dir, p.contract))
 		return
@@ -81,24 +82,48 @@ func (p property) replayStored(f *testing.F, run matcher.Running, body func(*Cas
 		p.fault(f, run, err)
 		return
 	}
-	s := p.settings
+	var first store.Stored
+	if p.bubble {
+		first, stored = store.Stored{Entries: stored.Entries}, store.Stored{Skipped: stored.Skipped}
+	}
+	p.replayStored(f, run, p.settings, bodyOf(f.Context(), body), stored)
+	var once sync.Once
+	f.Fuzz(func(t *testing.T, data []byte) {
+		seat := inputSeat{T: t}
+		s, cases, _ := p.runsOn(t, body)
+		if len(first.Entries) > 0 {
+			once.Do(func() { p.replayStored(seat, matcher.Begin(seat), s, cases, first) })
+		}
+		p.input(seat, s, cases, data)
+	})
+}
+
+// replayStored replays the entries of stored on seat, as the call run, with
+// the settings s and the body cases, and reports the run, as [Fuzz] states.
+// It notes the fault of each file of stored that the run skips, and of each
+// entry whose case decodes to other values than the entry records. A report
+// that does not pass ends the call.
+func (p property) replayStored(seat assert.TB, run matcher.Running, s engine.Settings, cases engine.Body,
+	stored store.Stored,
+) {
+	seat.Helper()
 	s.Slot = run.Slot()
 	s.Stored = storedChoices(stored)
-	r := engine.RunStored(bodyOf(f.Context(), body), s)
+	r := engine.RunStored(cases, s)
 	for _, err := range p.storeFaults(stored, r) {
-		matcher.NoteFault(f, err)
+		matcher.NoteFault(seat, err)
 	}
-	p.report(f, run, r)
+	p.report(seat, run, r)
 }
 
 // input runs the case that data decodes to as a call of the property on
-// seat, the seat of the input's test, and reports the call's verdict. A
-// failing case is concluded as ForAll concludes one, and the failures of a
-// counterexample are written to the store.
-func (p property) input(seat inputSeat, cases engine.Body, data []byte) {
+// seat, the seat of the input's test, with the settings s and the body
+// cases, and reports the call's verdict. A failing case is concluded as
+// ForAll concludes one, and the failures of a counterexample are written to
+// the store.
+func (p property) input(seat inputSeat, s engine.Settings, cases engine.Body, data []byte) {
 	seat.Helper()
 	run := matcher.Begin(seat)
-	s := p.settings
 	s.Slot = run.Slot()
 	e := engine.Bridge(cases, data, s)
 	if e.Status != engine.CaseFailed {

@@ -92,9 +92,11 @@ func init() {
 
 // inMutationRun runs the test t in a child process whose environment states
 // the variable of a mutation run, and fails t unless the child passes it.
+// The variable states 0, the number of a control run, so the child of a
+// test binary that a mutation run instrumented runs no mutant.
 func inMutationRun(t *testing.T) {
 	t.Helper()
-	out, err := childtest.Run(t, t.Name(), mutantVariable+"=12")
+	out, err := childtest.Run(t, t.Name(), mutantVariable+"=0")
 	assert.NoError(t, err, "the child exits with status 0:\n"+out)
 	assert.Contains(t, out, "--- PASS: "+t.Name()+" ", "the child passes the test")
 }
@@ -248,6 +250,43 @@ func (s *testSeat) end() {
 	}
 }
 
+// wrapper is a seat that wraps another seat, as the handle of a check does.
+// It has the three methods of the wrapped seat and Unwrap.
+type wrapper struct {
+	assert.TB
+}
+
+// Unwrap returns the wrapped seat.
+func (w wrapper) Unwrap() assert.TB { return w.TB }
+
+// inTest is a recorder that wraps the seat of a test. Bubble runs each case
+// through synctest.Test with the test's *testing.T, and the recorder keeps
+// each record that the run reports, so a failing run does not fail the test.
+type inTest struct {
+	*assert.Recorder
+
+	t *testing.T
+}
+
+// Unwrap returns the seat of the test.
+func (s inTest) Unwrap() assert.TB { return s.t }
+
+// bubbledDetailOf runs body as the property contract under Bubble on a
+// recorder that wraps t, without a store, under opts. It returns the detail
+// of the one record that the run reported, or nil for a run that reported
+// none.
+func bubbledDetailOf(t *testing.T, body func(*prop.Case), opts ...prop.Option) map[string]any {
+	t.Helper()
+	rec := assert.NewRecorder()
+	opts = append([]prop.Option{prop.Store(""), prop.Bubble()}, opts...)
+	prop.ForAll(inTest{Recorder: rec, t: t}, contract, body, opts...)
+	records := rec.Failures()
+	if len(records) == 0 {
+		return nil
+	}
+	return records[0].Detail
+}
+
 // sentences is a seat without a Report or a ReportFault method, as
 // testing.TB is. It keeps the message of each failure, each fault and each
 // log line, in call order.
@@ -330,6 +369,16 @@ func recordedDetail(t *testing.T, body func(*prop.Case), opts ...prop.Option) ma
 	t.Helper()
 	detail, _ := callsOf(t, body, opts...)[0]["detail"].(map[string]any)
 	return detail
+}
+
+// valuesOfDraws returns the values of the entries of a counterexample of
+// draws, in order.
+func valuesOfDraws(entries []prop.Entry) []any {
+	out := make([]any, len(entries))
+	for i, e := range entries {
+		out[i] = e.(prop.Drawn).Value
+	}
+	return out
 }
 
 // counts returns the outcome and the counts of valid and rejected cases of

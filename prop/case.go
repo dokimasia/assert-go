@@ -165,8 +165,8 @@ func (c *Case) Cleanup(f func()) {
 // Context returns the case's context, for the code under test that takes
 // one. It derives from the context of the property's seat, such as the one
 // a *testing.T returns, and from context.Background() for a seat without
-// one. The case cancels it when the body ends, before the cleanups run.
-// A second call returns the same context.
+// one and under [Bubble]. The case cancels it when the body ends, before
+// the cleanups run. A second call returns the same context.
 func (c *Case) Context() context.Context {
 	return (*engine.Case)(c).Context()
 }

@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"go.dokimi.dev/assert"
@@ -62,6 +63,11 @@ const (
 	rejectingMode = "rejecting"
 	// refutedMode fuzzes a body that fails for every input, without a seed.
 	refutedMode = "refuted"
+	// bubbleMode fuzzes waitsAtSentinel under Bubble from a seed that passes.
+	bubbleMode = "bubble"
+	// bubbleFailingMode fuzzes waitsAtSentinel under Bubble from the seed of
+	// the sentinel.
+	bubbleFailingMode = "bubble-failing"
 )
 
 // childSeed is the seed of each property of FuzzChild, which the record of
@@ -300,6 +306,66 @@ func TestFuzzProcess(t *testing.T) {
 			assert.Equal(t, []any{test["verdict"], test["aborting"], detail[casesField], detail[rejectedField]},
 				[]any{"pass", true, 1.0, 0.0}, "the call of the test passes, and counts the stored case")
 		})
+
+		t.Run("runs each input in a bubble of its own under Bubble", func(t *testing.T) {
+			out, err := child(t, bubbleMode, t.TempDir())
+			assert.NoError(t, err, "the child passes:\n"+out)
+		})
+
+		t.Run("reports the shrunk case of a failing input under Bubble", func(t *testing.T) {
+			out, err := child(t, bubbleFailingMode, t.TempDir(), record.Variable+"=1")
+			assert.HasError(t, err, "the child fails")
+			detail, _ := childCall(t, out, "FuzzChild/seed#0", 1)["detail"].(map[string]any)
+			assert.Equal(t, counts(detail), []any{"counterexample", 0.0, 0.0},
+				"a counterexample after no valid and no rejected case")
+			lit, _ := literal.Encode(sentinel)
+			assert.Equal(t, drawnOf(detail), [][2]any{{drawn, jsonTree(t, string(lit))}},
+				"the smallest failing byte string")
+			failure := map[string]any{"assertion": big, "contract": fits, "detail": map[string]any{}}
+			assert.Equal(t, detail[failureField], any(failure), "the failure of the shrunk case")
+		})
+
+		t.Run("replays the stored cases on the first input under Bubble", func(t *testing.T) {
+			dir := t.TempDir()
+			lit, _ := literal.Encode([]byte{7})
+			save(t, dir, store.Entry{
+				Definition:     "1.2.0",
+				Property:       contract,
+				Identity:       store.Identity{Assertion: big, Contract: fits},
+				Choices:        []choice.Choice{sequence(7)},
+				Counterexample: []store.Draw{{Label: drawn, Value: lit}},
+				Found:          earlier,
+			})
+			out, err := child(t, bubbleMode, dir, record.Variable+"=1")
+			assert.NoError(t, err, "the child passes")
+			test, _ := childCall(t, out, "FuzzChild", 1)["detail"].(map[string]any)
+			assert.Equal(t, counts(test), []any{"passed", 0.0, 0.0}, "the call of the test replays no stored case")
+			replay, _ := childCall(t, out, "FuzzChild/seed#0", 1)["detail"].(map[string]any)
+			assert.Equal(t, counts(replay), []any{"passed", 1.0, 0.0},
+				"the first call of the first input counts the stored case")
+			input, _ := childCall(t, out, "FuzzChild/seed#0", 2)["detail"].(map[string]any)
+			assert.Equal(t, counts(input), []any{"passed", 1.0, 0.0}, "the input's own call follows")
+		})
+
+		t.Run("fails the first input for a stored case that fails under Bubble", func(t *testing.T) {
+			dir := t.TempDir()
+			lit, _ := literal.Encode(sentinel)
+			save(t, dir, store.Entry{
+				Definition:     "1.2.0",
+				Property:       contract,
+				Identity:       store.Identity{Assertion: big, Contract: fits},
+				Choices:        []choice.Choice{sentinelChoice},
+				Counterexample: []store.Draw{{Label: drawn, Value: lit}},
+				Found:          earlier,
+			})
+			out, err := child(t, bubbleMode, dir, record.Variable+"=1")
+			assert.HasError(t, err, "the child fails")
+			call := childCall(t, out, "FuzzChild/seed#0", 1)
+			detail, _ := call["detail"].(map[string]any)
+			assert.Equal(t, []any{call["verdict"], counts(detail)}, []any{"fail", []any{"counterexample", 0.0, 0.0}},
+				"the first input fails before any valid case")
+			assert.Equal(t, drawnOf(detail), [][2]any{{drawn, jsonTree(t, string(lit))}}, "the stored case, as found")
+		})
 	})
 }
 
@@ -350,6 +416,16 @@ func FuzzChild(f *testing.F) {
 		prop.Fuzz(f, contract, failsAtLeast(9, 0, every), stored, seeded)
 		return
 	}
+	if mode == bubbleMode {
+		f.Add([]byte{5})
+		prop.Fuzz(f, contract, waitsAtSentinel, stored, seeded, prop.Bubble())
+		return
+	}
+	if mode == bubbleFailingMode {
+		f.Add(sentinelSeed)
+		prop.Fuzz(f, contract, waitsAtSentinel, stored, seeded, prop.Bubble())
+		return
+	}
 	if mode == failingMode {
 		f.Add(sentinelSeed)
 	}
@@ -373,6 +449,20 @@ func detachedAtSentinel(c *prop.Case) {
 	go c.Errorf("detached")
 	for len((*engine.Case)(c).Failures()) == 0 {
 		runtime.Gosched()
+	}
+}
+
+// waitsAtSentinel is the body that draws a byte string, passes it through a
+// goroutine that synctest.Wait waits for, and ends the case at a string that
+// starts with the sentinel, as failsAtSentinel does. Outside a
+// testing/synctest bubble, synctest.Wait panics.
+func waitsAtSentinel(c *prop.Case) {
+	drawnBytes := c.Draw(prop.Bytes(), drawn)
+	passed := make(chan []byte, 1)
+	go func() { passed <- drawnBytes }()
+	synctest.Wait()
+	if bytes.HasPrefix(<-passed, sentinel) {
+		c.Report(assert.Failure{Assertion: big, Contract: fits}, true)
 	}
 }
 

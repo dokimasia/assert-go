@@ -7,7 +7,10 @@ import (
 	"errors"
 	"math"
 	"runtime"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"go.dokimi.dev/assert"
@@ -17,12 +20,26 @@ import (
 	"go.dokimi.dev/assert/internal/matchertest"
 	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/internal/prop/token"
+	"go.dokimi.dev/assert/internal/realtime"
 	"go.dokimi.dev/assert/prop"
 )
 
 // optionAllocs is the ceiling of the allocations of an option that its
 // caller keeps: the closure of its setting.
 const optionAllocs = 2
+
+// bubbleEpoch is the first instant of the clock of every testing/synctest
+// bubble.
+var bubbleEpoch = time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+// The texts of the panics of synctest.Test.
+const (
+	// blockedPanic is the panic of a bubble whose goroutines all block.
+	blockedPanic = "deadlock: all goroutines in bubble are blocked"
+	// leakedPanic is the panic of a bubble with a goroutine that is still
+	// blocked when the function of synctest.Test returns.
+	leakedPanic = "deadlock: main bubble goroutine has exited but blocked goroutines remain"
+)
 
 // never is a label that no case counts.
 const never = "never"
@@ -458,6 +475,84 @@ func TestOption(t *testing.T) {
 		})
 	})
 
+	t.Run("Bubble", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("runs a body that waits for its goroutine with synctest.Wait", func(t *testing.T) {
+			t.Parallel()
+			got := bubbledDetailOf(t, func(c *prop.Case) {
+				n := c.Draw(prop.Integer(0, 3), drawn)
+				sent := make(chan int, 1)
+				go func() { sent <- n }()
+				synctest.Wait()
+				assert.Equal(c, len(sent), 1, "the goroutine sends the drawn number before Wait returns")
+			}, prop.Seed(7))
+			assert.Nil(t, got, "every case passes")
+		})
+
+		t.Run("starts each run at the first instant of its bubble", func(t *testing.T) {
+			t.Parallel()
+			var mu sync.Mutex
+			var starts []time.Time
+			got := bubbledDetailOf(t, func(c *prop.Case) {
+				mu.Lock()
+				starts = append(starts, time.Now())
+				mu.Unlock()
+				c.Draw(prop.Integer(0, 9), drawn)
+				time.Sleep(time.Hour)
+			}, prop.Seed(7), prop.Cases(5))
+			assert.Nil(t, got, "every case passes")
+			assert.NotEmpty(t, starts, "each run reads the clock")
+			for _, start := range starts {
+				assert.True(t, start.Equal(bubbleEpoch), "the run starts at midnight UTC 2000-01-01")
+			}
+		})
+
+		t.Run("fails a case whose goroutines all block, and shrinks it", func(t *testing.T) {
+			t.Parallel()
+			got := bubbledDetailOf(t, func(c *prop.Case) {
+				if c.Draw(prop.Integer(0, 100), drawn) >= 10 {
+					<-make(chan struct{})
+				}
+			}, prop.Seed(7))
+			failure, _ := got[failureField].(assert.Failure)
+			assert.Equal(t, failure.Contract, blockedPanic, "the panic of synctest.Test")
+			entries, _ := got[counterexampleField].([]prop.Entry)
+			assert.Equal(t, valuesOfDraws(entries), []any{10}, "the smallest case whose goroutines block")
+		})
+
+		t.Run("fails a case that leaves a goroutine blocked, and shrinks it", func(t *testing.T) {
+			t.Parallel()
+			got := bubbledDetailOf(t, func(c *prop.Case) {
+				if c.Draw(prop.Integer(0, 100), drawn) >= 10 {
+					go func() { <-make(chan struct{}) }()
+				}
+			}, prop.Seed(7))
+			failure, _ := got[failureField].(assert.Failure)
+			assert.Equal(t, failure.Contract, leakedPanic, "the panic of synctest.Test")
+			entries, _ := got[counterexampleField].([]prop.Entry)
+			assert.Equal(t, valuesOfDraws(entries), []any{10}, "the smallest case that leaves a goroutine blocked")
+		})
+
+		t.Run("runs the runs one at a time on four workers", func(t *testing.T) {
+			t.Parallel()
+			var running, overlaps atomic.Int32
+			got := bubbledDetailOf(t, func(c *prop.Case) {
+				if running.Add(1) > 1 {
+					overlaps.Add(1)
+				}
+				defer running.Add(-1)
+				c.Draw(prop.Integer(0, 1000), drawn)
+				var clock realtime.Clock
+				for start := clock.Now(); clock.Now().Sub(start) < 2*time.Millisecond; {
+					runtime.Gosched()
+				}
+			}, prop.Seed(7), prop.Cases(10), prop.Workers(4))
+			assert.Nil(t, got, "every case passes")
+			assert.Equal(t, overlaps.Load(), int32(0), "no run starts while another runs")
+		})
+	})
+
 	t.Run("Option", func(t *testing.T) {
 		t.Parallel()
 
@@ -487,6 +582,8 @@ func TestOptionAllocs(t *testing.T) {
 	assert.NotEqual(t, kept, prop.Option{}, "the kept option states a setting")
 	assert.MaxAllocs(t, func() { kept = prop.Hermetic() }, 0, "Hermetic's setting captures nothing")
 	assert.NotEqual(t, kept, prop.Option{}, "Hermetic states a setting")
+	assert.MaxAllocs(t, func() { kept = prop.Bubble() }, 0, "Bubble's setting captures nothing")
+	assert.NotEqual(t, kept, prop.Option{}, "Bubble states a setting")
 }
 
 // BenchmarkOption measures each option that a caller keeps.
@@ -508,6 +605,7 @@ func BenchmarkOption(b *testing.B) {
 		{name: "Workers", option: func() prop.Option { return prop.Workers(2) }, allocs: optionAllocs},
 		{name: "Draws", option: func() prop.Option { return prop.Draws("[]") }, allocs: optionAllocs},
 		{name: "Hermetic", option: prop.Hermetic},
+		{name: "Bubble", option: prop.Bubble},
 	}
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {

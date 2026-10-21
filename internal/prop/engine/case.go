@@ -15,6 +15,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/history"
@@ -850,29 +851,53 @@ type origin struct {
 	stack []byte
 }
 
-// run calls body on c, on the goroutine that finish starts for it. It keeps
-// a panic that ends the body, then runs the case's cleanups, and marks the
-// goroutine done when the body and the cleanups have returned, panicked or
-// ended the goroutine. It reserves the goroutine's stack before it calls
-// the body.
+// run calls body on c as call does, on the goroutine that finish starts for
+// it, and marks the goroutine done when the body and the cleanups have
+// returned, panicked or ended the goroutine.
 func (c *Case) run(body Body) {
 	defer c.done.Done()
+	c.call(body)
+}
+
+// call calls body on c. It keeps a panic that ends the body, then runs the
+// case's cleanups. It reserves the goroutine's stack before it calls the
+// body.
+func (c *Case) call(body Body) {
 	defer c.cleanUp()
 	defer c.recoverPanic()
 	reserveStack()
 	body(c)
 }
 
-// recoverPanic keeps the identity, the value and the stack of a panic that
-// ends the body or a cleanup: those of the goroutine that raised it first,
-// for a panic that [Case.Raise] raised again, and its own otherwise. The
-// first panic of the case is kept. The runner defers it on the body's
-// goroutine. A Goexit is no panic, and recover returns nil for it.
+// recoverPanic keeps a panic that ends the body or a cleanup, as keep keeps
+// it. The runner defers it on the body's goroutine. A Goexit is no panic,
+// and recover returns nil for it.
 func (c *Case) recoverPanic() {
+	if v := recover(); v != nil {
+		c.keep(v)
+	}
+}
+
+// recoverAround keeps a panic that the Around of the case's settings raised
+// after it called the case's run, as keep keeps it, and raises again a
+// panic that Around raised before it called the run. The runner defers it on
+// its own goroutine.
+func (c *Case) recoverAround(started *atomic.Bool) {
 	v := recover()
 	if v == nil {
 		return
 	}
+	if !started.Load() {
+		panic(v)
+	}
+	c.keep(v)
+}
+
+// keep keeps the identity, the value and the stack of the panic v, which the
+// calling goroutine raised: those of the goroutine that raised it first, for
+// a panic that [Case.Raise] raised again, and its own otherwise. The first
+// panic of the case is kept.
+func (c *Case) keep(v any) {
 	var pcs [maxFrames]uintptr
 	n := runtime.Callers(1, pcs[:])
 	frames, stack := pcs[:n], debug.Stack()

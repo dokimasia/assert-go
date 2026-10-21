@@ -17,6 +17,7 @@ import (
 	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/internal/prop/store"
 	"go.dokimi.dev/assert/internal/record"
+	"go.dokimi.dev/assert/internal/wrap"
 )
 
 // storeRoot is the directory of the stores of a package's tests, relative
@@ -57,12 +58,14 @@ var claims = struct {
 
 // directoryOf returns the directory of the store of a run under c on tb:
 // the one that Store states, then testdata/prop/<name> for a seat with a
-// name, and otherwise the empty string, which states no store.
+// name, and otherwise the empty string, which states no store. The name is
+// the one of the first seat of the chain of tb that has one, as
+// [assert.TB] states.
 func directoryOf(tb assert.TB, c config) string {
 	if c.storeSet {
 		return c.store
 	}
-	if n, ok := tb.(named); ok {
+	if n, ok := wrap.As[named](tb); ok {
 		return filepath.Join(storeRoot, n.Name())
 	}
 	return ""
@@ -70,10 +73,11 @@ func directoryOf(tb assert.TB, c config) string {
 
 // claim claims the entries of contract in the store dir for the test of tb
 // until the test ends, and reports false when a property of another running
-// test has claimed them. A run without a store, and a seat without Cleanup,
-// claim nothing and report true.
+// test has claimed them. The claim ends through Cleanup of the first seat
+// of the chain of tb that has it. A run without a store, and a chain
+// without Cleanup, claim nothing and report true.
 func claim(tb assert.TB, dir, contract string) bool {
-	c, ok := tb.(cleaner)
+	c, ok := wrap.As[cleaner](tb)
 	if !ok || dir == "" {
 		return true
 	}

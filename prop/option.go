@@ -179,7 +179,8 @@ func Draws(entries string) Option {
 // Workers sets the number of cases, shrink candidates and explanation
 // fillings that run at once, 1 by default. A run on more workers reports
 // what a run on one reports, and runs the body concurrently with itself, so
-// the body must be safe for that. It panics for n below 1.
+// the body must be safe for that. A run under [Bubble] runs one at a time.
+// It panics for n below 1.
 func Workers(n int) Option {
 	if n < 1 {
 		panic(fmt.Sprintf("prop: Workers(%d) is below 1", n))
@@ -208,6 +209,34 @@ func Workers(n int) Option {
 func Hermetic() Option {
 	return Option{set: func(c config) config {
 		c.hermetic = true
+		return c
+	}}
+}
+
+// Bubble makes each run of the body run in a testing/synctest bubble of its
+// own, through synctest.Test with the *testing.T of the test. ForAll and
+// the forms take the first seat of the seat's chain that is a *testing.T,
+// as [go.dokimi.dev/assert.TB] states. [Fuzz] takes the test of each input.
+// Each run starts at the bubble's first instant, midnight UTC 2000-01-01,
+// without the goroutines of an earlier run. The case's context derives from
+// context.Background() inside the bubble, because a context of the test is
+// outside it.
+//
+// The runs of a call under Bubble run one at a time on the goroutine of the
+// call, whatever [Workers] states, because synctest.Test fails the test
+// through FailNow. A run whose goroutines all block, or that leaves a
+// goroutine blocked when its body returns, fails its case with the panic of
+// synctest.Test, and the call shrinks that case as it shrinks any failure.
+// A seat that is no *testing.T and wraps none ends the call with a fault. A
+// call under Bubble must not run inside a bubble, where synctest.Test
+// panics.
+//
+// A *testing.F has no *testing.T before its target runs, so Fuzz under
+// Bubble replays the stored cases on the first input that the process runs,
+// before the case of that input.
+func Bubble() Option {
+	return Option{set: func(c config) config {
+		c.bubble = true
 		return c
 	}}
 }
@@ -247,6 +276,9 @@ type config struct {
 	// hermetic reports whether Hermetic made the run read none of the
 	// engine's variables.
 	hermetic bool
+	// bubble reports whether Bubble runs each run of the body in a bubble of
+	// its own.
+	bubble bool
 }
 
 // configure returns the defaults with each option of opts applied in

@@ -212,7 +212,7 @@
 // # Dependency position
 //
 // Imports the root package of this module and its history package, its
-// internal fault, literal, matcher, record and text packages, its choice,
-// coverage, engine, matching, random, shape, store, token and zone packages,
-// and the standard library, testing included.
+// internal fault, literal, matcher, record, text and wrap packages, its
+// choice, coverage, engine, matching, random, shape, store, token and zone
+// packages, and the standard library, testing included.
 package prop

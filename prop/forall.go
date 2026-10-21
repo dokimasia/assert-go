@@ -63,9 +63,10 @@ func duplicate(op, dir, contract string) error {
 //     counterexample.
 //   - divergence, a *Divergence, and coverage, a *Shortfall.
 //
-// A field that the outcome does not use is nil. An [assert.Reporter] seat
-// receives the record. Any other seat receives the failing case's notes in
-// its log and then the record's sentence through Fatalf.
+// A field that the outcome does not use is nil. The first [assert.Reporter]
+// of the seat's chain, which [assert.TB] states, receives the record. A
+// chain without one receives the failing case's notes in its log and then
+// the record's sentence through Fatalf.
 //
 // The call's record states the detail of the run on a pass as well, and the
 // calls of each case that a run on one worker runs are recorded under it,
@@ -75,8 +76,9 @@ func duplicate(op, dir, contract string) error {
 // default, ci and campaign, a seed variable that is no decimal number below
 // 2^64, a campaign's budget that is no whole number of seconds above 0, a
 // token to replay that no encoder writes, entries of Draws that are no array
-// of draw entries and step entries, a damaged file in the store, and a
-// second property of the test with the same contract and store. It ends the
+// of draw entries and step entries, a seat under [Bubble] that is no
+// *testing.T and wraps none, a damaged file in the store, and a second
+// property of the test with the same contract and store. It ends the
 // call with a fault before any other case for a draw or a machine of the
 // case of Draws that refuses its entry, and the fault is at the entry's
 // label, value or step. It writes an entry for each failure of a
@@ -106,17 +108,21 @@ func ForAll(tb assert.TB, contract string, body func(*Case), opts ...Option) {
 
 // run runs body as the property p on tb, as the call run, and reports a
 // run that does not pass, as [ForAll] states. It ends the call with a fault
-// of p's operation for a second property of the test with p's contract and
-// store, a damaged file in the store, and a case of Draws that refuses an
-// entry.
+// of p's operation for a seat under Bubble that is no *testing.T and wraps
+// none, a second property of the test with p's contract and store, a
+// damaged file in the store, and a case of Draws that refuses an entry.
 func (p property) run(tb assert.TB, run matcher.Running, body func(*Case)) {
 	tb.Helper()
+	s, cases, ok := p.runsOn(tb, body)
+	if !ok {
+		p.fault(tb, run, fault.In(p.op, fault.At(fault.New("the seat is no *testing.T and wraps none"),
+			fault.Field(bubbleOption))))
+		return
+	}
 	if !claim(tb, p.dir, p.contract) {
 		p.fault(tb, run, duplicate(p.op, p.dir, p.contract))
 		return
 	}
-	cases := bodyOf(matcher.ContextOf(tb), body)
-	s := p.settings
 	s.Slot = run.Slot()
 	if p.replaying {
 		p.report(tb, run, engine.RunReplay(cases, s, p.replay, record.Token))

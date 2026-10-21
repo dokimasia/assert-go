@@ -335,6 +335,21 @@ func TestStore(t *testing.T) {
 			})
 		})
 
+		t.Run("fails a second property on a wrapper of a test's seat with the same contract and store",
+			func(t *testing.T) {
+				t.Parallel()
+				dir := t.TempDir()
+				seat := newTestSeat(t.Name())
+				defer seat.end()
+				prop.ForAll(wrapper{seat}, contract, draws(prop.Integer(0, 9)), prop.Store(dir))
+				prop.ForAll(wrapper{seat}, contract, draws(prop.Integer(0, 9)), prop.Store(dir))
+				expectOnlyFault(t, seat.Faults(), fault.Error{
+					Op:     forAllOp,
+					Path:   fault.Path{fault.Field(dir)},
+					Reason: duplicateReason,
+				})
+			})
+
 		t.Run("releases a property's claim when its test ends", func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
@@ -402,6 +417,33 @@ func TestStoreEnv(t *testing.T) {
 			}
 			got := loaded(t, filepath.Join("testdata", "prop", "TestRoundTrip", "one case"))
 			assert.Length(t, got.Entries, 1, "the entry of the minimal case")
+		})
+
+		t.Run("keeps the store of a wrapper in testdata/prop under the name of the seat that it wraps",
+			func(t *testing.T) {
+				t.Chdir(t.TempDir())
+				seat := newTestSeat("TestRoundTrip/wrapped")
+				defer seat.end()
+				prop.ForAll(wrapper{seat}, contract, failsFrom(1001), prop.Seed(7))
+				if matcher.Mutated() {
+					assert.False(t, exists("testdata"), "no directory, because "+unwritten)
+					return
+				}
+				got := loaded(t, filepath.Join("testdata", "prop", "TestRoundTrip", "wrapped"))
+				assert.Length(t, got.Entries, 1, "the entry of the minimal case")
+			})
+
+		t.Run("claims the store under the name of the seat that a wrapper wraps", func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			seat := newTestSeat("TestRoundTrip/claimed")
+			defer seat.end()
+			prop.ForAll(wrapper{seat}, contract, draws(prop.Integer(0, 9)))
+			prop.ForAll(wrapper{seat}, contract, draws(prop.Integer(0, 9)))
+			expectOnlyFault(t, seat.Faults(), fault.Error{
+				Op:     forAllOp,
+				Path:   fault.Path{fault.Field(filepath.Join("testdata", "prop", "TestRoundTrip", "claimed"))},
+				Reason: duplicateReason,
+			})
 		})
 
 		t.Run("keeps no store for a seat without a name", func(t *testing.T) {

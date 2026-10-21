@@ -6,6 +6,7 @@ package engine_test
 import (
 	"math"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -540,6 +541,29 @@ func TestRunner(t *testing.T) {
 			assert.Equal(t, counts["shrink"]+counts["explain"], r.Runs, "a record for each run of the budget")
 			assert.True(t, counts["shrink"] > 0 && counts["explain"] > 0, "runs of both")
 			assert.Equal(t, phases[len(phases)-1], "explain", "the explanation last")
+		})
+
+		t.Run("runs every run of the body inside Settings.Around", func(t *testing.T) {
+			t.Parallel()
+			var depth, runs, outside atomic.Int32
+			s := settled()
+			s.Around = func(run func()) {
+				depth.Add(1)
+				defer depth.Add(-1)
+				run()
+			}
+			failing := choiceOf(1001)
+			r := engine.Run(func(c *engine.Case) {
+				runs.Add(1)
+				if depth.Load() != 1 {
+					outside.Add(1)
+				}
+				failing(c)
+			}, s)
+			assert.Equal(t, r.Outcome, engine.Counterexample, "the run finds the failing case")
+			assert.True(t, r.Runs > 0, "the run shrinks and explains the case")
+			assert.True(t, runs.Load() > int32(r.Runs), "the cases, the replay, the shrink and the explanation ran")
+			assert.Equal(t, outside.Load(), int32(0), "no run of the body runs outside Around")
 		})
 	})
 
