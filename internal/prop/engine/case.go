@@ -15,7 +15,6 @@ import (
 	"runtime/debug"
 	"slices"
 	"sync"
-	"sync/atomic"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/history"
@@ -226,7 +225,8 @@ type Case struct {
 	// were registered.
 	cleanups []func()
 	// parent is the context that the case's context derives from, which
-	// [WithContext] sets, and nil for context.Background().
+	// [WithContext] or the run of [Settings.Around] sets, and nil for
+	// context.Background().
 	parent context.Context //nolint:containedctx // a case has the context of its test, as testing.T has
 	// replayed is the provider of a case that recycleReplaying starts. It is
 	// a field of the case, so the provider costs no allocation.
@@ -383,10 +383,11 @@ func (c *Case) Cleanup(f func()) {
 }
 
 // Context returns the case's context. It derives from the context that
-// [WithContext] gave the body, and from context.Background() for a body
-// without one, and the case cancels it when the body ends, before the
-// cleanups run. A second call returns the same context, and a context
-// first asked for once the body has ended is cancelled already.
+// [WithContext] gave the body or that the run of [Settings.Around]
+// received, and from context.Background() for a body without either. The
+// case cancels it when the body ends, before the cleanups run. A second
+// call returns the same context, and a context first asked for once the
+// body has ended is cancelled already.
 func (c *Case) Context() context.Context {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -876,21 +877,6 @@ func (c *Case) recoverPanic() {
 	if v := recover(); v != nil {
 		c.keep(v)
 	}
-}
-
-// recoverAround keeps a panic that the Around of the case's settings raised
-// after it called the case's run, as keep keeps it, and raises again a
-// panic that Around raised before it called the run. The runner defers it on
-// its own goroutine.
-func (c *Case) recoverAround(started *atomic.Bool) {
-	v := recover()
-	if v == nil {
-		return
-	}
-	if !started.Load() {
-		panic(v)
-	}
-	c.keep(v)
 }
 
 // keep keeps the identity, the value and the stack of the panic v, which the

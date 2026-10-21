@@ -7,8 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"runtime"
+	"sync"
+	"sync/atomic"
 	"testing"
-	"testing/synctest"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/fault"
@@ -31,9 +32,9 @@ const callerSkip = 3
 const (
 	// drawsOption is the option that states the entries of a case.
 	drawsOption = "Draws"
-	// bubbleOption is the option that runs each run of the body in a bubble
-	// of its own.
-	bubbleOption = "Bubble"
+	// aroundOption is the option that runs each run of the body inside a
+	// wrapper.
+	aroundOption = "Around"
 	// valueMember is the member of an entry of Draws that states its value.
 	valueMember = "value"
 	// clientMember is the member of a step entry of Draws that states its
@@ -41,11 +42,22 @@ const (
 	clientMember = "client"
 )
 
+// The reasons of the faults of a wrapper of Around that does not call its
+// run once.
+const (
+	// skippedReason is the reason of a wrapper that returned without calling
+	// run.
+	skippedReason = "the wrapper returned without calling run"
+	// repeatedReason is the reason of a wrapper that called run a second
+	// time.
+	repeatedReason = "the wrapper called run a second time"
+)
+
 // property is one call of [ForAll], [Fuzz] or a property form: the
 // operation that names its faults, the assertion of its record, the
 // contract it checks, the call's program counter, the settings of its runs,
-// the token it replays and the directory of its store. A property is a
-// value that its runs do not change.
+// the token it replays, the directory of its store and the wrapper of its
+// runs. A property is a value that its runs do not change.
 type property struct {
 	// op is the operation of the call: prop.ForAll, prop.Fuzz, or a form's.
 	op string
@@ -65,11 +77,11 @@ type property struct {
 	// dir is the directory of the call's store, and empty for a call without
 	// one.
 	dir string
+	// around is the wrapper of each run of the body, and nil for a call
+	// without Around.
+	around func(*testing.T, func(*testing.T))
 	// replaying reports whether the call replays a token.
 	replaying bool
-	// bubble reports whether each run of the body runs in a testing/synctest
-	// bubble of its own.
-	bubble bool
 }
 
 // newProperty returns the property of the operation op of a call at pc on
@@ -116,12 +128,7 @@ func newProperty(tb assert.TB, op, contract string, pc uintptr, c config) (prope
 			Budget:       budget,
 		},
 		dir:    directoryOf(tb, c),
-		bubble: c.bubble,
-	}
-	if c.bubble {
-		// synctest.Test fails the test through FailNow, which runs on the
-		// goroutine of the test alone, so the runs of a bubble run on it.
-		p.settings.Workers = 1
+		around: c.around,
 	}
 	if tok, source, ok := tokenOf(c); ok {
 		if p.replay, err = token.Decode(tok); err != nil {
@@ -132,26 +139,103 @@ func newProperty(tb assert.TB, op, contract string, pc uintptr, c config) (prope
 	return p, nil
 }
 
-// runsOn returns the settings and the body of the runs of the property p on
-// tb, whose cases derive their context from the context of tb. Under Bubble,
-// each run of the body runs in a testing/synctest bubble of its own on the
-// first seat of the chain of tb that is a *testing.T. The cases then derive
-// their context from context.Background(), because a context of the test is
-// outside the bubble. It reports false under Bubble for a chain without a
-// *testing.T.
-func (p property) runsOn(tb assert.TB, body func(*Case)) (engine.Settings, engine.Body, bool) {
-	s := p.settings
-	if !p.bubble {
-		return s, bodyOf(matcher.ContextOf(tb), body), true
+// runSetup is the settings and the body of the runs of a property on a
+// seat, with the wrapper of each run.
+type runSetup struct {
+	// settings are the settings of the runs.
+	settings engine.Settings
+	// body is the engine's body of the runs.
+	body engine.Body
+	// wrapper runs each run of the body inside the wrapper of Around, and is
+	// nil for a property without one.
+	wrapper *wrapper
+}
+
+// runsOn returns the setup of the runs of the property p on tb. Without
+// Around, each case derives its context from the context of tb. Under
+// Around, each run of the body runs inside the wrapper, which receives the
+// first seat of the chain of tb that is a *testing.T. It reports false under
+// Around for a chain without one.
+func (p property) runsOn(tb assert.TB, body func(*Case)) (runSetup, bool) {
+	if p.around == nil {
+		return runSetup{settings: p.settings, body: bodyOf(matcher.ContextOf(tb), body)}, true
 	}
 	t, ok := wrap.As[*testing.T](tb)
 	if !ok {
-		return engine.Settings{}, nil, false
+		return runSetup{}, false
 	}
-	s.Around = func(run func()) {
-		synctest.Test(t, func(*testing.T) { run() })
+	w := &wrapper{wrap: p.around, t: t}
+	s := p.settings
+	s.Around = w.run
+	return runSetup{settings: s, body: caseBody(body), wrapper: w}, true
+}
+
+// wrapper runs each run of a property's body inside the wrapper of
+// [Around], which receives the test t. It keeps the reason of the first
+// call of the wrapper that returned without calling run or that called run a
+// second time. From then on it calls the wrapper no more, and each later run
+// runs no body.
+//
+// # Concurrency
+//
+// Its methods are safe for concurrent use.
+type wrapper struct {
+	// wrap is the wrapper of Around.
+	wrap func(*testing.T, func(*testing.T))
+	// t is the test that wrap receives.
+	t *testing.T
+	// misused is the reason of the first misuse of run, and nil before one.
+	misused atomic.Pointer[string]
+}
+
+// run is the engine's Around. It calls wrap with the test and a function
+// that calls run once with the context of the test that wrap hands it. A
+// second call of that function, and a call after wrap has returned, return
+// without a call of run. After the first misuse, run calls wrap no more.
+func (w *wrapper) run(run func(context.Context)) {
+	if w.misused.Load() != nil {
+		return
 	}
-	return s, bodyOf(context.Background(), body), true
+	var mu sync.Mutex
+	calls, open := 0, true
+	w.wrap(w.t, func(t *testing.T) {
+		t.Helper()
+		mu.Lock()
+		calls++
+		first := calls == 1 && open
+		mu.Unlock()
+		if first {
+			run(t.Context())
+		}
+	})
+	mu.Lock()
+	n := calls
+	open = false
+	mu.Unlock()
+	if n == 0 {
+		w.keep(skippedReason)
+	}
+	if n > 1 {
+		w.keep(repeatedReason)
+	}
+}
+
+// keep keeps reason as the reason of the first misuse.
+func (w *wrapper) keep(reason string) {
+	w.misused.CompareAndSwap(nil, &reason)
+}
+
+// fault returns the fault of op at Around for the first misuse of run, and
+// nil before one and for a nil wrapper.
+func (w *wrapper) fault(op string) error {
+	if w == nil {
+		return nil
+	}
+	reason := w.misused.Load()
+	if reason == nil {
+		return nil
+	}
+	return fault.In(op, fault.At(fault.New("%s", *reason), fault.Field(aroundOption)))
 }
 
 // drawEntries returns the entries of Draws that text states: a JSON array

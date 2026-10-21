@@ -111,6 +111,16 @@ const (
 	ofShapeOp = "prop.OfShape"
 )
 
+// The reasons of the faults of a wrapper of Around that does not call its
+// run once.
+const (
+	// skippedReason is the reason of a wrapper that returns without calling
+	// run.
+	skippedReason = "the wrapper returned without calling run"
+	// repeatedReason is the reason of a wrapper that calls run a second time.
+	repeatedReason = "the wrapper called run a second time"
+)
+
 // duplicateReason is the reason of the fault of a second property of a test
 // with the contract of the first in the same store.
 const duplicateReason = `two properties of the test have the contract "the property holds", ` +
@@ -259,9 +269,9 @@ type wrapper struct {
 // Unwrap returns the wrapped seat.
 func (w wrapper) Unwrap() assert.TB { return w.TB }
 
-// inTest is a recorder that wraps the seat of a test. Bubble runs each case
-// through synctest.Test with the test's *testing.T, and the recorder keeps
-// each record that the run reports, so a failing run does not fail the test.
+// inTest is a recorder that wraps the seat of a test. Around hands its
+// wrapper the test's *testing.T, and the recorder keeps each record that
+// the run reports, so a failing run does not fail the test.
 type inTest struct {
 	*assert.Recorder
 
@@ -270,22 +280,6 @@ type inTest struct {
 
 // Unwrap returns the seat of the test.
 func (s inTest) Unwrap() assert.TB { return s.t }
-
-// bubbledDetailOf runs body as the property contract under Bubble on a
-// recorder that wraps t, without a store, under opts. It returns the detail
-// of the one record that the run reported, or nil for a run that reported
-// none.
-func bubbledDetailOf(t *testing.T, body func(*prop.Case), opts ...prop.Option) map[string]any {
-	t.Helper()
-	rec := assert.NewRecorder()
-	opts = append([]prop.Option{prop.Store(""), prop.Bubble()}, opts...)
-	prop.ForAll(inTest{Recorder: rec, t: t}, contract, body, opts...)
-	records := rec.Failures()
-	if len(records) == 0 {
-		return nil
-	}
-	return records[0].Detail
-}
 
 // sentences is a seat without a Report or a ReportFault method, as
 // testing.TB is. It keeps the message of each failure, each fault and each

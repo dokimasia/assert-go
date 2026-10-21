@@ -395,14 +395,17 @@ func TestCase(t *testing.T) {
 			assert.Equal(t, got, any("ledger"), "the seat's value")
 		})
 
-		t.Run("returns a context that derives from no context of the seat under Bubble", func(t *testing.T) {
+		t.Run("returns a context that derives from the test that the wrapper of Around hands run", func(t *testing.T) {
 			t.Parallel()
 			var got any = "unread"
 			rec := assert.NewRecorder().WithContext(context.WithValue(t.Context(), ledgerKey{}, "ledger"))
 			prop.ForAll(inTest{Recorder: rec, t: t}, contract, func(c *prop.Case) {
 				c.Draw(prop.Integer(0, 9), drawn)
 				got = c.Context().Value(ledgerKey{})
-			}, prop.Replay(tokenOf(7)), prop.Store(""), prop.Bubble())
+			}, prop.Replay(tokenOf(7)), prop.Store(""), prop.Around(func(t *testing.T, run func(*testing.T)) {
+				t.Helper()
+				run(t)
+			}))
 			assert.Empty(t, rec.Failures(), "the case passes")
 			assert.Nil(t, got, "no value of the seat's context")
 		})

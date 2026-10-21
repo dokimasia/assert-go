@@ -170,13 +170,14 @@ type Error struct {
   nine permission bits, and for an entry that is no file and no
   directory. Its message starts with the package and names the call:
   `files: WithMode(0o1000) states a bit beyond the nine permission bits`.
-- A property under `Bubble` raises again a panic of `synctest.Test` that
-  refuses a run before the run starts, such as the panic of a call inside
-  a bubble, on the goroutine of the call.
+- `Around` panics for a nil wrapper. The engine raises a panic of the
+  wrapper again on the goroutine of the run. `synctest.Test` raises such a
+  panic for a bubble that deadlocks. On one worker the goroutine of the run
+  is the goroutine of the call.
 - No other code panics on purpose.
 - A `recover` exists only where a panic is what the code observes: an
-  assertion about panics, the end of a property's case, the bubble of a
-  case under `Bubble`, whose deadlock fails the case, a body of
+  assertion about panics, the end of a property's case, the goroutine of
+  the wrapper of `Around`, whose panic the engine raises again, a body of
   `Concurrently`, a goroutine of `RunParallel`, a function of the spec in
   `Linearizable`, a task of the task scheduler, whose panic `Run` raises
   again, and a call of the history that the seam runner of `conformance`

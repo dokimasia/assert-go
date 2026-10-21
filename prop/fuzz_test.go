@@ -63,11 +63,15 @@ const (
 	rejectingMode = "rejecting"
 	// refutedMode fuzzes a body that fails for every input, without a seed.
 	refutedMode = "refuted"
-	// bubbleMode fuzzes waitsAtSentinel under Bubble from a seed that passes.
-	bubbleMode = "bubble"
-	// bubbleFailingMode fuzzes waitsAtSentinel under Bubble from the seed of
-	// the sentinel.
-	bubbleFailingMode = "bubble-failing"
+	// aroundMode fuzzes waitsAtSentinel under Around(synctest.Test) from a
+	// seed that passes.
+	aroundMode = "around"
+	// aroundFailingMode fuzzes waitsAtSentinel under Around(synctest.Test)
+	// from the seed of the sentinel.
+	aroundFailingMode = "around-failing"
+	// aroundSkippingMode fuzzes passesTrue from a seed under a wrapper of
+	// Around that returns without calling run.
+	aroundSkippingMode = "around-skipping"
 )
 
 // childSeed is the seed of each property of FuzzChild, which the record of
@@ -307,13 +311,13 @@ func TestFuzzProcess(t *testing.T) {
 				[]any{"pass", true, 1.0, 0.0}, "the call of the test passes, and counts the stored case")
 		})
 
-		t.Run("runs each input in a bubble of its own under Bubble", func(t *testing.T) {
-			out, err := child(t, bubbleMode, t.TempDir())
+		t.Run("runs each input in a bubble of its own under Around", func(t *testing.T) {
+			out, err := child(t, aroundMode, t.TempDir())
 			assert.NoError(t, err, "the child passes:\n"+out)
 		})
 
-		t.Run("reports the shrunk case of a failing input under Bubble", func(t *testing.T) {
-			out, err := child(t, bubbleFailingMode, t.TempDir(), record.Variable+"=1")
+		t.Run("reports the shrunk case of a failing input under Around", func(t *testing.T) {
+			out, err := child(t, aroundFailingMode, t.TempDir(), record.Variable+"=1")
 			assert.HasError(t, err, "the child fails")
 			detail, _ := childCall(t, out, "FuzzChild/seed#0", 1)["detail"].(map[string]any)
 			assert.Equal(t, counts(detail), []any{"counterexample", 0.0, 0.0},
@@ -325,7 +329,7 @@ func TestFuzzProcess(t *testing.T) {
 			assert.Equal(t, detail[failureField], any(failure), "the failure of the shrunk case")
 		})
 
-		t.Run("replays the stored cases on the first input under Bubble", func(t *testing.T) {
+		t.Run("replays the stored cases on the first input under Around", func(t *testing.T) {
 			dir := t.TempDir()
 			lit, _ := literal.Encode([]byte{7})
 			save(t, dir, store.Entry{
@@ -336,7 +340,7 @@ func TestFuzzProcess(t *testing.T) {
 				Counterexample: []store.Draw{{Label: drawn, Value: lit}},
 				Found:          earlier,
 			})
-			out, err := child(t, bubbleMode, dir, record.Variable+"=1")
+			out, err := child(t, aroundMode, dir, record.Variable+"=1")
 			assert.NoError(t, err, "the child passes")
 			test, _ := childCall(t, out, "FuzzChild", 1)["detail"].(map[string]any)
 			assert.Equal(t, counts(test), []any{"passed", 0.0, 0.0}, "the call of the test replays no stored case")
@@ -347,7 +351,7 @@ func TestFuzzProcess(t *testing.T) {
 			assert.Equal(t, counts(input), []any{"passed", 1.0, 0.0}, "the input's own call follows")
 		})
 
-		t.Run("fails the first input for a stored case that fails under Bubble", func(t *testing.T) {
+		t.Run("fails the first input for a stored case that fails under Around", func(t *testing.T) {
 			dir := t.TempDir()
 			lit, _ := literal.Encode(sentinel)
 			save(t, dir, store.Entry{
@@ -358,7 +362,7 @@ func TestFuzzProcess(t *testing.T) {
 				Counterexample: []store.Draw{{Label: drawn, Value: lit}},
 				Found:          earlier,
 			})
-			out, err := child(t, bubbleMode, dir, record.Variable+"=1")
+			out, err := child(t, aroundMode, dir, record.Variable+"=1")
 			assert.HasError(t, err, "the child fails")
 			call := childCall(t, out, "FuzzChild/seed#0", 1)
 			detail, _ := call["detail"].(map[string]any)
@@ -366,6 +370,32 @@ func TestFuzzProcess(t *testing.T) {
 				"the first input fails before any valid case")
 			assert.Equal(t, drawnOf(detail), [][2]any{{drawn, jsonTree(t, string(lit))}}, "the stored case, as found")
 		})
+
+		t.Run("ends the call of an input with a fault for a wrapper that does not call run", func(t *testing.T) {
+			out, err := child(t, aroundSkippingMode, t.TempDir(), record.Variable+"=1")
+			assert.HasError(t, err, "the child fails")
+			skipped := &fault.Error{Op: fuzzOp, Path: fault.Path{fault.Field("Around")}, Reason: skippedReason}
+			expectEnded(t, childCall(t, out, "FuzzChild/seed#0", 1), skipped)
+		})
+
+		t.Run("ends the replay of the stored cases with a fault for a wrapper that does not call run",
+			func(t *testing.T) {
+				dir := t.TempDir()
+				lit, _ := literal.Encode([]byte{7})
+				save(t, dir, store.Entry{
+					Definition:     "1.2.0",
+					Property:       contract,
+					Identity:       store.Identity{Assertion: big, Contract: fits},
+					Choices:        []choice.Choice{sequence(7)},
+					Counterexample: []store.Draw{{Label: drawn, Value: lit}},
+					Found:          earlier,
+				})
+				out, err := child(t, aroundSkippingMode, dir, record.Variable+"=1")
+				assert.HasError(t, err, "the child fails")
+				skipped := &fault.Error{Op: fuzzOp, Path: fault.Path{fault.Field("Around")}, Reason: skippedReason}
+				expectEnded(t, childCall(t, out, "FuzzChild/seed#0", 1), skipped)
+				assert.NotContains(t, out, "FuzzChild/seed#0 dokimi.assert.2 ", "the input's own call does not run")
+			})
 	})
 }
 
@@ -416,14 +446,19 @@ func FuzzChild(f *testing.F) {
 		prop.Fuzz(f, contract, failsAtLeast(9, 0, every), stored, seeded)
 		return
 	}
-	if mode == bubbleMode {
+	if mode == aroundMode {
 		f.Add([]byte{5})
-		prop.Fuzz(f, contract, waitsAtSentinel, stored, seeded, prop.Bubble())
+		prop.Fuzz(f, contract, waitsAtSentinel, stored, seeded, prop.Around(synctest.Test))
 		return
 	}
-	if mode == bubbleFailingMode {
+	if mode == aroundFailingMode {
 		f.Add(sentinelSeed)
-		prop.Fuzz(f, contract, waitsAtSentinel, stored, seeded, prop.Bubble())
+		prop.Fuzz(f, contract, waitsAtSentinel, stored, seeded, prop.Around(synctest.Test))
+		return
+	}
+	if mode == aroundSkippingMode {
+		f.Add([]byte{5})
+		prop.Fuzz(f, contract, passesTrue, stored, seeded, prop.Around(func(*testing.T, func(*testing.T)) {}))
 		return
 	}
 	if mode == failingMode {

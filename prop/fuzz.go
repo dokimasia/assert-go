@@ -55,16 +55,17 @@ const fuzzOp = "prop.Fuzz"
 // caller's code is on the stack.
 //
 // Fuzz ends the call on f with a fault, without registering the target, for
-// each fault for which ForAll ends its call without a run.
+// each fault for which ForAll ends its call without a run. It ends the call
+// of an input with a fault at Around, in place of its record, for a wrapper
+// that returned without calling run or that called run a second time.
 //
-// Under [Bubble], each run of the case of an input, its replay, its shrink
-// and its explanation runs in a bubble of its own on the test of the input.
-// A *testing.F has no *testing.T for synctest.Test, so the call on f
-// replays no stored case, and notes the faults of the files of the store
-// alone. The first input that the process runs replays the stored cases
-// before its own case, as a call of its own on its test. A failing stored
-// case fails that input with its record, as found, and the case of the
-// input does not run.
+// Under [Around], the wrapper runs each run of the case of an input, its
+// replay, its shrink and its explanation, with the test of the input. A
+// *testing.F has no *testing.T for the wrapper, so the call on f replays no
+// stored case, and notes the faults of the files of the store alone. The
+// first input that the process runs replays the stored cases before its own
+// case, as a call of its own on its test. A failing stored case fails that
+// input with its record, as found, and the case of the input does not run.
 func Fuzz(f *testing.F, contract string, body func(*Case), opts ...Option) {
 	f.Helper()
 	run := matcher.Begin(f)
@@ -83,33 +84,37 @@ func Fuzz(f *testing.F, contract string, body func(*Case), opts ...Option) {
 		return
 	}
 	var first store.Stored
-	if p.bubble {
+	if p.around != nil {
 		first, stored = store.Stored{Entries: stored.Entries}, store.Stored{Skipped: stored.Skipped}
 	}
-	p.replayStored(f, run, p.settings, bodyOf(f.Context(), body), stored)
+	p.replayStored(f, run, runSetup{settings: p.settings, body: bodyOf(f.Context(), body)}, stored)
 	var once sync.Once
 	f.Fuzz(func(t *testing.T, data []byte) {
 		seat := inputSeat{T: t}
-		s, cases, _ := p.runsOn(t, body)
+		setup, _ := p.runsOn(t, body)
 		if len(first.Entries) > 0 {
-			once.Do(func() { p.replayStored(seat, matcher.Begin(seat), s, cases, first) })
+			once.Do(func() { p.replayStored(seat, matcher.Begin(seat), setup, first) })
 		}
-		p.input(seat, s, cases, data)
+		p.input(seat, setup, data)
 	})
 }
 
 // replayStored replays the entries of stored on seat, as the call run, with
-// the settings s and the body cases, and reports the run, as [Fuzz] states.
-// It notes the fault of each file of stored that the run skips, and of each
-// entry whose case decodes to other values than the entry records. A report
-// that does not pass ends the call.
-func (p property) replayStored(seat assert.TB, run matcher.Running, s engine.Settings, cases engine.Body,
-	stored store.Stored,
-) {
+// the runs of setup, and reports the run, as [Fuzz] states. It notes the
+// fault of each file of stored that the run skips, and of each entry whose
+// case decodes to other values than the entry records. A report that does
+// not pass ends the call, and so does a wrapper of Around that misused its
+// run.
+func (p property) replayStored(seat assert.TB, run matcher.Running, setup runSetup, stored store.Stored) {
 	seat.Helper()
+	s := setup.settings
 	s.Slot = run.Slot()
 	s.Stored = storedChoices(stored)
-	r := engine.RunStored(cases, s)
+	r := engine.RunStored(setup.body, s)
+	if err := setup.wrapper.fault(p.op); err != nil {
+		p.fault(seat, run, err)
+		return
+	}
 	for _, err := range p.storeFaults(stored, r) {
 		matcher.NoteFault(seat, err)
 	}
@@ -117,26 +122,27 @@ func (p property) replayStored(seat assert.TB, run matcher.Running, s engine.Set
 }
 
 // input runs the case that data decodes to as a call of the property on
-// seat, the seat of the input's test, with the settings s and the body
-// cases, and reports the call's verdict. A failing case is concluded as
-// ForAll concludes one, and the failures of a counterexample are written to
-// the store.
-func (p property) input(seat inputSeat, s engine.Settings, cases engine.Body, data []byte) {
+// seat, the seat of the input's test, with the runs of setup, and reports
+// the call's verdict. A failing case is concluded as ForAll concludes one,
+// and the failures of a counterexample are written to the store. A wrapper
+// of Around that misused its run ends the call with a fault.
+func (p property) input(seat inputSeat, setup runSetup, data []byte) {
 	seat.Helper()
 	run := matcher.Begin(seat)
+	s := setup.settings
 	s.Slot = run.Slot()
-	e := engine.Bridge(cases, data, s)
-	if e.Status != engine.CaseFailed {
-		r := engine.Result{Outcome: engine.Passed, Seed: s.Seed}
-		if e.Status == engine.CaseRejected {
-			r.Rejected = 1
-		} else {
-			r.Cases = 1
-		}
-		p.report(seat, run, r)
+	e := engine.Bridge(setup.body, data, s)
+	r := engine.Result{Outcome: engine.Passed, Cases: 1, Seed: s.Seed}
+	if e.Status == engine.CaseRejected {
+		r.Cases, r.Rejected = 0, 1
+	}
+	if e.Status == engine.CaseFailed {
+		r = engine.Conclude(setup.body, s, e)
+	}
+	if err := setup.wrapper.fault(p.op); err != nil {
+		p.fault(seat, run, err)
 		return
 	}
-	r := engine.Conclude(cases, s, e)
 	if r.Outcome == engine.Counterexample {
 		for _, err := range p.save(r) {
 			matcher.NoteFault(seat, err)

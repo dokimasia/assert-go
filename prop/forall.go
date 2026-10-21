@@ -76,12 +76,14 @@ func duplicate(op, dir, contract string) error {
 // default, ci and campaign, a seed variable that is no decimal number below
 // 2^64, a campaign's budget that is no whole number of seconds above 0, a
 // token to replay that no encoder writes, entries of Draws that are no array
-// of draw entries and step entries, a seat under [Bubble] that is no
+// of draw entries and step entries, a seat under [Around] that is no
 // *testing.T and wraps none, a damaged file in the store, and a second
 // property of the test with the same contract and store. It ends the
 // call with a fault before any other case for a draw or a machine of the
 // case of Draws that refuses its entry, and the fault is at the entry's
-// label, value or step. It writes an entry for each failure of a
+// label, value or step. It ends the call with a fault at Around, in place of
+// the run's record, for a wrapper that returned without calling run or that
+// called run a second time. It writes an entry for each failure of a
 // counterexample to the store, unless a file of the entry's name exists or
 // a mutation run instrumented the test binary, and logs the fault of a
 // store that cannot keep it.
@@ -108,24 +110,31 @@ func ForAll(tb assert.TB, contract string, body func(*Case), opts ...Option) {
 
 // run runs body as the property p on tb, as the call run, and reports a
 // run that does not pass, as [ForAll] states. It ends the call with a fault
-// of p's operation for a seat under Bubble that is no *testing.T and wraps
+// of p's operation for a seat under Around that is no *testing.T and wraps
 // none, a second property of the test with p's contract and store, a
-// damaged file in the store, and a case of Draws that refuses an entry.
+// damaged file in the store, a wrapper of Around that misused its run, and
+// a case of Draws that refuses an entry.
 func (p property) run(tb assert.TB, run matcher.Running, body func(*Case)) {
 	tb.Helper()
-	s, cases, ok := p.runsOn(tb, body)
+	setup, ok := p.runsOn(tb, body)
 	if !ok {
 		p.fault(tb, run, fault.In(p.op, fault.At(fault.New("the seat is no *testing.T and wraps none"),
-			fault.Field(bubbleOption))))
+			fault.Field(aroundOption))))
 		return
 	}
 	if !claim(tb, p.dir, p.contract) {
 		p.fault(tb, run, duplicate(p.op, p.dir, p.contract))
 		return
 	}
+	s := setup.settings
 	s.Slot = run.Slot()
 	if p.replaying {
-		p.report(tb, run, engine.RunReplay(cases, s, p.replay, record.Token))
+		r := engine.RunReplay(setup.body, s, p.replay, record.Token)
+		if err := setup.wrapper.fault(p.op); err != nil {
+			p.fault(tb, run, err)
+			return
+		}
+		p.report(tb, run, r)
 		return
 	}
 	stored, err := p.load()
@@ -137,9 +146,13 @@ func (p property) run(tb assert.TB, run matcher.Running, body func(*Case)) {
 	var r engine.Result
 	var saved []error
 	if s.Budget > 0 {
-		r, saved = p.campaign(cases, s)
+		r, saved = p.campaign(setup.body, s)
 	} else {
-		r = engine.Run(cases, s)
+		r = engine.Run(setup.body, s)
+	}
+	if err := setup.wrapper.fault(p.op); err != nil {
+		p.fault(tb, run, err)
+		return
 	}
 	if r.Refused != nil {
 		p.fault(tb, run, fault.In(p.op, fault.At(r.Refused, fault.Field(drawsOption))))

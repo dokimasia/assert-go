@@ -206,8 +206,9 @@
 // A [Generator] is a value that no case changes, so one generator serves
 // any number of cases at once. Every method of [Case] is safe for
 // concurrent use. [Workers] runs cases, shrink candidates and explanation
-// fillings at once, and the body concurrently with itself. A run on any
-// number of workers reports what a run on one reports.
+// fillings at once, and the body and the wrapper of [Around] concurrently
+// with themselves. A run on any number of workers reports what a run on one
+// reports.
 //
 // # Dependency position
 //

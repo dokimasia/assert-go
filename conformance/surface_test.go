@@ -415,6 +415,7 @@ var pinned = map[conformance.ID]any{
 	"prop.explain":         prop.Explain,
 	"prop.workers":         prop.Workers,
 	"prop.hermetic":        prop.Hermetic,
+	"prop.around":          prop.Around,
 	"prop.fuzz":            prop.Fuzz,
 
 	"prop.of":                prop.Of[int],

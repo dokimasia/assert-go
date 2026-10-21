@@ -334,6 +334,13 @@ that a mutation run instrumented, which runs with `DOKIMI_MUTATE_MUTANT`
 in its environment, every property derives its seed from its contract
 and runs as an ordinary run, without writing to the store.
 
+`prop.Around(synctest.Test)` runs each run of a property's body in a
+`testing/synctest` bubble of its own, under `ForAll`, the forms and
+`Fuzz`. Each run starts at the bubble's first instant, and a body can wait
+for the goroutines of its subject with `synctest.Wait`. `prop.Around`
+takes any function of the type of `synctest.Test`, which runs each run
+inside the environment that it chooses.
+
 ## Histories
 
 A store, a queue or a cache that two or more clients use at once is

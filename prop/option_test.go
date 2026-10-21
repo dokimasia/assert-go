@@ -5,6 +5,7 @@ package prop_test
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"runtime"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"go.dokimi.dev/assert/bench"
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/literal"
+	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/internal/prop/token"
@@ -32,17 +34,47 @@ const optionAllocs = 2
 // bubble.
 var bubbleEpoch = time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
 
-// The texts of the panics of synctest.Test.
-const (
-	// blockedPanic is the panic of a bubble whose goroutines all block.
-	blockedPanic = "deadlock: all goroutines in bubble are blocked"
-	// leakedPanic is the panic of a bubble with a goroutine that is still
-	// blocked when the function of synctest.Test returns.
-	leakedPanic = "deadlock: main bubble goroutine has exited but blocked goroutines remain"
-)
+// blockedPanic is the text of the panic of synctest.Test for a bubble whose
+// goroutines all block.
+const blockedPanic = "deadlock: all goroutines in bubble are blocked"
 
 // never is a label that no case counts.
 const never = "never"
+
+// waitsForGoroutine is the body that draws an integer, sends it from a
+// goroutine, and waits with synctest.Wait until the goroutine has sent it.
+// Outside a testing/synctest bubble, synctest.Wait panics.
+func waitsForGoroutine(c *prop.Case) {
+	n := c.Draw(prop.Integer(0, 3), drawn)
+	sent := make(chan int, 1)
+	go func() { sent <- n }()
+	synctest.Wait()
+	assert.Equal(c, len(sent), 1, "the goroutine sends the drawn number before Wait returns")
+}
+
+// wrappedDetailOf runs body as the property contract on a recorder that
+// wraps t, without a store, under opts. It returns the detail of the one
+// record that the run reported, or nil for a run that reported none.
+func wrappedDetailOf(t *testing.T, body func(*prop.Case), opts ...prop.Option) map[string]any {
+	t.Helper()
+	rec := assert.NewRecorder()
+	prop.ForAll(inTest{Recorder: rec, t: t}, contract, body, append([]prop.Option{prop.Store("")}, opts...)...)
+	records := rec.Failures()
+	if len(records) == 0 {
+		return nil
+	}
+	return records[0].Detail
+}
+
+// wrappedCallsOf runs body as the property contract on a recorder that wraps
+// t, without a store, under opts. It returns the JSON object of each call
+// record that the recorder keeps, the property's own first.
+func wrappedCallsOf(t *testing.T, body func(*prop.Case), opts ...prop.Option) []map[string]any {
+	t.Helper()
+	rec := assert.NewRecorder()
+	prop.ForAll(inTest{Recorder: rec, t: t}, contract, body, append([]prop.Option{prop.Store("")}, opts...)...)
+	return decodedCalls(t, rec.Records())
+}
 
 // FuzzDraws checks that a run under the entries of any text fails the test
 // with one fault at Draws or takes the entries, and does not panic. The body
@@ -475,32 +507,26 @@ func TestOption(t *testing.T) {
 		})
 	})
 
-	t.Run("Bubble", func(t *testing.T) {
+	t.Run("Around", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("runs a body that waits for its goroutine with synctest.Wait", func(t *testing.T) {
+		t.Run("runs a body that waits for its goroutine with synctest.Wait under synctest.Test", func(t *testing.T) {
 			t.Parallel()
-			got := bubbledDetailOf(t, func(c *prop.Case) {
-				n := c.Draw(prop.Integer(0, 3), drawn)
-				sent := make(chan int, 1)
-				go func() { sent <- n }()
-				synctest.Wait()
-				assert.Equal(c, len(sent), 1, "the goroutine sends the drawn number before Wait returns")
-			}, prop.Seed(7))
+			got := wrappedDetailOf(t, waitsForGoroutine, prop.Seed(7), prop.Around(synctest.Test))
 			assert.Nil(t, got, "every case passes")
 		})
 
-		t.Run("starts each run at the first instant of its bubble", func(t *testing.T) {
+		t.Run("starts each run at the first instant of its bubble under synctest.Test", func(t *testing.T) {
 			t.Parallel()
 			var mu sync.Mutex
 			var starts []time.Time
-			got := bubbledDetailOf(t, func(c *prop.Case) {
+			got := wrappedDetailOf(t, func(c *prop.Case) {
 				mu.Lock()
 				starts = append(starts, time.Now())
 				mu.Unlock()
 				c.Draw(prop.Integer(0, 9), drawn)
 				time.Sleep(time.Hour)
-			}, prop.Seed(7), prop.Cases(5))
+			}, prop.Seed(7), prop.Cases(5), prop.Around(synctest.Test))
 			assert.Nil(t, got, "every case passes")
 			assert.NotEmpty(t, starts, "each run reads the clock")
 			for _, start := range starts {
@@ -508,48 +534,165 @@ func TestOption(t *testing.T) {
 			}
 		})
 
-		t.Run("fails a case whose goroutines all block, and shrinks it", func(t *testing.T) {
+		t.Run("runs each run of the body inside the wrapper, in each phase of a failing run", func(t *testing.T) {
 			t.Parallel()
-			got := bubbledDetailOf(t, func(c *prop.Case) {
-				if c.Draw(prop.Integer(0, 100), drawn) >= 10 {
-					<-make(chan struct{})
+			var depth, wrapped, runs, outside atomic.Int32
+			wrap := func(t *testing.T, run func(*testing.T)) {
+				t.Helper()
+				wrapped.Add(1)
+				depth.Add(1)
+				defer depth.Add(-1)
+				run(t)
+			}
+			calls := wrappedCallsOf(t, func(c *prop.Case) {
+				runs.Add(1)
+				if depth.Load() != 1 {
+					outside.Add(1)
 				}
-			}, prop.Seed(7))
-			failure, _ := got[failureField].(assert.Failure)
-			assert.Equal(t, failure.Contract, blockedPanic, "the panic of synctest.Test")
-			entries, _ := got[counterexampleField].([]prop.Entry)
-			assert.Equal(t, valuesOfDraws(entries), []any{10}, "the smallest case whose goroutines block")
+				assert.True(c, c.Draw(prop.Integer(0, 30), drawn) < 25, "below 25")
+			}, prop.Seed(7), prop.Around(wrap))
+			phases := map[any]int{}
+			for _, call := range calls[1:] {
+				phases[call["phase"]]++
+			}
+			assert.True(t, phases["replay"] > 0 && phases["shrink"] > 0 && phases["explain"] > 0,
+				"the run replays, shrinks and explains its failure")
+			assert.Equal(t, wrapped.Load(), runs.Load(), "one call of the wrapper for each run of the body")
+			assert.Equal(t, outside.Load(), int32(0), "no run of the body runs outside the wrapper")
 		})
 
-		t.Run("fails a case that leaves a goroutine blocked, and shrinks it", func(t *testing.T) {
+		t.Run("ends the call with a fault for a wrapper that returns without calling run", func(t *testing.T) {
 			t.Parallel()
-			got := bubbledDetailOf(t, func(c *prop.Case) {
-				if c.Draw(prop.Integer(0, 100), drawn) >= 10 {
-					go func() { <-make(chan struct{}) }()
-				}
-			}, prop.Seed(7))
-			failure, _ := got[failureField].(assert.Failure)
-			assert.Equal(t, failure.Contract, leakedPanic, "the panic of synctest.Test")
-			entries, _ := got[counterexampleField].([]prop.Entry)
-			assert.Equal(t, valuesOfDraws(entries), []any{10}, "the smallest case that leaves a goroutine blocked")
+			var ran atomic.Bool
+			calls := wrappedCallsOf(t, func(c *prop.Case) {
+				ran.Store(true)
+				c.Draw(prop.Integer(0, 9), drawn)
+			}, prop.Around(func(*testing.T, func(*testing.T)) {}))
+			assert.Length(t, calls, 1, "the property's call alone")
+			skipped := &fault.Error{Op: forAllOp, Path: fault.Path{fault.Field("Around")}, Reason: skippedReason}
+			assert.Equal(t, calls[0]["error"], any(matcher.RenderFault(skipped)), "the writer's text of the fault")
+			assert.False(t, ran.Load(), "no body runs")
 		})
 
-		t.Run("runs the runs one at a time on four workers", func(t *testing.T) {
+		t.Run("ends the replay of a token with a fault for a wrapper that returns without calling run",
+			func(t *testing.T) {
+				t.Parallel()
+				calls := wrappedCallsOf(t, draws(prop.Integer(0, 9)), prop.Replay(tokenOf(7)),
+					prop.Around(func(*testing.T, func(*testing.T)) {}))
+				assert.Length(t, calls, 1, "the property's call alone")
+				skipped := &fault.Error{Op: forAllOp, Path: fault.Path{fault.Field("Around")}, Reason: skippedReason}
+				assert.Equal(t, calls[0]["error"], any(matcher.RenderFault(skipped)), "the writer's text of the fault")
+			})
+
+		t.Run("ends the call with a fault for a wrapper that calls run a second time", func(t *testing.T) {
 			t.Parallel()
-			var running, overlaps atomic.Int32
-			got := bubbledDetailOf(t, func(c *prop.Case) {
-				if running.Add(1) > 1 {
-					overlaps.Add(1)
-				}
-				defer running.Add(-1)
-				c.Draw(prop.Integer(0, 1000), drawn)
-				var clock realtime.Clock
-				for start := clock.Now(); clock.Now().Sub(start) < 2*time.Millisecond; {
-					runtime.Gosched()
-				}
-			}, prop.Seed(7), prop.Cases(10), prop.Workers(4))
+			var runs atomic.Int32
+			calls := wrappedCallsOf(t, func(c *prop.Case) {
+				runs.Add(1)
+				c.Draw(prop.Integer(0, 9), drawn)
+			}, prop.Around(func(t *testing.T, run func(*testing.T)) {
+				t.Helper()
+				run(t)
+				run(t)
+			}))
+			assert.Length(t, calls, 1, "the property's call alone")
+			repeated := &fault.Error{Op: forAllOp, Path: fault.Path{fault.Field("Around")}, Reason: repeatedReason}
+			assert.Equal(t, calls[0]["error"], any(matcher.RenderFault(repeated)), "the writer's text of the fault")
+			assert.Equal(t, runs.Load(), int32(1), "the second call of run runs no body")
+		})
+
+		t.Run("runs no body for a call of run after the wrapper has returned", func(t *testing.T) {
+			t.Parallel()
+			var runs atomic.Int32
+			var late func(*testing.T)
+			calls := wrappedCallsOf(t, func(c *prop.Case) {
+				runs.Add(1)
+				c.Draw(prop.Integer(0, 9), drawn)
+			}, prop.Around(func(t *testing.T, run func(*testing.T)) {
+				t.Helper()
+				late = run
+			}))
+			assert.Equal(t, calls[0]["verdict"], any("error"), "the call ends with the fault of the skipped run")
+			late(t)
+			assert.Equal(t, runs.Load(), int32(0), "a call of run after the wrapper returned runs no body")
+		})
+
+		t.Run("applies the last of two wrappers", func(t *testing.T) {
+			t.Parallel()
+			var first, last atomic.Int32
+			got := wrappedDetailOf(t, draws(prop.Integer(0, 9)), prop.Seed(7), prop.Cases(5),
+				prop.Around(func(t *testing.T, run func(*testing.T)) {
+					t.Helper()
+					first.Add(1)
+					run(t)
+				}),
+				prop.Around(func(t *testing.T, run func(*testing.T)) {
+					t.Helper()
+					last.Add(1)
+					run(t)
+				}))
 			assert.Nil(t, got, "every case passes")
-			assert.Equal(t, overlaps.Load(), int32(0), "no run starts while another runs")
+			assert.Equal(t, first.Load(), int32(0), "the first wrapper runs nothing")
+			assert.True(t, last.Load() > 0, "the last wrapper runs each run")
+		})
+
+		t.Run("calls the wrapper of up to four runs at once on four workers", func(t *testing.T) {
+			t.Parallel()
+			var inside, overlaps, beyond atomic.Int32
+			got := wrappedDetailOf(t, draws(prop.Integer(0, 1000)), prop.Seed(7), prop.Cases(50), prop.Workers(4),
+				prop.Around(func(t *testing.T, run func(*testing.T)) {
+					t.Helper()
+					n := inside.Add(1)
+					defer inside.Add(-1)
+					if n > 1 {
+						overlaps.Add(1)
+					}
+					if n > 4 {
+						beyond.Add(1)
+					}
+					var clock realtime.Clock
+					for start := clock.Now(); clock.Now().Sub(start) < 2*time.Millisecond; {
+						runtime.Gosched()
+					}
+					run(t)
+				}))
+			assert.Nil(t, got, "every case passes")
+			assert.True(t, overlaps.Load() > 0, "a call of the wrapper starts while another runs")
+			assert.Equal(t, beyond.Load(), int32(0), "no more than four calls run at once")
+		})
+
+		t.Run("runs bodies that wait with synctest.Wait on four workers under synctest.Test", func(t *testing.T) {
+			t.Parallel()
+			got := wrappedDetailOf(t, waitsForGoroutine, prop.Seed(7), prop.Cases(50), prop.Workers(4),
+				prop.Around(synctest.Test))
+			assert.Nil(t, got, "every case passes")
+		})
+
+		t.Run("raises the panic of synctest.Test for a run whose goroutines all block", func(t *testing.T) {
+			t.Parallel()
+			raised := assert.Panics(t, func() {
+				wrappedDetailOf(t, func(c *prop.Case) {
+					c.Draw(prop.Integer(0, 9), drawn)
+					<-make(chan struct{})
+				}, prop.Seed(7), prop.Around(synctest.Test))
+			}, "the bubble deadlocks")
+			assert.Equal(t, fmt.Sprint(raised), blockedPanic, "the panic of synctest.Test")
+		})
+
+		t.Run("panics for a nil wrapper", func(t *testing.T) {
+			t.Parallel()
+			got := assert.Panics(t, func() { prop.Around(nil) }, "no wrapper")
+			assert.Equal(t, got, any("prop: Around(nil) states no wrapper"), "the panic names the option")
+		})
+	})
+
+	t.Run("Bubble", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("runs a body that waits for its goroutine with synctest.Wait", func(t *testing.T) {
+			t.Parallel()
+			got := wrappedDetailOf(t, waitsForGoroutine, prop.Seed(7), prop.Bubble())
+			assert.Nil(t, got, "every case passes")
 		})
 	})
 
@@ -580,10 +723,11 @@ func TestOptionAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { kept = prop.Workers(2) }, optionAllocs, "Workers allocates its setting")
 	assert.MaxAllocs(t, func() { kept = prop.Draws("[]") }, optionAllocs, "Draws allocates its setting")
 	assert.NotEqual(t, kept, prop.Option{}, "the kept option states a setting")
+	assert.MaxAllocs(t, func() { kept = prop.Around(synctest.Test) }, optionAllocs, "Around allocates its setting")
+	assert.MaxAllocs(t, func() { kept = prop.Bubble() }, optionAllocs, "Bubble allocates its setting")
+	assert.NotEqual(t, kept, prop.Option{}, "the kept option states a setting")
 	assert.MaxAllocs(t, func() { kept = prop.Hermetic() }, 0, "Hermetic's setting captures nothing")
 	assert.NotEqual(t, kept, prop.Option{}, "Hermetic states a setting")
-	assert.MaxAllocs(t, func() { kept = prop.Bubble() }, 0, "Bubble's setting captures nothing")
-	assert.NotEqual(t, kept, prop.Option{}, "Bubble states a setting")
 }
 
 // BenchmarkOption measures each option that a caller keeps.
@@ -604,8 +748,9 @@ func BenchmarkOption(b *testing.B) {
 		{name: "Explain", option: func() prop.Option { return prop.Explain(false) }, allocs: optionAllocs},
 		{name: "Workers", option: func() prop.Option { return prop.Workers(2) }, allocs: optionAllocs},
 		{name: "Draws", option: func() prop.Option { return prop.Draws("[]") }, allocs: optionAllocs},
+		{name: "Around", option: func() prop.Option { return prop.Around(synctest.Test) }, allocs: optionAllocs},
+		{name: "Bubble", option: prop.Bubble, allocs: optionAllocs},
 		{name: "Hermetic", option: prop.Hermetic},
-		{name: "Bubble", option: prop.Bubble},
 	}
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {

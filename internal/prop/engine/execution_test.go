@@ -6,6 +6,7 @@ package engine_test
 import (
 	"context"
 	"math"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -33,13 +34,6 @@ const (
 // ledgerKey is the key of a value in the context that WithContext takes.
 // The context of each case derives from that context and returns the value.
 type ledgerKey struct{}
-
-// deadlocks are the settings whose Around panics after the run, as
-// synctest.Test panics when a goroutine of the bubble remains blocked.
-var deadlocks = engine.Settings{Around: func(run func()) {
-	run()
-	panic("deadlock")
-}}
 
 // TestExecution checks how one call of a body ends, under each of the
 // three ways a case gets its values.
@@ -231,10 +225,10 @@ func TestExecution(t *testing.T) {
 		t.Run("runs the case and its cleanups inside the run that Settings.Around calls", func(t *testing.T) {
 			t.Parallel()
 			var depth atomic.Int32
-			around := func(run func()) {
+			around := func(run func(context.Context)) {
 				depth.Add(1)
 				defer depth.Add(-1)
-				run()
+				run(t.Context())
 			}
 			var body, cleanup int32
 			engine.Bridge(func(c *engine.Case) {
@@ -245,26 +239,57 @@ func TestExecution(t *testing.T) {
 			assert.Equal(t, cleanup, int32(1), "the cleanup runs inside Around")
 		})
 
-		t.Run("fails the case with a panic that Settings.Around raises after the run", func(t *testing.T) {
+		t.Run("derives the context of the case from the context that the run receives", func(t *testing.T) {
 			t.Parallel()
-			e := engine.Bridge(func(*engine.Case) {}, []byte{7}, deadlocks)
-			assert.Equal(t, e.Status, engine.CaseFailed, "the case fails")
-			assert.Equal[any](t, e.Panic, "deadlock", "the panic of Around")
-			assert.Equal(t, e.Identity.Panic, "string", "the type of the panic of Around")
+			ctx := context.WithValue(t.Context(), ledgerKey{}, "ledger")
+			var got any
+			engine.Bridge(func(c *engine.Case) { got = c.Context().Value(ledgerKey{}) }, []byte{7},
+				engine.Settings{Around: func(run func(context.Context)) { run(ctx) }})
+			assert.Equal(t, got, any("ledger"), "the value of the run's context")
 		})
 
-		t.Run("keeps the panic of the body over a later panic of Settings.Around", func(t *testing.T) {
+		t.Run("passes a case without a choice when Settings.Around does not call the run", func(t *testing.T) {
 			t.Parallel()
-			e := engine.Bridge(func(*engine.Case) { panic("body") }, []byte{7}, deadlocks)
-			assert.Equal[any](t, e.Panic, "body", "the first panic of the case")
+			ran := false
+			e := engine.Bridge(func(*engine.Case) { ran = true }, []byte{7},
+				engine.Settings{Around: func(func(context.Context)) {}})
+			assert.Equal(t, e.Status, engine.CasePassed, "the case passes")
+			assert.Empty(t, e.Case.Choices(), "the case makes no choice")
+			assert.False(t, ran, "the body does not run")
 		})
 
-		t.Run("raises a panic that Settings.Around raises before the run", func(t *testing.T) {
+		t.Run("raises again a panic that Settings.Around raises before the run", func(t *testing.T) {
 			t.Parallel()
-			refuses := engine.Settings{Around: func(func()) { panic("refused") }}
+			refuses := engine.Settings{Around: func(func(context.Context)) { panic("refused") }}
 			raised := assert.Panics(t, func() { engine.Bridge(func(*engine.Case) {}, []byte{7}, refuses) },
 				"Around refuses the run")
 			assert.Equal(t, raised, any("refused"), "the panic of Around")
+		})
+
+		t.Run("raises again a panic that Settings.Around raises after the run", func(t *testing.T) {
+			t.Parallel()
+			ran := false
+			deadlocks := engine.Settings{Around: func(run func(context.Context)) {
+				run(t.Context())
+				panic("deadlock")
+			}}
+			raised := assert.Panics(t, func() {
+				engine.Bridge(func(*engine.Case) { ran = true }, []byte{7}, deadlocks)
+			}, "Around panics after the run")
+			assert.Equal(t, raised, any("deadlock"), "the panic of Around")
+			assert.True(t, ran, "the body runs before the panic")
+		})
+
+		t.Run("returns the case once Settings.Around ends its goroutine with runtime.Goexit", func(t *testing.T) {
+			t.Parallel()
+			ran := false
+			exits := engine.Settings{Around: func(run func(context.Context)) {
+				run(t.Context())
+				runtime.Goexit()
+			}}
+			e := engine.Bridge(func(*engine.Case) { ran = true }, []byte{7}, exits)
+			assert.Equal(t, e.Status, engine.CasePassed, "the case passes")
+			assert.True(t, ran, "the body runs before the goroutine ends")
 		})
 	})
 

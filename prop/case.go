@@ -165,8 +165,9 @@ func (c *Case) Cleanup(f func()) {
 // Context returns the case's context, for the code under test that takes
 // one. It derives from the context of the property's seat, such as the one
 // a *testing.T returns, and from context.Background() for a seat without
-// one and under [Bubble]. The case cancels it when the body ends, before
-// the cleanups run. A second call returns the same context.
+// one. Under [Around], it derives from the context of the test that the
+// wrapper hands its run. The case cancels it when the body ends, before the
+// cleanups run. A second call returns the same context.
 func (c *Case) Context() context.Context {
 	return (*engine.Case)(c).Context()
 }
@@ -183,5 +184,11 @@ func (c *Case) Draw[T any](g Generator[T], label string) T {
 // bodyOf returns the engine's body that calls body with the engine's case
 // as a Case, whose context derives from ctx.
 func bodyOf(ctx context.Context, body func(*Case)) engine.Body {
-	return engine.WithContext(ctx, func(c *engine.Case) { body((*Case)(c)) })
+	return engine.WithContext(ctx, caseBody(body))
+}
+
+// caseBody returns the engine's body that calls body with the engine's case
+// as a Case.
+func caseBody(body func(*Case)) engine.Body {
+	return func(c *engine.Case) { body((*Case)(c)) }
 }

@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"context"
 	"time"
 
 	"go.dokimi.dev/assert"
@@ -134,13 +135,14 @@ type Settings struct {
 	// safe to run concurrently with itself.
 	Workers int
 	// Around runs each run of the body, and nil runs it where the runner
-	// is. It calls run once, and returns once run has returned. The
-	// goroutine of the body starts inside run and ends before run returns,
-	// its cleanups included. A panic of Around after it called run fails the
-	// case as a panic of its body does. The runner raises a panic of Around
-	// before run again. prop runs each run in a testing/synctest bubble of
-	// its own through it.
-	Around func(run func())
+	// is. It calls run at most once, before it returns. run derives the
+	// context of the case from ctx and starts the goroutine of the body, and
+	// it returns once the body and its cleanups have ended. A case whose run
+	// Around does not call passes without a choice. The runner calls Around
+	// on a goroutine of its own, so a runtime.Goexit of Around ends that
+	// goroutine alone, and it raises a panic of Around again. prop runs each
+	// run inside the wrapper of its option Around through it.
+	Around func(run func(ctx context.Context))
 	// Slot is the slot of the property's call record, which takes the
 	// calls of every case that a run on one worker runs, in that order and
 	// with the phase of each case. It is nil for a property that is not

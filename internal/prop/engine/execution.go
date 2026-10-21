@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"math"
-	"sync/atomic"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/prop/choice"
@@ -183,25 +182,31 @@ func runOnce(c *Case, body Body) Execution {
 	return executionOf(c)
 }
 
-// runAround calls body once on c, on a goroutine that it starts inside the
-// run that around calls, and waits inside that run until the goroutine has
-// ended. The goroutine signals its end on a channel that the run makes, so a
-// goroutine that never ends, as in a bubble that deadlocked, leaves nothing
-// that a later run of c uses. A panic of around after it called the run
-// fails the case as a panic of its body does. runAround raises a panic of
-// around before the run again.
-func runAround(c *Case, body Body, around func(run func())) {
-	var started atomic.Bool
-	defer c.recoverAround(&started)
-	around(func() {
-		started.Store(true)
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			c.call(body)
-		}()
-		<-done
-	})
+// runAround calls around on a goroutine of its own with a run that derives
+// the context of c from the run's context, calls body once on c on a
+// goroutine that it starts, and waits until that goroutine has ended. The
+// goroutine of the body signals its end on a channel that the run makes, so
+// a goroutine that never ends, as in a bubble that deadlocked, leaves
+// nothing that a later run of c uses. runAround returns once around has
+// returned or ended its goroutine with runtime.Goexit, and raises a panic
+// of around again.
+func runAround(c *Case, body Body, around func(run func(context.Context))) {
+	ended := make(chan any, 1)
+	go func() {
+		defer func() { ended <- recover() }()
+		around(func(ctx context.Context) {
+			c.derive(ctx)
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				c.call(body)
+			}()
+			<-done
+		})
+	}()
+	if v := <-ended; v != nil {
+		panic(v)
+	}
 }
 
 // entered walks the case of e, which ran outside the case tree and kept its

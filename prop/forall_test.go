@@ -7,6 +7,7 @@ import (
 	"math"
 	"slices"
 	"testing"
+	"testing/synctest"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
@@ -207,19 +208,19 @@ func TestForAll(t *testing.T) {
 			assert.Empty(t, rec.Failures(), "no failure record")
 		})
 
-		t.Run("ends the call with a fault under Bubble for a seat that wraps no *testing.T", func(t *testing.T) {
+		t.Run("ends the call with a fault under Around for a seat that wraps no *testing.T", func(t *testing.T) {
 			t.Parallel()
 			rec := assert.NewRecorder()
 			ran := false
 			prop.ForAll(rec, contract, func(c *prop.Case) {
 				ran = true
 				c.Draw(prop.Integer(0, 9), drawn)
-			}, prop.Bubble())
+			}, prop.Around(synctest.Test))
 			calls := decodedCalls(t, rec.Records())
 			assert.Length(t, calls, 1, "the property's call alone")
 			refused := &fault.Error{
 				Op:     forAllOp,
-				Path:   fault.Path{fault.Field("Bubble")},
+				Path:   fault.Path{fault.Field("Around")},
 				Reason: "the seat is no *testing.T and wraps none",
 			}
 			assert.Equal(t, calls[0]["error"], any(matcher.RenderFault(refused)), "the writer's text of the fault")

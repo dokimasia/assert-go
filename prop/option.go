@@ -6,6 +6,8 @@ package prop
 import (
 	"fmt"
 	"math"
+	"testing"
+	"testing/synctest"
 	"time"
 
 	"go.dokimi.dev/assert/internal/prop/engine"
@@ -179,8 +181,8 @@ func Draws(entries string) Option {
 // Workers sets the number of cases, shrink candidates and explanation
 // fillings that run at once, 1 by default. A run on more workers reports
 // what a run on one reports, and runs the body concurrently with itself, so
-// the body must be safe for that. A run under [Bubble] runs one at a time.
-// It panics for n below 1.
+// the body must be safe for that. Under [Around], the wrapper then runs that
+// many runs at once. It panics for n below 1.
 func Workers(n int) Option {
 	if n < 1 {
 		panic(fmt.Sprintf("prop: Workers(%d) is below 1", n))
@@ -213,32 +215,54 @@ func Hermetic() Option {
 	}}
 }
 
-// Bubble makes each run of the body run in a testing/synctest bubble of its
-// own, through synctest.Test with the *testing.T of the test. ForAll and
-// the forms take the first seat of the seat's chain that is a *testing.T,
-// as [go.dokimi.dev/assert.TB] states. [Fuzz] takes the test of each input.
-// Each run starts at the bubble's first instant, midnight UTC 2000-01-01,
-// without the goroutines of an earlier run. The case's context derives from
-// context.Background() inside the bubble, because a context of the test is
-// outside it.
+// Around runs each run of the body inside wrap. wrap calls run once with a
+// test, inside an environment that it chooses, and returns once run has
+// returned. synctest.Test is such a function, so Around(synctest.Test) runs
+// each run of the body in a testing/synctest bubble of its own. Each run
+// then starts at the bubble's first instant, midnight UTC 2000-01-01,
+// without the goroutines of an earlier run.
 //
-// The runs of a call under Bubble run one at a time on the goroutine of the
-// call, whatever [Workers] states, because synctest.Test fails the test
-// through FailNow. A run whose goroutines all block, or that leaves a
-// goroutine blocked when its body returns, fails its case with the panic of
-// synctest.Test, and the call shrinks that case as it shrinks any failure.
-// A seat that is no *testing.T and wraps none ends the call with a fault. A
-// call under Bubble must not run inside a bubble, where synctest.Test
-// panics.
+// wrap receives the first seat of the seat's chain that is a *testing.T, as
+// [go.dokimi.dev/assert.TB] states, and ForAll and the forms end the call
+// with a fault for a chain without one. [Fuzz] hands wrap the test of each
+// input. The case's context derives from the context of the test that wrap
+// hands run.
 //
-// A *testing.F has no *testing.T before its target runs, so Fuzz under
-// Bubble replays the stored cases on the first input that the process runs,
-// before the case of that input.
-func Bubble() Option {
+// wrap runs the case of [Draws], each stored case and each generated case,
+// each shrink candidate and each filling that explains a draw, each case of
+// a campaign, the case of [Replay] and the case of each input of Fuzz. The
+// engine's own work runs outside it. The case's verdict comes from the
+// body's records, so wrap cannot change it.
+//
+// A wrap that returns without calling run, or that calls run a second time,
+// ends the call with a fault, and the second call of run returns without
+// running the body. Given more than once, the last wrap applies. It panics
+// for a nil wrap.
+//
+// wrap runs on a goroutine of its own, and under [Workers] above 1 it runs
+// that many runs at once, so it must be safe for concurrent use. A FailNow
+// that wrap calls ends that goroutine and not the test. A panic of wrap is
+// raised again on the goroutine of the run. synctest.Test panics this way
+// for a bubble whose goroutines all block. On one worker the panic passes
+// through the call, and on more workers it ends the test process. The
+// environment reports its own failures in this way, and the record of the
+// call does not state them.
+func Around(wrap func(t *testing.T, run func(*testing.T))) Option {
+	if wrap == nil {
+		panic("prop: Around(nil) states no wrapper")
+	}
 	return Option{set: func(c config) config {
-		c.bubble = true
+		c.around = wrap
 		return c
 	}}
+}
+
+// Bubble runs each run of the body in a testing/synctest bubble of its own,
+// as Around(synctest.Test) does.
+//
+// Deprecated: Use Around(synctest.Test), which Bubble returns.
+func Bubble() Option {
+	return Around(synctest.Test)
 }
 
 // config is what the options of one run state.
@@ -276,9 +300,9 @@ type config struct {
 	// hermetic reports whether Hermetic made the run read none of the
 	// engine's variables.
 	hermetic bool
-	// bubble reports whether Bubble runs each run of the body in a bubble of
-	// its own.
-	bubble bool
+	// around is the wrapper of each run of the body that Around states, and
+	// nil without one.
+	around func(*testing.T, func(*testing.T))
 }
 
 // configure returns the defaults with each option of opts applied in

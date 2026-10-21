@@ -4,6 +4,7 @@
 package engine_test
 
 import (
+	"context"
 	"math"
 	"slices"
 	"sync/atomic"
@@ -547,10 +548,10 @@ func TestRunner(t *testing.T) {
 			t.Parallel()
 			var depth, runs, outside atomic.Int32
 			s := settled()
-			s.Around = func(run func()) {
+			s.Around = func(run func(context.Context)) {
 				depth.Add(1)
 				defer depth.Add(-1)
-				run()
+				run(t.Context())
 			}
 			failing := choiceOf(1001)
 			r := engine.Run(func(c *engine.Case) {
