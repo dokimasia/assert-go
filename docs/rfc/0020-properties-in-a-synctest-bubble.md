@@ -2,12 +2,12 @@
 rfc: 0020
 title: Properties in a synctest bubble
 author: Roy Klopper <roy.klopper@stealthscale.io>
-status: Draft
+status: Withdrawn
 created: 2026-10-21
 updated: 2026-10-21
 discussion: https://github.com/dokimasia/assert-go/issues/55
 supersedes: none
-superseded-by: none
+superseded-by: RFC-0021
 produces-adr: none
 ---
 
@@ -314,6 +314,15 @@ The standard of errors and output gains two rules about panics:
   refuses a run before the run starts, on the goroutine of the call.
 - The list of the places of a `recover` gains the bubble of a case under
   `Bubble`, whose deadlock fails the case.
+
+## Withdrawal
+
+Definition 9.0.0 adds the option `prop.around`, which the naming table gives
+Go as `prop.Around`. `Around(synctest.Test)` runs each run of the body in a
+bubble of its own, and the definition differs from this design in four
+rules: the context of a case, workers, a wrapper that misuses its run, and a
+bubble that deadlocks. v0.4.0 contains `Bubble`, so `Bubble` becomes a
+deprecated name that returns `Around(synctest.Test)`.
 
 ## References
 

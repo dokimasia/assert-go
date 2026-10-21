@@ -2,7 +2,7 @@
 rfc: 0019
 title: Seats that wrap a seat
 author: Roy Klopper <roy.klopper@stealthscale.io>
-status: Draft
+status: Accepted
 created: 2026-10-21
 updated: 2026-10-21
 discussion: https://github.com/dokimasia/assert-go/issues/58
