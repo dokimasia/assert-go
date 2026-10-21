@@ -70,12 +70,13 @@
 //
 // # Dependency position
 //
-// Imports the standard library, testing included, and seven packages of
+// Imports the standard library, testing included, and eight packages of
 // this module: internal/equality for every comparison of values and the
 // places of a difference, internal/align for the line diff of two texts,
 // internal/fault for the faults it reports, internal/literal for the typed
 // literals of a recorded failure's detail, internal/record for the call
-// records, internal/text for the text of a detail's values, and
+// records, internal/text for the text of a detail's values, internal/wrap
+// for the methods of a seat along the seats that it wraps, and
 // internal/prop/pattern, whose parser decides which patterns [Matches]
 // accepts.
 package matcher

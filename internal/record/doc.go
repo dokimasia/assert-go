@@ -21,6 +21,6 @@
 //
 // # Dependency position
 //
-// Imports the fault package and the standard library. The matcher, the
-// root package and the engine of the property engine import it.
+// Imports the fault package, the wrap package and the standard library. The
+// matcher, the root package and the engine of the property engine import it.
 package record

@@ -6,11 +6,14 @@ package matcher_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/childtest"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
@@ -116,6 +119,31 @@ func benchAllocs(b *testing.B, cases []allocCase) {
 			}
 		})
 	}
+}
+
+// wrapper is a seat that wraps another seat, as the handle of a check does.
+// It has the three methods of the wrapped seat and Unwrap.
+type wrapper struct {
+	assert.TB
+}
+
+// Unwrap returns the wrapped seat.
+func (w wrapper) Unwrap() assert.TB { return w.TB }
+
+// fatalWrapper is a seat that wraps another seat and keeps each message of
+// its own Fatalf.
+type fatalWrapper struct {
+	wrapper
+
+	mu     sync.Mutex
+	fatals []string
+}
+
+// Fatalf keeps the message, and returns.
+func (s *fatalWrapper) Fatalf(format string, args ...any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fatals = append(s.fatals, fmt.Sprintf(format, args...))
 }
 
 // clockedSeat is a seat with a clock, which records what was reported.

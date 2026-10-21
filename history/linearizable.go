@@ -63,9 +63,10 @@ const hashlessNote = linearizableOp + ": the spec states Equal and no Hash, so t
 //     rejected there.
 //   - limit, a [Limit] for an undecided check, and nil for a violated one.
 //
-// An [assert.Reporter] seat receives the record. Any other seat receives the
-// record's sentence through Fatalf. The call record of a recorded run states
-// the detail in the history's JSON form.
+// The first [assert.Reporter] of the seat's chain, which [assert.TB] states,
+// receives the record. A chain without one receives the record's sentence
+// through Fatalf. The call record of a recorded run states the detail in the
+// history's JSON form.
 //
 // A spec that states Equal and no Hash makes the search compare the states
 // of every configuration of one set of calls, which is slower by orders of

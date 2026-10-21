@@ -6,6 +6,8 @@ package matcher
 import (
 	"sync"
 	"time"
+
+	"go.dokimi.dev/assert/internal/wrap"
 )
 
 // Clock is where an assertion reads time.
@@ -24,7 +26,8 @@ type Clock interface {
 //
 // A seat supplies a clock through this second interface, so [Seat] keeps
 // the three methods that [testing.T] and [testing.B] implement. An
-// assertion reads [System] when its seat does not satisfy Clocked.
+// assertion reads [System] when no seat of its seat's chain satisfies
+// Clocked.
 type Clocked interface {
 	Clock() Clock
 }
@@ -47,15 +50,17 @@ func (System) Now() time.Time { return time.Now() }
 // Sleep allocates nothing.
 func (System) Sleep(d time.Duration) { time.Sleep(d) }
 
-// ClockOf returns the clock that seat supplies, or [System] when it
-// supplies none.
+// ClockOf returns the clock that the first [Clocked] seat of the chain of
+// seat supplies. It returns [System] when that seat supplies none, and for a
+// chain without a Clocked seat. The chain is the seat and the seats that it
+// wraps, as [wrap.As] walks it.
 //
 // # Allocation contract
 //
 // ClockOf allocates nothing besides what the Clock method of seat
 // allocates.
 func ClockOf(seat Seat) Clock {
-	if c, ok := seat.(Clocked); ok {
+	if c, ok := wrap.As[Clocked](seat); ok {
 		if supplied := c.Clock(); supplied != nil {
 			return supplied
 		}

@@ -78,6 +78,20 @@ func TestAttr(t *testing.T) {
 			record.Add(record.Of(embedding{t}), call("true", "the embedding seat's call"))
 			record.Add(record.Of(t), call("true", "the test's next call"))
 		})
+		t.Run("returns the test's Calls for a seat that wraps the test's seat", func(t *testing.T) {
+			t.Parallel()
+			if !childtest.InChild(t) {
+				out := runChild(t, on)
+				for _, seq := range []string{"1", "2", "3"} {
+					got := strings.Count(out, attrLine+t.Name()+" dokimi.assert."+seq+" ")
+					assert.Equal(t, got, 1, "one record numbered "+seq)
+				}
+				return
+			}
+			record.Add(record.Of(t), call("true", "the test's call"))
+			record.Add(record.Of(wrapper{t}), call("true", "the wrapper's call"))
+			record.Add(record.Of(t), call("true", "the test's next call"))
+		})
 	})
 
 	t.Run("Add", func(t *testing.T) {

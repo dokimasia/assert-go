@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go.dokimi.dev/assert/internal/matcher"
+	"go.dokimi.dev/assert/internal/wrap"
 )
 
 // [Contract.End] publishes each measurement through [B.ReportMetric]
@@ -425,12 +426,14 @@ func (c *Contract) End() {
 //	    store.Settle()
 //	}
 //
-// Excluding stops the timer of a [testing.B] while work runs. testing's
-// ns/op and B/op then leave the work out as well. testing sizes a run by
-// the time that its timer measures, so a benchmark whose excluded work takes
-// far longer than its operation runs many iterations. State their number
-// for such a benchmark with -benchtime=Nx. A benchmark without StopTimer and
-// StartTimer keeps its timer running.
+// Excluding stops the timer of a [testing.B] while work runs, and the timer
+// of the first seat with StopTimer and StartTimer that the benchmark's seat
+// wraps, as assert.TB states. testing's ns/op and B/op then leave the work
+// out as well. testing sizes a run by the time that its timer measures, so a
+// benchmark whose excluded work takes far longer than its operation runs
+// many iterations. State their number for such a benchmark with
+// -benchtime=Nx. A benchmark without StopTimer and StartTimer keeps its
+// timer running.
 //
 // Before the first [Contract.Loop] and after the last, Excluding runs
 // work and takes nothing out, because no iteration is being measured. A
@@ -448,7 +451,7 @@ func (c *Contract) Excluding(work func()) {
 
 	c.excluding = true
 	startedAt := time.Now()
-	paused, pauses := c.b.(timer)
+	paused, pauses := wrap.As[timer](c.b)
 	if pauses {
 		paused.StopTimer()
 	}

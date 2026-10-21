@@ -140,9 +140,11 @@ type Where struct {
 
 // Reporter is a [Seat] that takes the record rather than the sentence.
 //
-// [Fail] passes the record to a Reporter, and the writer's text of it to
-// any other seat, through Fatalf or Errorf. aborting is true for the
-// aborting surface and false for the recording one.
+// [Fail] passes the record to the first Reporter in the chain of the seat
+// and the seats that it wraps. For a chain without one, it passes the
+// writer's text of the record to the seat, through Fatalf or Errorf.
+// aborting is true for the aborting surface and false for the recording
+// one.
 type Reporter interface {
 	Report(f Failure, aborting bool)
 }

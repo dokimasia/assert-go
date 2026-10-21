@@ -85,6 +85,30 @@ func TestEnd(t *testing.T) {
 				t.Fatalf("marked %d frames, want 1", seat.helpers)
 			}
 		})
+		t.Run("passes the fault to the FaultReporter that a seat wraps", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &matchertest.Seat{}
+			err := fault.In("files.Workspace", fault.New("the tree cannot be written"))
+			matcher.End(wrapper{wrapper{seat}}, err)
+			if faults := seat.Faults(); len(faults) != 1 || !errors.Is(faults[0], err) {
+				t.Fatalf("the wrapped seat received the faults %v, want %v", faults, err)
+			}
+		})
+		t.Run("sends the writer's text through Fatalf of the seat itself for a chain without a FaultReporter",
+			func(t *testing.T) {
+				t.Parallel()
+
+				inner := &fatalSeat{}
+				seat := &fatalWrapper{wrapper: wrapper{inner}}
+				err := fault.In("files.Workspace", fault.New("the tree cannot be written"))
+				matcher.End(seat, err)
+				want := []string{matcher.RenderFault(err)}
+				if !slices.Equal(seat.fatals, want) || len(inner.fatals) != 0 {
+					t.Fatalf("the wrapper received %q and the wrapped seat %q, want %q on the wrapper",
+						seat.fatals, inner.fatals, want)
+				}
+			})
 	})
 }
 

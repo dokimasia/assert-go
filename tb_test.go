@@ -5,10 +5,13 @@ package assert_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/alloctest"
+	"go.dokimi.dev/assert/internal/childtest"
+	"go.dokimi.dev/assert/internal/record"
 )
 
 // Compile-time proof that both seats satisfy TB. A runtime nil check
@@ -29,6 +32,15 @@ type bareSeat struct{}
 func (bareSeat) Helper()               {}
 func (bareSeat) Fatalf(string, ...any) {}
 func (bareSeat) Errorf(string, ...any) {}
+
+// wrapped is a seat that wraps another seat, as the handle of a check does.
+// It has the three methods of the wrapped seat and Unwrap.
+type wrapped struct {
+	assert.TB
+}
+
+// Unwrap returns the wrapped seat.
+func (w wrapped) Unwrap() assert.TB { return w.TB }
 
 func TestTB(t *testing.T) {
 	t.Parallel()
@@ -109,6 +121,82 @@ func TestTB(t *testing.T) {
 				t.Fatalf("Context of a bare seat = %v, want context.Background()", got)
 			}
 		})
+
+		t.Run("returns the context of the seat that a seat wraps", func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.WithValue(t.Context(), ledgerKey{}, "ledger")
+			if got := assert.Context(wrapped{assert.NewRecorder().WithContext(ctx)}); got != ctx {
+				t.Fatalf("Context of the wrapper = %v, want the context of the recorder that it wraps", got)
+			}
+		})
+
+		t.Run("returns context.Background() for a seat whose Unwrap returns nil", func(t *testing.T) {
+			t.Parallel()
+
+			want := context.Background() //nolint:usetesting // Context returns it for a chain without a context
+			if got := assert.Context(wrapped{}); got != want {
+				t.Fatalf("Context of a wrapper of no seat = %v, want context.Background()", got)
+			}
+		})
+	})
+
+	t.Run("Unwrap", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("keeps the call record of an assertion on a wrapper in the wrapped recorder", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			assert.Equal(wrapped{wrapped{r}}, 1, 1, "one is one")
+			if got := decoded(t, r.Records()); len(got) != 1 || got[0]["assertion"] != "equal" {
+				t.Fatalf("Records() = %v, want the record of the call of equal", got)
+			}
+		})
+
+		t.Run("reports a failure on a wrapper as a record to the recorder that it wraps", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			assert.Equal(wrapped{r}, 1, 2, "one is two")
+			if got := r.Failures(); len(got) != 1 || got[0].Assertion != "equal" {
+				t.Fatalf("Failures() = %v, want the record of the failure of equal", got)
+			}
+		})
+
+		t.Run("records a check of Rejects on a wrapper of its seat under the call of Rejects", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			failures := assert.Rejects(r, "the check fails", func(tb assert.TB) {
+				assert.Equal(wrapped{tb}, 1, 2, "one is two")
+			})
+			got := decoded(t, r.Records())
+			if len(got) != 2 || got[0]["assertion"] != "rejects" || got[1]["assertion"] != "equal" ||
+				got[1]["parent"] != 1.0 {
+
+				t.Fatalf("Records() = %v, want the call of rejects and the check's call of equal under it", got)
+			}
+			if len(failures) != 1 || failures[0].Assertion != "equal" {
+				t.Fatalf("Rejects returned %v, want the record of the check's failure", failures)
+			}
+		})
+
+		t.Run("writes the call record of an assertion on a wrapper of a test's seat into the test's output",
+			func(t *testing.T) {
+				t.Parallel()
+				if childtest.InChild(t) {
+					assert.True(wrapped{t}, true, "the call on the wrapper")
+					return
+				}
+				out, err := childtest.Run(t, t.Name(), record.Variable+"=1")
+				if err != nil || !strings.Contains(out, "--- PASS: "+t.Name()+" ") {
+					t.Fatalf("the child exits with %v, want a pass:\n%s", err, out)
+				}
+				if !strings.Contains(out, "=== ATTR  "+t.Name()+" dokimi.assert.1 ") {
+					t.Fatalf("the child wrote no record of the call on the wrapper:\n%s", out)
+				}
+			})
 	})
 }
 

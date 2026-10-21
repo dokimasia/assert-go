@@ -8,6 +8,7 @@ import (
 
 	"go.dokimi.dev/assert/internal/literal"
 	"go.dokimi.dev/assert/internal/record"
+	"go.dokimi.dev/assert/internal/wrap"
 )
 
 // Pass reports that a call of assertion passed. It writes the call's record
@@ -31,9 +32,11 @@ func Pass(seat Seat, mode Mode, assertion, contract string) {
 
 // Fail reports that a call of assertion failed with detail, which contains
 // exactly the fields that the assertion declares. It writes the call's
-// record when its seat records calls, and then sends the failure's record
-// to a seat that satisfies [Reporter], and the writer's text of it to any
-// other seat, through Fatalf under [Fatal] and Errorf under [Soft].
+// record when its seat records calls. It then sends the failure's record to
+// the first seat of the seat's chain that satisfies [Reporter], as
+// [wrap.As] finds it. For a chain without one, it sends the writer's text
+// of the record to the seat, through Fatalf under [Fatal] and Errorf under
+// [Soft].
 //
 // The record's location is the innermost frame of the caller's code, which
 // [CallerWhere] states, so an assertion reports the caller's line however
@@ -51,11 +54,9 @@ func Fail(seat Seat, mode Mode, assertion, contract string, detail map[string]an
 
 // Fault reports that a call of assertion ended without a verdict, because
 // err refused an argument or the environment. It writes the call's record,
-// with the writer's text of err, when its seat records calls. It then
-// passes err to a seat that satisfies [FaultReporter], and sends the text
-// to any other seat through Fatalf. It does so under both modes: the call
-// checked nothing, and a test that ran on would meet err again. It may not
-// return.
+// with the writer's text of err, when its seat records calls. It then ends
+// the call with err as [End] does, under both modes: the call checked
+// nothing, and a test that ran on would meet err again. It may not return.
 //
 // # Allocation contract
 //
@@ -193,12 +194,12 @@ func (r Running) Fault(mode Mode, assertion, contract string, err error) {
 	r.end(err)
 }
 
-// report sends f to a seat that satisfies [Reporter], and the writer's text
-// of it to any other seat, through Fatalf under [Fatal] and Errorf under
-// [Soft].
+// report sends f to the first seat of the call's chain that satisfies
+// [Reporter], and the writer's text of it to the call's seat for a chain
+// without one, through Fatalf under [Fatal] and Errorf under [Soft].
 func (r Running) report(mode Mode, f Failure) {
 	r.seat.Helper()
-	if reporter, ok := r.seat.(Reporter); ok {
+	if reporter, ok := wrap.As[Reporter](r.seat); ok {
 		reporter.Report(f, mode == Fatal)
 		return
 	}

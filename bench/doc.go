@@ -61,7 +61,8 @@
 // # Dependency position
 //
 // Imports go.dokimi.dev/assert for the seat, internal/matcher for the
-// verdicts of the ceilings and the build's allocation flag, and the
-// standard library's flag, fmt, math, runtime, slices, strconv, strings,
-// sync, sync/atomic, testing and time.
+// verdicts of the ceilings and the build's allocation flag, internal/wrap
+// for the timer of a seat that wraps the benchmark, and the standard
+// library's flag, fmt, math, runtime, slices, strconv, strings, sync,
+// sync/atomic, testing and time.
 package bench

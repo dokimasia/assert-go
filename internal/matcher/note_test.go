@@ -95,6 +95,15 @@ func TestNote(t *testing.T) {
 				)
 			}
 		})
+		t.Run("writes the text into the log of the seat that a seat wraps", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &logSeat{}
+			matcher.Note(wrapper{wrapper{seat}}, "the cart had 3 items")
+			if want := []string{"the cart had 3 items"}; !slices.Equal(seat.logs, want) {
+				t.Fatalf("the wrapped seat logged %q, want %q", seat.logs, want)
+			}
+		})
 	})
 
 	t.Run("NoteFault", func(t *testing.T) {
@@ -125,6 +134,29 @@ func TestNote(t *testing.T) {
 			if len(seat.logs) != 0 || seat.Failed() {
 				t.Fatalf("logged %q and reported %q, want neither for a fault that a seat takes",
 					seat.logs, seat.First())
+			}
+		})
+		t.Run("passes the fault to the FaultReporter that a seat wraps", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &reportingLogSeat{}
+			err := fault.In("prop.ForAll", fault.New("the stored case decodes to other values"))
+			matcher.NoteFault(wrapper{seat}, err)
+			if faults := seat.Faults(); len(faults) != 1 || !errors.Is(faults[0], err) {
+				t.Fatalf("the wrapped seat received the faults %v, want %v", faults, err)
+			}
+			if len(seat.logs) != 0 {
+				t.Fatalf("logged %q, want nothing for a fault that a seat of the chain takes", seat.logs)
+			}
+		})
+		t.Run("writes the writer's text of the fault into the log of the seat that a seat wraps", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &logSeat{}
+			err := fault.In("prop.ForAll", fault.New("the stored case decodes to other values"))
+			matcher.NoteFault(wrapper{seat}, err)
+			if want := []string{matcher.RenderFault(err)}; !slices.Equal(seat.logs, want) {
+				t.Fatalf("the wrapped seat logged %q, want %q", seat.logs, want)
 			}
 		})
 	})

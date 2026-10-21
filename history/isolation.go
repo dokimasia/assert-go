@@ -94,9 +94,10 @@ func (s kinds) has(a Anomaly) bool {
 //   - explanation, a []Evidence: an [Edge] for each link of a cycle, or one
 //     [Observation].
 //
-// An [assert.Reporter] seat receives the record. Any other seat receives the
-// record's sentence through Fatalf. The call record of a recorded run states
-// the detail in the history's JSON form.
+// The first [assert.Reporter] of the seat's chain, which [assert.TB] states,
+// receives the record. A chain without one receives the record's sentence
+// through Fatalf. The call record of a recorded run states the detail in the
+// history's JSON form.
 //
 // # Errors
 //

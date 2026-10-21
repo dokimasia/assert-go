@@ -48,6 +48,17 @@ func TestCalls(t *testing.T) {
 			t.Parallel()
 			assert.Nil(t, record.Of(struct{}{}), "no Calls")
 		})
+		t.Run("returns the Calls of the first seat of the chain that keeps records", func(t *testing.T) {
+			t.Parallel()
+			r := assert.NewRecorder()
+			want := record.Of(r)
+			assert.NotNil(t, want, "the recorder's Calls")
+			assert.True(t, record.Of(wrapper{wrapper{r}}) == want, "the Calls of the recorder that the chain ends at")
+		})
+		t.Run("returns nil for a seat whose Unwrap returns nil", func(t *testing.T) {
+			t.Parallel()
+			assert.Nil(t, record.Of(wrapper{}), "no Calls")
+		})
 	})
 
 	t.Run("Add", func(t *testing.T) {

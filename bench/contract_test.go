@@ -765,8 +765,29 @@ func TestContractTimerProcess(t *testing.T) {
 			assert.True(t, result.T < 20*time.Millisecond,
 				"testing times less than half of the four excluded sleeps of 10 ms")
 		})
+		t.Run("stops the timer of the benchmark that a seat wraps", func(t *testing.T) {
+			result, _ := benchmark(t, "4x", func(b bench.B, _ int) {
+				c := bench.Start(benchWrapper{b})
+				for c.Loop() {
+					c.Excluding(func() { time.Sleep(10 * time.Millisecond) })
+				}
+				c.End()
+			})
+
+			assert.True(t, result.T < 20*time.Millisecond,
+				"testing times less than half of the four excluded sleeps of 10 ms")
+		})
 	})
 }
+
+// benchWrapper is the seat of a benchmark that wraps another one, as the
+// handle of a check does. It has the methods of the wrapped seat and Unwrap.
+type benchWrapper struct {
+	bench.B
+}
+
+// Unwrap returns the wrapped seat.
+func (w benchWrapper) Unwrap() assert.TB { return w.B }
 
 // TestContractAfterRunParallelProcess checks the calls that a contract refuses once
 // RunParallel has run its body, in benchmarks of testing that run in this

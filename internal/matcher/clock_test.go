@@ -18,6 +18,17 @@ func (bareSeat) Helper()               {}
 func (bareSeat) Fatalf(string, ...any) {}
 func (bareSeat) Errorf(string, ...any) {}
 
+// clockWrapper is a seat that wraps another seat and supplies a clock of its
+// own, as the handle of a check with a clock that the check controls does.
+type clockWrapper struct {
+	wrapper
+
+	clock matcher.Clock
+}
+
+// Clock returns the wrapper's own clock.
+func (s clockWrapper) Clock() matcher.Clock { return s.clock }
+
 // The results of the allocation cases, which keep each call.
 var (
 	clockOf    matcher.Clock
@@ -51,6 +62,33 @@ func TestClockOf(t *testing.T) {
 		clock := matcher.NewControlled(clockEpoch)
 		if got := matcher.ClockOf(&clockedSeat{clock: clock}); got != clock {
 			t.Fatalf("ClockOf() = %v, want the seat's clock", got)
+		}
+	})
+
+	t.Run("returns the clock of the seat that a seat wraps", func(t *testing.T) {
+		t.Parallel()
+
+		clock := matcher.NewControlled(clockEpoch)
+		if got := matcher.ClockOf(wrapper{wrapper{&clockedSeat{clock: clock}}}); got != clock {
+			t.Fatalf("ClockOf() = %v, want the clock of the wrapped seat", got)
+		}
+	})
+
+	t.Run("returns the clock of a wrapper that supplies its own", func(t *testing.T) {
+		t.Parallel()
+
+		inner, outer := matcher.NewControlled(clockEpoch), matcher.NewControlled(clockEpoch)
+		seat := clockWrapper{wrapper: wrapper{&clockedSeat{clock: inner}}, clock: outer}
+		if got := matcher.ClockOf(seat); got != outer {
+			t.Fatalf("ClockOf() = %v, want the wrapper's own clock", got)
+		}
+	})
+
+	t.Run("returns the runtime clock for a wrapper of a seat without a clock", func(t *testing.T) {
+		t.Parallel()
+
+		if got := matcher.ClockOf(wrapper{&bareSeat{}}); got != (matcher.System{}) {
+			t.Fatalf("ClockOf() = %v, want the runtime clock", got)
 		}
 	})
 }

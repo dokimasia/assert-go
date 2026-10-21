@@ -6,6 +6,8 @@ package record
 import (
 	"sync"
 	"sync/atomic"
+
+	"go.dokimi.dev/assert/internal/wrap"
 )
 
 // state is what Calls does with a record.
@@ -92,7 +94,9 @@ func (c *Calls) calls() *Calls {
 }
 
 // Of returns the Calls that keeps the record of a call on seat, and nil
-// when the call is not recorded:
+// when the call is not recorded. The chain of seat is the seat and the seats
+// that it wraps, as [wrap.As] walks it. Of takes the first seat of the chain
+// that keeps call records:
 //
 //   - A seat of this module that embeds a Calls has its Calls, unless that
 //     Calls records nothing.
@@ -101,24 +105,30 @@ func (c *Calls) calls() *Calls {
 //     reports true. A type that embeds the test's seat has the same Calls.
 //     The package keeps the Calls of a test for the life of the process,
 //     because a cleanup of the test can make calls until the test ends.
-//   - Any other seat has none.
+//
+// A chain without such a seat has none.
 //
 // # Allocation contract
 //
 // Of allocates nothing, except the Calls of a test on the test's first
 // recorded call.
 func Of(seat any) *Calls {
-	if k, ok := seat.(keeper); ok {
-		c := k.calls()
-		c.mu.Lock()
-		live := c.state != off
-		c.mu.Unlock()
-		if live {
-			return c
+	for ; seat != nil; seat = wrap.Unwrap(seat) {
+		if k, ok := seat.(keeper); ok {
+			c := k.calls()
+			c.mu.Lock()
+			live := c.state != off
+			c.mu.Unlock()
+			if live {
+				return c
+			}
+			return nil
 		}
-		return nil
+		if t, ok := seat.(attrSeat); ok {
+			return testCalls(t)
+		}
 	}
-	return testCalls(seat)
+	return nil
 }
 
 // Add gives c its number in calls and writes it, or keeps it until the

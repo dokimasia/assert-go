@@ -93,6 +93,6 @@
 //
 // # Dependency position
 //
-// Imports internal/matcher, internal/record, and the standard library's
-// cmp, context, fmt, runtime, sync and time.
+// Imports internal/matcher, internal/record, internal/wrap, and the
+// standard library's cmp, context, fmt, runtime, sync and time.
 package assert

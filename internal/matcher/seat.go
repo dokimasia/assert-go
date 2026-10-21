@@ -6,6 +6,8 @@ package matcher
 import (
 	"context"
 	"sync"
+
+	"go.dokimi.dev/assert/internal/wrap"
 )
 
 // Seat is where a matcher sends a failure or a fault.
@@ -24,16 +26,18 @@ type Seat interface {
 	Errorf(format string, args ...any)
 }
 
-// ContextOf returns the context of seat: the one that its method Context
-// returns, as testing.TB states one, and context.Background() for a seat
-// without that method or whose method returns nil.
+// ContextOf returns the context that the method Context of the first seat of
+// the chain of seat returns, as testing.TB states one. The chain is the seat
+// and the seats that it wraps, as [wrap.As] walks it. ContextOf returns
+// context.Background() for a chain without that method, and for a method
+// that returns nil.
 //
 // # Allocation contract
 //
 // ContextOf allocates nothing besides what the method Context of seat
 // allocates.
 func ContextOf(seat Seat) context.Context {
-	if s, ok := seat.(interface{ Context() context.Context }); ok {
+	if s, ok := wrap.As[interface{ Context() context.Context }](seat); ok {
 		if ctx := s.Context(); ctx != nil {
 			return ctx
 		}
@@ -91,11 +95,11 @@ func (b *bodyContext) end() {
 // FaultReporter is a [Seat] that takes a fault as the error it is, rather
 // than as the writer's text of it, as a [Reporter] takes a failure's record.
 //
-// A FaultReporter receives the fault of a call that ends without a verdict,
-// such as one of [Fault], with ending true, and a fault that [NoteFault]
-// notes for a call that runs on, with ending false. Any other seat receives
-// the writer's text of the first through Fatalf, and of the second through
-// its log.
+// The first FaultReporter of a seat's chain receives the fault of a call
+// that ends without a verdict, such as one of [Fault], with ending true, and
+// a fault that [NoteFault] notes for a call that runs on, with ending false.
+// A chain without a FaultReporter receives the writer's text of the first
+// through Fatalf of the seat, and of the second through its log.
 type FaultReporter interface {
 	ReportFault(err error, ending bool)
 }

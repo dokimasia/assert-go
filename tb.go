@@ -7,7 +7,15 @@ import (
 	"context"
 
 	"go.dokimi.dev/assert/internal/matcher"
+	"go.dokimi.dev/assert/internal/wrap"
 )
+
+// The packages of this module look for the methods of a seat along the
+// seats that it wraps, and none of them can name TB. This package registers
+// the function that calls Unwrap while it initialises.
+func init() {
+	wrap.Register(unwrap)
+}
 
 // TB is the seat that an assertion reports through.
 // [testing.T], [testing.B] and [Recorder] satisfy it.
@@ -16,6 +24,25 @@ import (
 // standard library implements it. This package declares TB so that any
 // type with these three methods is a seat, such as the seat of a
 // generated check body.
+//
+// A seat that wraps another seat declares a method Unwrap() TB, which
+// returns the seat that it wraps, or nil. An assertion calls Helper,
+// Fatalf and Errorf of the seat itself. It looks for every other method,
+// such as Report, Logf, Clock and Context, on the seat and then on each
+// seat that Unwrap returns, in order. The first seat that has the method
+// provides it, and the call records are those of the first seat that keeps
+// call records. A wrapper declares each method that it changes:
+//
+//	// handle is the seat of a check, with the clock that the check controls.
+//	type handle struct {
+//	    assert.TB
+//	    clock *assert.Controlled
+//	}
+//
+//	func (h *handle) Clock() assert.Clock { return h.clock }
+//	func (h *handle) Unwrap() assert.TB   { return h.TB }
+//
+// The seats that Unwrap returns must not lead back to the wrapper.
 type TB interface {
 	// Helper marks the calling function as a test helper, so a
 	// failure reports its caller's line.
@@ -26,12 +53,22 @@ type TB interface {
 	Errorf(format string, args ...any)
 }
 
-// Context returns the context of tb: the one that its method Context
-// returns, as *testing.T, *testing.B, *testing.F, a *prop.Case and a
-// [Recorder] state one, and context.Background() for a seat without that
-// method. The seat that [Rejects] hands its check, and the seat of each
-// attempt of [Eventually], state a context that derives from the context
-// of the assertion's seat and ends with the body.
+// unwrap returns the seat that seat wraps: the one that its method Unwrap
+// returns, and nil for a seat without Unwrap.
+func unwrap(seat any) any {
+	if w, ok := seat.(interface{ Unwrap() TB }); ok {
+		return w.Unwrap()
+	}
+	return nil
+}
+
+// Context returns the context that the method Context of tb returns, as
+// *testing.T, *testing.B, *testing.F, a *prop.Case and a [Recorder] state
+// one. A seat without the method gives the context of the first seat that
+// it wraps with the method, as [TB] states, and context.Background() when
+// it wraps none. The seat that [Rejects] hands its check, and the seat of
+// each attempt of [Eventually], state a context that derives from the
+// context of the assertion's seat and ends with the body.
 //
 // A helper that takes a TB passes the context to the code under test, so
 // that code receives the end of the test through any seat:

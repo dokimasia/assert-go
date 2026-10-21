@@ -49,13 +49,9 @@ type attrSeat interface {
 // map keeps each entry for the life of the process.
 var tests sync.Map
 
-// testCalls returns the Calls of a test's seat while [On] reports true, and
-// nil for any other seat.
-func testCalls(seat any) *Calls {
-	t, ok := seat.(attrSeat)
-	if !ok {
-		return nil
-	}
+// testCalls returns the Calls of the test of t while [On] reports true, and
+// nil while it reports false.
+func testCalls(t attrSeat) *Calls {
 	if on, _ := On(); !on {
 		return nil
 	}

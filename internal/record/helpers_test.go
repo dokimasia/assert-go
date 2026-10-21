@@ -32,6 +32,15 @@ func newKeeping() *keeping {
 	return k
 }
 
+// wrapper is a seat that wraps another seat, as the handle of a check does.
+// It has the three methods of the wrapped seat and Unwrap.
+type wrapper struct {
+	assert.TB
+}
+
+// Unwrap returns the wrapped seat.
+func (w wrapper) Unwrap() assert.TB { return w.TB }
+
 // body is the seat of one run of a body, as an attempt of Eventually is.
 type body struct {
 	calls

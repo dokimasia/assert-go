@@ -119,6 +119,15 @@ func TestVerdict(t *testing.T) {
 				t.Fatalf("the record states aborting %v, want false", got)
 			}
 		})
+		t.Run("writes the record of a call on a wrapper into the Calls of the seat that it wraps", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newKeepingSeat()
+			matcher.Pass(wrapper{seat}, matcher.Fatal, "true", "the claim is true")
+			if lines := seat.lines(t); len(lines) != 1 || lines[0]["assertion"] != "true" {
+				t.Fatalf("the wrapped seat keeps %v, want the record of the call of true", lines)
+			}
+		})
 	})
 
 	t.Run("Fail", func(t *testing.T) {
@@ -148,6 +157,38 @@ func TestVerdict(t *testing.T) {
 			matcher.Fail(seat, matcher.Fatal, f.Assertion, f.Contract, f.Detail)
 			if want := []string{matcher.Render(f)}; fmt.Sprint(seat.fatals) != fmt.Sprint(want) || len(seat.errs) != 0 {
 				t.Fatalf("Fatalf received %q and Errorf %q, want %q through Fatalf", seat.fatals, seat.errs, want)
+			}
+		})
+		t.Run("reports the record to the Reporter that a seat wraps", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &matchertest.Seat{}
+			detail := map[string]any{"want": 2, "got": 1}
+			matcher.Fail(wrapper{wrapper{seat}}, matcher.Fatal, "equal", "the values match", detail)
+			if records := seat.Records(); len(records) != 1 || records[0].Assertion != "equal" {
+				t.Fatalf("the wrapped seat received %v, want one record of equal", records)
+			}
+		})
+		t.Run("reports the record to the Reporter of the chain for a wrapper that changes Fatalf alone",
+			func(t *testing.T) {
+				t.Parallel()
+
+				inner := &matchertest.Seat{}
+				seat := &fatalWrapper{wrapper: wrapper{inner}}
+				matcher.Fail(seat, matcher.Fatal, "equal", "the values match", map[string]any{"want": 2, "got": 1})
+				if records := inner.Records(); len(records) != 1 || len(seat.fatals) != 0 {
+					t.Fatalf("the wrapped seat received %v and the wrapper's Fatalf %q, want one record and no text",
+						records, seat.fatals)
+				}
+			})
+		t.Run("sends the writer's text through Fatalf to a chain without Report", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &textSeat{}
+			f := matcher.Failure{Assertion: "true", Contract: "the flag is set"}
+			matcher.Fail(wrapper{seat}, matcher.Fatal, f.Assertion, f.Contract, nil)
+			if want := []string{matcher.Render(f)}; fmt.Sprint(seat.fatals) != fmt.Sprint(want) {
+				t.Fatalf("Fatalf received %q, want %q", seat.fatals, want)
 			}
 		})
 		t.Run("sends the writer's text through Errorf under Soft", func(t *testing.T) {
