@@ -212,9 +212,8 @@ jobs:
       - name: Require every job to pass or to skip
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
         run: exit 1
-  # The vendored definition is what this library is held to. A copy that does not match the
-  # manifest beside it fails, always. A copy that differs from upstream fails only when this change
-  # touched it: falling behind is allowed and an issue tracks it.
+  # The vendored definition is what this library is held to. spec check fails for a copy that
+  # differs from its manifest, and for a copy whose commit is not on the branch main of assert-spec.
   spec:
     name: Spec
     needs: skip
@@ -226,22 +225,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - name: Find whether the change touched the vendored copy
-        id: touched
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          if [ -z "$BASE" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
-            echo "strict=" >> "$GITHUB_OUTPUT"
-          elif git diff --name-only "$BASE" HEAD -- conformance/spec | grep -q .; then
-            echo "strict=--strict" >> "$GITHUB_OUTPUT"
-          else
-            echo "strict=" >> "$GITHUB_OUTPUT"
-          fi
+      - uses: stealth-scale/spec/.github/actions/setup-spec@78d70fd5be63102e43f8dd9628d4594914bb390e # v0.2.0
+        with:
+          version: v0.2.0
       - name: Check the vendored definition
         env:
-          STRICT: ${{ steps.touched.outputs.strict }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          ./tools/spec-check.sh conformance/spec $STRICT
+          spec check --remote

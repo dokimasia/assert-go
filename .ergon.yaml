@@ -139,7 +139,7 @@ license:
   # no header. A key here replaces the style that ergon resolves.
   styles: {}
   # The doublestar globs of the paths whose files have no header, such as testdata/**.
-  exclude: [tools/spec-check.sh, tools/spec-sync.sh]
+  exclude: []
   # The limit in minutes of the job license of ci.yml, which runs ergon license check.
   ci:
     actions: {}
