@@ -164,5 +164,6 @@ this document applies to every package, the internal ones included.
 - Golden files are stored under `testdata/golden` and compared with the
   `golden` package. `-update` rewrites them.
 - The vendored definition is stored in `conformance`, beside the package
-  that reads it, as `.spec.yaml` declares. `make spec-sync` refreshes it,
-  and nobody edits it by hand.
+  that reads it, as `.spec.yaml` declares.
+  `ergon tool run spec.spec -- sync` refreshes it, and nobody edits it by
+  hand.

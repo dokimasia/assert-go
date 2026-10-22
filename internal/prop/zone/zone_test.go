@@ -16,18 +16,18 @@ import (
 	"go.dokimi.dev/assert/internal/prop/zone"
 )
 
-// manifest is the vendored definition's manifest, which states the digest of
-// every file the definition vendors.
+// manifest is the path of the manifest of the vendored definition. The
+// manifest contains the digest of every file of the definition.
 var manifest = filepath.Join("..", "..", "..", "conformance", "manifest.json")
 
-// TestZone checks the zone list that the embedded table states.
+// TestZone checks the zone list of the embedded table.
 func TestZone(t *testing.T) {
 	t.Parallel()
 
 	t.Run("List", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("returns the sixteen zones with UTC first and unchanged", func(t *testing.T) {
+		t.Run("returns sixteen zones that start with UTC without a change", func(t *testing.T) {
 			t.Parallel()
 			zones := zone.List()
 			assert.Length(t, zones, 16, "the definition lists sixteen zones")
@@ -44,7 +44,7 @@ func TestZone(t *testing.T) {
 			assert.Equal(t, total, 2588, "the table states every change from 1900 until 2100")
 		})
 
-		t.Run("returns a change's instant and the offsets before and after it", func(t *testing.T) {
+		t.Run("returns the instant of a change with the offsets around it", func(t *testing.T) {
 			t.Parallel()
 			amsterdam := zone.List()[1]
 			assert.Equal(t, amsterdam.Name, "Europe/Amsterdam", "Amsterdam is the second zone")
@@ -52,7 +52,7 @@ func TestZone(t *testing.T) {
 				"the first change moves from UTC to an hour east")
 		})
 
-		t.Run("returns each zone's changes in time order, each from the offset before it", func(t *testing.T) {
+		t.Run("returns the changes of each zone in time order with continuous offsets", func(t *testing.T) {
 			t.Parallel()
 			for _, z := range zone.List() {
 				for i := 1; i < len(z.Changes); i++ {
@@ -71,8 +71,9 @@ func TestZone(t *testing.T) {
 	})
 }
 
-// TestZoneTable checks that the embedded table is the vendored definition's,
-// by the digest that the vendored manifest states for it.
+// TestZoneTable checks that the embedded table is the table of the vendored
+// definition. It compares the digest of the table with the digest in the
+// vendored manifest.
 func TestZoneTable(t *testing.T) {
 	t.Parallel()
 
@@ -86,7 +87,7 @@ func TestZoneTable(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(raw, &doc), "the manifest parses")
 	sum := sha256.Sum256(data)
 	assert.Equal(t, "sha256:"+hex.EncodeToString(sum[:]), doc.Files["spec/zones.json"],
-		"make spec-sync copied the table of the vendored definition")
+		"the embedded table has the digest of the table of the vendored definition")
 }
 
 // BenchmarkList measures List once the table is parsed.

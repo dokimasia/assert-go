@@ -828,7 +828,7 @@ make test       # the tests of every module
 make lint       # golangci-lint and its format check, in every module
 make race-go    # the tests of every module under the race detector
 make audit      # govulncheck, in every module
-make spec-sync  # refresh the vendored definition
+ergon tool run spec.spec -- sync  # refresh the vendored definition
 ```
 
 CI also runs markdownlint on every Markdown file and checks the licence
