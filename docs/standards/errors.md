@@ -174,6 +174,17 @@ type Error struct {
   wrapper again on the goroutine of the run. `synctest.Test` raises such a
   panic for a bubble that deadlocks. On one worker the goroutine of the run
   is the goroutine of the call.
+- `Fault` of `assert` and `expect` panics for a nil error, because a nil
+  error is not a fault. Its message starts with the package and names the
+  call: `assert: Fault(tb, nil) states no fault`.
+- `prop.Values` panics for a count below 0, and when its generator rejects
+  more than ten cases for each value. Its message starts with the package
+  and names the call: `prop: Values(g, 42, -1) states a count below 0`. A
+  panic of the generator passes through.
+- A draw of `prop.Of` panics inside its case when the reader refuses its
+  type under the generators that the run takes through `Using`. The message
+  is the message of `Of`: `prop: Of[shop.Order]: ` and the fault of the
+  reader.
 - No other code panics on purpose.
 - A `recover` exists only where a panic is what the code observes: an
   assertion about panics, the end of a property's case, the goroutine of

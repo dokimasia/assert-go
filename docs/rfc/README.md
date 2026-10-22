@@ -14,7 +14,7 @@ they record why not.
 | [0001](0001-the-go-implementation.md) | The Go assertion library | Accepted |
 | [0002](0002-the-property-engine.md) | The property engine in Go | Accepted |
 | [0003](0003-the-relation-family-in-go.md) | The relation family in Go | Accepted |
-| [0004](0004-property-forms-and-derived-inputs-in-go.md) | Property forms and derived inputs in Go | Accepted |
+| [0004](0004-property-forms-and-derived-inputs-in-go.md) | Property forms and derived inputs in Go | Accepted, superseded in part by [RFC-0022](0022-definition-10-in-go.md) |
 | [0005](0005-registrations-preconditions-and-the-helpers-of-a-concept.md) | Registrations, preconditions and the helpers of a concept | Accepted |
 | [0006](0006-the-kind-of-a-shape-fault.md) | The kind of a shape fault | Accepted |
 | [0007](0007-recording-every-assertion-call-and-the-writer.md) | Recording every assertion call, and the writer | Accepted |
@@ -28,7 +28,8 @@ they record why not.
 | [0015](0015-definition-7-in-go.md) | Definition 7.0.0 in Go | Accepted |
 | [0016](0016-definition-7-2-in-go.md) | Definition 7.2.0 in Go | Accepted |
 | [0017](0017-testing-the-consumers-before-a-release.md) | Testing the consumers before a release | Accepted |
-| [0018](0018-definition-8-in-go.md) | Definition 8.0.0 in Go | Accepted |
+| [0018](0018-definition-8-in-go.md) | Definition 8.0.0 in Go | Accepted, superseded in part by [RFC-0022](0022-definition-10-in-go.md) |
 | [0019](0019-seats-that-wrap-a-seat.md) | Seats that wrap a seat | Accepted |
 | [0020](0020-properties-in-a-synctest-bubble.md) | Properties in a synctest bubble | Withdrawn |
 | [0021](0021-definition-9-in-go.md) | Definition 9.0.0 in Go | Accepted |
+| [0022](0022-definition-10-in-go.md) | Definition 10.0.0 in Go | Accepted |
