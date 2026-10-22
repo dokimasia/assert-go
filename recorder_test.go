@@ -5,6 +5,7 @@ package assert_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/alloctest"
 	"go.dokimi.dev/assert/internal/childtest"
+	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/record"
 )
 
@@ -20,6 +22,7 @@ import (
 var (
 	recorder        *assert.Recorder
 	failures        []assert.Failure
+	faults          []error
 	lines           []string
 	messages        []string
 	message         string
@@ -98,6 +101,64 @@ func TestRecorder(t *testing.T) {
 
 			if assert.NewRecorder().Failed() {
 				t.Fatal("Failed() = true on a fresh recorder")
+			}
+		})
+	})
+
+	t.Run("ReportFault", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("keeps a fault that ends its call and fails the recorder with its text", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			r.ReportFault(errMissingOption, true)
+
+			if kept := r.Faults(); len(kept) != 1 || !errors.Is(kept[0], errMissingOption) {
+				t.Fatalf("Faults() = %v, want %v", kept, errMissingOption)
+			}
+			if !r.Failed() || r.Message() != matcher.RenderFault(errMissingOption) {
+				t.Fatalf("Failed() = %v and Message() = %q, want a failure with the writer's text of the fault",
+					r.Failed(), r.Message())
+			}
+		})
+
+		t.Run("keeps a noted fault without failing the recorder", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			r.ReportFault(errMissingOption, false)
+
+			if kept := r.Faults(); len(kept) != 1 || !errors.Is(kept[0], errMissingOption) {
+				t.Fatalf("Faults() = %v, want %v", kept, errMissingOption)
+			}
+			if r.Failed() {
+				t.Fatalf("Failed() = true with the message %q, want no failure for a noted fault", r.Message())
+			}
+		})
+	})
+
+	t.Run("Faults", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns nothing for a recorder that received no fault", func(t *testing.T) {
+			t.Parallel()
+
+			if got := assert.NewRecorder().Faults(); len(got) != 0 {
+				t.Fatalf("Faults() = %v, want none", got)
+			}
+		})
+
+		t.Run("returns every fault in call order", func(t *testing.T) {
+			t.Parallel()
+
+			second := errors.New("the store cannot write its entry")
+			r := assert.NewRecorder()
+			r.ReportFault(second, false)
+			r.ReportFault(errMissingOption, true)
+
+			if got := r.Faults(); len(got) != 2 || !errors.Is(got[0], second) || !errors.Is(got[1], errMissingOption) {
+				t.Fatalf("Faults() = %v, want the noted fault and then the fault that ended the call", got)
 			}
 		})
 	})
@@ -302,7 +363,9 @@ func recorderCases() []alloctest.Case {
 		{Name: "NewRecorder", Call: func(assert.TB) { recorder = assert.NewRecorder() }, Allocs: 2},
 		{Name: "WithGoexit", Call: func(assert.TB) { goexits.WithGoexit() }},
 		{Name: "Report", Call: func(assert.TB) { full.Report(f, false) }, Allocs: 3},
+		{Name: "ReportFault", Call: func(assert.TB) { full.ReportFault(errMissingOption, false) }, Allocs: 2},
 		{Name: "Failures", Call: func(assert.TB) { failures = full.Failures() }, Allocs: 2},
+		{Name: "Faults", Call: func(assert.TB) { faults = full.Faults() }, Allocs: 2},
 		{Name: "Records", Call: func(assert.TB) { lines = full.Records() }, Allocs: 2},
 		{Name: "Clock", Call: func(assert.TB) { recorderClock = full.Clock() }},
 		{Name: "WithClock", Call: func(assert.TB) { full.WithClock(clock) }},

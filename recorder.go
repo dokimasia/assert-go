@@ -24,7 +24,8 @@ type calls = record.Calls
 // that continues reports each one.
 //
 // [Recorder.Records] returns the call record of every assertion call that
-// a Recorder receives. [Recorder.Context] returns the context that
+// a Recorder receives, and [Recorder.Faults] every fault that it receives
+// as the error it is. [Recorder.Context] returns the context that
 // [Recorder.WithContext] gave it, which [Context] reads.
 //
 // Call [NewRecorder] for a Recorder: the zero value is not usable.
@@ -54,6 +55,9 @@ type Recorder struct {
 	// order, whether fatal or not. An assertion reports one, and a
 	// message passed to Fatalf or Errorf directly leaves none.
 	records []Failure
+	// faults contains every fault that arrived as the error it is, in call
+	// order, whether it ended its call or not.
+	faults []error
 	// helpers counts Helper calls, so a test can check an assertion
 	// marks its own frame.
 	helpers int
@@ -119,6 +123,44 @@ func (r *Recorder) Report(f Failure, aborting bool) {
 		return
 	}
 	r.Errorf("%s", matcher.Render(f))
+}
+
+// ReportFault keeps err among the faults of the Recorder, which
+// [Recorder.Faults] returns. A fault with ending true fails the Recorder,
+// as [Recorder.Fatalf] does with the writer's text of err. A fault with
+// ending false, which a call notes and runs on past, does not fail it.
+//
+// ReportFault makes a Recorder a [FaultReporter]: an assertion and [Fault]
+// pass it a fault as the error it is, so a test matches the error with
+// errors.Is instead of searching its text.
+//
+// # Allocation contract
+//
+// ReportFault of a noted fault allocates nothing besides the growth of the
+// list of faults, which allocates once on average. A fault that ends its
+// call also allocates the writer's text of the fault. The Recorder keeps
+// every fault, so its memory grows with each call.
+func (r *Recorder) ReportFault(err error, ending bool) {
+	r.mu.Lock()
+	r.faults = append(r.faults, err)
+	r.mu.Unlock()
+
+	if ending {
+		r.Fatalf("%s", matcher.RenderFault(err))
+	}
+}
+
+// Faults returns every fault that arrived through [Recorder.ReportFault],
+// in call order. The slice is a fresh copy.
+//
+// # Allocation contract
+//
+// Faults allocates once: the copy.
+func (r *Recorder) Faults() []error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return append([]error(nil), r.faults...)
 }
 
 // Failures returns every record that arrived, in call order. The slice
