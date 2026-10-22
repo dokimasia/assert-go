@@ -26,7 +26,8 @@ type using struct {
 // and of the input of a property form that is a T or contains one. It takes
 // precedence over the generator that [Register] states and over T's shape.
 // A second Using of one type replaces the first. A draw of any other
-// generator, such as [Integer], decodes as the generator states.
+// generator, such as [Integer], decodes as the generator states. [Values]
+// takes the option too, and applies it as a run does.
 //
 //	prop.ForAll(t, "a shipped order has a line", func(c *prop.Case) {
 //		order := c.Draw(prop.Of[Order](), "order")
@@ -52,7 +53,7 @@ func Using[T any](g Generator[T]) Option {
 	return Option{set: func(c config) config {
 		c.using = append(c.using, u)
 		return c
-	}}
+	}, fromUsing: true}
 }
 
 // generators are the generators that the options of one run state for

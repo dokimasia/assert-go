@@ -353,6 +353,8 @@ prop.ForAll(t, "a shipped order has a line", func(c *prop.Case) {
 `prop.Values(g, seed, n)` returns the values of the first random cases of
 a seed, which are the same in every implementation of the standard. A
 benchmark takes its inputs from it, so every run measures the same inputs.
+`Values` also takes the options of `prop.Using`, so the benchmark and a run
+of the property draw from one domain.
 
 A failure states the counterexample, the seed and a replay token.
 `prop.Replay` and `DOKIMI_ASSERT_PROP_REPLAY` run the token's case again.

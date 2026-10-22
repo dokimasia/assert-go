@@ -26,6 +26,34 @@ func sumAbove(xs []int, n int) bool {
 	return sum > n
 }
 
+// valuesStatus is an enumeration over int. Go states no members of it, so
+// its shape is the shape of an int.
+type valuesStatus int
+
+const (
+	pendingStatus valuesStatus = iota + 1
+	paidStatus
+	shippedStatus
+)
+
+// valuesOrder is an order with its status and its number of lines.
+type valuesOrder struct {
+	Status valuesStatus
+	Lines  int
+}
+
+// undeclared returns the number of orders whose status is not one of the
+// three members.
+func undeclared(orders []valuesOrder) int {
+	n := 0
+	for _, o := range orders {
+		if o.Status < pendingStatus || o.Status > shippedStatus {
+			n++
+		}
+	}
+	return n
+}
+
 // TestValues checks the values of a generator for a seed against the
 // generation vectors of the definition.
 func TestValues(t *testing.T) {
@@ -59,6 +87,58 @@ func TestValues(t *testing.T) {
 
 			first := prop.Values(prop.Integer(-100, 100), 42, 3)
 			assert.Equal(t, prop.Values(prop.Integer(-100, 100), 42, 6)[:3], first, "the first three values")
+		})
+
+		t.Run("decodes a draw of Of with the generator that Using states", func(t *testing.T) {
+			t.Parallel()
+
+			got := prop.Values(prop.Of[int](), 42, 3, prop.Using(prop.Just(7)))
+			assert.Equal(t, got, []int{7, 7, 7}, "every value is 7")
+		})
+
+		t.Run("generates each value of a stated type inside a derived value", func(t *testing.T) {
+			t.Parallel()
+
+			members := prop.SampledFrom(pendingStatus, paidStatus, shippedStatus)
+			stated := prop.Values(prop.Of[valuesOrder](), 42, 100, prop.Using(members))
+			assert.Equal(t, undeclared(stated), 0, "every order has a declared status")
+			assert.Equal(t, undeclared(prop.Values(prop.Of[valuesOrder](), 42, 100)), 96,
+				"the shape of an int gives 96 orders a status outside the members")
+		})
+
+		t.Run("decodes a draw of the stated type inside its generator without it", func(t *testing.T) {
+			t.Parallel()
+
+			above := prop.Of[int]().Map(func(x int) int { return x + 100 })
+			want := prop.Values(prop.Of[int](), 42, 3)
+			for i := range want {
+				want[i] += 100
+			}
+			got := prop.Values(prop.Of[int](), 42, 3, prop.Using(above))
+			assert.Equal(t, got, want, "each value is 100 above the int of the shape")
+		})
+
+		t.Run("takes the later Using of one type", func(t *testing.T) {
+			t.Parallel()
+
+			got := prop.Values(prop.Of[int](), 42, 2, prop.Using(prop.Just(1)), prop.Using(prop.Just(2)))
+			assert.Equal(t, got, []int{2, 2}, "the later option applies")
+		})
+
+		t.Run("takes the zero Option", func(t *testing.T) {
+			t.Parallel()
+
+			got := prop.Values(prop.Integer(-100, 100), 42, 3, prop.Option{})
+			assert.Equal(t, got, []int{11, 0, 76}, "the values of the first three cases of seed 42")
+		})
+
+		t.Run("panics for an option of another setting", func(t *testing.T) {
+			t.Parallel()
+
+			got := assert.Panics(t, func() { prop.Values(prop.Integer(0, 9), 42, 3, prop.Seed(1)) },
+				"an option of Seed")
+			assert.Equal(t, got, any("prop: Values(g, 42, 3) states an option other than Using"),
+				"the panic names the call")
 		})
 
 		t.Run("returns no value for n of 0", func(t *testing.T) {

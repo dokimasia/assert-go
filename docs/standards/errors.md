@@ -177,10 +177,11 @@ type Error struct {
 - `Fault` of `assert` and `expect` panics for a nil error, because a nil
   error is not a fault. Its message starts with the package and names the
   call: `assert: Fault(tb, nil) states no fault`.
-- `prop.Values` panics for a count below 0, and when its generator rejects
-  more than ten cases for each value. Its message starts with the package
-  and names the call: `prop: Values(g, 42, -1) states a count below 0`. A
-  panic of the generator passes through.
+- `prop.Values` panics for a count below 0, for an option that states a
+  setting other than `Using`, and when its generator rejects more than ten
+  cases for each value. Its message starts with the package and names the
+  call: `prop: Values(g, 42, -1) states a count below 0`. A panic of the
+  generator passes through.
 - A draw of `prop.Of` panics inside its case when the reader refuses its
   type under the generators that the run takes through `Using`. The message
   is the message of `Of`: the prefix `prop: Of[shop.Order]:` and the fault

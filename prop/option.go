@@ -31,6 +31,8 @@ const defaultShrinkTime time.Duration = 30000000000
 type Option struct {
 	// set returns the settings of a run with the option's setting applied.
 	set func(config) config
+	// fromUsing reports whether [Using] returned the option.
+	fromUsing bool
 }
 
 // Cases sets the number of valid cases a run aims for, 100 by default. A
