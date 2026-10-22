@@ -10,9 +10,7 @@ import (
 	"path/filepath"
 )
 
-// Definition is the version of the definition that this module implements,
-// which every call record states.
-const Definition = "10.0.0"
+//go:generate go run definition.go
 
 // Verdict is how a call ended.
 type Verdict string
