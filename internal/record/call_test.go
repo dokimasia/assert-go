@@ -31,7 +31,7 @@ func TestCall(t *testing.T) {
 					Assertion: "equal", Contract: "the count is right", Verdict: record.Pass, Aborting: true,
 					Where: record.Where{File: "/src/shop/store_test.go", Line: 42},
 				},
-				want: `{"definition":"9.0.0","seq":1,"assertion":"equal","contract":"the count is right",` +
+				want: `{"definition":"10.0.0","seq":1,"assertion":"equal","contract":"the count is right",` +
 					`"verdict":"pass","aborting":true,"where":{"file":"store_test.go","line":42}}`,
 			},
 			{
@@ -40,7 +40,7 @@ func TestCall(t *testing.T) {
 					Assertion: "equal", Contract: "the name is kept", Verdict: record.Fail,
 					Detail: json.RawMessage(`{"got":{"type":"string","value":"ada"}}`),
 				},
-				want: `{"definition":"9.0.0","seq":1,"assertion":"equal","contract":"the name is kept",` +
+				want: `{"definition":"10.0.0","seq":1,"assertion":"equal","contract":"the name is kept",` +
 					`"verdict":"fail","aborting":false,"detail":{"got":{"type":"string","value":"ada"}}}`,
 			},
 			{
@@ -51,7 +51,7 @@ func TestCall(t *testing.T) {
 					Verdict:   record.Fail,
 					Detail:    json.RawMessage(`{}`),
 				},
-				want: `{"definition":"9.0.0","seq":1,"assertion":"true","contract":"the flag is set",` +
+				want: `{"definition":"10.0.0","seq":1,"assertion":"true","contract":"the flag is set",` +
 					`"verdict":"fail","aborting":false,"detail":{}}`,
 			},
 			{
@@ -63,13 +63,13 @@ func TestCall(t *testing.T) {
 					Aborting:  true,
 					Error:     "prop.ForAll: no",
 				},
-				want: `{"definition":"9.0.0","seq":1,"assertion":"prop-for-all","contract":"c",` +
+				want: `{"definition":"10.0.0","seq":1,"assertion":"prop-for-all","contract":"c",` +
 					`"verdict":"error","aborting":true,"error":"prop.ForAll: no"}`,
 			},
 			{
 				name: "writes the characters of HTML unescaped",
 				give: call("equal", "a <b> & c"),
-				want: `{"definition":"9.0.0","seq":1,"assertion":"equal","contract":"a <b> & c",` +
+				want: `{"definition":"10.0.0","seq":1,"assertion":"equal","contract":"a <b> & c",` +
 					`"verdict":"pass","aborting":true}`,
 			},
 		}

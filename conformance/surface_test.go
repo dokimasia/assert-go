@@ -330,6 +330,7 @@ var pinned = map[conformance.ID]any{
 	"failure":          assert.Failure{},
 	"where":            assert.Where{},
 	"reporter":         (*assert.Reporter)(nil),
+	"fault-reporter":   (*assert.FaultReporter)(nil),
 	"clocked":          (*assert.Clocked)(nil),
 	"assertion":        (*assert.Assertion[int])(nil),
 
@@ -340,6 +341,7 @@ var pinned = map[conformance.ID]any{
 	"failure.got":          assert.Failure.Got,
 	"failure.case-failure": assert.Failure.CaseFailure,
 	"seat.report":          assert.Reporter.Report,
+	"seat.report-fault":    assert.FaultReporter.ReportFault,
 
 	"seat.clock":               assert.Clocked.Clock,
 	"clock.now":                assert.Clock.Now,
@@ -354,12 +356,15 @@ var pinned = map[conformance.ID]any{
 	"seat.record":       assert.TB.Errorf,
 	"seat.cancellation": testing.TB.Context,
 	"cancellation-of":   assert.Context,
+	"fault":             assert.Fault,
+	"allocs-checked":    assert.AllocsChecked,
 
 	"recorder-seat.failed":       (*assert.Recorder).Failed,
 	"recorder-seat.message":      (*assert.Recorder).Message,
 	"recorder-seat.messages":     (*assert.Recorder).Messages,
 	"recorder-seat.helper-calls": (*assert.Recorder).HelperCalls,
 	"recorder-seat.records":      (*assert.Recorder).Records,
+	"recorder-seat.faults":       (*assert.Recorder).Faults,
 
 	"contract.loop":         (*bench.Contract).Loop,
 	"contract.check":        (*bench.Contract).End,
@@ -420,6 +425,7 @@ var pinned = map[conformance.ID]any{
 
 	"prop.of":                prop.Of[int],
 	"prop.of-shape":          prop.OfShape,
+	"prop.values":            prop.Values[int],
 	"prop.shape-of":          prop.ShapeOf[int],
 	"prop.register":          prop.Register[int],
 	"prop.register-values":   prop.RegisterValues[int],

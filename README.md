@@ -112,6 +112,11 @@ order. A subject that panics before the check's own assertion runs
 satisfies a bare call. `expect.Rejects` records its failure and lets the
 test continue.
 
+A fault that ends the check, such as a fault of this module or one that a
+helper passes to `assert.Fault`, ends the call of `Rejects` with the same
+fault. `Rejects` then returns nil, because the check did not decide about
+the implementation.
+
 A helper reads the context of its seat with `assert.Context`, and passes
 it to the code under test. The context is the test's own on a
 `*testing.T`, and `NewRecorder().WithContext(ctx)` gives a recorder one.
@@ -124,6 +129,19 @@ func loaded(tb assert.TB, path string) *catalog.Catalog {
     c, err := catalog.Load(assert.Context(tb), path)
     assert.NoError(tb, err, "the catalog at "+path+" loads")
     return c
+}
+```
+
+A helper that refuses its arguments ends its call with `assert.Fault`. The
+faults of this module end their calls the same way. The first seat of the
+chain that is an `assert.FaultReporter` receives the fault as the error it
+is. Any other seat receives its text through `Fatalf`. `Recorder.Faults`
+returns each fault that a recorder received:
+
+```go
+if path == "" {
+    assert.Fault(tb, fmt.Errorf("%w: the path is empty", ErrArgument))
+    return nil
 }
 ```
 
@@ -262,7 +280,7 @@ calls it does not call `t.Parallel`. A ceiling of 0 admits one
 allocation in all, so it fails a function that allocates on 2 of the 100
 calls. Any other ceiling compares with the average per call, rounded to
 the nearest whole number, and a half rounds up. A count that exceeds the
-ceiling is taken again, three times at most, so a function that grows a
+ceiling is taken again, ten times at most, so a function that grows a
 slice in the first count passes at the second.
 
 `MaxAllocsWithSetup` counts a function whose input a setup builds before
@@ -286,6 +304,17 @@ allocates in some calls of package `os`, such as an `Open` through an
 the test's log. A run with `-count=1`, `-covermode` or `-bench` turns the
 cache off, writes no test log and checks the ceilings.
 
+`assert.AllocsChecked` reports whether the run checks allocation ceilings,
+and names the build or the run that stops it. A harness that falsifies a
+ceiling reads it first, because a ceiling that the run does not check
+passes an implementation that exceeds it:
+
+```go
+if checked, reason := assert.AllocsChecked(); !checked {
+    t.Skipf("the run does not check allocation ceilings: %s", reason)
+}
+```
+
 ## Properties
 
 `prop.ForAll` runs a body against generated inputs. When a case fails,
@@ -308,6 +337,22 @@ the phases of a run and the shrink passes. A seed gives the same inputs
 in each implementation of the standard, and a failure shrinks to the same
 counterexample in each. Every assertion works in the body, because the
 case is a seat.
+
+`prop.Using` states the generator of a type for one run of `ForAll`,
+`Fuzz` or a form, in place of the generator that `prop.Of[T]()` derives
+from the type's shape. Each draw of `Of` in that run takes it, at every
+place of the type inside the drawn value:
+
+```go
+prop.ForAll(t, "a shipped order has a line", func(c *prop.Case) {
+    order := c.Draw(prop.Of[Order](), "order")
+    assert.True(c, order.Status != Shipped || len(order.Lines) > 0, "the order has a line")
+}, prop.Using(prop.SampledFrom(Pending, Paid, Shipped)))
+```
+
+`prop.Values(g, seed, n)` returns the values of the first random cases of
+a seed, which are the same in every implementation of the standard. A
+benchmark takes its inputs from it, so every run measures the same inputs.
 
 A failure states the counterexample, the seed and a replay token.
 `prop.Replay` and `DOKIMI_ASSERT_PROP_REPLAY` run the token's case again.
@@ -669,7 +714,7 @@ the relation, except where the relation requires a failure.
 
 | Name | What it states |
 |---|---|
-| `MaxAllocs` | A callable makes at most a stated number of heap allocations per call. One call warms it first, and a count covers the 100 calls after it. A ceiling of 0 admits one allocation in all. Any other ceiling compares with the average per call, rounded to the nearest whole number, and a half rounds up. A count that exceeds the ceiling is taken again, three times at most. |
+| `MaxAllocs` | A callable makes at most a stated number of heap allocations per call. One call warms it first, and a count covers the 100 calls after it. A ceiling of 0 admits one allocation in all. Any other ceiling compares with the average per call, rounded to the nearest whole number, and a half rounds up. A count that exceeds the ceiling is taken again, ten times at most. |
 | `MaxAllocsWithSetup` | A callable makes at most a stated number of heap allocations per call on an input that a setup builds before each call. The setup is not counted. One setup and one call warm both first, and each count is checked as `MaxAllocs` checks it. |
 
 ### Golden files
@@ -723,7 +768,7 @@ the relation, except where the relation requires a failure.
 
 | Name | What it states |
 |---|---|
-| `Rejects` | A check fails against an implementation it is meant to reject. Yields the failure records of the check, in call order. |
+| `Rejects` | A check fails against an implementation it is meant to reject. Yields the failure records of the check, in call order. A fault that ends the check ends the call with the same fault. |
 
 ## The standard
 
