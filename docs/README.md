@@ -13,6 +13,11 @@ Where each kind of document is kept, and which one to write.
 | `roadmap/` | What we build in what order, and what has to be true first | Work needs sequencing rather than justifying |
 | `rfc/` | Proposals and the argument behind them | A change alters a contract, or several approaches are worth comparing |
 | `adr/` | Decisions already made, and what they cost | One decision is settled and no credible alternative is still open |
+| `standards/` | The rules that every package follows | A rule applies to every change, and an RFC amends it |
+
+`migrating.md` states what a caller changes to move a test to this
+library: the comparison of a nil collection, the names, the assertions
+that the library removed, and the method that the seat gained.
 
 Milestone numbers are in `roadmap/` and nowhere else.
 

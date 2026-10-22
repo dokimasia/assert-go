@@ -34,7 +34,7 @@ Get returns the stored item: (-want +got)
 go get go.dokimi.dev/assert
 ```
 
-Requires Go 1.27. No dependency outside the standard library.
+Requires Go 1.27.2. No dependency outside the standard library.
 
 ## Two surfaces
 
@@ -82,9 +82,9 @@ stated instead:
 
 The first is the one that catches people. `[]int(nil)` and `[]int{}`
 are different answers, and a test may need to tell them apart. The
-same assertions exist in Python, PHP and TypeScript, where `None`,
-`null` and `undefined` are distinct from an empty list; equating them
-everywhere would make those libraries report values they were never
+same assertions exist in Python, Java, Kotlin and TypeScript, where
+`None`, `null` and `undefined` are distinct from an empty list. Equating
+them everywhere would make those libraries report values they were never
 given.
 
 An option applies to the call it is passed to and to nothing else.
@@ -539,7 +539,7 @@ binary `custom-gcl` from a `.custom-gcl.yml`:
 version: v2.14.0
 plugins:
   - module: go.dokimi.dev/assert/lint/golangci
-    version: v0.1.0
+    version: v0.1.1
 ```
 
 Enable the linter in `.golangci.yml`, and set both limits to 0. By default
@@ -778,11 +778,16 @@ every property form but `prop-max-allocs` and
 ## Development
 
 ```sh
-make check      # the full pre-merge gate
-make test       # tests
-make lint       # vet, golangci-lint, markdown, licence headers, vulnerabilities
+make check      # the gate: lint, the tests, the race detector, govulncheck and the vendored definition
+make test       # the tests of every module
+make lint       # golangci-lint and its format check, in every module
+make race-go    # the tests of every module under the race detector
+make audit      # govulncheck, in every module
 make spec-sync  # refresh the vendored definition
 ```
+
+CI also runs markdownlint on every Markdown file and checks the licence
+header of every file.
 
 ## Licence
 
