@@ -32,9 +32,17 @@ import "go.dokimi.dev/assert/internal/matcher"
 //	assert.Equal(t, got[0].Contract, "the pool is then empty",
 //	    "and fails for the reason the check is about")
 //
-// A message that fn passes to Fatalf or Errorf of its seat, and a fault of
-// this module, fail fn without a record. Rejects passes then, and returns
-// the records of fn's assertions alone.
+// A message that fn passes to Fatalf or Errorf of its seat fails fn without
+// a record. Rejects passes then, and returns the records of fn's assertions
+// alone.
+//
+// A fault that ends fn ends the call of Rejects with the same fault. The
+// fault can be a fault of this module or one that a helper passes to
+// [Fault]. A check that ends with a fault has no verdict on the
+// implementation, so it rejects nothing. The call record of Rejects states
+// the verdict error, Rejects passes the fault to tb as Fault does, and it
+// returns nil. A fault that fn notes and runs on past passes to tb as a
+// noted fault.
 //
 // The call records of the assertions that fn calls are recorded under
 // the call of Rejects, as its run 1.

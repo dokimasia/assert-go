@@ -4,10 +4,14 @@
 package matchertest
 
 import (
+	"errors"
 	"testing"
 
 	"go.dokimi.dev/assert/internal/matcher"
 )
+
+// errCheckFault is the fault that a check of rejects ends with.
+var errCheckFault = errors.New("matchertest: the check refuses its subject's configuration")
 
 // RejectsInvoke calls a surface's assertion that a check fails, on a check
 // that reports through the matcher on the seat that the surface hands it.
@@ -88,6 +92,45 @@ func RunRejects(t *testing.T, invoke RejectsInvoke) {
 			t.Fatalf("returned %+v and ran on: %v, want no record and a check that Errorf let run", got, reached)
 		}
 	})
+
+	t.Run("ends with the fault that ends the check, and returns no record", func(t *testing.T) {
+		t.Parallel()
+
+		reached := false
+		seat := &Seat{}
+		got := invoke(seat, contractMsg, func(s matcher.Seat) {
+			matcher.Equal(s, matcher.Soft, 2, 1, "the value is one")
+			matcher.End(s, errCheckFault)
+			reached = true
+		})
+
+		if faults := seat.Faults(); len(faults) != 1 || !errors.Is(faults[0], errCheckFault) {
+			t.Fatalf("the seat received the faults %v, want the fault that ended the check", faults)
+		}
+		if len(got) != 0 || reached || len(seat.Records()) != 0 {
+			t.Fatalf("returned %+v, ran on: %v, and reported the records %+v, "+
+				"want no record and a check that the fault stopped", got, reached, seat.Records())
+		}
+	})
+
+	t.Run("passes a fault that the check notes to its seat, and passes for a check that then fails",
+		func(t *testing.T) {
+			t.Parallel()
+
+			seat := &Seat{}
+			got := invoke(seat, contractMsg, func(s matcher.Seat) {
+				matcher.NoteFault(s, errCheckFault)
+				matcher.True(s, matcher.Fatal, false, "the check fails")
+			})
+
+			checkOutcome(t, seat, Case{})
+			if faults := seat.Faults(); len(faults) != 1 || !errors.Is(faults[0], errCheckFault) {
+				t.Fatalf("the seat received the faults %v, want the noted fault", faults)
+			}
+			if len(got) != 1 || got[0].Assertion != "true" {
+				t.Fatalf("returned %+v, want the record of the failure after the noted fault", got)
+			}
+		})
 
 	t.Run("reports a record of rejects without detail for a check that passes", func(t *testing.T) {
 		t.Parallel()

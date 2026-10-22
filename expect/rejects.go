@@ -22,6 +22,9 @@ import (
 // failure that stops, and the call records of fn are recorded under the
 // call of Rejects, as its run 1.
 //
+// A fault that ends fn ends the call of Rejects with the same fault, as it
+// ends the call of [assert.Rejects], and Rejects returns nil.
+//
 // # Concurrency
 //
 // fn runs on a goroutine of its own and this call blocks until it

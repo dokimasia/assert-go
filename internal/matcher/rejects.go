@@ -11,15 +11,15 @@ import (
 )
 
 // rejection is the seat of the check that [Rejects] drives. It keeps each
-// record of the check in call order, and whether the check failed at all.
-// Its Calls keep the records of the check's calls, for the call of Rejects.
-// Its context derives from the context of the seat of Rejects, and ends
-// with the check.
+// record of the check in call order, whether the check failed at all, and
+// the fault that ended the check. Its Calls keep the records of the check's
+// calls, for the call of Rejects. Its context derives from the context of
+// the seat of Rejects, and ends with the check.
 //
-// Fatalf and an aborting record end the calling goroutine once they are
-// kept, as a test's Fatalf ends a test, so the check stops at its first
-// failure that stops. The check runs on a goroutine of its own for that
-// reason.
+// Fatalf, an aborting record and a fault that ends its call end the calling
+// goroutine once they are kept, as a test's Fatalf ends a test, so the check
+// stops at its first failure that stops. The check runs on a goroutine of
+// its own for that reason.
 //
 // It is not the public recorder, because the package that declares the
 // recorder imports this one.
@@ -30,6 +30,9 @@ type rejection struct {
 	mu      sync.Mutex
 	failed  bool
 	records []Failure
+	// fault is the fault that ended the check, and nil for a check that no
+	// fault ended.
+	fault error
 }
 
 func (*rejection) Helper() {}
@@ -55,6 +58,21 @@ func (r *rejection) Report(f Failure, aborting bool) {
 	}
 }
 
+// ReportFault keeps a fault that ends its call and ends the check, as a
+// failure that stops ends it. It passes a noted fault to the seat of
+// Rejects, as [NoteFault] notes it there, and the check runs on.
+func (r *rejection) ReportFault(err error, ending bool) {
+	if !ending {
+		NoteFault(r.parent, err)
+		return
+	}
+	r.mu.Lock()
+	r.fault = err
+	r.mu.Unlock()
+
+	runtime.Goexit()
+}
+
 // mark marks the check failed.
 func (r *rejection) mark() {
 	r.mu.Lock()
@@ -63,12 +81,13 @@ func (r *rejection) mark() {
 	r.failed = true
 }
 
-// outcome returns a copy of the check's records, and whether it failed.
-func (r *rejection) outcome() (records []Failure, failed bool) {
+// outcome returns a copy of the check's records, whether it failed, and the
+// fault that ended it.
+func (r *rejection) outcome() (records []Failure, failed bool, fault error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	return append([]Failure(nil), r.records...), r.failed
+	return append([]Failure(nil), r.records...), r.failed, r.fault
 }
 
 // Rejects runs fn against an implementation that fn is meant to reject,
@@ -78,8 +97,11 @@ func (r *rejection) outcome() (records []Failure, failed bool) {
 //
 // fn receives a seat of its own, which keeps every record of fn and ends
 // fn at its first failure that stops, as a test's Fatalf ends a test. A
-// message that fn passes to Fatalf or Errorf of that seat, and a fault of
-// this module, fail fn without a record. The calls of fn are recorded under
+// message that fn passes to Fatalf or Errorf of that seat fails fn without a
+// record. A fault that ends fn ends the call of Rejects with the same fault,
+// through [Running.Fault], and Rejects returns no record: a check that ends
+// with a fault has no verdict on the implementation. A fault that fn notes
+// passes to seat as [NoteFault] notes it. The calls of fn are recorded under
 // the call of Rejects, as its run 1. The seat's context derives from the
 // context of seat, as [ContextOf] reads it, and Rejects cancels it when fn
 // ends.
@@ -113,7 +135,11 @@ func Rejects(seat Seat, mode Mode, msg string, fn func(Seat)) []Failure {
 	r.end()
 	run.Slot().Take(&r.calls, record.NoPhase)
 
-	records, failed := r.outcome()
+	records, failed, fault := r.outcome()
+	if fault != nil {
+		run.Fault(mode, "rejects", msg, fault)
+		return nil
+	}
 	if !failed {
 		run.Fail(mode, "rejects", msg, nil)
 		return records

@@ -69,6 +69,23 @@ func TestRejects(t *testing.T) {
 			}
 		})
 
+		t.Run("records the verdict error and the text of a fault that ends the check", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newKeepingSeat()
+			err := errors.New("the check refuses its subject's configuration")
+			matcher.Rejects(seat, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				matcher.End(s, err)
+			})
+
+			lines := seat.lines(t)
+			if len(lines) != 1 || lines[0]["assertion"] != "rejects" || lines[0]["verdict"] != "error" ||
+				lines[0]["error"] != matcher.RenderFault(err) {
+
+				t.Fatalf("wrote %v, want the call of rejects with the verdict error and the text of the fault", lines)
+			}
+		})
+
 		t.Run("returns the records that the check reports from a goroutine of its own", func(t *testing.T) {
 			t.Parallel()
 
