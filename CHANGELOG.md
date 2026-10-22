@@ -1,5 +1,19 @@
 # go.dokimi.dev/assert
 
+## 0.6.0
+
+### Minor Changes
+
+- 98515bc: Add `AllocsChecked` to `assert` and `expect` to report whether a run checks allocation ceilings.
+- ff0c1d8: Add `Fault` and `FaultReporter` to `assert` and `expect`, and `Recorder.ReportFault` and `Recorder.Faults`.
+- 37ff68d: Implement definition 10.0.0 and write its version into every call record.
+- 4f66d7d: Implement definition 10.1.0 and write its version into every call record.
+- 7d6a547: Add `prop.Values` to return the values of a generator for a seed.
+- ff5e075: Let `prop.Values` take the options of `prop.Using`.
+- 3ef0907: **Breaking:** End the call of `Rejects` with the fault that ends its check.
+- 98515bc: **Breaking:** Count an allocation ceiling ten times at most, in place of three.
+- 4d42a76: Make `prop.Using` an `Option`, which `ForAll` and `Fuzz` take.
+
 ## 0.5.1
 
 ### Patch Changes
