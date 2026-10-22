@@ -34,9 +34,19 @@ type Step struct {
 	Value choice.Choice
 }
 
-// Invert returns the choices that decode to value under g. value is a value
-// of T, or the value that the typed literal of one decodes to, as
-// [literal.Decode] returns it.
+// Inversion is what the inverse of a generator passes to the inverse of
+// each generator inside it: what a run states for the generators of types,
+// as [Settings.Using] states it. The inverse of a generator of [Picking]
+// reads it, and the inverse of a generator of [Within] replaces it. The zero
+// Inversion states no generator.
+type Inversion struct {
+	// using is what the run states for the generators of types.
+	using any
+}
+
+// Invert returns the choices that decode to value under g, in a run that
+// states no generator of a type. value is a value of T, or the value that
+// the typed literal of one decodes to, as [literal.Decode] returns it.
 //
 // Where more than one sequence of choices decodes to a value, the inverse
 // takes the first in a fixed order:
@@ -65,15 +75,22 @@ type Step struct {
 // generator inside them. A one-of and a recursive generator return it when
 // none of their branches produces the value and one of them has no inverse.
 func Invert[T any](g Generator[T], value T) ([]choice.Choice, error) {
-	return invert(g, value)
+	return invert(Inversion{}, g, value)
 }
 
-// invert returns the choices that decode to v under g, as [Invert] does,
-// for v a value of T or the value that the typed literal of one decodes
-// to. The replay is capped at the cost of the choices, so a decode that
+// InvertUsing returns the choices that decode to value under g, as [Invert]
+// does, in a run whose [Settings.Using] is using.
+func InvertUsing[T any](using any, g Generator[T], value T) ([]choice.Choice, error) {
+	return invert(Inversion{using: using}, g, value)
+}
+
+// invert returns the choices that decode to v under g in the inversion in,
+// as [Invert] does, for v a value of T or the value that the typed literal
+// of one decodes to. The replay decodes in a run that states what in
+// states, and is capped at the cost of the choices, so a decode that
 // requests more of them is past its cap.
-func invert[T any](g Generator[T], v any) ([]choice.Choice, error) {
-	steps, normal, err := g.inverse(v)
+func invert[T any](in Inversion, g Generator[T], v any) ([]choice.Choice, error) {
+	steps, normal, err := g.inverse(in, v)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +101,8 @@ func invert[T any](g Generator[T], v any) ([]choice.Choice, error) {
 		cost += 1 + len(s.Value.Sequence)
 	}
 	var decoded T
-	e := execute(func(c *Case) { decoded = g.decode(c) }, replaying{choices: choices}, Settings{MaxChoices: cost})
+	e := execute(func(c *Case) { decoded = g.decode(c) }, replaying{choices: choices},
+		Settings{MaxChoices: cost, Using: in.using})
 	if e.Status != CasePassed {
 		return nil, uninvertible("the choices of %v decode to no value", v)
 	}
@@ -108,15 +126,15 @@ func noInverse(format string, args ...any) *fault.Error {
 	return fault.Of(ErrNoInverse, format, args...).Because(ErrCannotInvert)
 }
 
-// firstBranch returns the steps of the first of branches whose inverse
-// produces v, after the step of its index under bounds, and the value they
-// decode to. When no branch produces v, it reports false, and whether one of
-// the branches has no inverse.
-func firstBranch[T any](branches []Generator[T], bounds choice.IntegerBounds, v any) (
+// firstBranch returns the steps of the first of branches whose inverse in
+// the inversion in produces v, after the step of its index under bounds, and
+// the value they decode to. When no branch produces v, it reports false, and
+// whether one of the branches has no inverse.
+func firstBranch[T any](in Inversion, branches []Generator[T], bounds choice.IntegerBounds, v any) (
 	steps []Step, value T, produced, unknown bool,
 ) {
 	for i, g := range branches {
-		branch, t, err := g.inverse(v)
+		branch, t, err := g.inverse(in, v)
 		if err == nil {
 			return append([]Step{indexStep(bounds, i)}, branch...), t, true, false
 		}

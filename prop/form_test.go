@@ -16,19 +16,13 @@ import (
 	"go.dokimi.dev/assert/prop"
 )
 
-// The allocation ceilings of the options of a form that its caller keeps.
-const (
-	// usingAllocs is the ceiling of the allocations of Using: the generator
-	// with its type erased, its inverse, and the option.
-	usingAllocs = 4
-	// exampleAllocs is the ceiling of the allocations of Example and of
-	// Examples of one value: the list of values and the option.
-	exampleAllocs = 3
-)
+// exampleAllocs is the ceiling of the allocations of Example and of Examples
+// of one value: the list of values and the option.
+const exampleAllocs = 3
 
 // TestForm checks the options that a property form takes: the run's
-// options, its assertion's relaxations, Using and Example, and the faults
-// that fail a form before any case runs.
+// options, its assertion's relaxations, Example and Examples, and the
+// faults that fail a form before any case runs.
 func TestForm(t *testing.T) {
 	t.Parallel()
 
@@ -85,54 +79,6 @@ func TestForm(t *testing.T) {
 				Reason: "the form takes no relaxation, because its assertion takes none",
 			})
 			assert.Equal(t, calls, 0, "no case runs")
-		})
-	})
-
-	t.Run("Using", func(t *testing.T) {
-		t.Parallel()
-
-		t.Run("generates the input with the stated generator", func(t *testing.T) {
-			t.Parallel()
-			rec := assert.NewRecorder()
-			prop.True(rec, func(x int8) bool { return x == 3 }, contractOfForm, prop.Seed(7),
-				prop.Using(prop.Integer[int8](3, 3)))
-			assert.False(t, rec.Failed(), "every input is 3")
-		})
-
-		t.Run("generates each value of the stated type that the input contains", func(t *testing.T) {
-			t.Parallel()
-			rec := assert.NewRecorder()
-			allThree := func(o order) bool { return o.ID == 3 }
-			prop.True(rec, allThree, contractOfForm, prop.Seed(7), prop.Using(prop.Integer[uint32](3, 3)))
-			assert.False(t, rec.Failed(), "every id is 3")
-		})
-
-		t.Run("generates an input whose type the reader refuses", func(t *testing.T) {
-			t.Parallel()
-			rec := assert.NewRecorder()
-			piped := make(chan int)
-			prop.True(rec, func(c chan int) bool { return c == piped }, contractOfForm, prop.Seed(7),
-				prop.Using(prop.Just(piped)))
-			assert.False(t, rec.Failed(), "the stated channel")
-		})
-
-		t.Run("takes the last generator of one type", func(t *testing.T) {
-			t.Parallel()
-			rec := assert.NewRecorder()
-			prop.True(rec, func(x int8) bool { return x == 4 }, contractOfForm, prop.Seed(7),
-				prop.Using(prop.Integer[int8](3, 3)), prop.Using(prop.Integer[int8](4, 4)))
-			assert.False(t, rec.Failed(), "every input is 4")
-		})
-
-		t.Run("fails the run at once for an input whose type the reader refuses", func(t *testing.T) {
-			t.Parallel()
-			seat := &matchertest.Seat{}
-			prop.True(seat, func(chan int) bool { return true }, contractOfForm)
-			expectOnlyFault(t, seat.Faults(), fault.Error{
-				Op:     "prop.True",
-				Path:   fault.Path{fault.Field("chan int")},
-				Reason: "chan int is no type that a shape states",
-			})
 		})
 	})
 
@@ -325,30 +271,16 @@ func TestForm(t *testing.T) {
 	})
 }
 
-// TestFormAllocs checks the allocation ceilings of Using, Example and
-// Examples.
+// TestFormAllocs checks the allocation ceilings of Example and Examples.
 func TestFormAllocs(t *testing.T) {
-	digits := prop.Integer[int8](0, 9)
 	var kept prop.FormOption
-	assert.MaxAllocs(t, func() { kept = prop.Using(digits) }, usingAllocs, "Using allocates its option")
 	assert.MaxAllocs(t, func() { kept = prop.Example[int8](1) }, exampleAllocs, "Example allocates its option")
 	assert.MaxAllocs(t, func() { kept = prop.Examples[int8](1) }, exampleAllocs, "Examples allocates its option")
 	assert.NotNil(t, kept, "the kept option")
 }
 
-// BenchmarkForm measures Using, Example and Examples.
+// BenchmarkForm measures Example and Examples.
 func BenchmarkForm(b *testing.B) {
-	b.Run("Using", func(b *testing.B) {
-		digits := prop.Integer[int8](0, 9)
-		var got prop.FormOption
-		c := bench.Start(b).MaxAllocs(usingAllocs)
-		defer c.End()
-		for c.Loop() {
-			got = prop.Using(digits)
-		}
-		assert.NotNil(b, got, "the option")
-	})
-
 	b.Run("Example", func(b *testing.B) {
 		var got prop.FormOption
 		c := bench.Start(b).MaxAllocs(exampleAllocs)

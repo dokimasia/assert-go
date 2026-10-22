@@ -333,7 +333,7 @@ func listOf(of engine.Generator[any], s choice.Sizes, unique, exits bool, b *bud
 		})
 		return items
 	}
-	return engine.NewInvertible(listID, decode, func(v any) ([]engine.Step, any, error) {
+	return engine.NewInvertible(listID, decode, func(in engine.Inversion, v any) ([]engine.Step, any, error) {
 		items, ok := engine.ListItems(v)
 		if !ok {
 			return nil, nil, uninvertible("%v is no list", v)
@@ -341,7 +341,7 @@ func listOf(of engine.Generator[any], s choice.Sizes, unique, exits bool, b *bud
 		parts := make([]part, len(items))
 		seen := make(map[string]int, len(items))
 		for i, item := range items {
-			steps, value, err := of.Inverse(item)
+			steps, value, err := of.Inverse(in, item)
 			if err != nil {
 				return nil, nil, fault.At(err, fault.Index(i))
 			}
@@ -429,7 +429,7 @@ func mapOf(key, of engine.Generator[any], s choice.Sizes, exits bool, b *budget)
 		})
 		return literal.Pairs{Entries: entries}
 	}
-	return engine.NewInvertible(dictID, decode, func(v any) ([]engine.Step, any, error) {
+	return engine.NewInvertible(dictID, decode, func(in engine.Inversion, v any) ([]engine.Step, any, error) {
 		entries, ok := entriesOf(v)
 		if !ok {
 			return nil, nil, uninvertible("%v is no map", v)
@@ -437,12 +437,12 @@ func mapOf(key, of engine.Generator[any], s choice.Sizes, exits bool, b *budget)
 		parts := make([]part, len(entries))
 		seen := make(map[string]struct{}, len(entries))
 		for i, e := range entries {
-			keySteps, k, err := key.Inverse(e.Key)
+			keySteps, k, err := key.Inverse(in, e.Key)
 			if err != nil {
 				return nil, nil, fault.At(uninvertible("the generator of keys produces no such key").Because(err),
 					fault.Key(e.Key))
 			}
-			valueSteps, value, err := of.Inverse(e.Value)
+			valueSteps, value, err := of.Inverse(in, e.Value)
 			if err != nil {
 				return nil, nil, fault.At(err, fault.Key(e.Key))
 			}
@@ -510,11 +510,11 @@ func optionalOf(of engine.Generator[any], exits bool, b *budget) engine.Generato
 		})
 		return v
 	}
-	return engine.NewInvertible(optionalID, decode, func(v any) ([]engine.Step, any, error) {
+	return engine.NewInvertible(optionalID, decode, func(in engine.Inversion, v any) ([]engine.Step, any, error) {
 		if engine.Absent(v) {
 			return []engine.Step{bitStep(0)}, nil, nil
 		}
-		steps, value, err := of.Inverse(v)
+		steps, value, err := of.Inverse(in, v)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -594,7 +594,7 @@ func recordOf(names []string, fields []engine.Generator[any]) engine.Generator[a
 		})
 		return out
 	}
-	return engine.NewInvertible(recordID, decode, func(v any) ([]engine.Step, any, error) {
+	return engine.NewInvertible(recordID, decode, func(in engine.Inversion, v any) ([]engine.Step, any, error) {
 		values, err := recordValues(v, names)
 		if err != nil {
 			return nil, nil, err
@@ -602,7 +602,7 @@ func recordOf(names []string, fields []engine.Generator[any]) engine.Generator[a
 		var steps []engine.Step
 		out := literal.Record{Fields: make([]literal.Field, len(names))}
 		for i, name := range names {
-			fieldSteps, value, err := fields[i].Inverse(values[i])
+			fieldSteps, value, err := fields[i].Inverse(in, values[i])
 			if err != nil {
 				return nil, nil, fault.At(err, fault.Field(name))
 			}
@@ -675,7 +675,7 @@ func enumOf(names []string, payloads []*engine.Generator[any], exit int, exits b
 		})
 		return out
 	}
-	return engine.NewInvertible(enumID, decode, func(v any) ([]engine.Step, any, error) {
+	return engine.NewInvertible(enumID, decode, func(in engine.Inversion, v any) ([]engine.Step, any, error) {
 		variant, ok := v.(literal.Variant)
 		index := slices.Index(names, variant.Name)
 		if !ok || index < 0 {
@@ -691,7 +691,7 @@ func enumOf(names []string, payloads []*engine.Generator[any], exit int, exits b
 		case payload == nil:
 			return []engine.Step{indexStep(all, index)}, literal.Variant{Name: variant.Name}, nil
 		}
-		steps, value, err := payload.Inverse(variant.Payload)
+		steps, value, err := payload.Inverse(in, variant.Payload)
 		if err != nil {
 			return nil, nil, fault.At(err, at)
 		}

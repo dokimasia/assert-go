@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -31,6 +32,10 @@ const (
 	// fatalCaseAllocs is the ceiling of the allocations of a whole replayed
 	// case whose body calls Fatalf.
 	fatalCaseAllocs = 13
+	// raisedCaseAllocs is the ceiling of the allocations of a whole replayed
+	// case whose body raises a panic again: the case's own, the origin of the
+	// panic, the stack of the body, and the identity of the panic.
+	raisedCaseAllocs = 14
 	// historyCaseAllocs is the ceiling of the allocations of a whole
 	// replayed case whose body calls History: the case's own three, and the
 	// history.
@@ -53,6 +58,18 @@ const (
 // so two owners have two addresses.
 type owner struct {
 	_ byte
+}
+
+// taskStack is the stack of the task whose panic raiseFromTask raises
+// again.
+var taskStack = []byte("goroutine 7 [running]:\nshop.(*Ledger).Post()")
+
+// raiseFromTask raises the panic "broken task" on c again, as the panic of
+// a task whose stack is taskStack and whose frames are the caller's.
+func raiseFromTask(c *engine.Case) {
+	var pcs [8]uintptr
+	n := runtime.Callers(1, pcs[:])
+	c.Raise("broken task", pcs[:n], taskStack)
 }
 
 // wideMax is the upper bound of wideRange, which a random case of the
@@ -768,6 +785,31 @@ func TestCase(t *testing.T) {
 		})
 	})
 
+	t.Run("Raise", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("keeps the value and the stack of the goroutine that raised the panic first", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(raiseFromTask, nil, nil)
+			assert.Equal(t, e.Status, engine.CaseFailed, "the panic fails the case")
+			assert.Equal[any](t, e.Panic, "broken task", "the value of the panic")
+			assert.Equal(t, e.Stack, taskStack, "the stack of the task")
+		})
+
+		t.Run("keeps the stack of the body for another panic than the one it raised", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) {
+				defer func() {
+					_ = recover()
+					panic("broken ledger")
+				}()
+				raiseFromTask(c)
+			}, nil, nil)
+			assert.Equal[any](t, e.Panic, "broken ledger", "the value of the later panic")
+			assert.NotEqual(t, e.Stack, taskStack, "the stack of the body")
+		})
+	})
+
 	t.Run("Span", func(t *testing.T) {
 		t.Parallel()
 
@@ -811,6 +853,8 @@ func TestCaseAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { c.Helper() }, 0, "Helper allocates nothing")
 	assert.MaxAllocs(t, func() { c.Report(reported, false) }, reportAllocs, "Report allocates its message")
 	assert.MaxAllocs(t, func() { engine.Replay(stop, nil, nil) }, fatalCaseAllocs, "a case that calls Fatalf")
+	assert.MaxAllocs(t, func() { engine.Replay(raiseFromTask, nil, nil) }, raisedCaseAllocs,
+		"a case whose body raises a panic again")
 	assert.MaxAllocs(t, func() { c.Errorf("late") }, errorfAllocs, "Errorf allocates its message and its frames")
 	assert.MaxAllocs(t, func() { _ = c.Clock() }, 0, "Clock allocates nothing")
 	assert.MaxAllocs(t, func() { c.Assume(true) }, 0, "Assume allocates nothing")
@@ -894,6 +938,16 @@ func BenchmarkCase(b *testing.B) {
 			got = engine.Replay(stop, nil, nil)
 		}
 		assert.Equal(b, got.Status, engine.CaseFailed, "the case fails")
+	})
+
+	b.Run("Raise", func(b *testing.B) {
+		var got engine.Execution
+		c := bench.Start(b).MaxAllocs(raisedCaseAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Replay(raiseFromTask, nil, nil)
+		}
+		assert.Equal[any](b, got.Panic, "broken task", "the raised value")
 	})
 
 	b.Run("Errorf", func(b *testing.B) {

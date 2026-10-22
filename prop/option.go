@@ -19,13 +19,15 @@ const defaultShrinkTime time.Duration = 30000000000
 
 // Option configures a run of [ForAll] or [Fuzz]. Each option states one
 // setting, and a later option overrides an earlier one, except [Require],
-// which adds a requirement. The zero Option changes nothing.
+// which adds a requirement, and [Using], which adds the generator of a type.
+// The zero Option changes nothing.
 //
 // # Allocation contract
 //
 // An option allocates nothing when its call does not keep it, and the
 // closure of its setting when it does. Applying the options of a run
-// allocates nothing, except a requirement that [Require] adds.
+// allocates nothing, except a requirement that [Require] adds and a
+// generator that [Using] adds.
 type Option struct {
 	// set returns the settings of a run with the option's setting applied.
 	set func(config) config
@@ -303,6 +305,9 @@ type config struct {
 	// around is the wrapper of each run of the body that Around states, and
 	// nil without one.
 	around func(*testing.T, func(*testing.T))
+	// using are the generators of types that Using states, in the order
+	// stated.
+	using []using
 }
 
 // configure returns the defaults with each option of opts applied in

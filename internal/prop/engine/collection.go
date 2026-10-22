@@ -52,8 +52,8 @@ func List[T any](of Generator[T], sizes choice.Sizes) Generator[[]T] {
 		defer c.closeSpan(span)
 		return collect(c, sizes, ElementLabel, of.decode, nil, nil)
 	}
-	return NewInvertible(listID, decode, func(v any) ([]Step, []T, error) {
-		return invertList(of, sizes, v, false)
+	return NewInvertible(listID, decode, func(in Inversion, v any) ([]Step, []T, error) {
+		return invertList(in, of, sizes, v, false)
 	})
 }
 
@@ -67,16 +67,18 @@ func UniqueList[T any](of Generator[T], sizes choice.Sizes) Generator[[]T] {
 		defer c.closeSpan(span)
 		return collect(c, sizes, ElementLabel, of.decode, func(v T) string { return canonicalKey(v) }, nil)
 	}
-	return NewInvertible(listID, decode, func(v any) ([]Step, []T, error) {
-		return invertList(of, sizes, v, true)
+	return NewInvertible(listID, decode, func(in Inversion, v any) ([]Step, []T, error) {
+		return invertList(in, of, sizes, v, true)
 	})
 }
 
 // invertList returns the steps of a list of of's values under sizes that
-// decode to v, a slice or an array, and the list they decode to. A unique
-// list refuses two elements that decode to equal values. The fault of an
-// element is at the element's index.
-func invertList[T any](of Generator[T], sizes choice.Sizes, v any, unique bool) ([]Step, []T, error) {
+// decode to v, a slice or an array, in the inversion in, and the list they
+// decode to. A unique list refuses two elements that decode to equal values.
+// The fault of an element is at the element's index.
+func invertList[T any](in Inversion, of Generator[T], sizes choice.Sizes, v any, unique bool) (
+	[]Step, []T, error,
+) {
 	items, ok := ListItems(v)
 	if !ok {
 		return nil, nil, uninvertible("%v is no list", v)
@@ -85,7 +87,7 @@ func invertList[T any](of Generator[T], sizes choice.Sizes, v any, unique bool) 
 	list := make([]T, len(items))
 	seen := make(map[string]int, len(items))
 	for i, item := range items {
-		steps, t, err := of.inverse(item)
+		steps, t, err := of.inverse(in, item)
 		if err != nil {
 			return nil, nil, fault.At(err, fault.Index(i))
 		}
@@ -127,19 +129,19 @@ func Dict[K comparable, V any](keys Generator[K], values Generator[V], sizes cho
 		}
 		return m
 	}
-	return NewInvertible(dictID, decode, func(v any) ([]Step, map[K]V, error) {
-		return invertDict(keys, values, sizes, v)
+	return NewInvertible(dictID, decode, func(in Inversion, v any) ([]Step, map[K]V, error) {
+		return invertDict(in, keys, values, sizes, v)
 	})
 }
 
 // invertDict returns the steps of a map of keys and values under sizes
-// that decode to v, a map, and the map they decode to. It refuses two keys
-// that decode to equal keys. The fault of a value is at its key, and so is
-// the fault of a key that keys does not produce, whose cause is the fault of
-// keys.
-func invertDict[K comparable, V any](keys Generator[K], values Generator[V], sizes choice.Sizes, v any) (
-	[]Step, map[K]V, error,
-) {
+// that decode to v, a map, in the inversion in, and the map they decode to.
+// It refuses two keys that decode to equal keys. The fault of a value is at
+// its key, and so is the fault of a key that keys does not produce, whose
+// cause is the fault of keys.
+func invertDict[K comparable, V any](in Inversion, keys Generator[K], values Generator[V], sizes choice.Sizes,
+	v any,
+) ([]Step, map[K]V, error) {
 	rv := reflect.ValueOf(v)
 	if rv.Kind() != reflect.Map {
 		return nil, nil, uninvertible("%v is no map", v)
@@ -149,12 +151,12 @@ func invertDict[K comparable, V any](keys Generator[K], values Generator[V], siz
 	seen := make(map[string]struct{}, rv.Len())
 	for key, value := range rv.Seq2() {
 		stated := key.Interface()
-		keySteps, k, err := keys.inverse(stated)
+		keySteps, k, err := keys.inverse(in, stated)
 		if err != nil {
 			return nil, nil, fault.At(uninvertible("the generator of keys produces no such key").Because(err),
 				fault.Key(stated))
 		}
-		valueSteps, val, err := values.inverse(value.Interface())
+		valueSteps, val, err := values.inverse(in, value.Interface())
 		if err != nil {
 			return nil, nil, fault.At(err, fault.Key(stated))
 		}

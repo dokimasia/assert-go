@@ -62,7 +62,7 @@ func integerOf[T Integral](id string, lo, hi T) Generator[T] {
 		defer c.closeSpan(span)
 		return valueOf[T](c.Reusable(bounds))
 	}
-	g := NewInvertible(id, decode, func(v any) ([]Step, T, error) {
+	g := NewInvertible(id, decode, func(_ Inversion, v any) ([]Step, T, error) {
 		i, ok := IntegerValue(v)
 		if !ok {
 			return nil, 0, uninvertible("%v is no integer", v)
@@ -98,7 +98,7 @@ func Float[T Floating](lo, hi T, nan choice.NaNPolicy) Generator[T] {
 		defer c.closeSpan(span)
 		return T(c.float(bounds))
 	}
-	return NewInvertible(floatID, decode, func(v any) ([]Step, T, error) {
+	return NewInvertible(floatID, decode, func(_ Inversion, v any) ([]Step, T, error) {
 		x, ok := floatValue(v)
 		if !ok {
 			return nil, 0, uninvertible("%v is no float", v)
@@ -127,7 +127,7 @@ func Boolean(num, den uint64) Generator[bool] {
 		defer c.closeSpan(span)
 		return c.Coin(num, den)
 	}
-	return NewInvertible(booleanID, decode, func(v any) ([]Step, bool, error) {
+	return NewInvertible(booleanID, decode, func(_ Inversion, v any) ([]Step, bool, error) {
 		b, ok := v.(bool)
 		if !ok {
 			return nil, false, uninvertible("%v is no bool", v)

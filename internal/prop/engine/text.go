@@ -39,7 +39,7 @@ func String(sizes choice.Sizes) Generator[string] {
 		}
 		return string(runes)
 	}
-	return NewInvertible(stringID, decode, func(v any) ([]Step, string, error) {
+	return NewInvertible(stringID, decode, func(_ Inversion, v any) ([]Step, string, error) {
 		return invertText(bounds, v, alphabet.Index)
 	})
 }
@@ -71,7 +71,7 @@ func StringOver(chars string, sizes choice.Sizes) Generator[string] {
 		}
 		return string(out)
 	}
-	return NewInvertible(stringID, decode, func(v any) ([]Step, string, error) {
+	return NewInvertible(stringID, decode, func(_ Inversion, v any) ([]Step, string, error) {
 		return invertText(bounds, v, func(r rune) (uint32, bool) {
 			i := slices.Index(runes, r)
 			return uint32(i), i >= 0
@@ -114,7 +114,7 @@ func Bytes(sizes choice.Sizes) Generator[[]byte] {
 		}
 		return out
 	}
-	return NewInvertible(bytesID, decode, func(v any) ([]Step, []byte, error) {
+	return NewInvertible(bytesID, decode, func(_ Inversion, v any) ([]Step, []byte, error) {
 		b, ok := v.([]byte)
 		if !ok {
 			return nil, nil, uninvertible("%v is no []byte", v)

@@ -56,8 +56,9 @@ const (
 // property is one call of [ForAll], [Fuzz] or a property form: the
 // operation that names its faults, the assertion of its record, the
 // contract it checks, the call's program counter, the settings of its runs,
-// the token it replays, the directory of its store and the wrapper of its
-// runs. A property is a value that its runs do not change.
+// the generators of types that its options state, the token it replays,
+// the directory of its store and the wrapper of its runs. A property is a
+// value that its runs do not change.
 type property struct {
 	// op is the operation of the call: prop.ForAll, prop.Fuzz, or a form's.
 	op string
@@ -71,6 +72,9 @@ type property struct {
 	pc uintptr
 	// settings are the settings of the call's runs, without stored cases.
 	settings engine.Settings
+	// generators are the generators of types that Using states, which the
+	// settings pass to every case, and nil for a call that states none.
+	generators *generators
 	// replay are the choices that the token to replay records, when
 	// replaying is set.
 	replay []choice.Choice
@@ -86,7 +90,8 @@ type property struct {
 
 // newProperty returns the property of the operation op of a call at pc on
 // tb of contract under c, whose record states prop-for-all, and closes the
-// registry. Its runs read the clock of tb.
+// registry. Its runs read the clock of tb and the generators of types that
+// c states.
 //
 // It returns a fault of op for a profile other than default, ci and
 // campaign, for a seed variable that is no decimal number below 2^64, for a
@@ -109,6 +114,7 @@ func newProperty(tb assert.TB, op, contract string, pc uintptr, c config) (prope
 			return property{}, fault.In(op, err)
 		}
 	}
+	gs := generatorsOf(c.using)
 	p := property{
 		op:        op,
 		assertion: forAllID,
@@ -126,9 +132,11 @@ func newProperty(tb assert.TB, op, contract string, pc uintptr, c config) (prope
 			Workers:      c.workers,
 			Draws:        entries,
 			Budget:       budget,
+			Using:        gs.engineUsing(),
 		},
-		dir:    directoryOf(tb, c),
-		around: c.around,
+		generators: gs,
+		dir:        directoryOf(tb, c),
+		around:     c.around,
 	}
 	if tok, source, ok := tokenOf(c); ok {
 		if p.replay, err = token.Decode(tok); err != nil {

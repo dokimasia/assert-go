@@ -40,6 +40,14 @@ const (
 	// attempt, the decode, the decode with its type erased, and the
 	// inverse.
 	filterAllocs = 5
+	// pickingAllocs is the ceiling of the allocations of Picking: the
+	// decode, the decode with its type erased, the copy of the generator
+	// that the erased decode keeps, and the inverse.
+	pickingAllocs = 5
+	// withinAllocs is the ceiling of the allocations of Within: the decode,
+	// the decode with its type erased, the copy of the generator that the
+	// erased decode keeps, and the inverse.
+	withinAllocs = 5
 )
 
 // TestGenerator checks the combinators, the draw that records a value, and
@@ -258,6 +266,128 @@ func TestGenerator(t *testing.T) {
 		})
 	})
 
+	// sevens picks Just(7) in place of a digit for a run whose generators of
+	// types are the text "sevens".
+	sevens := engine.Picking(engine.Integer(0, 9), pickSevens)
+	pairs := engine.List(sevens, sizes(t, 2, 2))
+
+	t.Run("Picking", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("draws from the generator that the run states", func(t *testing.T) {
+			t.Parallel()
+			var got []int
+			var spans []string
+			engine.Run(func(c *engine.Case) {
+				got = append(got, engine.Draw(c, sevens, drawn))
+				spans = labels(c.Spans())
+			}, engine.Settings{Seed: 7, Cases: 3, MaxChoices: engine.MaxChoices, Using: "sevens"})
+			assert.NotEmpty(t, got, "the run drew values")
+			for _, v := range got {
+				assert.Equal(t, v, 7, "a value of the picked generator")
+			}
+			assert.Equal(t, spans, []string{"just"}, "the span of the picked generator")
+		})
+
+		t.Run("decodes with the picked generator inside another generator", func(t *testing.T) {
+			t.Parallel()
+			var got []int
+			engine.Run(func(c *engine.Case) {
+				got = engine.Draw(c, pairs, drawn)
+			}, engine.Settings{Seed: 7, Cases: 1, MaxChoices: engine.MaxChoices, Using: "sevens"})
+			assert.Equal(t, got, []int{7, 7}, "two values of the picked generator")
+		})
+
+		t.Run("draws from the generator itself in a run that states no generator", func(t *testing.T) {
+			t.Parallel()
+			got, _ := decode(t, sevens, integers(4)...)
+			assert.Equal(t, got, 4, "the replayed digit")
+			assert.Equal(t, drawnFrom(sevens, 4), any(4), "the drawn digit")
+		})
+
+		t.Run("decodes with the picked generator once its type is erased", func(t *testing.T) {
+			t.Parallel()
+			var got any
+			engine.Run(func(c *engine.Case) {
+				got = engine.Draw(c, engine.Erase(sevens), drawn)
+			}, engine.Settings{Seed: 7, Cases: 1, MaxChoices: engine.MaxChoices, Using: "sevens"})
+			assert.Equal(t, got, any(7), "the value of the picked generator")
+		})
+
+		t.Run("runs backwards through the picked generator in a run that states it", func(t *testing.T) {
+			t.Parallel()
+			got, err := engine.InvertUsing("sevens", pairs, []int{7, 7})
+			assert.NoError(t, err, "the picked generator produces 7")
+			assert.True(t, sameChoices(got, integers(1, 1, 0)), "the flags of the list, and no choice of a just")
+		})
+
+		t.Run("runs backwards through the generator itself in a run that states none", func(t *testing.T) {
+			t.Parallel()
+			got, err := engine.Invert(pairs, []int{7, 7})
+			assert.NoError(t, err, "the digits produce 7")
+			assert.True(t, sameChoices(got, integers(1, 7, 1, 7, 0)), "the flags of the list and each digit")
+		})
+
+		t.Run("takes the entry of Draws through the picked generator", func(t *testing.T) {
+			t.Parallel()
+			var got []int
+			r := engine.Run(func(c *engine.Case) { got = engine.Draw(c, pairs, drawn) }, engine.Settings{
+				Cases: 1, MaxChoices: engine.MaxChoices, Using: "sevens",
+				Draws: []engine.Entry{{Label: drawn, Value: []int{7, 7}}},
+			})
+			assert.Equal(t, r.Outcome, engine.Passed, "the entry runs")
+			assert.Equal(t, got, []int{7, 7}, "the value of the entry")
+		})
+
+		t.Run("keeps the id of the generator", func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, sevens.ID(), "integer", "the id of the digit")
+		})
+	})
+
+	t.Run("Within", func(t *testing.T) {
+		t.Parallel()
+
+		withSevens := func() any { return "sevens" }
+		within := engine.Within(pairs, withSevens)
+
+		t.Run("decodes under what using returns in a run that states nothing", func(t *testing.T) {
+			t.Parallel()
+			got, e := decode(t, within, integers(1, 1, 0)...)
+			assert.Equal(t, got, []int{7, 7}, "two values of the picked generator")
+			assert.Equal(t, e.Status, engine.CasePassed, "the case passes")
+		})
+
+		t.Run("restores what the run states once it has decoded", func(t *testing.T) {
+			t.Parallel()
+			var got int
+			engine.Replay(func(c *engine.Case) {
+				engine.Draw(c, within, "pair")
+				got = engine.Draw(c, sevens, drawn)
+			}, integers(1, 1, 0, 4), nil)
+			assert.Equal(t, got, 4, "a digit after the generator decoded")
+		})
+
+		t.Run("runs backwards under what using returns", func(t *testing.T) {
+			t.Parallel()
+			got, err := engine.Invert(within, []int{7, 7})
+			assert.NoError(t, err, "the picked generator produces 7")
+			assert.True(t, sameChoices(got, integers(1, 1, 0)), "the flags of the list, and no choice of a just")
+		})
+
+		t.Run("has no inverse for a generator without one", func(t *testing.T) {
+			t.Parallel()
+			doubled := engine.Integer(0, 9).Map(func(v int) int { return 2 * v })
+			_, err := engine.Invert(engine.Within(doubled, withSevens), 8)
+			assert.ErrorIs(t, err, engine.ErrNoInverse, "the map has no inverse")
+		})
+
+		t.Run("keeps the id of the generator", func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, within.ID(), "list", "the id of the list")
+		})
+	})
+
 	t.Run("Neutral", func(t *testing.T) {
 		t.Parallel()
 
@@ -304,6 +434,11 @@ func TestGenerator(t *testing.T) {
 	})
 }
 
+// stateNothing returns what a run that states no generator of a type states.
+func stateNothing() any {
+	return nil
+}
+
 // drawnFrom returns the value that g decodes from a case replaying the
 // integer choice v.
 func drawnFrom[T any](g engine.Generator[T], v int64) any {
@@ -345,6 +480,10 @@ func TestGeneratorAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { _ = g.Bind(engine.Just[int]) }, combinatorAllocs, "Bind allocates its decodes")
 	assert.MaxAllocs(t, func() { _ = engine.Composite(sum) }, combinatorAllocs, "Composite allocates its decodes")
 	assert.MaxAllocs(t, func() { _ = engine.Just(7) }, justAllocs, "Just allocates its decodes and its inverse")
+	assert.MaxAllocs(t, func() { _ = engine.Picking(g, pickSevens) }, pickingAllocs,
+		"Picking allocates its decodes and its inverse")
+	assert.MaxAllocs(t, func() { _ = engine.Within(g, stateNothing) }, withinAllocs,
+		"Within allocates its decodes and its inverse")
 	assert.MaxAllocs(t, func() { engine.Replay(body, choices, nil) }, drawAllocs, "a replayed draw allocates its case")
 }
 
@@ -455,6 +594,26 @@ func BenchmarkGenerator(b *testing.B) {
 			got = engine.Just(7)
 		}
 		assert.Equal(b, got.ID(), "just", "the id")
+	})
+
+	b.Run("Picking", func(b *testing.B) {
+		var got engine.Generator[int]
+		c := bench.Start(b).MaxAllocs(pickingAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Picking(g, pickSevens)
+		}
+		assert.Equal(b, got.ID(), "integer", "the id of the generator")
+	})
+
+	b.Run("Within", func(b *testing.B) {
+		var got engine.Generator[int]
+		c := bench.Start(b).MaxAllocs(withinAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Within(g, stateNothing)
+		}
+		assert.Equal(b, got.ID(), "integer", "the id of the generator")
 	})
 
 	b.Run("Draw", func(b *testing.B) {

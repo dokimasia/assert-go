@@ -148,6 +148,11 @@ type Settings struct {
 	// with the phase of each case. It is nil for a property that is not
 	// recorded.
 	Slot *record.Slot
+	// Using is what the run states for the generators of types, and nil for
+	// a run that states none. A generator of [Picking] passes it to its
+	// pick, and a generator of [Within] replaces it while it decodes. The
+	// engine passes it to every case of the run, and reads nothing of it.
+	Using any
 	// Budget is how long a [Campaign] explores, on BudgetClock. A run
 	// ignores it.
 	Budget time.Duration

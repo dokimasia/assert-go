@@ -88,11 +88,13 @@
 //
 // [Register], [RegisterValues] and [RegisterVariants] state a type's
 // generator, a type's values or an interface's variants for the test
-// process, before the first property runs. [ShapeOf] writes a type's shape
-// as a shape file, and [OfShape] generates from one. A value that Of or
-// OfShape derives runs back to the choices that decode to it, so [Draws]
-// runs the values that typed literals state, such as the counterexample of
-// a store entry.
+// process, before the first property runs. [Using] states a type's
+// generator for one run, and takes precedence over a registration. A draw
+// of Of in that run takes the stated generator of its type, and of each
+// type inside its value. [ShapeOf] writes a type's shape as a shape file,
+// and [OfShape] generates from one. A value that Of or OfShape derives runs
+// back to the choices that decode to it, so [Draws] runs the values that
+// typed literals state, such as the counterexample of a store entry.
 //
 // # Property forms
 //
@@ -111,13 +113,13 @@
 // prop-equal, with the detail fields of prop-for-all. Its failure is the
 // record that the assertion reported for the minimal case.
 //
-// A form takes [FormOption] values: the [Option] values of the run, the
-// relaxations of its assertion, and what [Using], [Example] and [Examples]
-// return. The input's generator is the one that Using states, then the one
-// that [Register] states, then the generator of the type's shape. A form
-// fails the test before any case runs for a relaxation of an assertion that
-// takes none, for an input type that the reader refuses, and for a wrong
-// example.
+// A form takes [FormOption] values: the [Option] values of the run, such as
+// what [Using] returns, the relaxations of its assertion, and what
+// [Example] and [Examples] return. The input's generator is the one that
+// Using states, then the one that [Register] states, then the generator of
+// the type's shape. A form fails the test before any case runs for a
+// relaxation of an assertion that takes none, for an input type that the
+// reader refuses, and for a wrong example.
 //
 // An example of an input with an inverse runs on the choices that decode to
 // its values, so a failing example shrinks. An input built with

@@ -80,6 +80,11 @@ var derivations sync.Map
 // draw from the generator records its value in a store entry as T's shape
 // states it, so [Draws] reads the entry back.
 //
+// In a run whose options state generators of types with [Using], a draw of
+// the generator takes the run's generator of T, or reads T with the run's
+// generators in place of the types that they state. A draw inside another
+// generator, such as [List], does so as well.
+//
 // It panics for a type that the reader refuses, and the panic names the
 // field. A call reads T once per process. The first call of Of for a type
 // reads the registrations at that time, so a registration of a type that T
@@ -88,7 +93,8 @@ var derivations sync.Map
 // # Allocation contract
 //
 // Of allocates nothing for a type that a call read before. The first call
-// for a type allocates the read of T and the generator of its shape.
+// for a type allocates the read of T, the generator of its shape, and the
+// pick of a run's generator.
 func Of[T any]() Generator[T] {
 	g, err := cachedOf[T]()
 	if err != nil {
@@ -99,7 +105,8 @@ func Of[T any]() Generator[T] {
 
 // cachedOf returns the generator of T under the process's registry, as
 // [Of] does, which it reads once per process, and the error of a type that
-// does not read.
+// does not read. The generator picks the generator of T that a run's
+// options state, as Of states it.
 func cachedOf[T any]() (Generator[T], error) {
 	t := reflect.TypeFor[T]()
 	if g, ok := derivations.Load(t); ok {
@@ -109,7 +116,8 @@ func cachedOf[T any]() (Generator[T], error) {
 	if err != nil {
 		return Generator[T]{}, err
 	}
-	stored, _ := derivations.LoadOrStore(t, g)
+	picking := Generator[T](engine.Picking(engine.Generator[T](g), pickOf[T]))
+	stored, _ := derivations.LoadOrStore(t, picking)
 	return stored.(Generator[T]), nil
 }
 

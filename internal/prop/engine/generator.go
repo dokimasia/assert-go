@@ -34,14 +34,18 @@ type Generator[T any] struct {
 	// decode asks a case for choices, inside the generator's spans, and
 	// returns the value they decode to.
 	decode func(*Case) T
-	// invert returns the steps that decode to v and the value they decode
-	// to, for v a value of T or the value that the typed literal of one
-	// decodes to. It returns an error for a v that the generator does not
-	// produce, which inverse makes a fault of the kind ErrCannotInvert. It
-	// is nil for a generator without an inverse.
-	invert func(v any) ([]Step, T, error)
+	// invert returns the steps that decode to v in the inversion in and the
+	// value they decode to, for v a value of T or the value that the typed
+	// literal of one decodes to. It returns an error for a v that the
+	// generator does not produce, which inverse makes a fault of the kind
+	// ErrCannotInvert. It is nil for a generator without an inverse.
+	invert func(in Inversion, v any) ([]Step, T, error)
 	// erased is the generator with its type erased.
 	erased erased
+	// pick returns the generator that a run states in place of this one,
+	// from what the run states for the generators of types, for a generator
+	// of [Picking]. It is nil for any other generator.
+	pick func(using any) (Generator[T], bool)
 }
 
 // erased is a generator with its type erased, as a draw records it for
@@ -90,13 +94,16 @@ func NewGenerator[T any](id string, decode func(*Case) T) Generator[T] {
 // NewInvertible returns a generator with id that decodes with decode, as
 // [NewGenerator] does, and runs backwards with invert. invert returns the
 // steps whose choices decode to v and the value that they decode to. v is a
-// value of T, or the value that the typed literal of one decodes to. [Invert]
-// checks the steps against a replay of decode.
+// value of T, or the value that the typed literal of one decodes to. invert
+// passes in to the inverse of each generator inside the generator, through
+// [Generator.Inverse]. [Invert] checks the steps against a replay of decode.
 //
 // invert returns an error for a v that decode never returns: a fault of the
 // kind [ErrCannotInvert] at the part of v that no choice produces. The
 // generator's inverse makes any other error the cause of such a fault.
-func NewInvertible[T any](id string, decode func(*Case) T, invert func(v any) ([]Step, T, error)) Generator[T] {
+func NewInvertible[T any](id string, decode func(*Case) T,
+	invert func(in Inversion, v any) ([]Step, T, error),
+) Generator[T] {
 	g := NewGenerator(id, decode)
 	g.invert = invert
 	return g
@@ -107,12 +114,62 @@ func NewInvertible[T any](id string, decode func(*Case) T, invert func(v any) ([
 func Erase[T any](g Generator[T]) Generator[any] {
 	e := Generator[any]{id: g.id, decode: g.erased.decode, erased: g.erased}
 	if g.invert != nil {
-		e.invert = func(v any) ([]Step, any, error) {
-			steps, t, err := g.invert(v)
+		e.invert = func(in Inversion, v any) ([]Step, any, error) {
+			steps, t, err := g.invert(in, v)
 			return steps, t, err
 		}
 	}
 	return e
+}
+
+// Picking returns g with a decode and an inverse that use the generator
+// that pick returns, where pick returns one, and g where it does not. pick
+// receives what the run states for the generators of types, as
+// [Settings.Using] states it, and nil for a run that states none. So one
+// generator of a type serves every run, each with the generators that it
+// states. A draw of the result records the generator that pick returns. The
+// id of the result is g's, and so are its explain step and the value that
+// [Drawn.Neutral] returns for a draw that pick leaves to g.
+func Picking[T any](g Generator[T], pick func(using any) (Generator[T], bool)) Generator[T] {
+	picking := g
+	picking.pick = pick
+	picking.decode = func(c *Case) T {
+		if picked, ok := pick(c.currentUsing()); ok {
+			return picked.decode(c)
+		}
+		return g.decode(c)
+	}
+	picking.erased.decode = func(c *Case) any { return picking.decode(c) }
+	picking.invert = func(in Inversion, v any) ([]Step, T, error) {
+		if picked, ok := pick(in.using); ok {
+			return picked.inverse(in, v)
+		}
+		return g.inverse(in, v)
+	}
+	return picking
+}
+
+// Within returns g with a decode and an inverse that run in place of what
+// the run states for the generators of types what using returns, so a
+// generator of [Picking] inside g picks from that. using is called each time
+// the result decodes or runs backwards. The id, the explain step, the
+// neutral values and the inverse of the result are g's, and so is the
+// absence of an inverse.
+func Within[T any](g Generator[T], using func() any) Generator[T] {
+	within := g
+	within.pick = nil
+	within.decode = func(c *Case) T {
+		outer := c.swapUsing(using())
+		defer c.swapUsing(outer)
+		return g.decode(c)
+	}
+	within.erased.decode = func(c *Case) any { return within.decode(c) }
+	if g.invert != nil {
+		within.invert = func(_ Inversion, v any) ([]Step, T, error) {
+			return g.invert(Inversion{using: using()}, v)
+		}
+	}
+	return within
 }
 
 // ID returns the generator's id in the definition.
@@ -127,25 +184,26 @@ func (g Generator[T]) Decode(c *Case) T {
 	return g.decode(c)
 }
 
-// Inverse returns the steps whose choices decode to v under g, and the value
-// they decode to, as a generator that runs another one backwards inside its
-// own value needs them. It returns a fault of the kind [ErrCannotInvert] at
-// the part of v that no choice produces, and one of the kind [ErrNoInverse]
-// for a g without an inverse. [Invert] checks the steps against a replay,
-// and Inverse does not.
-func (g Generator[T]) Inverse(v any) ([]Step, T, error) {
-	return g.inverse(v)
+// Inverse returns the steps whose choices decode to v under g in the
+// inversion in, and the value they decode to, as a generator that runs
+// another one backwards inside its own value needs them. It returns a fault
+// of the kind [ErrCannotInvert] at the part of v that no choice produces,
+// and one of the kind [ErrNoInverse] for a g without an inverse. [Invert]
+// checks the steps against a replay, and Inverse does not.
+func (g Generator[T]) Inverse(in Inversion, v any) ([]Step, T, error) {
+	return g.inverse(in, v)
 }
 
-// inverse returns the steps that decode to v and the value they decode to,
-// a fault of the kind ErrCannotInvert for a v that g does not produce, and
-// one of the kind ErrNoInverse for a g without an inverse.
-func (g Generator[T]) inverse(v any) ([]Step, T, error) {
+// inverse returns the steps that decode to v in the inversion in and the
+// value they decode to, a fault of the kind ErrCannotInvert for a v that g
+// does not produce, and one of the kind ErrNoInverse for a g without an
+// inverse.
+func (g Generator[T]) inverse(in Inversion, v any) ([]Step, T, error) {
 	if g.invert == nil {
 		var zero T
 		return nil, zero, noInverse("%s has no inverse", g.erased.name)
 	}
-	steps, t, err := g.invert(v)
+	steps, t, err := g.invert(in, v)
 	if err != nil {
 		return steps, t, cannotInvert(g.erased.name, err)
 	}
@@ -187,7 +245,7 @@ func (g Generator[T]) MapBack[U any](f func(T) U, back func(U) (T, error)) Gener
 		}
 		return g.erased.neutralOf(t)
 	}
-	mapped.invert = func(v any) ([]Step, U, error) {
+	mapped.invert = func(in Inversion, v any) ([]Step, U, error) {
 		var zero U
 		if u, ok := v.(U); ok {
 			t, err := back(u)
@@ -196,7 +254,7 @@ func (g Generator[T]) MapBack[U any](f func(T) U, back func(U) (T, error)) Gener
 			}
 			v = t
 		}
-		steps, t, err := g.inverse(v)
+		steps, t, err := g.inverse(in, v)
 		if err != nil {
 			return nil, zero, err
 		}
@@ -230,8 +288,8 @@ func (g Generator[T]) Filter(keep func(T) bool) Generator[T] {
 		c.Assume(keep(v))
 		return v
 	}
-	filtered := NewInvertible(filterID, decode, func(v any) ([]Step, T, error) {
-		steps, t, err := g.inverse(v)
+	filtered := NewInvertible(filterID, decode, func(in Inversion, v any) ([]Step, T, error) {
+		steps, t, err := g.inverse(in, v)
 		if err != nil {
 			return nil, t, err
 		}
@@ -273,7 +331,7 @@ func Just[T any](value T) Generator[T] {
 		c.closeSpan(c.openSpan(justID))
 		return value
 	}
-	return NewInvertible(justID, decode, func(v any) ([]Step, T, error) {
+	return NewInvertible(justID, decode, func(_ Inversion, v any) ([]Step, T, error) {
 		if !SameValue(v, value) {
 			return nil, value, uninvertible("%v is not %v", v, value)
 		}
@@ -286,8 +344,17 @@ func Just[T any](value T) Generator[T] {
 // draw is made under its label. In the case of [Settings.Draws], the draw
 // first takes the next entry, and its choices are the ones that decode to
 // the entry's value. In an example of values, the draw takes the next value
-// while one is left, and makes no choice and opens no span.
+// while one is left, and makes no choice and opens no span. A draw of a
+// generator of [Picking] draws from the generator that its pick returns,
+// where it returns one. The draw keeps what the run states for the
+// generators of types where it runs, so the explain phase decodes its
+// generator again in the same way.
 func Draw[T any](c *Case, g Generator[T], label string) T {
+	if g.pick != nil {
+		if picked, ok := g.pick(c.currentUsing()); ok {
+			g = picked
+		}
+	}
 	if c.valuing != nil {
 		if v, ok := c.stated(); ok {
 			// A form states the values of an example as values of T, so the
@@ -299,7 +366,8 @@ func Draw[T any](c *Case, g Generator[T], label string) T {
 		}
 	}
 	if c.inverting != nil {
-		c.enterDraw(label, func(v any) ([]choice.Choice, error) { return invert(g, v) })
+		in := Inversion{using: c.currentUsing()}
+		c.enterDraw(label, func(v any) ([]choice.Choice, error) { return invert(in, g, v) })
 	}
 	span := c.nextSpan()
 	defer c.closeDraw(c.openDraw(label))

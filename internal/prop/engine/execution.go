@@ -113,10 +113,13 @@ func Replay(body Body, choices []choice.Choice, clock assert.Clock) Execution {
 
 // Bridge calls body once on a case decoded from a fuzzer's bytes, outside
 // the case tree, with the cap of s.MaxChoices, or of [MaxChoices] when s
-// states none, and reads the clock of s. It runs the case inside
-// s.Around. The slot of s takes the calls of the case under the phase fuzz.
+// states none, and reads the clock and the generators of types of s. It
+// runs the case inside s.Around. The slot of s takes the calls of the case
+// under the phase fuzz.
 func Bridge(body Body, data []byte, s Settings) Execution {
-	limits := Settings{MaxChoices: cmp.Or(s.MaxChoices, MaxChoices), Clock: s.Clock, Slot: s.Slot, Around: s.Around}
+	limits := Settings{
+		MaxChoices: cmp.Or(s.MaxChoices, MaxChoices), Clock: s.Clock, Slot: s.Slot, Around: s.Around, Using: s.Using,
+	}
 	e := execute(body, &bridging{data: data}, limits)
 	e.take(s.Slot, record.Fuzz)
 	return e

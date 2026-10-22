@@ -83,11 +83,13 @@ const mutantVariable = "DOKIMI_MUTATE_MUTANT"
 // checks that the store is empty there.
 const unwritten = "a mutation run writes no entry"
 
-// init registers the values of status and the variants of payment in the
-// test process's registry, before any property runs.
+// init registers the values of status, the variants of payment, and a
+// generator of lists of statuses that draws each status from Of, in the test
+// process's registry, before any property runs.
 func init() {
 	prop.RegisterValues(statusPending, statusPaid, statusShipped)
 	prop.RegisterVariants[payment](pending{}, paid(0), refunded(""), &cancelled{})
+	prop.Register(prop.List(prop.Of[status]()))
 }
 
 // inMutationRun runs the test t in a child process whose environment states

@@ -109,7 +109,7 @@ func wideInt(lo, hi *big.Int) engine.Generator[any] {
 		})
 		return joined(high, low)
 	}
-	return engine.NewInvertible(intID, decode, func(v any) ([]engine.Step, any, error) {
+	return engine.NewInvertible(intID, decode, func(_ engine.Inversion, v any) ([]engine.Step, any, error) {
 		n, ok := bigOf(v)
 		if !ok {
 			return nil, nil, uninvertible("%v is no integer", v)
@@ -222,14 +222,14 @@ func ipOf() engine.Generator[any] {
 		})
 		return address
 	}
-	return engine.NewInvertible(ipID, decode, func(v any) ([]engine.Step, any, error) {
+	return engine.NewInvertible(ipID, decode, func(in engine.Inversion, v any) ([]engine.Step, any, error) {
 		address, ok := v.([]byte)
 		index := slices.Index([]int{ipv4Bytes, ipv6Bytes}, len(address))
 		if !ok || index < 0 {
 			return nil, nil, uninvertible("%v is no address of 4 or 16 bytes", v)
 		}
 		// The bytes of a version produce every address of its length.
-		steps, value, _ := versions[index].Inverse(address)
+		steps, value, _ := versions[index].Inverse(in, address)
 		return append([]engine.Step{indexStep(bit, index)}, steps...), value, nil
 	})
 }
@@ -342,7 +342,7 @@ func instantOf(per int64, lo, hi pair) engine.Generator[any] {
 		})
 		return twoParts(SecondsPart, s, UnitsPart, u)
 	}
-	return engine.NewInvertible(instantID, decode, func(v any) ([]engine.Step, any, error) {
+	return engine.NewInvertible(instantID, decode, func(_ engine.Inversion, v any) ([]engine.Step, any, error) {
 		s, u, err := integerParts(v, SecondsPart, UnitsPart)
 		if err != nil {
 			return nil, nil, err
@@ -480,7 +480,7 @@ func localOf(per int64, lo, hi pair) engine.Generator[any] {
 		})
 		return twoParts(DatePart, d, TimeOfDayPart, t)
 	}
-	return engine.NewInvertible(localID, decode, func(v any) ([]engine.Step, any, error) {
+	return engine.NewInvertible(localID, decode, func(_ engine.Inversion, v any) ([]engine.Step, any, error) {
 		d, t, err := integerParts(v, DatePart, TimeOfDayPart)
 		if err != nil {
 			return nil, nil, err
@@ -570,12 +570,12 @@ func zonedOf(instant engine.Generator[any], per int64) engine.Generator[any] {
 		})
 		return twoParts(InstantPart, value, ZonePart, name)
 	}
-	return engine.NewInvertible(zonedID, decode, func(v any) ([]engine.Step, any, error) {
+	return engine.NewInvertible(zonedID, decode, func(in engine.Inversion, v any) ([]engine.Step, any, error) {
 		inner, name, head, err := zoneParts(v, InstantPart)
 		if err != nil {
 			return nil, nil, err
 		}
-		steps, value, err := instant.Inverse(inner)
+		steps, value, err := instant.Inverse(in, inner)
 		if err != nil {
 			return nil, nil, fault.At(err, fault.Field(InstantPart))
 		}
@@ -625,12 +625,12 @@ func wallOf(local engine.Generator[any], per int64) engine.Generator[any] {
 		})
 		return twoParts(LocalPart, value, ZonePart, name)
 	}
-	return engine.NewInvertible(wallID, decode, func(v any) ([]engine.Step, any, error) {
+	return engine.NewInvertible(wallID, decode, func(in engine.Inversion, v any) ([]engine.Step, any, error) {
 		inner, name, head, err := zoneParts(v, LocalPart)
 		if err != nil {
 			return nil, nil, err
 		}
-		steps, value, err := local.Inverse(inner)
+		steps, value, err := local.Inverse(in, inner)
 		if err != nil {
 			return nil, nil, fault.At(err, fault.Field(LocalPart))
 		}

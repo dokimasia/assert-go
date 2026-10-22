@@ -324,10 +324,11 @@ func TestInverse(t *testing.T) {
 				return engine.Erase(engine.List(self, upToThree))
 			},
 			1)
-		short := engine.NewInvertible("pair", decodePair, func(v any) ([]engine.Step, [2]uint64, error) {
-			steps, pair, err := invertPair(v)
-			return steps[:1], pair, err
-		})
+		short := engine.NewInvertible("pair", decodePair,
+			func(in engine.Inversion, v any) ([]engine.Step, [2]uint64, error) {
+				steps, pair, err := invertPair(in, v)
+				return steps[:1], pair, err
+			})
 		refusals := []struct {
 			name       string
 			give       func() ([]choice.Choice, error)
@@ -611,10 +612,11 @@ func TestInverse(t *testing.T) {
 			{
 				name: "returns an error for steps whose inverse states another value",
 				give: func() ([]choice.Choice, error) {
-					swapped := engine.NewInvertible("pair", decodePair, func(v any) ([]engine.Step, [2]uint64, error) {
-						steps, pair, err := invertPair(v)
-						return steps, [2]uint64{pair[1], pair[0]}, err
-					})
+					swapped := engine.NewInvertible("pair", decodePair,
+						func(in engine.Inversion, v any) ([]engine.Step, [2]uint64, error) {
+							steps, pair, err := invertPair(in, v)
+							return steps, [2]uint64{pair[1], pair[0]}, err
+						})
 					return engine.Invert(swapped, [2]uint64{3, 4})
 				},
 				wantReason: "the choices of [3 4] decode to [3 4]",
@@ -724,6 +726,32 @@ func TestInverse(t *testing.T) {
 			assert.ErrorIsNot(t, err, engine.ErrNoInverse, "every alternative has an inverse")
 		})
 	})
+
+	t.Run("InvertUsing", func(t *testing.T) {
+		t.Parallel()
+
+		sevens := engine.List(engine.Picking(digit, pickSevens), sizes(t, 1, 1))
+
+		t.Run("returns the choices under the generators that the run states", func(t *testing.T) {
+			t.Parallel()
+			got, err := engine.InvertUsing("sevens", sevens, []int{7})
+			assert.NoError(t, err, "the picked generator produces 7")
+			assert.True(t, sameChoices(got, integers(1, 0)), "the flags of the list, and no choice of a just")
+		})
+
+		t.Run("returns the choices of a run that states no generator for nil", func(t *testing.T) {
+			t.Parallel()
+			got, err := engine.InvertUsing(nil, sevens, []int{7})
+			assert.NoError(t, err, "the digit produces 7")
+			assert.True(t, sameChoices(got, integers(1, 7, 0)), "the flags of the list and the digit")
+		})
+
+		t.Run("returns an error for a value that the picked generator does not produce", func(t *testing.T) {
+			t.Parallel()
+			_, err := engine.InvertUsing("sevens", sevens, []int{4})
+			assert.ErrorIs(t, err, engine.ErrCannotInvert, "the just produces 7 alone")
+		})
+	})
 }
 
 // TestInverseParts checks the parts that a generator built outside this
@@ -751,7 +779,7 @@ func TestInverseParts(t *testing.T) {
 
 		t.Run("returns the steps and the value, without a replay", func(t *testing.T) {
 			t.Parallel()
-			steps, got, err := digit.Inverse(any(7))
+			steps, got, err := digit.Inverse(engine.Inversion{}, any(7))
 			assert.NoError(t, err, "the digit runs back")
 			assert.Equal(t, [2]any{got, len(steps)}, [2]any{7, 1}, "the value and its one step")
 			assert.True(t, steps[0].Value.Equal(integers(7)[0]), "the step's choice")
@@ -759,7 +787,7 @@ func TestInverseParts(t *testing.T) {
 
 		t.Run("returns an error for a generator without an inverse", func(t *testing.T) {
 			t.Parallel()
-			_, _, err := digit.Map(func(v int) int { return v }).Inverse(any(7))
+			_, _, err := digit.Map(func(v int) int { return v }).Inverse(engine.Inversion{}, any(7))
 			assert.ErrorIs(t, err, engine.ErrCannotInvert, "no choices decode to the value")
 			assert.Equal(t, assert.ErrorAs[*fault.Error](t, err, "a fault").Reason, "map has no inverse",
 				"a map has no inverse")
@@ -967,7 +995,10 @@ func TestInverseAllocs(t *testing.T) {
 	pair := []int{1, 2}
 	assert.MaxAllocs(t, func() { _, _ = engine.Invert(digit, 7) }, invertAllocs,
 		"Invert allocates the steps and the replay that checks them")
-	assert.MaxAllocs(t, func() { _, _, _ = digit.Inverse(7) }, inverseAllocs, "Inverse allocates its steps")
+	assert.MaxAllocs(t, func() { _, _ = engine.InvertUsing(nil, digit, 7) }, invertAllocs,
+		"InvertUsing allocates the steps and the replay that checks them")
+	assert.MaxAllocs(t, func() { _, _, _ = digit.Inverse(engine.Inversion{}, 7) }, inverseAllocs,
+		"Inverse allocates its steps")
 	seven := integers(7)
 	decoded := func(c *engine.Case) { digit.Decode(c) }
 	assert.MaxAllocs(t, func() { engine.Replay(decoded, seven, nil) }, decodeCaseAllocs,
@@ -998,6 +1029,16 @@ func BenchmarkInverse(b *testing.B) {
 		assert.True(b, sameChoices(got, integers(7)), "the choice")
 	})
 
+	b.Run("InvertUsing", func(b *testing.B) {
+		var got []choice.Choice
+		c := bench.Start(b).MaxAllocs(invertAllocs)
+		defer c.End()
+		for c.Loop() {
+			got, _ = engine.InvertUsing(nil, digit, 7)
+		}
+		assert.True(b, sameChoices(got, integers(7)), "the choice")
+	})
+
 	b.Run("Decode", func(b *testing.B) {
 		var got int
 		body := func(c *engine.Case) { got = digit.Decode(c) }
@@ -1015,7 +1056,7 @@ func BenchmarkInverse(b *testing.B) {
 		c := bench.Start(b).MaxAllocs(inverseAllocs)
 		defer c.End()
 		for c.Loop() {
-			got, _, _ = digit.Inverse(7)
+			got, _, _ = digit.Inverse(engine.Inversion{}, 7)
 		}
 		assert.Length(b, got, 1, "one step")
 	})

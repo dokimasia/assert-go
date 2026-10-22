@@ -23,10 +23,11 @@ const (
 	examplesOption = "Examples"
 )
 
-// FormOption configures a property form: an [Option] of the run, a
-// relaxation of the form's assertion, such as [assert.EquateNaNs], or what
-// [Using] and [Example] return. Its method takes a type of an internal
-// package of this module, so no type outside the module is a FormOption.
+// FormOption configures a property form: an [Option] of the run, such as
+// what [Using] returns, a relaxation of the form's assertion, such as
+// [assert.EquateNaNs], or what [Example] and [Examples] return. Its method
+// takes a type of an internal package of this module, so no type outside
+// the module is a FormOption.
 type FormOption interface {
 	// FormOption marks the type as an option of a property form.
 	FormOption(matcher.FormSeal)
@@ -41,28 +42,6 @@ var (
 	_ FormOption = Option{}
 	_ FormOption = assert.Option(nil)
 )
-
-// using is the option that [Using] returns: the generator of one type.
-type using struct {
-	// typ is the type.
-	typ reflect.Type
-	// erased is the generator with its type erased.
-	erased engine.Generator[any]
-	// typed is the Generator of the type.
-	typed any
-}
-
-// FormOption makes the generator of one type an option of a property form.
-func (using) FormOption(matcher.FormSeal) {}
-
-// Using makes g the generator of T in the property form that it is passed
-// to: of the form's input when the input is a T, and of each T that the
-// input contains. It takes precedence over the generator that [Register]
-// states and over T's shape. A second Using of one type replaces the
-// first.
-func Using[T any](g Generator[T]) FormOption {
-	return using{typ: reflect.TypeFor[T](), erased: engine.Erase(engine.Generator[T](g)), typed: g}
-}
 
 // example is the option that [Example] or [Examples] returns: the values of
 // one case, or one case per value.
@@ -153,8 +132,6 @@ type formOptions struct {
 	run []Option
 	// relaxations are the relaxations of the form's assertion.
 	relaxations []matcher.Option
-	// using are the generators that Using states, by type.
-	using map[reflect.Type]using
 	// examples are the cases that Example and Examples state, in the order
 	// of the options.
 	examples []example
@@ -169,11 +146,6 @@ func sortOptions(opts []FormOption) formOptions {
 			out.run = append(out.run, o)
 		case matcher.Option:
 			out.relaxations = append(out.relaxations, o)
-		case using:
-			if out.using == nil {
-				out.using = make(map[reflect.Type]using)
-			}
-			out.using[o.typ] = o
 		case example:
 			out.examples = append(out.examples, o)
 		}
@@ -188,9 +160,9 @@ func sortOptions(opts []FormOption) formOptions {
 // contract.
 //
 // It ends the call with a fault of f's operation, without a run, for a
-// relaxation of a form whose assertion takes none, for an input type that
-// the reader refuses, for a wrong example, and for each fault for which
-// ForAll ends its call without a run.
+// relaxation of a form whose assertion takes none, for each fault for which
+// ForAll ends its call without a run, for an input type that the reader
+// refuses, and for a wrong example.
 func runForm[T any](tb assert.TB, f form, msg string, pc uintptr, opts []FormOption,
 	check func(c *Case, args []T, relaxations []matcher.Option),
 ) {
@@ -202,16 +174,6 @@ func runForm[T any](tb assert.TB, f form, msg string, pc uintptr, opts []FormOpt
 			fault.In(f.op, fault.New("the form takes no relaxation, because its assertion takes none")))
 		return
 	}
-	g, err := inputOf[T](o.using)
-	if err != nil {
-		run.Fault(matcher.Fatal, f.id, msg, fault.In(f.op, err))
-		return
-	}
-	examples, err := examplesOf(f, g, o.examples)
-	if err != nil {
-		run.Fault(matcher.Fatal, f.id, msg, fault.In(f.op, err))
-		return
-	}
 	settings := configure(o.run)
 	if f.serial {
 		settings.workers = 1
@@ -219,6 +181,16 @@ func runForm[T any](tb assert.TB, f form, msg string, pc uintptr, opts []FormOpt
 	p, err := newProperty(tb, f.op, msg, pc, settings)
 	if err != nil {
 		run.Fault(matcher.Fatal, f.id, msg, err)
+		return
+	}
+	g, err := inputOf[T](p.generators)
+	if err != nil {
+		run.Fault(matcher.Fatal, f.id, msg, fault.In(f.op, err))
+		return
+	}
+	examples, err := examplesOf(f, g, o.examples, p.generators)
+	if err != nil {
+		run.Fault(matcher.Fatal, f.id, msg, fault.In(f.op, err))
 		return
 	}
 	p.assertion = f.id
@@ -232,31 +204,26 @@ func runForm[T any](tb assert.TB, f form, msg string, pc uintptr, opts []FormOpt
 	})
 }
 
-// inputOf returns the generator of a form's input, a T: the one that using
-// states for T, and otherwise the one that [Of] returns, with the
-// generators of using in place at each type they state.
-func inputOf[T any](generators map[reflect.Type]using) (Generator[T], error) {
-	if u, ok := generators[reflect.TypeFor[T]()]; ok {
-		return u.typed.(Generator[T]), nil
-	}
-	if len(generators) == 0 {
+// inputOf returns the generator of a form's input, a T, under gs, the
+// generators of types of the form's run: the generator that a draw of [Of]
+// of T reads in the run. It returns the error of a type that the reader
+// refuses.
+func inputOf[T any](gs *generators) (Generator[T], error) {
+	if gs == nil {
 		return cachedOf[T]()
 	}
-	erased := make(map[reflect.Type]engine.Generator[any], len(generators))
-	for t, u := range generators {
-		erased[t] = u.erased
-	}
-	return of[T](registrations, erased)
+	return generatorOf[T](gs)
 }
 
 // examplesOf returns the cases of examples under g, the generator of the
-// input of the form f, in order: the choices of each case, or its values
-// where g has no inverse for one of them. It returns a fault at the option,
-// by its index among the examples, for values of another type than the
-// input, for an Example of another number of values than f generates, and
-// for Examples of a form over more than one input. It returns a fault at the
-// value for a value that g does not produce.
-func examplesOf[T any](f form, g Generator[T], examples []example) ([]engine.Example, error) {
+// input of the form f, in a run of the generators of types gs, in order:
+// the choices of each case, or its values where g has no inverse for one of
+// them. It returns a fault at the option, by its index among the examples,
+// for values of another type than the input, for an Example of another
+// number of values than f generates, and for Examples of a form over more
+// than one input. It returns a fault at the value for a value that g does
+// not produce.
+func examplesOf[T any](f form, g Generator[T], examples []example, gs *generators) ([]engine.Example, error) {
 	input := reflect.TypeFor[T]()
 	var out []engine.Example
 	for i, ex := range examples {
@@ -273,7 +240,7 @@ func examplesOf[T any](f form, g Generator[T], examples []example) ([]engine.Exa
 				return nil, fault.At(fault.New("the example states %d values, and the form generates %d",
 					len(ex.values), len(f.labels)), at...)
 			}
-			c, j, err := caseOf(g, ex.values)
+			c, j, err := caseOf(g, ex.values, gs)
 			if err != nil {
 				return nil, fault.At(err, append(at, fault.Index(j))...)
 			}
@@ -285,7 +252,7 @@ func examplesOf[T any](f form, g Generator[T], examples []example) ([]engine.Exa
 				len(f.labels)), at...)
 		}
 		for j, v := range ex.values {
-			c, _, err := caseOf(g, []any{v})
+			c, _, err := caseOf(g, []any{v}, gs)
 			if err != nil {
 				return nil, fault.At(err, append(at, fault.Index(j))...)
 			}
@@ -296,16 +263,17 @@ func examplesOf[T any](f form, g Generator[T], examples []example) ([]engine.Exa
 }
 
 // caseOf returns the case of values, one for each generated argument: the
-// choices that decode to them under g, or the values themselves when g has
-// no inverse for one of them. It returns the fault of a value that g does
-// not produce, with the value's index.
-func caseOf[T any](g Generator[T], values []any) (engine.Example, int, error) {
+// choices that decode to them under g in a run of the generators of types
+// gs, or the values themselves when g has no inverse for one of them. It
+// returns the fault of a value that g does not produce, with the value's
+// index.
+func caseOf[T any](g Generator[T], values []any, gs *generators) (engine.Example, int, error) {
 	var choices []choice.Choice
 	for j, v := range values {
 		// The type of the values is T, so the assertion fails only for a nil
 		// interface value, whose T is the zero value.
 		value, _ := v.(T)
-		c, err := engine.Invert(engine.Generator[T](g), value)
+		c, err := engine.InvertUsing(gs.engineUsing(), engine.Generator[T](g), value)
 		if errors.Is(err, engine.ErrNoInverse) {
 			return engine.Example{Values: values}, 0, nil
 		}

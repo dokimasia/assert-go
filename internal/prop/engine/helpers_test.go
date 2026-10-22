@@ -191,7 +191,7 @@ func decodePair(c *engine.Case) [2]uint64 {
 
 // invertPair returns the steps of a pair that decodePair decodes: one value
 // choice of the digits for each number, unchecked against the digits.
-func invertPair(v any) ([]engine.Step, [2]uint64, error) {
+func invertPair(_ engine.Inversion, v any) ([]engine.Step, [2]uint64, error) {
 	pair, ok := v.([2]uint64)
 	if !ok {
 		return nil, pair, fmt.Errorf("%v is no pair", v)
@@ -200,6 +200,12 @@ func invertPair(v any) ([]engine.Step, [2]uint64, error) {
 		return engine.Step{Bounds: choice.OfInteger(digitRange), Value: unsigned(d)}
 	}
 	return []engine.Step{digit(pair[0]), digit(pair[1])}, pair, nil
+}
+
+// pickSevens picks Just(7) for a run whose generators of types are the text
+// "sevens", and no generator for any other run.
+func pickSevens(using any) (engine.Generator[int], bool) {
+	return engine.Just(7), using == "sevens"
 }
 
 // halve returns the integer that doubling maps to v, and errOdd for an odd

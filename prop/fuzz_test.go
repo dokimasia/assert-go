@@ -72,6 +72,9 @@ const (
 	// aroundSkippingMode fuzzes passesTrue from a seed under a wrapper of
 	// Around that returns without calling run.
 	aroundSkippingMode = "around-skipping"
+	// usingMode fuzzes a body that fails for a draw of Of of int8 other than
+	// 3, from a seed, under Using of the generator of 3.
+	usingMode = "using"
 )
 
 // childSeed is the seed of each property of FuzzChild, which the record of
@@ -378,6 +381,11 @@ func TestFuzzProcess(t *testing.T) {
 			expectEnded(t, childCall(t, out, "FuzzChild/seed#0", 1), skipped)
 		})
 
+		t.Run("draws Of from the generator that Using states for each input", func(t *testing.T) {
+			out, err := child(t, usingMode, t.TempDir())
+			assert.NoError(t, err, "the child passes:\n"+out)
+		})
+
 		t.Run("ends the replay of the stored cases with a fault for a wrapper that does not call run",
 			func(t *testing.T) {
 				dir := t.TempDir()
@@ -459,6 +467,15 @@ func FuzzChild(f *testing.F) {
 	if mode == aroundSkippingMode {
 		f.Add([]byte{5})
 		prop.Fuzz(f, contract, passesTrue, stored, seeded, prop.Around(func(*testing.T, func(*testing.T)) {}))
+		return
+	}
+	if mode == usingMode {
+		f.Add([]byte{5})
+		prop.Fuzz(f, contract, func(c *prop.Case) {
+			if c.Draw(prop.Of[int8](), drawn) != 3 {
+				c.Report(assert.Failure{Assertion: big, Contract: fits}, true)
+			}
+		}, stored, seeded, prop.Using(prop.Integer[int8](3, 3)))
 		return
 	}
 	if mode == failingMode {

@@ -39,7 +39,7 @@ func SampledFrom[T any](values ...T) Generator[T] {
 		defer c.closeSpan(span)
 		return stated[c.Structure(bounds, 0).Magnitude()]
 	}
-	return NewInvertible(sampledFromID, decode, func(v any) ([]Step, T, error) {
+	return NewInvertible(sampledFromID, decode, func(_ Inversion, v any) ([]Step, T, error) {
 		for i, s := range stated {
 			if SameValue(v, s) {
 				return []Step{indexStep(bounds, i)}, s, nil
@@ -67,8 +67,8 @@ func OneOf[T any](gens ...Generator[T]) Generator[T] {
 		defer c.closeSpan(span)
 		return stated[c.Structure(bounds, 0).Magnitude()].decode(c)
 	}
-	return NewInvertible(oneOfID, decode, func(v any) ([]Step, T, error) {
-		steps, t, produced, unknown := firstBranch(stated, bounds, v)
+	return NewInvertible(oneOfID, decode, func(in Inversion, v any) ([]Step, T, error) {
+		steps, t, produced, unknown := firstBranch(in, stated, bounds, v)
 		if !produced {
 			return nil, t, noBranch(unknown, "none of the %d alternatives produces %v", len(stated), v)
 		}
@@ -95,14 +95,14 @@ func Optional[T any](of Generator[T]) Generator[*T] {
 		v := of.decode(c)
 		return &v
 	}
-	return NewInvertible(optionalID, decode, func(v any) ([]Step, *T, error) {
+	return NewInvertible(optionalID, decode, func(in Inversion, v any) ([]Step, *T, error) {
 		if Absent(v) {
 			return []Step{bitStep(false)}, nil, nil
 		}
 		if p, ok := v.(*T); ok {
 			v = *p
 		}
-		steps, present, err := of.inverse(v)
+		steps, present, err := of.inverse(in, v)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -146,7 +146,7 @@ func Permutation[T any](values ...T) Generator[[]T] {
 		}
 		return ordered
 	}
-	return NewInvertible(permutationID, decode, func(v any) ([]Step, []T, error) {
+	return NewInvertible(permutationID, decode, func(_ Inversion, v any) ([]Step, []T, error) {
 		items, ok := ListItems(v)
 		if !ok || len(items) != len(stated) {
 			return nil, nil, uninvertible("%v is no list of %d values", v, len(stated))

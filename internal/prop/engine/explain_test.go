@@ -260,6 +260,43 @@ func TestExplain(t *testing.T) {
 			assert.Equal(t, digestOf(trace), "184d753561be9e47391cfc5870e98193899e8b21c88e45b237bbd20e9dd1b951",
 				"no explanation run")
 		})
+
+		t.Run("fills a draw under what the run stated where the draw ran", func(t *testing.T) {
+			t.Parallel()
+			hundreds := engine.Picking(digit, func(using any) (engine.Generator[int], bool) {
+				return engine.Integer(100, 109), using == "hundreds"
+			})
+			one := engine.List(hundreds, sizes(t, 1, 1))
+			inner := engine.Within(engine.Composite(func(c *engine.Case) []int { return engine.Draw(c, one, "inner") }),
+				func() any { return "hundreds" })
+			got := engine.Run(func(c *engine.Case) {
+				if engine.Draw(c, inner, "outer")[0] >= 100 {
+					c.Report(assert.Failure{Assertion: "hundreds"}, false)
+				}
+			}, settled())
+			want := []engine.Explained{
+				{Label: "inner", Value: []int{100}, Relevance: engine.AnyValueFails},
+				{Label: "outer", Value: []int{100}, Relevance: engine.AnyValueFails},
+			}
+			assert.Equal(t, got.Explanation, want, "every filling of a hundred fails the same way")
+		})
+
+		t.Run("reports no nearest value for a draw of other bounds than its integer", func(t *testing.T) {
+			t.Parallel()
+			sampled := engine.Picking(engine.Integer(0, 10_000), func(using any) (engine.Generator[int], bool) {
+				return engine.SampledFrom(5000, 6000), using == "sampled"
+			})
+			doubled := sampled.Map(func(v int) int { return 2 * v })
+			s := settled()
+			s.Using = "sampled"
+			got := engine.Run(func(c *engine.Case) {
+				if engine.Draw(c, doubled, drawn) == 12_000 {
+					c.Report(assert.Failure{Assertion: "six thousand"}, false)
+				}
+			}, s)
+			want := []engine.Explained{{Label: drawn, Value: 12_000, Relevance: engine.ValueMatters}}
+			assert.Equal(t, got.Explanation, want, "the value that matters, without a step of the sampled index")
+		})
 	})
 }
 

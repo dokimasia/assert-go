@@ -41,7 +41,7 @@ func StringMatching(text string) (engine.Generator[string], error) {
 		c.Span(id, func() { root.emit(c, &b) })
 		return b.String()
 	}
-	return engine.NewInvertible(id, decode, func(v any) ([]engine.Step, string, error) {
+	return engine.NewInvertible(id, decode, func(_ engine.Inversion, v any) ([]engine.Step, string, error) {
 		s, ok := v.(string)
 		if !ok || !utf8.ValidString(s) {
 			return nil, "", fault.Of(engine.ErrCannotInvert, "%v is no string of UTF-8", v)

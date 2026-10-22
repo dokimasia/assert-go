@@ -88,6 +88,9 @@ type Drawn struct {
 	Span int
 	// source is the generator, for the explain phase to decode again.
 	source erased
+	// using is what the run stated for the generators of types where the
+	// draw ran, under which the explain phase decodes source again.
+	using any
 }
 
 // Neutral returns the value as the generator states it: for a draw from a
@@ -188,6 +191,10 @@ type Case struct {
 	// settings are the settings of the run, under which a repeat of the case
 	// runs.
 	settings Settings
+	// using is what the case's draws read for the generators of types:
+	// settings.Using, and inside the decode of a generator of Within what
+	// that generator states.
+	using any
 	// stop is why the case ended before its body returned.
 	stop stop
 	// dropped reports whether the run no longer needs the case, which then
@@ -584,6 +591,7 @@ func (c *Case) recycle(p provider, s Settings, w *tree.Walker) {
 		taken:      c.taken[:0],
 		cleanups:   c.cleanups[:0],
 		settings:   s,
+		using:      s.Using,
 	}
 	record.Run(&c.calls, s.Slot, nil)
 }
@@ -621,6 +629,24 @@ func (c *Case) derive(ctx context.Context) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.parent = ctx
+}
+
+// currentUsing returns what the case's draws read for the generators of
+// types.
+func (c *Case) currentUsing() any {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.using
+}
+
+// swapUsing makes using what the case's draws read for the generators of
+// types, and returns what they read before.
+func (c *Case) swapUsing(using any) any {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	outer := c.using
+	c.using = using
+	return outer
 }
 
 // requested reports whether the body drew a value or made a choice. It
@@ -771,11 +797,11 @@ func (c *Case) closeSpan(index int) {
 }
 
 // draw records a value that g decoded under label, from the span at index
-// span.
+// span, with what the case's draws read for the generators of types.
 func (c *Case) draw(label string, value any, span int, g erased) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.draws = append(c.draws, Drawn{Label: label, Value: value, Span: span, source: g})
+	c.draws = append(c.draws, Drawn{Label: label, Value: value, Span: span, source: g, using: c.using})
 }
 
 // nextSpan returns the index the next span will have.

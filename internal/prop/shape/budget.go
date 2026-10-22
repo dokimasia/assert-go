@@ -56,7 +56,7 @@ func refOf(name string, built map[string]engine.Generator[any], cyclic bool, b *
 		}
 		return built[name].Decode(c)
 	}
-	return engine.NewInvertible(refID, decode, func(v any) ([]engine.Step, any, error) {
-		return built[name].Inverse(v)
+	return engine.NewInvertible(refID, decode, func(in engine.Inversion, v any) ([]engine.Step, any, error) {
+		return built[name].Inverse(in, v)
 	})
 }
