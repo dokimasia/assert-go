@@ -19,8 +19,9 @@ import (
 
 // The results of the allocation cases, which keep each call.
 var (
-	counted bool
-	off     bool
+	counted   bool
+	uncounted string
+	off       bool
 )
 
 // kept keeps what allocate builds, so escape analysis cannot remove the
@@ -197,6 +198,76 @@ func countedHere() (bool, []debug.BuildSetting) {
 	return built && flag.Lookup("test.testlogfile").Value.String() == "", settings
 }
 
+// uncountedHere returns the kind that AllocationsUncounted names in the
+// running binary, from the same records that builtHere reads, in the order
+// in which the function checks them.
+func uncountedHere() string {
+	info, _ := debug.ReadBuildInfo()
+	for _, setting := range info.Settings {
+		if instrumentedSettings[setting.Key] && setting.Value == "true" {
+			return "a build with the race detector, msan or asan"
+		}
+	}
+	if matcher.OptimisationsOff(info) {
+		return "a build whose -gcflags turn off optimisation or inlining"
+	}
+	if _, mutation := os.LookupEnv(instrumentedVariable); mutation {
+		return "a test binary that a mutation run instrumented"
+	}
+	if flag.Lookup("test.testlogfile").Value.String() != "" {
+		return "a run that writes the test log of go test, which a run with -count=1 does not write"
+	}
+	return ""
+}
+
+// TestAllocationsUncounted checks the kind that AllocationsUncounted names
+// against the build information, the environment and the test log of the
+// running binary, and in child processes that a mutation run instrumented or
+// that write a test log.
+func TestAllocationsUncounted(t *testing.T) {
+	t.Parallel()
+
+	t.Run("names the kind that the running binary's records state", func(t *testing.T) {
+		t.Parallel()
+
+		if got, want := matcher.AllocationsUncounted(), uncountedHere(); got != want {
+			t.Fatalf("AllocationsUncounted = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("names the kind of a run that writes the test log of go test", func(t *testing.T) {
+		t.Parallel()
+
+		if childtest.InChild(t) {
+			if got, want := matcher.AllocationsUncounted(), uncountedHere(); got != want || got == "" {
+				t.Fatalf("AllocationsUncounted = %q, want %q in a run that writes the test log", got, want)
+			}
+			return
+		}
+		runLogged(t)
+	})
+
+	t.Run("names the kind of a test binary that a mutation run instrumented", func(t *testing.T) {
+		t.Parallel()
+
+		if childtest.InChild(t) {
+			if got, want := matcher.AllocationsUncounted(), uncountedHere(); got != want || got == "" {
+				t.Fatalf("AllocationsUncounted = %q, want %q in a binary that a mutation run instrumented", got, want)
+			}
+			return
+		}
+		runChild(t, instrumentedVariable+"=1")
+	})
+
+	t.Run("returns the empty string exactly when the counts describe the code", func(t *testing.T) {
+		t.Parallel()
+
+		if checked, kind := matcher.AllocationsCounted(), matcher.AllocationsUncounted(); checked != (kind == "") {
+			t.Fatalf("AllocationsCounted = %v and AllocationsUncounted = %q, which disagree", checked, kind)
+		}
+	})
+}
+
 // TestAllocationsCounted checks AllocationsCounted against the build
 // information, the environment and the test log of the running binary, and
 // in child processes whose environment states a variable of a mutation run
@@ -290,6 +361,7 @@ func allocsCases() []allocCase {
 			matcher.MaxAllocsWithSetup(seat, matcher.Fatal, func() int { return 0 }, func(int) {}, 0, allocContract)
 		}},
 		{name: "AllocationsCounted", call: func(matcher.Seat) { counted = matcher.AllocationsCounted() }},
+		{name: "AllocationsUncounted", call: func(matcher.Seat) { uncounted = matcher.AllocationsUncounted() }},
 		{name: "OptimisationsOff", call: func(matcher.Seat) { off = matcher.OptimisationsOff(debugger) }},
 	}
 }

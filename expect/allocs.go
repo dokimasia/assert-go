@@ -12,7 +12,7 @@ import (
 // next 100 calls. A ceiling of 0 admits one allocation in all. Any other
 // ceiling admits an average per call that rounds to at most ceiling, and a
 // half rounds up. When a count exceeds ceiling, MaxAllocs counts again,
-// three times at most. It records a failure and lets the test continue when
+// ten times at most. It records a failure and lets the test continue when
 // no count meets ceiling. The failure has the ceiling as want, the rounded
 // average of the count with the lowest total as got, and the allocations of
 // that count as total.
@@ -23,7 +23,10 @@ import (
 // A function that allocates on 2 of the 100 calls fails a ceiling of 0. The
 // one allocation that a ceiling of 0 admits covers an allocation that the
 // runtime makes while a count runs. A function that grows a slice in the
-// first count passes at the second count when the slice no longer grows.
+// first count passes at the second count when the slice no longer grows. A
+// function that asserts types for the first time passes once the runtime
+// has built the caches of its type assertions, which it builds in about one
+// of 1,024 calls of a call site that misses its cache.
 //
 // It is the test form of the benchmark ceiling
 // [go.dokimi.dev/assert/bench.Contract.MaxAllocs], so the ordinary test
@@ -46,7 +49,9 @@ import (
 // allocates in some calls of package os, such as an Open through an
 // os.Root. There it writes a note into the test's log that a run with
 // -count=1 checks the ceiling. A run with -count=1, -covermode or -bench
-// turns the cache off and writes no test log.
+// turns the cache off and writes no test log. [AllocsChecked] reports
+// whether a run checks the ceiling, and returns the kind of build or run
+// that stops the check.
 //
 // # Parallel tests
 //
@@ -95,4 +100,23 @@ func MaxAllocs(tb assert.TB, fn func(), ceiling uint64, msg string) {
 func MaxAllocsWithSetup[T any](tb assert.TB, setup func() T, fn func(T), ceiling uint64, msg string) {
 	tb.Helper()
 	matcher.MaxAllocsWithSetup(tb, matcher.Soft, setup, fn, ceiling, msg)
+}
+
+// AllocsChecked reports whether [MaxAllocs], [MaxAllocsWithSetup], their
+// property forms and the allocation ceilings of a benchmark contract check
+// their ceilings in this run, as [go.dokimi.dev/assert.AllocsChecked] does.
+// Where they do not, they pass without a count, and reason is the kind of
+// build or run that stops the check. Where they do, reason is empty.
+//
+//	if checked, reason := expect.AllocsChecked(); !checked {
+//	    t.Skipf("the run does not check allocation ceilings: %s", reason)
+//	}
+//
+// The result is the same for every call in one run.
+//
+// # Allocation contract
+//
+// AllocsChecked allocates nothing after its first call.
+func AllocsChecked() (checked bool, reason string) {
+	return assert.AllocsChecked()
 }

@@ -9,7 +9,7 @@ import "go.dokimi.dev/assert/internal/matcher"
 // next 100 calls. A ceiling of 0 admits one allocation in all. Any other
 // ceiling admits an average per call that rounds to at most ceiling, and a
 // half rounds up. When a count exceeds ceiling, MaxAllocs counts again,
-// three times at most. It stops the test when no count meets ceiling. The
+// ten times at most. It stops the test when no count meets ceiling. The
 // failure has the ceiling as want, the rounded average of the count with
 // the lowest total as got, and the allocations of that count as total.
 //
@@ -19,7 +19,10 @@ import "go.dokimi.dev/assert/internal/matcher"
 // A function that allocates on 2 of the 100 calls fails a ceiling of 0. The
 // one allocation that a ceiling of 0 admits covers an allocation that the
 // runtime makes while a count runs. A function that grows a slice in the
-// first count passes at the second count when the slice no longer grows.
+// first count passes at the second count when the slice no longer grows. A
+// function that asserts types for the first time passes once the runtime
+// has built the caches of its type assertions, which it builds in about one
+// of 1,024 calls of a call site that misses its cache.
 //
 // It is the test form of the benchmark ceiling
 // [go.dokimi.dev/assert/bench.Contract.MaxAllocs], so the ordinary test
@@ -42,7 +45,9 @@ import "go.dokimi.dev/assert/internal/matcher"
 // allocates in some calls of package os, such as an Open through an
 // os.Root. There it writes a note into the test's log that a run with
 // -count=1 checks the ceiling. A run with -count=1, -covermode or -bench
-// turns the cache off and writes no test log.
+// turns the cache off and writes no test log. [AllocsChecked] reports
+// whether a run checks the ceiling, and returns the kind of build or run
+// that stops the check.
 //
 // # Parallel tests
 //
@@ -91,4 +96,29 @@ func MaxAllocs(tb TB, fn func(), ceiling uint64, msg string) {
 func MaxAllocsWithSetup[T any](tb TB, setup func() T, fn func(T), ceiling uint64, msg string) {
 	tb.Helper()
 	matcher.MaxAllocsWithSetup(tb, matcher.Fatal, setup, fn, ceiling, msg)
+}
+
+// AllocsChecked reports whether [MaxAllocs], [MaxAllocsWithSetup], their
+// property forms and the allocation ceilings of a benchmark contract check
+// their ceilings in this run. Where they do not, they pass without a count,
+// and reason is the kind of build or run that stops the check, such as "a
+// build with the race detector, msan or asan". Where they do, reason is
+// empty.
+//
+// A harness that falsifies a check of a ceiling reads it first, because a
+// ceiling that the run does not check passes on an implementation that
+// exceeds it:
+//
+//	if checked, reason := assert.AllocsChecked(); !checked {
+//	    t.Skipf("the run does not check allocation ceilings: %s", reason)
+//	}
+//
+// The result is the same for every call in one run.
+//
+// # Allocation contract
+//
+// AllocsChecked allocates nothing after its first call.
+func AllocsChecked() (checked bool, reason string) {
+	reason = matcher.AllocationsUncounted()
+	return reason == "", reason
 }

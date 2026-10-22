@@ -21,9 +21,9 @@ type MaxAllocsWithSetupInvoke func(seat *Seat, setup func() *[]byte, fn func(*[]
 // calls its callable: once to warm it, and 100 times to count.
 const warmAndCounted = 101
 
-// threeCounts is the number of times an allocation ceiling calls a callable
-// that exceeds it in every count: three counts of warmAndCounted calls.
-const threeCounts = 3 * warmAndCounted
+// tenCounts is the number of times an allocation ceiling calls a callable
+// that exceeds it in every count: ten counts of warmAndCounted calls.
+const tenCounts = 10 * warmAndCounted
 
 // allocated keeps what allocateOnce built, so escape analysis cannot
 // remove the allocation.
@@ -121,6 +121,16 @@ func sevenThenOne(call int) int {
 	return 0
 }
 
+// twoUntilTheTenthCount allocates on the first two counted calls of each of
+// the first nine counts, and on the first counted call of the tenth, as a
+// callable does whose type assertions build their caches for nine counts.
+func twoUntilTheTenthCount(call int) int {
+	if call < 9*warmAndCounted {
+		return twoCalls(call)
+	}
+	return oneCall(call)
+}
+
 // twiceOn returns the allocations of a call that allocates once on every
 // counted call, and once more on the first extra counted calls of each
 // count.
@@ -175,6 +185,12 @@ func RunMaxAllocs(t *testing.T, invoke MaxAllocsInvoke) {
 	t.Run("a callable whose allocations fall to one in its second count passes a ceiling of 0", func(t *testing.T) {
 		seat := &Seat{}
 		invoke(seat, allocatesTimes(sevenThenOne), 0, contractMsg)
+		checkOutcome(t, seat, Case{})
+	})
+
+	t.Run("a callable whose allocations fall to one in its tenth count passes a ceiling of 0", func(t *testing.T) {
+		seat := &Seat{}
+		invoke(seat, allocatesTimes(twoUntilTheTenthCount), 0, contractMsg)
 		checkOutcome(t, seat, Case{})
 	})
 
@@ -248,7 +264,7 @@ func RunMaxAllocs(t *testing.T, invoke MaxAllocsInvoke) {
 		}
 	})
 
-	t.Run("it counts a callable over its ceiling three times in a build that counts allocations", func(t *testing.T) {
+	t.Run("it counts a callable over its ceiling ten times in a build that counts allocations", func(t *testing.T) {
 		calls := 0
 		over := func() {
 			allocateOnce()
@@ -260,7 +276,7 @@ func RunMaxAllocs(t *testing.T, invoke MaxAllocsInvoke) {
 
 		want := warmAndCounted
 		if counted {
-			want = threeCounts
+			want = tenCounts
 		}
 		if calls != want {
 			t.Fatalf("called the callable over its ceiling %d times, want %d", calls, want)
@@ -310,6 +326,13 @@ func RunMaxAllocsWithSetup(t *testing.T, invoke MaxAllocsWithSetupInvoke) {
 
 	t.Run("a callable whose allocations fall to one in its second count passes a ceiling of 0", func(t *testing.T) {
 		allocating := allocatesTimes(sevenThenOne)
+		seat := &Seat{}
+		invoke(seat, fresh, func(*[]byte) { allocating() }, 0, contractMsg)
+		checkOutcome(t, seat, Case{})
+	})
+
+	t.Run("a callable whose allocations fall to one in its tenth count passes a ceiling of 0", func(t *testing.T) {
+		allocating := allocatesTimes(twoUntilTheTenthCount)
 		seat := &Seat{}
 		invoke(seat, fresh, func(*[]byte) { allocating() }, 0, contractMsg)
 		checkOutcome(t, seat, Case{})
@@ -399,7 +422,7 @@ func RunMaxAllocsWithSetup(t *testing.T, invoke MaxAllocsWithSetupInvoke) {
 		}
 	})
 
-	t.Run("it counts a callable over its ceiling three times in a build that counts allocations", func(t *testing.T) {
+	t.Run("it counts a callable over its ceiling ten times in a build that counts allocations", func(t *testing.T) {
 		calls := 0
 		over := func(*[]byte) {
 			allocateOnce()
@@ -411,7 +434,7 @@ func RunMaxAllocsWithSetup(t *testing.T, invoke MaxAllocsWithSetupInvoke) {
 
 		want := warmAndCounted
 		if counted {
-			want = threeCounts
+			want = tenCounts
 		}
 		if calls != want {
 			t.Fatalf("called the callable over its ceiling %d times, want %d", calls, want)

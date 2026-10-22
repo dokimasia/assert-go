@@ -17,8 +17,11 @@ import (
 const allocRuns = 100
 
 // allocCounts is the most counts that an allocation ceiling takes. The
-// assertion fails when none of them meets the ceiling.
-const allocCounts = 3
+// assertion fails when none of them meets the ceiling. Ten counts admit the
+// builds of the caches of type assertions, which the runtime makes in about
+// one of 1,024 calls of a call site that misses its cache, for thousands of
+// calls after the first.
+const allocCounts = 10
 
 // zeroSlack is the most allocations that the counted calls can make and
 // still meet a ceiling of 0. It covers an allocation that the process makes
@@ -44,11 +47,24 @@ const (
 	flagNoInlining     = "-l"
 )
 
+// The kinds of build and run whose allocation counts do not describe the
+// code under test. [AllocationsUncounted] returns one of them.
+const (
+	// uncountedInstrumented is a build with the race detector, msan or asan.
+	uncountedInstrumented = "a build with the race detector, msan or asan"
+	// uncountedOptimisationsOff is a build without optimisation or inlining.
+	uncountedOptimisationsOff = "a build whose -gcflags turn off optimisation or inlining"
+	// uncountedMutation is a test binary that a mutation run instrumented.
+	uncountedMutation = "a test binary that a mutation run instrumented"
+	// uncountedTestLog is a run that writes the test log of go test.
+	uncountedTestLog = "a run that writes the test log of go test, which a run with -count=1 does not write"
+)
+
 // MaxAllocs calls fn once to warm it and counts the heap allocations of
 // the next 100 calls. A ceiling of 0 admits one allocation in all. Any other
 // ceiling admits an average per call that rounds to at most ceiling, and a
 // half rounds up. When a count exceeds ceiling, MaxAllocs counts again,
-// three times at most. When no count meets ceiling, it reports the count
+// ten times at most. When no count meets ceiling, it reports the count
 // with the lowest total.
 //
 //	matcher.MaxAllocs(seat, matcher.Fatal, func() { _, _ = store.Get(ctx, id) }, 0,
@@ -181,7 +197,7 @@ func perCall(total uint64) uint64 {
 func ceilingChecked(seat Seat, note string) bool {
 	seat.Helper()
 	counted := AllocationsCounted()
-	if !counted && builtToCount() {
+	if !counted && buildUncounted() == "" {
 		Note(seat, note)
 	}
 	return counted
@@ -220,15 +236,51 @@ func ceilingChecked(seat Seat, note string) bool {
 //
 // AllocationsCounted allocates nothing after its first call.
 func AllocationsCounted() bool {
-	return builtToCount() && !testLogged()
+	return AllocationsUncounted() == ""
 }
 
-// builtToCount reports whether the build and the environment of the running
-// binary let its allocation counts describe the code under test, on its
-// first call, and returns the result of that call afterwards.
-var builtToCount = sync.OnceValue(func() bool {
+// AllocationsUncounted returns the kind of build or run whose allocation
+// counts do not describe the code under test, as [AllocationsCounted]
+// lists the four kinds, and the empty string for a run whose counts
+// describe it. A build that is of two kinds returns the first of them in
+// the order of that list. It reads the build information, the environment
+// and the flag as AllocationsCounted reads them.
+//
+// # Allocation contract
+//
+// AllocationsUncounted allocates nothing after its first call.
+func AllocationsUncounted() string {
+	if kind := buildUncounted(); kind != "" {
+		return kind
+	}
+	if testLogged() {
+		return uncountedTestLog
+	}
+	return ""
+}
+
+// buildUncounted returns the kind of build or environment of the running
+// binary whose allocation counts do not describe the code under test, on
+// its first call, and the result of that call afterwards. It returns the
+// empty string for a build and an environment that count.
+var buildUncounted = sync.OnceValue(func() string {
 	info, _ := debug.ReadBuildInfo()
-	return !instrumented && !OptimisationsOff(info) && !MutationInstrumented()
+	kinds := [...]struct {
+		// applies reports whether the running binary is of the kind.
+		applies bool
+		// kind is the text of the kind.
+		kind string
+	}{
+		{instrumented, uncountedInstrumented},
+		{OptimisationsOff(info), uncountedOptimisationsOff},
+		{MutationInstrumented(), uncountedMutation},
+	}
+	for _, k := range kinds {
+		if k.applies {
+			return k.kind
+		}
+	}
+	return ""
 })
 
 // testLogged reports whether the running binary writes the test log of go
