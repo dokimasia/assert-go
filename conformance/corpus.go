@@ -16,7 +16,7 @@ import (
 )
 
 // corpusGlob matches every corpus file in the vendored definition.
-const corpusGlob = "spec/corpus/*.json"
+const corpusGlob = "corpus/*.json"
 
 // goLanguageKey names this language in a case's skip table.
 const goLanguageKey = "go"

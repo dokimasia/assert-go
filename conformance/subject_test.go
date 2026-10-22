@@ -31,7 +31,7 @@ func TestSubject(t *testing.T) {
 
 		t.Run("builds every kind of the definition's subjects table and no other", func(t *testing.T) {
 			t.Parallel()
-			raw, err := os.ReadFile("spec/assertions.json")
+			raw, err := os.ReadFile(filepath.Join("spec", "assertions.json"))
 			assert.NoError(t, err, "the vendored assertion table can be read")
 			var doc struct {
 				Subjects map[string]json.RawMessage `json:"subjects"`

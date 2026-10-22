@@ -10,12 +10,12 @@ import (
 	"strings"
 )
 
-// The vendored definition's files.
+// The vendored definition's files, at their paths in assert-spec.
 const (
 	assertionsFile = "spec/assertions.json"
 	namingFile     = "spec/naming.json"
-	overlayFile    = "spec/overlay.json"
-	versionFile    = "spec/VERSION"
+	overlayFile    = "overlays/go.json"
+	versionFile    = "VERSION"
 )
 
 // goLanguage keys this language's entries in the naming table.
@@ -23,7 +23,7 @@ const goLanguage = "go"
 
 // definition is the vendored definition.
 //
-//go:embed spec/assertions.json spec/naming.json spec/overlay.json spec/VERSION spec/corpus
+//go:embed spec/assertions.json spec/naming.json overlays/go.json VERSION corpus
 var definition embed.FS
 
 // ID is an assertion's canonical name.

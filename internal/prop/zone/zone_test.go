@@ -18,7 +18,7 @@ import (
 
 // manifest is the vendored definition's manifest, which states the digest of
 // every file the definition vendors.
-var manifest = filepath.Join("..", "..", "..", "conformance", "spec", "manifest.json")
+var manifest = filepath.Join("..", "..", "..", "conformance", "manifest.json")
 
 // TestZone checks the zone list that the embedded table states.
 func TestZone(t *testing.T) {

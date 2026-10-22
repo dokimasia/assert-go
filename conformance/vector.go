@@ -18,7 +18,7 @@ import (
 // the assertions that read files, of the history, of the property engine and
 // of machines. The corpus glob of the assertions matches none of them.
 var vectorGlobs = [...]string{
-	"spec/corpus/files/*.json", "spec/corpus/history/*.json", "spec/corpus/prop/*.json", "spec/corpus/stateful/*.json",
+	"corpus/files/*.json", "corpus/history/*.json", "corpus/prop/*.json", "corpus/stateful/*.json",
 }
 
 // The members of a corpus case, of a vector and of the specs inside one,
