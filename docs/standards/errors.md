@@ -183,8 +183,8 @@ type Error struct {
   panic of the generator passes through.
 - A draw of `prop.Of` panics inside its case when the reader refuses its
   type under the generators that the run takes through `Using`. The message
-  is the message of `Of`: `prop: Of[shop.Order]: ` and the fault of the
-  reader.
+  is the message of `Of`: the prefix `prop: Of[shop.Order]:` and the fault
+  of the reader.
 - No other code panics on purpose.
 - A `recover` exists only where a panic is what the code observes: an
   assertion about panics, the end of a property's case, the goroutine of
