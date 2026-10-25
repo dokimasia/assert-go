@@ -73,6 +73,13 @@ func (d derived) generator() (engine.Generator[any], error) {
 // derivations are the generators that Of returned, by type.
 var derivations sync.Map
 
+// refusals are the generators that Of returned for the types that the
+// reader refuses, by type.
+var refusals sync.Map
+
+// refusedOfID is the id of the generator of a type that the reader refuses.
+const refusedOfID = "of"
+
 // Of returns the generator of T: the generator that [Register] states for
 // T, and otherwise the generator of T's shape, which the reader reads from
 // T as the package documentation states. Two types of one shape generate
@@ -85,10 +92,12 @@ var derivations sync.Map
 // generators in place of the types that they state. A draw inside another
 // generator, such as [List], does so as well.
 //
-// It panics for a type that the reader refuses, and the panic names the
-// field. A call reads T once per process. The first call of Of for a type
-// reads the registrations at that time, so a registration of a type that T
-// contains panics after it.
+// For a type that the reader refuses, such as an interface without
+// variants, a draw panics inside its case, and the panic names the field.
+// A run whose options state the generator of the type, or of each refused
+// type inside it, draws from those generators instead. A call reads T once
+// per process. The first call of Of for a type reads the registrations at
+// that time, so a registration of a type that T contains panics after it.
 //
 // # Allocation contract
 //
@@ -96,11 +105,30 @@ var derivations sync.Map
 // for a type allocates the read of T, the generator of its shape, and the
 // pick of a run's generator.
 func Of[T any]() Generator[T] {
-	g, err := cachedOf[T]()
-	if err != nil {
-		panic(fmt.Sprintf("prop: Of[%v]: %v", reflect.TypeFor[T](), err))
+	t := reflect.TypeFor[T]()
+	if g, ok := refusals.Load(t); ok {
+		return g.(Generator[T])
 	}
-	return g
+	g, err := cachedOf[T]()
+	if err == nil {
+		return g
+	}
+	stored, _ := refusals.LoadOrStore(t, refusedOf[T](err))
+	return stored.(Generator[T])
+}
+
+// refusedOf returns the generator of T, a type that the reader refuses with
+// err. A draw takes the generator of T that a run's options state, or reads
+// T with them, as [Of] states it. A draw in a run without them panics with
+// the message of Of, and the inverse returns err.
+func refusedOf[T any](err error) Generator[T] {
+	msg := fmt.Sprintf("prop: Of[%v]: %v", reflect.TypeFor[T](), err)
+	refused := engine.NewInvertible(refusedOfID, func(*engine.Case) T { panic(msg) },
+		func(engine.Inversion, any) ([]engine.Step, T, error) {
+			var zero T
+			return nil, zero, err
+		})
+	return Generator[T](engine.Picking(refused, pickOf[T]))
 }
 
 // cachedOf returns the generator of T under the process's registry, as

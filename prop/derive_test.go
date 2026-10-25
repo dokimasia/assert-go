@@ -10,6 +10,8 @@ import (
 	"go.dokimi.dev/assert/bench"
 	"go.dokimi.dev/assert/golden"
 	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/matchertest"
+	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/prop"
 )
 
@@ -75,22 +77,47 @@ func TestDerive(t *testing.T) {
 			assert.Equal(t, got, order{ID: 7}, "an order of no line and no note")
 		})
 
-		t.Run("panics for a type that the reader refuses, and states the fault", func(t *testing.T) {
+		t.Run("returns a generator for a type that the reader refuses", func(t *testing.T) {
 			t.Parallel()
-			got := assert.Panics(t, func() { prop.Of[struct{ C chan int }]() }, "a channel")
-			assert.Equal(t, got, any("prop: Of[struct { C chan int }]: struct { C chan int }.C: "+
-				"chan int is no type that a shape states"), "the panic names the type and the field")
+			assert.NotPanics(t, func() { prop.Of[struct{ C chan int }]() }, "a channel")
 		})
 
-		t.Run("panics for a constraint that the definition refuses, and states the fault", func(t *testing.T) {
+		tests := []struct {
+			name string
+			give func(c *prop.Case)
+			want string
+		}{
+			{
+				name: "fails the case of a draw of a type that the reader refuses with the fault",
+				give: func(c *prop.Case) { c.Draw(prop.Of[struct{ C chan int }](), drawn) },
+				want: "prop: Of[struct { C chan int }]: struct { C chan int }.C: chan int is no type that a shape states",
+			},
+			{
+				name: "fails the case of a draw of a type with a constraint that the definition refuses with the fault",
+				give: func(c *prop.Case) {
+					c.Draw(prop.Of[struct {
+						V int32 `prop:"min=x"`
+					}](), drawn)
+				},
+				want: "prop: Of[struct { V int32 \"prop:\\\"min=x\\\"\" }]: " + `fields[0][1].min: "x" is no integer`,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				got, ok := detailOf(tt.give, prop.Seed(7))[failureField].(assert.Failure)
+				assert.True(t, ok, "the failure of the case")
+				assert.Equal(t, got.Contract, tt.want, "the panic names the type and the part that does not read")
+			})
+		}
+
+		t.Run("fails the run at an entry of Draws of a type that the reader refuses", func(t *testing.T) {
 			t.Parallel()
-			got := assert.Panics(t, func() {
-				prop.Of[struct {
-					V int32 `prop:"min=x"`
-				}]()
-			}, "a bound that is no integer")
-			assert.Equal(t, got, any("prop: Of[struct { V int32 \"prop:\\\"min=x\\\"\" }]: "+
-				`fields[0][1].min: "x" is no integer`), "the panic names the bound")
+			seat := &matchertest.Seat{}
+			prop.ForAll(seat, contract, func(c *prop.Case) { c.Draw(prop.Of[struct{ C chan int }](), drawn) },
+				prop.Seed(7), prop.Draws(`[{"label": "value", "value": {"type": "null"}}]`))
+			assert.Length(t, seat.Faults(), 1, "one fault")
+			assert.ErrorIs(t, seat.Faults()[0], engine.ErrCannotInvert, "the entry does not run back")
 		})
 	})
 
@@ -255,6 +282,8 @@ func TestDerive(t *testing.T) {
 func TestDeriveAllocs(t *testing.T) {
 	_ = prop.Of[order]()
 	assert.MaxAllocs(t, func() { _ = prop.Of[order]() }, ofAllocs, "Of reads a type once")
+	_ = prop.Of[struct{ C chan int }]()
+	assert.MaxAllocs(t, func() { _ = prop.Of[struct{ C chan int }]() }, ofAllocs, "Of reads a refused type once")
 	assert.MaxAllocs(t, func() { _, _ = prop.ShapeOf[order]() }, shapeOfAllocs, "ShapeOf reads the type")
 	assert.MaxAllocs(t, func() { _, _ = prop.OfShape(recordOfTwo) }, ofShapeAllocs, "OfShape reads the shape file")
 }

@@ -138,6 +138,28 @@ func TestUsing(t *testing.T) {
 				"the panic of the draw")
 		})
 
+		t.Run("draws Of of a type that the reader refuses from the stated generator", func(t *testing.T) {
+			t.Parallel()
+			rec := assert.NewRecorder()
+			piped := make(chan int)
+			prop.ForAll(rec, contract, func(c *prop.Case) {
+				assert.True(c, c.Draw(prop.Of[chan int](), drawn) == piped, "the stated channel")
+			}, prop.Seed(7), prop.Using(prop.Just(piped)))
+			assert.False(t, rec.Failed(), "every draw is the stated channel")
+		})
+
+		t.Run("draws a value of a type that the reader refuses without the stated generators", func(t *testing.T) {
+			t.Parallel()
+			rec := assert.NewRecorder()
+			prop.ForAll(rec, contract, func(c *prop.Case) {
+				got := c.Draw(prop.List(prop.Of[struct{ Value any }]()), drawn)
+				for _, v := range got {
+					assert.Equal(c, v.Value, any(5), "a field of the stated generator of any")
+				}
+			}, prop.Seed(7), prop.Using(prop.Just[any](5)))
+			assert.False(t, rec.Failed(), "every field is 5")
+		})
+
 		t.Run("generates the input of a form with the stated generator", func(t *testing.T) {
 			t.Parallel()
 			rec := assert.NewRecorder()
