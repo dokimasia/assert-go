@@ -1,5 +1,12 @@
 # go.dokimi.dev/assert
 
+## 0.7.0
+
+### Minor Changes
+
+- 3685cf0: Add `prop.Case.Skipf` to end the run of a property as skipped and skip its test.
+- 3685cf0: Implement definition 11.0.0 and write its version into every call record.
+
 ## 0.6.0
 
 ### Minor Changes
