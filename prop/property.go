@@ -335,18 +335,24 @@ func (p property) save(r engine.Result) []error {
 }
 
 // report reports the verdict of the property's call run on tb, from r, the
-// result of its run. A run that passed passes, and its record states the
-// detail of the run. A run that did not pass writes the notes of its
-// failing case into the log of tb, and then fails with its record. The first
-// [assert.Reporter] of the chain of tb receives the record as an aborting
-// failure, and a chain without one receives its sentence through Fatalf.
+// result of its run. A run that passed passes, and a run that skipped skips
+// the first seat of the chain of tb that has Skipf with its reason. The
+// record of either states the detail of the run. A run that did neither
+// writes the notes of its failing case into the log of tb, and then fails
+// with its record. The first [assert.Reporter] of the chain of tb receives
+// the record as an aborting failure, and a chain without one receives its
+// sentence through Fatalf.
 func (p property) report(tb assert.TB, run matcher.Running, r engine.Result) {
 	tb.Helper()
-	if r.Outcome == engine.Passed {
+	if r.Outcome == engine.Passed || r.Outcome == engine.Skipped {
 		var where assert.Where
 		var detail json.Marshaler
 		if run.Slot() != nil {
 			where, detail = whereOf(p.pc), detailOf(r)
+		}
+		if r.Outcome == engine.Skipped {
+			run.SkipRun(matcher.Fatal, p.assertion, p.contract, where, detail, r.Reason)
+			return
 		}
 		run.PassRun(matcher.Fatal, p.assertion, p.contract, where, detail)
 		return

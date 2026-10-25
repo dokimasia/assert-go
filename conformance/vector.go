@@ -81,6 +81,7 @@ const (
 	drawMember        = "draw"
 	classifyMember    = "classify"
 	rejectsWhenMember = "rejects-when"
+	skipsMember       = "skips"
 	failsMember       = "fails"
 	whenMember        = "when"
 	floatMember       = "float"

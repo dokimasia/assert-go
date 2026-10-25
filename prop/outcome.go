@@ -5,9 +5,9 @@ package prop
 
 //go:generate go run golang.org/x/tools/cmd/stringer@v0.50.0 -type=Outcome -linecomment -output=outcome.string_gen.go
 
-// Outcome is how a run ended, the outcome field of a failing run's record.
-// Every outcome but [Passed] fails the test. Each value converts from the
-// engine's outcome of the same spelling.
+// Outcome is how a run ended, the outcome field of a run's record. [Passed]
+// passes the test, [Skipped] skips it, and every other outcome fails it.
+// Each value converts from the engine's outcome of the same spelling.
 type Outcome uint8
 
 const (
@@ -28,11 +28,14 @@ const (
 	CoverageUnmet Outcome = 4 // coverage-unmet
 	// Vacuous is a run whose cases passed without requesting an input.
 	Vacuous Outcome = 5 // vacuous
+	// Skipped is a run that ended at a case that called [Case.Skipf] before
+	// the run found a failing case. It does not report a record.
+	Skipped Outcome = 6 // skipped
 )
 
-// Valid reports whether o is one of the six outcomes.
+// Valid reports whether o is one of the seven outcomes.
 func (o Outcome) Valid() bool {
-	return o <= Vacuous
+	return o <= Skipped
 }
 
 // MarshalText returns the outcome's spelling, as the record of a run

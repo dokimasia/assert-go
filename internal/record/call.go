@@ -25,6 +25,8 @@ const (
 	// Error is a call that ended without a verdict, because the library
 	// refused an argument or the environment.
 	Error Verdict = "error"
+	// Skip is a call of a property whose run ended at a case that skipped.
+	Skip Verdict = "skip"
 )
 
 // Phase is the kind of a property's case that a call ran in.

@@ -25,6 +25,10 @@ const (
 	// in normal form: in the body's draw, outside a machine's steps.
 	divergedRun = `{"index":0,"label":"value","recorded":"integer in [0, 9]","replayed":"integer in [0, 1]",` +
 		`"step":null,"what":"request"}`
+	// skippingBody is the body that draws a digit and skips every case with
+	// the reason unsupported.
+	skippingBody = `{"draw":` + digitGenerator +
+		`,"skips":[{"reason":"unsupported","when":{"kind":"at-least","n":0}}]}`
 )
 
 // TestRecord checks the comparison of the record of a run with the detail
@@ -67,6 +71,23 @@ func TestRecord(t *testing.T) {
 				give:       behaving(bigBody, seven, failedDetail(bigDraw, "small", "[]")),
 				wantPath:   at(fault.Field("failure")),
 				wantReason: `the run states "big", want "small"`,
+			},
+			{
+				name: "returns nil for a skipped run that the vector states",
+				give: behaving(skippingBody, seven, skippedDetail("unsupported")),
+			},
+			{
+				name:       "returns a fault at the reason for a skipped run of another reason",
+				give:       behaving(skippingBody, seven, skippedDetail("absent")),
+				wantPath:   at(fault.Field("reason")),
+				wantReason: `the run states "unsupported", want "absent"`,
+			},
+			{
+				name: "returns a fault at the reason for a failing run that the vector states with a reason",
+				give: behaving(bigBody, seven, strings.Replace(failedDetail(bigDraw, "big", "[]"),
+					`"coverage":null}`, `"coverage":null,"reason":"unsupported"}`, 1)),
+				wantPath:   at(fault.Field("reason")),
+				wantReason: `the run states null, want "unsupported"`,
 			},
 			{
 				name: "returns a fault at the value of a counterexample of an unknown type",
@@ -241,6 +262,13 @@ func diverged(recorded, replayed string) string {
 	return fmt.Sprintf(`{"outcome":"flaky","cases":1,"rejected":0,"seed":"7","counterexample":null,`+
 		`"failure":null,"choices":null,"others":null,"divergence":{"what":"request","index":0,"recorded":%s,`+
 		`"replayed":%s,"label":"value","step":null},"coverage":null}`, recorded, replayed)
+}
+
+// skippedDetail returns the detail of the run of skippingBody under seven,
+// skipped at the simplest case with reason.
+func skippedDetail(reason string) string {
+	return fmt.Sprintf(`{"outcome":"skipped","cases":0,"rejected":0,"seed":"7","counterexample":null,`+
+		`"failure":null,"choices":null,"others":null,"divergence":null,"coverage":null,"reason":%q}`, reason)
 }
 
 // divergence returns the reason of a divergence of the run of divergingBody

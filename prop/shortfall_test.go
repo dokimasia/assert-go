@@ -73,6 +73,7 @@ func TestShortfall(t *testing.T) {
 					Valid:   100,
 					Verdict: prop.Refuted,
 				},
+				reasonField: nil,
 			}
 			got := detailOf(classifies(1000, even, isEven), prop.Seed(7), prop.Require(even, 0.9))
 			assert.Equal(t, got, want, "the record of the definition's vector")

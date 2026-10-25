@@ -59,6 +59,7 @@ func TestForAll(t *testing.T) {
 				othersField:     []prop.Other{},
 				divergenceField: nil,
 				coverageField:   nil,
+				reasonField:     nil,
 			}
 			got := detailOf(failsAtLeast(10000, 1001, big), prop.Seed(7))
 			assert.Equal(t, got, want, "the record of the definition's vector")
@@ -159,7 +160,7 @@ func TestForAll(t *testing.T) {
 			assert.Equal(t, run["detail"], any(map[string]any{
 				outcomeField: "passed", casesField: 10.0, rejectedField: 0.0, seedField: "7",
 				counterexampleField: nil, failureField: nil, choicesField: nil, othersField: nil,
-				divergenceField: nil, coverageField: nil,
+				divergenceField: nil, coverageField: nil, reasonField: nil,
 			}), "the detail of the run, every field that a pass does not use null")
 			assert.Length(t, calls, 11, "the property and one call for each digit")
 			for i, call := range calls[1:] {
@@ -171,6 +172,18 @@ func TestForAll(t *testing.T) {
 				)
 			}
 			assert.Equal(t, calls[1]["phase"], any("simplest"), "the simplest case first")
+		})
+
+		t.Run("records a skipped run with the verdict skip", func(t *testing.T) {
+			t.Parallel()
+			calls := callsOf(t, func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 9), drawn)
+				c.Skipf("unsupported")
+			}, prop.Seed(7))
+			run := calls[0]
+			assert.Equal(t, []any{run["assertion"], run["verdict"], run["aborting"]}, []any{forAllID, "skip", true},
+				"the property's call skips")
+			assert.Length(t, calls, 1, "the case that skips makes no call")
 		})
 
 		t.Run("records a failing run with the detail of its counterexample", func(t *testing.T) {

@@ -28,7 +28,15 @@ const (
 	othersField         = "others"
 	divergenceField     = "divergence"
 	coverageField       = "coverage"
+	reasonField         = "reason"
 )
+
+// detailFields are the names of the fields of a run's detail, in the order
+// that the definition states them.
+var detailFields = [...]string{
+	outcomeField, casesField, rejectedField, seedField, counterexampleField, failureField, choicesField,
+	othersField, divergenceField, coverageField, reasonField,
+}
 
 // The field names of a draw, a step, a divergence, the step of a
 // divergence and a coverage requirement in a record's detail.
@@ -66,6 +74,7 @@ type runDetail struct {
 	Others         []otherSpec     `json:"others"`
 	Divergence     *divergenceSpec `json:"divergence"`
 	Coverage       *shortfallSpec  `json:"coverage"`
+	Reason         *string         `json:"reason"`
 }
 
 // entrySpec is one entry of a counterexample, as a vector states it: a step
@@ -141,16 +150,15 @@ func (d runDetail) compare(detail map[string]any) error {
 	if err != nil {
 		return err
 	}
-	return firstDifference(normalRecord(detail), want, outcomeField, casesField, rejectedField, seedField,
-		counterexampleField, failureField, choicesField, othersField, divergenceField, coverageField)
+	return firstDifference(normalRecord(detail), want)
 }
 
 // comparePassed returns a fault at the first field of the detail of c that
 // differs from d, in the order that the definition states the fields, or
 // nil when they match. c is the call record of a property whose run
-// reported no failure. The call record states the detail of a run in the
-// form that a vector states it. It returns the fault of a value that d
-// misstates, with a path inside d.
+// reported no failure: a run that passed or skipped. The call record states
+// the detail of a run in the form that a vector states it. It returns the
+// fault of a value that d misstates, with a path inside d.
 func (d runDetail) comparePassed(c call) error {
 	want, err := d.normal()
 	if err != nil {
@@ -161,15 +169,14 @@ func (d runDetail) comparePassed(c call) error {
 	// detail decodes as a vector's does, and normal decodes no literal of it.
 	_ = json.Unmarshal(c.Detail, &stated)
 	got, _ := stated.normal()
-	return firstDifference(got, want, outcomeField, casesField, rejectedField, seedField,
-		counterexampleField, failureField, choicesField, othersField, divergenceField, coverageField)
+	return firstDifference(got, want)
 }
 
-// firstDifference returns a fault at the first of fields whose normal form
-// in got differs from the one in want, which states both as JSON, or nil
-// when every field matches.
-func firstDifference(got, want map[string]any, fields ...string) error {
-	for _, field := range fields {
+// firstDifference returns a fault at the first field of a run's detail
+// whose normal form in got differs from the one in want, which states both
+// as JSON, or nil when every field matches.
+func firstDifference(got, want map[string]any) error {
+	for _, field := range detailFields {
 		if !reflect.DeepEqual(got[field], want[field]) {
 			return fault.At(fault.New("the run states %s, want %s", jsonOf(got[field]), jsonOf(want[field])),
 				fault.Field(field))
@@ -193,6 +200,7 @@ func (d runDetail) normal() (map[string]any, error) {
 		othersField:         nil,
 		divergenceField:     nil,
 		coverageField:       nil,
+		reasonField:         orNil(d.Reason),
 	}
 	if d.Counterexample != nil {
 		entries, err := normalEntries(d.Counterexample, true)
@@ -373,6 +381,7 @@ func normalRecord(detail map[string]any) map[string]any {
 		othersField:         nil,
 		divergenceField:     nil,
 		coverageField:       nil,
+		reasonField:         detail[reasonField],
 	}
 	if entries, ok := detail[counterexampleField].([]prop.Entry); ok {
 		out[counterexampleField] = normalRecorded(entries, true)

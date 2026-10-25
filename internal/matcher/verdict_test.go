@@ -59,7 +59,37 @@ type runSeat struct {
 	calls
 }
 
-// TestVerdict checks the three verdicts of a call: the call record that
+// skippingSeat is a seat that keeps the reason of each skip, as a test of
+// the package testing logs it, and records what was reported.
+type skippingSeat struct {
+	matchertest.Seat
+
+	mu    sync.Mutex
+	skips []string
+}
+
+// Skipf keeps the formatted reason, and returns.
+func (s *skippingSeat) Skipf(format string, args ...any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.skips = append(s.skips, fmt.Sprintf(format, args...))
+}
+
+// keptSkip is a seat that keeps the call record of each call, and counts
+// the call records that it keeps when its test skips.
+type keptSkip struct {
+	*keepingSeat
+
+	// kept is the number of call records at the skip, and -1 before it.
+	kept int
+}
+
+// Skipf counts the call records that the seat keeps, and returns.
+func (s *keptSkip) Skipf(string, ...any) {
+	s.kept = len(record.Lines(&s.calls))
+}
+
+// TestVerdict checks the four verdicts of a call: the call record that
 // each writes, and what each reports to the seat.
 func TestVerdict(t *testing.T) {
 	t.Parallel()
@@ -480,6 +510,100 @@ func TestVerdict(t *testing.T) {
 		})
 	})
 
+	t.Run("SkipRun", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("writes the detail of the run into the record of a skip at the stated site", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newKeepingSeat()
+			matcher.Begin(seat).SkipRun(matcher.Fatal, "prop-for-all", "the claim is true",
+				matcher.Where{File: "/src/codec_test.go", Line: 18}, json.RawMessage(`{"outcome":"skipped"}`),
+				"unsupported")
+			got := seat.lines(t)[0]
+			if got["verdict"] != "skip" || fmt.Sprint(got["detail"]) != "map[outcome:skipped]" {
+				t.Fatalf("wrote %v, want a skip that states the detail of the run", got)
+			}
+			if where := got["where"].(map[string]any); where["file"] != "codec_test.go" || where["line"] != 18.0 {
+				t.Fatalf("the record states the site %v, want codec_test.go:18", where)
+			}
+			if seat.Failed() {
+				t.Fatalf("reported %q for a skip", seat.First())
+			}
+		})
+		t.Run("skips a seat with Skipf with the reason", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &skippingSeat{}
+			matcher.Begin(seat).SkipRun(matcher.Fatal, "prop-for-all", "the claim is true", matcher.Where{}, nil,
+				"the file system refuses direct I/O")
+			if fmt.Sprint(seat.skips) != "[the file system refuses direct I/O]" || seat.Failed() {
+				t.Fatalf("Skipf received %q and the seat %q, want the reason through Skipf alone", seat.skips,
+					seat.First())
+			}
+		})
+		t.Run("passes a reason with a percent sign unformatted", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &skippingSeat{}
+			matcher.Begin(seat).SkipRun(matcher.Fatal, "prop-for-all", "the claim is true", matcher.Where{}, nil,
+				"100% of the disk is full")
+			if fmt.Sprint(seat.skips) != "[100% of the disk is full]" {
+				t.Fatalf("Skipf received %q, want the reason unchanged", seat.skips)
+			}
+		})
+		t.Run("skips the first seat of the chain with Skipf", func(t *testing.T) {
+			t.Parallel()
+
+			inner := &skippingSeat{}
+			matcher.Begin(wrapper{inner}).
+				SkipRun(matcher.Fatal, "prop-for-all", "the claim is true", matcher.Where{}, nil, "unsupported")
+			if fmt.Sprint(inner.skips) != "[unsupported]" {
+				t.Fatalf("the wrapped seat received the skips %q, want [unsupported]", inner.skips)
+			}
+		})
+		t.Run("reports nothing to a chain without Skipf", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &matchertest.Seat{}
+			matcher.Begin(seat).
+				SkipRun(matcher.Fatal, "prop-for-all", "the claim is true", matcher.Where{}, nil, "unsupported")
+			if seat.Failed() || len(seat.Records()) != 0 {
+				t.Fatalf("reported %q and %v, want nothing", seat.First(), seat.Records())
+			}
+		})
+		t.Run("writes the record before the seat skips", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &keptSkip{keepingSeat: newKeepingSeat(), kept: -1}
+			matcher.Begin(seat).SkipRun(matcher.Fatal, "prop-for-all", "the claim is true", matcher.Where{},
+				json.RawMessage(`{"outcome":"skipped"}`), "unsupported")
+			if seat.kept != 1 {
+				t.Fatalf("the seat keeps %d call records at the skip, want 1", seat.kept)
+			}
+		})
+		t.Run("writes the skip of a run on the aborting surface as aborting", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newKeepingSeat()
+			matcher.Begin(seat).SkipRun(matcher.Fatal, "prop-for-all", "the claim is true", matcher.Where{},
+				json.RawMessage(`{"outcome":"skipped"}`), "unsupported")
+			if got := seat.lines(t)[0]["aborting"]; got != true {
+				t.Fatalf("the record states aborting %v, want true", got)
+			}
+		})
+		t.Run("writes the skip of a run on the recording surface as not aborting", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newKeepingSeat()
+			matcher.Begin(seat).SkipRun(matcher.Soft, "prop-for-all", "the claim is true", matcher.Where{},
+				json.RawMessage(`{"outcome":"skipped"}`), "unsupported")
+			if got := seat.lines(t)[0]["aborting"]; got != false {
+				t.Fatalf("the record states aborting %v, want false", got)
+			}
+		})
+	})
+
 	t.Run("switch", func(t *testing.T) {
 		t.Parallel()
 
@@ -514,6 +638,23 @@ func TestVerdict(t *testing.T) {
 				}
 			},
 		)
+		t.Run("ends a skipped run with the switch's fault while the switch states another value", func(t *testing.T) {
+			t.Parallel()
+			if !childtest.InChild(t) {
+				runChild(t, record.Variable+"=yes")
+				return
+			}
+			_, err := record.On()
+			seat := &skippingSeat{}
+			matcher.Begin(seat).
+				SkipRun(matcher.Fatal, "prop-for-all", "a run", matcher.Where{}, json.RawMessage(`{}`), "a reason")
+			if faults := seat.Faults(); err == nil || len(faults) != 1 || !errors.Is(faults[0], err) {
+				t.Fatalf("received the faults %v, want the switch's fault %v once", faults, err)
+			}
+			if len(seat.skips) != 0 {
+				t.Fatalf("Skipf received %q, want no skip", seat.skips)
+			}
+		})
 		t.Run("reports the switch's fault of a pass at the line of the call", func(t *testing.T) {
 			t.Parallel()
 			_, _, line, _ := runtime.Caller(0)
@@ -588,6 +729,10 @@ func verdictCases() []allocCase {
 		}},
 		{name: "Running.FailRun", allocs: 3, fails: true, call: func(seat matcher.Seat) {
 			matcher.Begin(seat).FailRun(matcher.Fatal, f, run)
+		}},
+		{name: "Running.SkipRun", call: func(seat matcher.Seat) {
+			matcher.Begin(seat).
+				SkipRun(matcher.Fatal, "prop-for-all", allocContract, matcher.Where{}, run, "unsupported")
 		}},
 		{name: "Running.Fault", allocs: 5, fails: true, call: func(seat matcher.Seat) {
 			matcher.Begin(seat).Fault(matcher.Fatal, "eventually", allocContract, err)

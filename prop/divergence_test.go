@@ -74,6 +74,7 @@ func TestDivergence(t *testing.T) {
 					Label:    new(drawn),
 				},
 				coverageField: nil,
+				reasonField:   nil,
 			}
 			got := detailOf(diverges(prop.Integer(0, 9), prop.Boolean()), prop.Seed(7))
 			assert.Equal(t, got, want, "the record of the definition's vector")
@@ -138,6 +139,7 @@ func TestDivergence(t *testing.T) {
 				othersField:         nil,
 				divergenceField:     &prop.Divergence{What: prop.VerdictDifference, Index: 1, Recorded: "once"},
 				coverageField:       nil,
+				reasonField:         nil,
 			}
 			assert.Equal(t, detailOf(body, prop.Seed(7)), want, "the record of the definition's vector")
 		})

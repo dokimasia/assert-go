@@ -96,12 +96,12 @@ func TestRunner(t *testing.T) {
 	t.Run("Valid", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("reports true for the six outcomes and false past them", func(t *testing.T) {
+		t.Run("reports true for the seven outcomes and false past them", func(t *testing.T) {
 			t.Parallel()
 			enumtest.Members(t,
 				[]engine.Outcome{
 					engine.Passed, engine.Counterexample, engine.Flaky,
-					engine.Rejected, engine.CoverageUnmet, engine.Vacuous,
+					engine.Rejected, engine.CoverageUnmet, engine.Vacuous, engine.Skipped,
 				},
 				[]engine.Outcome{invalidOutcome})
 		})
@@ -254,6 +254,26 @@ func TestRunner(t *testing.T) {
 				digest: "946313970ebba67322c87712ce1684f36051c364f5272a452e32b493ef05af88",
 			},
 			{
+				name:   "returns Skipped at the simplest case of a body that skips every case",
+				body:   func(c *engine.Case) { engine.Draw(c, small, drawn); c.Skip("unsupported") },
+				want:   engine.Result{Outcome: engine.Skipped, Seed: referenceSeed, Reason: "unsupported"},
+				calls:  1,
+				digest: "2cbef72e43e8b4c7fe6a69e3589a182916e560f109a97cb8e8739de2aaf823d4",
+			},
+			{
+				name: "counts the valid cases before the case that skips",
+				body: func(c *engine.Case) {
+					if engine.Draw(c, small, drawn) == 1000 {
+						c.Skip("the largest value")
+					}
+				},
+				want: engine.Result{
+					Outcome: engine.Skipped, Cases: 3, Seed: referenceSeed, Reason: "the largest value",
+				},
+				calls:  5,
+				digest: "ffa653582aea8eebece28b91dd7d7983f991ba246485d9d8fafbda069de96265",
+			},
+			{
 				name:   "returns Passed for a share an exhausted domain meets exactly",
 				body:   classifyDigit("small", func(v int) bool { return v < 5 }),
 				adjust: require(engine.Requirement{Label: "small", Share: 0.5}),
@@ -308,6 +328,23 @@ func TestRunner(t *testing.T) {
 			assert.Equal(t, summary(got), want, "the second case requests other bounds at its first choice")
 			assert.Equal(t, digestOf(trace), "706d2435438fccdb677ab7ab2ec05973a15348f7c8e6478a2bbb4d406d53c5ae",
 				"both calls")
+		})
+
+		t.Run("returns Skipped for a case that skips where an earlier case made a request", func(t *testing.T) {
+			t.Parallel()
+			calls := 0
+			got, trace := recorded(func(c *engine.Case) {
+				calls++
+				if engine.Draw(c, digit, "first") == 0 && calls > 1 {
+					c.Skip("zero again")
+				}
+				engine.Draw(c, digit, "second")
+			}, settled())
+			want := engine.Result{Outcome: engine.Skipped, Cases: 3, Seed: referenceSeed, Reason: "zero again"}
+			assert.Equal(t, summary(got), want, "the case that skips, without a leaf that diverges")
+			assert.Equal(t, len(trace), 4, "the calls of the body")
+			assert.Equal(t, digestOf(trace), "83eb67c61a519617a6e42972f7df65c84004d3deffcc06cdf5cf53bbaf8cfb0d",
+				"the choices of every call, in order")
 		})
 
 		counterexamples := []struct {
@@ -613,6 +650,12 @@ func TestRunner(t *testing.T) {
 				body: func(*engine.Case) {},
 				want: engine.Result{Outcome: engine.Vacuous, Cases: 1, Seed: referenceSeed},
 			},
+			{
+				name:    "returns Skipped for a replayed case that skips",
+				body:    func(c *engine.Case) { engine.Draw(c, digit, drawn); c.Skip("unsupported") },
+				choices: integers(3),
+				want:    engine.Result{Outcome: engine.Skipped, Seed: referenceSeed, Reason: "unsupported"},
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -673,6 +716,20 @@ func TestRunner(t *testing.T) {
 			assert.Length(t, got.Stored, 2, "the runs up to the failing case")
 		})
 
+		t.Run("returns Skipped at the first stored case that skips, with the runs up to it", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Stored = [][]choice.Choice{integers(3), integers(7), integers(9)}
+			got := engine.RunStored(func(c *engine.Case) {
+				if engine.Draw(c, digit, drawn) == 7 {
+					c.Skip("seven")
+				}
+			}, s)
+			want := engine.Result{Outcome: engine.Skipped, Cases: 1, Seed: referenceSeed, Reason: "seven"}
+			assert.Equal(t, summary(got), want, "a skip after one valid case")
+			assert.Length(t, got.Stored, 2, "the runs up to the case that skips")
+		})
+
 		t.Run("records the calls of each case under stored", func(t *testing.T) {
 			t.Parallel()
 			s := settled()
@@ -716,6 +773,27 @@ func TestRunner(t *testing.T) {
 			}
 			want := engine.Result{Outcome: engine.Flaky, Seed: referenceSeed, Divergence: divergence}
 			assert.Equal(t, summary(got), want, "the replay passes")
+		})
+
+		t.Run("returns Flaky for a failing case whose replay skips", func(t *testing.T) {
+			t.Parallel()
+			calls := 0
+			once := func(c *engine.Case) {
+				calls++
+				engine.Draw(c, digit, drawn)
+				if calls > 1 {
+					c.Skip("after")
+				}
+				c.Report(assert.Failure{Assertion: "once"}, false)
+			}
+			got := engine.Conclude(once, settled(), engine.Bridge(once, []byte{7}, engine.Settings{}))
+			divergence := &engine.Divergence{
+				What:     engine.VerdictDifference,
+				Index:    1,
+				Recorded: engine.Identity{Assertion: "once"},
+			}
+			want := engine.Result{Outcome: engine.Flaky, Seed: referenceSeed, Divergence: divergence}
+			assert.Equal(t, summary(got), want, "the replay skips, which counts as a replay that does not fail")
 		})
 
 		t.Run("records the bridged case, its replay, its shrink and its explanation", func(t *testing.T) {

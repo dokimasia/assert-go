@@ -37,11 +37,12 @@ import (
 // # Concurrency
 //
 // Every method is safe for concurrent use, so an assertion may report to a
-// case from any goroutine. A fatal record, a rejection and a draw that ends
-// the case end the goroutine that makes them, and the case fails or is
-// rejected when its body returns. Call Draw on the goroutine that runs the
-// body: draws from other goroutines record their choices in the order the
-// scheduler gives, and a replay of those choices decodes other values.
+// case from any goroutine. A fatal record, a rejection, a skip and a draw
+// that ends the case end the goroutine that makes them, and the case fails,
+// is rejected or skips when its body returns. Call Draw on the goroutine
+// that runs the body: draws from other goroutines record their choices in
+// the order the scheduler gives, and a replay of those choices decodes other
+// values.
 //
 // A goroutine that reports to the case must end before the body returns.
 // The run reuses the storage of a case whose body has returned for a later
@@ -51,7 +52,8 @@ import (
 //
 // Helper, Clock, Assume, Classify of a counted label, Target of a scored
 // label and Rand allocate nothing. Observe and Cleanup allocate only to grow
-// the case's record, and Logf allocates the message it formats as well.
+// the case's record, and Logf and Skipf allocate the message they format as
+// well.
 // History allocates the history on its first call. A recording Report
 // allocates twice, for the record's sentence and the message formatted
 // from it. Errorf allocates five times: the message, the frames searched
@@ -108,6 +110,24 @@ func (c *Case) Assume(condition bool) {
 	(*engine.Case)(c).Assume(condition)
 }
 
+// Skipf formats its arguments as fmt.Sprintf does, and ends the run of the
+// property as [Skipped] with the message as its reason. The case ends at the
+// call and runs its cleanups. The run does not report a record, and skips
+// the first seat of the property's chain that has Skipf, such as a
+// *testing.T. Once the run has found a failing case, a case that skips ends
+// as a case that does not fail, and the run goes on.
+//
+// A body skips the run where its environment lacks a capability, such as a
+// file system that refuses direct I/O:
+//
+//	f, err := os.OpenFile(path, os.O_RDWR|syscall.O_DIRECT, 0o600)
+//	if errors.Is(err, syscall.EINVAL) {
+//	    c.Skipf("the file system refuses direct I/O: %v", err)
+//	}
+func (c *Case) Skipf(format string, args ...any) {
+	(*engine.Case)(c).Skip(fmt.Sprintf(format, args...))
+}
+
 // Classify counts the case under label, for the coverage requirements that
 // [Require] states. A label counted twice in one case counts once.
 func (c *Case) Classify(label string) {
@@ -153,10 +173,10 @@ func (c *Case) Target(label string, score float64) {
 }
 
 // Cleanup registers f to run when the case ends: after its body returns,
-// fails, panics, rejects the case or stops at a draw. The case runs its
-// cleanups on the goroutine that ran the body, the last registered first.
-// A failure in a cleanup fails the case as one in the body does, and the
-// later cleanups still run. A cleanup that a cleanup registers runs
+// fails, panics, rejects the case, skips or stops at a draw. The case runs
+// its cleanups on the goroutine that ran the body, the last registered
+// first. A failure in a cleanup fails the case as one in the body does, and
+// the later cleanups still run. A cleanup that a cleanup registers runs
 // before the case ends, and a draw in a cleanup is a draw of the case.
 func (c *Case) Cleanup(f func()) {
 	(*engine.Case)(c).Cleanup(f)

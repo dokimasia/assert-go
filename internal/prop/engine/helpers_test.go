@@ -55,12 +55,12 @@ const (
 const (
 	// invalidDifference is the first value past the three differences.
 	invalidDifference engine.Difference = 3
-	// invalidStatus is the first value past the six statuses.
-	invalidStatus engine.Status = 6
+	// invalidStatus is the first value past the seven statuses.
+	invalidStatus engine.Status = 7
 	// invalidRelevance is the first value past the three relevances.
 	invalidRelevance engine.Relevance = 3
-	// invalidOutcome is the first value past the six outcomes.
-	invalidOutcome engine.Outcome = 6
+	// invalidOutcome is the first value past the seven outcomes.
+	invalidOutcome engine.Outcome = 7
 )
 
 // digitRange are the bounds [0, 9] of a choice that a test body makes on the
@@ -431,7 +431,7 @@ func digestOf(trace []string) string {
 }
 
 // summary returns r without its cases, its explanation, its token and its
-// runs: how the run ended and its counts.
+// runs: how the run ended, its counts, and the reason of a skip.
 func summary(r engine.Result) engine.Result {
 	return engine.Result{
 		Outcome:    r.Outcome,
@@ -440,6 +440,7 @@ func summary(r engine.Result) engine.Result {
 		Seed:       r.Seed,
 		Divergence: r.Divergence,
 		Shortfall:  r.Shortfall,
+		Reason:     r.Reason,
 	}
 }
 

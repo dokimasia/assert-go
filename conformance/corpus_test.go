@@ -245,7 +245,7 @@ func TestCorpus(t *testing.T) {
 				wantPath:     inVector(fault.Field(detailAt)),
 				wantReason: `the call record of a pass states the detail {"outcome":"passed","cases":10,` +
 					`"rejected":0,"seed":"7","counterexample":null,"failure":null,"choices":null,"others":null,` +
-					`"divergence":null,"coverage":null}`,
+					`"divergence":null,"coverage":null,"reason":null}`,
 			},
 			{
 				name: "returns a fault at the detail for a call record of other fields than the case's",

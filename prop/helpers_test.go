@@ -54,6 +54,7 @@ const (
 	othersField         = "others"
 	divergenceField     = "divergence"
 	coverageField       = "coverage"
+	reasonField         = "reason"
 )
 
 // The labels of the coverage requirements of the definition's behaviour
@@ -210,7 +211,7 @@ const (
 	invalidDifference prop.Difference = 3
 	invalidPart       prop.Part       = 6
 	invalidRelevance  prop.Relevance  = 3
-	invalidOutcome    prop.Outcome    = 6
+	invalidOutcome    prop.Outcome    = 7
 	invalidVerdict    prop.Verdict    = 2
 )
 

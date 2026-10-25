@@ -161,6 +161,7 @@ func TestOption(t *testing.T) {
 				othersField:         []prop.Other{},
 				divergenceField:     nil,
 				coverageField:       nil,
+				reasonField:         nil,
 			}
 			got := detailOf(failsAtLeast(9, 5, big), prop.Seed(7), prop.Replay("prop1:AAc"))
 			assert.Equal(t, got, want, "the record of the definition's vector")

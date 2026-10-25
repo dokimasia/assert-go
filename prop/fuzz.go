@@ -26,7 +26,8 @@ const fuzzOp = "prop.Fuzz"
 // Before it registers the target, Fuzz replays the property's stored cases,
 // oldest first, from the store of the fuzz test, as ForAll replays them,
 // and fails f with the record of the first that fails, as found. A failing
-// replay registers no target. The record of the call on f counts the stored
+// replay registers no target. When a stored case skips, f skips, and Fuzz
+// registers no target either. The record of the call on f counts the stored
 // cases that ran, the failing one's predecessors included, and states the
 // calls of each under the phase stored. Fuzz logs the fault of each stored
 // case that decodes to other values than its entry records, as ForAll does.
@@ -49,10 +50,11 @@ const fuzzOp = "prop.Fuzz"
 // Each input is a call of its own, whose record states the calls of the
 // input's case under the phase fuzz. The record of a passing input counts
 // one valid or one rejected case, and the record of a failing input counts
-// none. The report, the notes of the failing case and the faults of the
-// store are written to the test's output without a source location. The
-// fuzzing machinery calls the target through reflect, so no frame of the
-// caller's code is on the stack.
+// none. When the case of an input skips, the input's test skips, and its
+// record counts no case. The report, the notes of the failing case and the
+// faults of the store are written to the test's output without a source
+// location. The fuzzing machinery calls the target through reflect, so no
+// frame of the caller's code is on the stack.
 //
 // Fuzz ends the call on f with a fault, without registering the target, for
 // each fault for which ForAll ends its call without a run. It ends the call
@@ -135,6 +137,9 @@ func (p property) input(seat inputSeat, setup runSetup, data []byte) {
 	r := engine.Result{Outcome: engine.Passed, Cases: 1, Seed: s.Seed}
 	if e.Status == engine.CaseRejected {
 		r.Cases, r.Rejected = 0, 1
+	}
+	if e.Status == engine.CaseSkipped {
+		r = engine.Result{Outcome: engine.Skipped, Seed: s.Seed, Reason: e.Reason}
 	}
 	if e.Status == engine.CaseFailed {
 		r = engine.Conclude(setup.body, s, e)

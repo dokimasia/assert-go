@@ -25,7 +25,8 @@ func TestOutcome(t *testing.T) {
 		}{
 			{name: "reports true for Passed", give: prop.Passed, want: true},
 			{name: "reports true for Vacuous", give: prop.Vacuous, want: true},
-			{name: "reports false past Vacuous", give: invalidOutcome, want: false},
+			{name: "reports true for Skipped", give: prop.Skipped, want: true},
+			{name: "reports false past Skipped", give: invalidOutcome, want: false},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

@@ -36,6 +36,12 @@ func TestBehaviour(t *testing.T) {
 						`"failure":null,"choices":null,"others":null,"divergence":null,"coverage":null}`),
 			},
 			{
+				name: "returns nil for a replay of 1000 that fails-then-skips passes",
+				give: behaving(`{"kind":"fails-then-skips"}`, `{"seed":"7","replay":"prop1:AOgH"}`,
+					`{"outcome":"passed","cases":1,"rejected":0,"seed":"7","counterexample":null,`+
+						`"failure":null,"choices":null,"others":null,"divergence":null,"coverage":null}`),
+			},
+			{
 				name: "returns nil for a passing run of the stated number of cases",
 				give: behaving(passingBody, `{"seed":"7","cases":10}`,
 					`{"outcome":"passed","cases":10,"rejected":0,"seed":"7","counterexample":null,`+

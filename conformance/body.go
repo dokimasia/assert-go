@@ -25,23 +25,31 @@ const (
 	// failsOnce draws an integer in [0, 10^9], and fails with the identity
 	// once the first time it draws a value above 1,000.
 	failsOnce = "fails-once"
+	// failsThenSkips draws an integer in [0, 10^9], and fails with the
+	// identity once the first time it draws a value above 1,000. Every later
+	// call draws its value and then skips with the reason after.
+	failsThenSkips = "fails-then-skips"
 )
 
 // The facts of the bodies that the corpus names.
 const (
-	// onceIdentity is the identity of the failure of failsOnce.
+	// onceIdentity is the identity of the failure of failsOnce and
+	// failsThenSkips.
 	onceIdentity = "once"
-	// onceAbove is the value above which failsOnce fails.
+	// onceAbove is the value above which failsOnce and failsThenSkips fail.
 	onceAbove = 1000
-	// onceMax is the upper bound of the integer of failsOnce.
+	// onceMax is the upper bound of the integer of failsOnce and
+	// failsThenSkips.
 	onceMax = 1000000000
+	// afterReason is the reason of the skips of failsThenSkips.
+	afterReason = "after"
 	// digitMax is the upper bound of the first draw of diverges.
 	digitMax = 9
 )
 
 // bodySpec is a body as the corpus states it: one draw, then the labels it
-// classifies the case under, the predicate that rejects the case, and the
-// failures in order, or the kind of a named body.
+// classifies the case under, the predicate that rejects the case, the skips
+// and the failures in order, or the kind of a named body.
 type bodySpec struct {
 	// Kind names a named body, and is empty for a drawing body.
 	Kind string `json:"kind"`
@@ -51,9 +59,19 @@ type bodySpec struct {
 	Classify map[string]json.RawMessage `json:"classify"`
 	// RejectsWhen is the predicate that rejects the case, and nil for none.
 	RejectsWhen json.RawMessage `json:"rejects-when"`
+	// Skips are the skips of the run, the first whose predicate is true.
+	Skips []skipSpec `json:"skips"`
 	// Fails are the failures of the case, the first whose predicate is
 	// true.
 	Fails []failSpec `json:"fails"`
+}
+
+// skipSpec is one skip of a body: its reason and its predicate.
+type skipSpec struct {
+	// Reason is the reason of the skip.
+	Reason string `json:"reason"`
+	// When is the predicate under which the case skips.
+	When json.RawMessage `json:"when"`
 }
 
 // failSpec is one failure of a body: its identity and its predicate.
@@ -97,13 +115,15 @@ func bodyOf(raw json.RawMessage, end ender) (func(*prop.Case), error) {
 		return diverging(end), nil
 	case failsOnce:
 		return failingOnce(end), nil
+	case failsThenSkips:
+		return failingThenSkipping(end), nil
 	}
 	return nil, fault.At(fault.New("%q names no body", spec.Kind), fault.Field(kindMember))
 }
 
-// drawing returns the body that draws one value, classifies, rejects and
-// fails by the predicates of spec, in that order. Its failure is the first
-// whose predicate is true.
+// drawing returns the body that draws one value, classifies, rejects, skips
+// and fails by the predicates of spec, in that order. Its skip and its
+// failure are each the first whose predicate is true.
 func drawing(spec bodySpec, end ender) (func(*prop.Case), error) {
 	g, err := generatorOf(spec.Draw)
 	if err != nil {
@@ -121,6 +141,12 @@ func drawing(spec bodySpec, end ender) (func(*prop.Case), error) {
 			return nil, fault.At(err, fault.Field(rejectsWhenMember))
 		}
 	}
+	skips := make([]func(any) bool, len(spec.Skips))
+	for i, s := range spec.Skips {
+		if skips[i], err = predicateOf(s.When); err != nil {
+			return nil, fault.At(err, fault.Field(skipsMember), fault.Index(i), fault.Field(whenMember))
+		}
+	}
 	fails := make([]func(any) bool, len(spec.Fails))
 	for i, f := range spec.Fails {
 		if fails[i], err = predicateOf(f.When); err != nil {
@@ -136,6 +162,11 @@ func drawing(spec bodySpec, end ender) (func(*prop.Case), error) {
 			}
 		}
 		c.Assume(!rejects(v))
+		for i, matches := range skips {
+			if matches(v) {
+				c.Skipf("%s", spec.Skips[i].Reason)
+			}
+		}
 		failure := ""
 		for i, matches := range fails {
 			if matches(v) {
@@ -170,6 +201,23 @@ func failingOnce(end ender) func(*prop.Case) {
 	return func(c *prop.Case) {
 		failure := ""
 		if c.Draw(wide, drawnLabel) > onceAbove && !failed {
+			failed, failure = true, onceIdentity
+		}
+		end(c, failure)
+	}
+}
+
+// failingThenSkipping returns the body of fails-then-skips, which end ends.
+func failingThenSkipping(end ender) func(*prop.Case) {
+	wide := prop.Integer(0, onceMax)
+	failed := false
+	return func(c *prop.Case) {
+		value := c.Draw(wide, drawnLabel)
+		if failed {
+			c.Skipf("%s", afterReason)
+		}
+		failure := ""
+		if value > onceAbove {
 			failed, failure = true, onceIdentity
 		}
 		end(c, failure)

@@ -38,6 +38,8 @@ const (
 	divergenceField = "divergence"
 	// coverageField is the requirement a run missed, a *Shortfall.
 	coverageField = "coverage"
+	// reasonField is the reason of a skipped run, a string.
+	reasonField = "reason"
 )
 
 // The detail fields of the record of a case whose body panicked.
@@ -49,8 +51,8 @@ const (
 	stackField = "stack"
 )
 
-// runDetail is the detail of the record of a property's run: the ten fields
-// of the definition. A field that the outcome does not use is nil:
+// runDetail is the detail of the record of a property's run: the eleven
+// fields of the definition. A field that the outcome does not use is nil:
 //
 //   - counterexample and failure are set for a run with a failing case: a
 //     counterexample, and a flaky run whose replay differed.
@@ -58,6 +60,7 @@ const (
 //     that is no example of values, which has no replay token.
 //   - divergence is set for a flaky run, and coverage for a run that missed
 //     a coverage requirement.
+//   - reason is set for a skipped run.
 type runDetail struct {
 	// outcome is how the run ended.
 	outcome Outcome
@@ -78,6 +81,8 @@ type runDetail struct {
 	divergence *engine.Divergence
 	// coverage is the requirement that the run missed.
 	coverage *Shortfall
+	// reason is the reason of a skipped run.
+	reason *string
 }
 
 // detailOf returns the detail of the record of r.
@@ -102,6 +107,9 @@ func detailOf(r engine.Result) runDetail {
 	if r.Shortfall != nil {
 		d.coverage = shortfallOf(*r.Shortfall)
 	}
+	if r.Outcome == engine.Skipped {
+		d.reason = &r.Reason
+	}
 	return d
 }
 
@@ -114,7 +122,7 @@ func (d runDetail) MarshalJSON() ([]byte, error) {
 	out := detailJSON{
 		Outcome: d.outcome, Cases: d.cases, Rejected: d.rejected, Seed: d.seed,
 		Counterexample: d.counterexample, Failure: d.failure, Choices: d.choices, Others: d.others,
-		Coverage: d.coverage,
+		Coverage: d.coverage, Reason: d.reason,
 	}
 	if v := d.divergence; v != nil {
 		public := divergenceOf(*v)
@@ -139,6 +147,7 @@ type detailJSON struct {
 	Others         []Other         `json:"others"`
 	Divergence     *divergenceJSON `json:"divergence"`
 	Coverage       *Shortfall      `json:"coverage"`
+	Reason         *string         `json:"reason"`
 }
 
 // divergenceJSON is a divergence as the call record of a property states
@@ -156,7 +165,8 @@ type divergenceJSON struct {
 
 // fields returns the detail as a failure record states it: each field of
 // the definition by its name, with its Go value, and nil for a field that
-// the outcome does not use.
+// the outcome does not use. A run that fails did not skip, so its reason is
+// nil.
 func (d runDetail) fields() map[string]any {
 	detail := map[string]any{
 		outcomeField:        d.outcome,
@@ -169,6 +179,7 @@ func (d runDetail) fields() map[string]any {
 		othersField:         nil,
 		divergenceField:     nil,
 		coverageField:       nil,
+		reasonField:         nil,
 	}
 	if d.failure != nil {
 		detail[counterexampleField], detail[failureField] = d.counterexample, *d.failure

@@ -67,6 +67,13 @@ func TestBody(t *testing.T) {
 				wantPath:   at(fault.Field("fails"), fault.Index(1), fault.Field("when"), fault.Field(kindAt)),
 				wantReason: `"some" names no predicate`,
 			},
+			{
+				name: "returns a fault at the skip for a skip under a predicate of an unknown kind",
+				give: `{"draw":` + digitGenerator + `,"skips":[{"reason":"unsupported","when":{"kind":"never"}},` +
+					`{"reason":"later","when":{"kind":"some"}}]}`,
+				wantPath:   at(fault.Field("skips"), fault.Index(1), fault.Field("when"), fault.Field(kindAt)),
+				wantReason: `"some" names no predicate`,
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

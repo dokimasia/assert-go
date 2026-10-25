@@ -32,6 +32,9 @@ const (
 	// fatalCaseAllocs is the ceiling of the allocations of a whole replayed
 	// case whose body calls Fatalf.
 	fatalCaseAllocs = 13
+	// skipCaseAllocs is the ceiling of the allocations of a whole replayed
+	// case whose body calls Skip: the case's own three.
+	skipCaseAllocs = 4
 	// raisedCaseAllocs is the ceiling of the allocations of a whole replayed
 	// case whose body raises a panic again: the case's own, the origin of the
 	// panic, the stack of the body, and the identity of the panic.
@@ -264,6 +267,51 @@ func TestCase(t *testing.T) {
 			}, nil, nil)
 			assert.True(t, returned, "the body runs on")
 			assert.Equal(t, e.Status, engine.CaseRejected, "the case is rejected")
+		})
+	})
+
+	t.Run("Skip", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("skips the case with its reason", func(t *testing.T) {
+			t.Parallel()
+			var after bool
+			e := engine.Replay(func(c *engine.Case) {
+				c.Skip("the file system refuses direct I/O")
+				after = true
+			}, nil, nil)
+			assert.False(t, after, "the body ends at the skip")
+			assert.Equal(t, e.Status, engine.CaseSkipped, "the case skips")
+			assert.Equal(t, e.Reason, "the file system refuses direct I/O", "the reason of the skip")
+		})
+
+		t.Run("runs the cleanups of the case", func(t *testing.T) {
+			t.Parallel()
+			var cleaned bool
+			engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { cleaned = true })
+				c.Skip("unsupported")
+			}, nil, nil)
+			assert.True(t, cleaned, "the cleanup runs after the skip")
+		})
+
+		t.Run("keeps the reason of the first skip", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { c.Skip("second") })
+				c.Skip("first")
+			}, nil, nil)
+			assert.Equal(t, e.Reason, "first", "the reason of the body's skip")
+		})
+
+		t.Run("keeps the rejection of a case whose cleanup skips", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { c.Skip("late") })
+				c.Assume(false)
+			}, nil, nil)
+			assert.Equal(t, e.Status, engine.CaseRejected, "the case is rejected")
+			assert.Equal(t, e.Reason, "", "no reason of a skip")
 		})
 	})
 
@@ -858,6 +906,8 @@ func TestCaseAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { c.Errorf("late") }, errorfAllocs, "Errorf allocates its message and its frames")
 	assert.MaxAllocs(t, func() { _ = c.Clock() }, 0, "Clock allocates nothing")
 	assert.MaxAllocs(t, func() { c.Assume(true) }, 0, "Assume allocates nothing")
+	skip := func(c *engine.Case) { c.Skip("unsupported") }
+	assert.MaxAllocs(t, func() { engine.Replay(skip, nil, nil) }, skipCaseAllocs, "a case that calls Skip")
 	assert.MaxAllocs(t, func() { c.Classify("small") }, 0, "Classify allocates nothing for a known label")
 	assert.MaxAllocs(t, func() { c.Note("seen") }, 0, "Note allocates only to grow the record")
 	assert.MaxAllocs(t, func() { c.Observe(42) }, 0, "Observe allocates only to grow the record")
@@ -979,6 +1029,17 @@ func BenchmarkCase(b *testing.B) {
 			cs.Assume(true)
 		}
 		assert.Length(b, cs.Choices(), 1, "no choice added")
+	})
+
+	b.Run("Skip", func(b *testing.B) {
+		var got engine.Execution
+		skip := func(c *engine.Case) { c.Skip("unsupported") }
+		c := bench.Start(b).MaxAllocs(skipCaseAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Replay(skip, nil, nil)
+		}
+		assert.Equal(b, got.Status, engine.CaseSkipped, "the case skips")
 	})
 
 	b.Run("Classify", func(b *testing.B) {

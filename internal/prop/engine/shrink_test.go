@@ -147,6 +147,26 @@ func TestShrink(t *testing.T) {
 				"the other failures, in the order they were found")
 		})
 
+		t.Run("accepts no candidate that skips", func(t *testing.T) {
+			t.Parallel()
+			got, trace := traced(func(c *engine.Case) string {
+				v := engine.Draw(c, small, "x")
+				if v == 0 {
+					c.Skip("zero")
+				}
+				return failsWhen(v >= 101, "big")
+			}, settled(integers(500)...))
+			matchesReference(t, got, trace, reference{
+				explanation: []engine.Explained{
+					{Label: "x", Value: 101, Relevance: engine.ValueMatters, NearestPassing: 100},
+				},
+				token:  "prop1:AGU",
+				runs:   18,
+				calls:  20,
+				digest: "323ed876ea94d27e70f47d8ca50370820811fc84169586d5d38db501d92c4885",
+			})
+		})
+
 		t.Run("stops at the smallest case found when the budget is spent", func(t *testing.T) {
 			t.Parallel()
 			s := settled(integers(2000)...)

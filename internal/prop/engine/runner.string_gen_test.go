@@ -24,7 +24,7 @@ func TestOutcomeString(t *testing.T) {
 			enumtest.Spellings(t, map[engine.Outcome]string{
 				engine.Passed: "passed", engine.Counterexample: "counterexample", engine.Flaky: "flaky",
 				engine.Rejected: "rejected", engine.CoverageUnmet: "coverage-unmet", engine.Vacuous: "vacuous",
-				invalidOutcome: "Outcome(6)",
+				engine.Skipped: "skipped", invalidOutcome: "Outcome(7)",
 			})
 		})
 	})

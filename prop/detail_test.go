@@ -41,12 +41,26 @@ func TestDetail(t *testing.T) {
 				othersField:         nil,
 				divergenceField:     nil,
 				coverageField:       nil,
+				reasonField:         nil,
 			}
 			body := func(c *prop.Case) {
 				c.Draw(prop.Integer(0, 1000), drawn)
 				c.Assume(false)
 			}
 			assert.Equal(t, detailOf(body, prop.Seed(7)), want, "the record of the definition's vector")
+		})
+
+		t.Run("records the reason of a skipped run", func(t *testing.T) {
+			t.Parallel()
+			detail := recordedDetail(t, func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 1000), drawn)
+				c.Skipf("unsupported")
+			}, prop.Seed(7))
+			assert.Equal(t, detail, map[string]any{
+				outcomeField: "skipped", casesField: 0.0, rejectedField: 0.0, seedField: "7",
+				counterexampleField: nil, failureField: nil, choicesField: nil, othersField: nil,
+				divergenceField: nil, coverageField: nil, reasonField: "unsupported",
+			}, "the detail of the definition's vector, with the reason")
 		})
 
 		t.Run("reports a panic as a record without an assertion at the panic's frame", func(t *testing.T) {

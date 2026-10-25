@@ -171,6 +171,18 @@ func TestValues(t *testing.T) {
 			assert.Equal(t, got, any("prop: Values(g, 42, 2) stops after g rejects 21 cases for 2 values"),
 				"the panic counts the rejected cases")
 		})
+
+		t.Run("panics for a generator that skips a case", func(t *testing.T) {
+			t.Parallel()
+
+			unsupported := prop.Composite(func(c *prop.Case) int {
+				c.Skipf("the generator is unsupported")
+				return 0
+			})
+			got := assert.Panics(t, func() { prop.Values(unsupported, 42, 2) }, "a generator that skips")
+			want := "prop: Values(g, 42, 2) stops at a case that g skips: the generator is unsupported"
+			assert.Equal(t, got, any(want), "the panic states the reason of the skip")
+		})
 	})
 }
 

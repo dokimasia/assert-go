@@ -45,12 +45,12 @@ func TestExecution(t *testing.T) {
 	t.Run("Valid", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("reports true for the six statuses and false past them", func(t *testing.T) {
+		t.Run("reports true for the seven statuses and false past them", func(t *testing.T) {
 			t.Parallel()
 			enumtest.Members(t,
 				[]engine.Status{
 					engine.CasePassed, engine.CaseFailed, engine.CaseRejected,
-					engine.CaseRepeated, engine.CaseDiverged, engine.CaseRefused,
+					engine.CaseRepeated, engine.CaseDiverged, engine.CaseRefused, engine.CaseSkipped,
 				},
 				[]engine.Status{invalidStatus})
 		})
@@ -172,6 +172,37 @@ func TestExecution(t *testing.T) {
 			}, nil, nil)
 			assert.Equal(t, e.Status, engine.CaseFailed, "the failure outweighs the rejection")
 			assert.Equal(t, e.Identity.Assertion, "equal", "the record's assertion")
+		})
+
+		t.Run("returns CaseFailed for a body that fails and then skips", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) {
+				c.Report(reported, false)
+				c.Skip("unsupported")
+			}, nil, nil)
+			assert.Equal(t, e.Status, engine.CaseFailed, "the failure outweighs the skip")
+			assert.Equal(t, e.Reason, "", "no reason of a skip")
+		})
+
+		t.Run("returns CaseSkipped for a body whose cleanup skips", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) { c.Cleanup(func() { c.Skip("the cleanup") }) }, nil, nil)
+			assert.Equal(t, e.Status, engine.CaseSkipped, "the cleanup is part of the case")
+			assert.Equal(t, e.Reason, "the cleanup", "the reason of the cleanup's skip")
+		})
+
+		t.Run("returns CaseSkipped for a case whose repeated run skips", func(t *testing.T) {
+			t.Parallel()
+			var runs atomic.Int32
+			e := engine.Replay(func(c *engine.Case) {
+				c.Repeat(3)
+				if runs.Add(1) == 2 {
+					c.Skip("the second run")
+				}
+			}, nil, nil)
+			assert.Equal(t, e.Status, engine.CaseSkipped, "the run that skips ends the case")
+			assert.Equal(t, e.Reason, "the second run", "the reason of the second run")
+			assert.Equal(t, runs.Load(), int32(2), "no run after the skip")
 		})
 
 		t.Run("returns the identity of a record over a later panic", func(t *testing.T) {

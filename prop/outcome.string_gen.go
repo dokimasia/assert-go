@@ -14,11 +14,12 @@ func _() {
 	_ = x[Rejected-3]
 	_ = x[CoverageUnmet-4]
 	_ = x[Vacuous-5]
+	_ = x[Skipped-6]
 }
 
-const _Outcome_name = "passedcounterexampleflakyrejectedcoverage-unmetvacuous"
+const _Outcome_name = "passedcounterexampleflakyrejectedcoverage-unmetvacuousskipped"
 
-var _Outcome_index = [...]uint8{0, 6, 20, 25, 33, 47, 54}
+var _Outcome_index = [...]uint8{0, 6, 20, 25, 33, 47, 54, 61}
 
 func (i Outcome) String() string {
 	idx := int(i) - 0

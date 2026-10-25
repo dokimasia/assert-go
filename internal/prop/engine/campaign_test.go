@@ -97,6 +97,25 @@ func TestCampaign(t *testing.T) {
 			})
 		}
 
+		t.Run("grows its pool after its first failure", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Examples = []engine.Example{{Choices: integers(0)}}
+			search := searching(digits, func(c *engine.Case, matched int) { c.Classify(strconv.Itoa(matched)) })
+			r := campaigned(func(c *engine.Case) {
+				search(c)
+				if len(c.Draws()[0].Value.([]int)) == 0 {
+					c.Report(assert.Failure{Assertion: "empty"}, false)
+				}
+			}, s, searchCases)
+			others := make([]string, len(r.Others))
+			for i, o := range r.Others {
+				others[i] = o.Identity.Assertion
+			}
+			assert.Equal(t, []any{r.Failing.Identity.Assertion, others}, []any{"empty", []string{"found"}},
+				"the example's failure, and the failure that the pool guides the campaign to after it")
+		})
+
 		t.Run("finds no such failure in as many cases without a guide", func(t *testing.T) {
 			t.Parallel()
 			r := campaigned(searching(digits, func(*engine.Case, int) {}), settled(), searchCases)
@@ -267,6 +286,14 @@ func TestCampaign(t *testing.T) {
 				want: engine.Result{Outcome: engine.Vacuous, Cases: shortCases, Seed: referenceSeed},
 			},
 			{
+				name: "reports a campaign that ends at a case that skips before a failure as skipped",
+				body: func(c *engine.Case) {
+					engine.Draw(c, digit, drawn)
+					c.Skip("unsupported")
+				},
+				want: engine.Result{Outcome: engine.Skipped, Seed: referenceSeed, Reason: "unsupported"},
+			},
+			{
 				name: "reports a requirement that its valid cases leave unmet",
 				body: func(c *engine.Case) { engine.Draw(c, digit, drawn) },
 				give: []engine.Requirement{{Label: "never", Share: 0.5}},
@@ -297,6 +324,37 @@ func TestCampaign(t *testing.T) {
 			r := campaigned(func(c *engine.Case) { got = append(got, engine.Draw(c, digit, drawn)) }, s, shortCases)
 			assert.Equal(t, got[:3], []any{4, 5, 6}, "the entry's value, the example's, then the stored case's")
 			assert.Length(t, r.Stored, 1, "the run of the stored case")
+		})
+
+		t.Run("ends at a stored case that skips, with the run of the stored case", func(t *testing.T) {
+			t.Parallel()
+			r := campaigned(func(c *engine.Case) {
+				if engine.Draw(c, digit, drawn) == 6 {
+					c.Skip("six")
+				}
+			}, settled(integers(6)...), shortCases)
+			assert.Equal(t, summary(r), engine.Result{Outcome: engine.Skipped, Seed: referenceSeed, Reason: "six"},
+				"a skip before any valid case")
+			assert.Length(t, r.Stored, 1, "the run of the stored case")
+		})
+
+		t.Run("goes on past a case that skips after its first failure", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Examples = []engine.Example{{Choices: integers(3)}}
+			r := campaigned(func(c *engine.Case) {
+				v := engine.Draw(c, engine.Integer(0, 1000), drawn)
+				if v%2 == 1 {
+					c.Report(assert.Failure{Assertion: "odd"}, false)
+				}
+				if v >= 2 {
+					c.Skip("two or more")
+				}
+			}, s, shortCases)
+			assert.Equal(t, []any{r.Outcome, r.Failing.Identity.Assertion}, []any{engine.Counterexample, "odd"},
+				"the example's failure, after the random cases of two or more that skip")
+			assert.Equal(t, drawValues(r.Failing.Case.Draws()), []any{1},
+				"the failure, shrunk past the cases that skip")
 		})
 
 		t.Run("ends with the refusal of an entry of Draws, before any other case", func(t *testing.T) {

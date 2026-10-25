@@ -37,11 +37,13 @@ const (
 	// CaseRefused is a case of [Settings.Draws] that refused the entry of a
 	// draw.
 	CaseRefused Status = 5 // refused
+	// CaseSkipped is a case that skipped the run of its property.
+	CaseSkipped Status = 6 // skipped
 )
 
-// Valid reports whether s is one of the six statuses.
+// Valid reports whether s is one of the seven statuses.
 func (s Status) Valid() bool {
-	return s <= CaseRefused
+	return s <= CaseSkipped
 }
 
 // Execution is one call of a body: its case and how it ended.
@@ -63,6 +65,8 @@ type Execution struct {
 	// Refusal is the refusal of a refused case, a fault at the entry of
 	// Settings.Draws that the case refused, and nil for any other.
 	Refusal error
+	// Reason is the reason of a skipped case, and empty for any other.
+	Reason string
 	// ran are the cases of the runs of a case that [Case.Repeat] ran more
 	// than once, in the order they ran, and nil for a case that ran once.
 	ran []*Case
@@ -142,10 +146,10 @@ func finish(c *Case, body Body) Execution {
 // repeat runs the case of e, which ran once, again on its choices when it
 // passed and asked for more runs with [Case.Repeat]. Each run is a case
 // outside the case tree that keeps its walk and its wheres when the first
-// does. The runs go on until one fails, the runs the case asked for have
-// passed, or limit runs in all have run. The first run that fails is the
-// case's end, with its record. The execution keeps the case of every run,
-// whose calls [Execution.take] hands on.
+// does. The runs go on until one fails or skips, the runs the case asked
+// for have passed, or limit runs in all have run. The first run that fails
+// or skips is the case's end, with its record. The execution keeps the case
+// of every run, whose calls [Execution.take] hands on.
 func repeat(e Execution, body Body, limit int) Execution {
 	c := e.Case
 	runs := min(c.repeats(), limit)
@@ -162,7 +166,7 @@ func repeat(e Execution, body Body, limit int) Execution {
 		}
 		r := runOnce(again, body)
 		ran = append(ran, again)
-		if r.Status == CaseFailed {
+		if r.Status == CaseFailed || r.Status == CaseSkipped {
 			r.ran = ran
 			return r
 		}
@@ -248,9 +252,9 @@ func entered(t *tree.Tree, e Execution) (Execution, int) {
 
 // executionOf returns how the case ended, once its body's goroutine ended.
 // A failure or a panic of the body or of a cleanup fails a case that the
-// body rejected or that went past its cap, as it fails any other. A case
-// that ended in a repeat, a divergence or past its cap leaves no leaf in the
-// tree. Every other case ends its walk with a leaf.
+// body rejected or skipped or that went past its cap, as it fails any other.
+// A case that ended in a repeat, a divergence, a skip or past its cap leaves
+// no leaf in the tree. Every other case ends its walk with a leaf.
 func executionOf(c *Case) Execution {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -268,10 +272,12 @@ func executionOf(c *Case) Execution {
 		e.Status, e.Identity = CaseFailed, identityOf(records[0])
 	} else if c.panicked != nil {
 		e.Status, e.Identity, e.Panic, e.Stack = CaseFailed, *c.panicked, c.panicValue, c.panicStack
+	} else if c.stop == skipped {
+		e.Status, e.Reason = CaseSkipped, c.reason
 	} else if c.stop == rejected || c.stop == overrun {
 		e.Status = CaseRejected
 	}
-	if c.walker == nil || c.stop == overrun {
+	if c.walker == nil || c.stop == overrun || e.Status == CaseSkipped {
 		return e
 	}
 	if d, ok := errors.AsType[*tree.DivergenceError](c.walker.End()); ok {

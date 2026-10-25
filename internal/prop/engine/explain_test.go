@@ -297,6 +297,41 @@ func TestExplain(t *testing.T) {
 			want := []engine.Explained{{Label: drawn, Value: 12_000, Relevance: engine.ValueMatters}}
 			assert.Equal(t, got.Explanation, want, "the value that matters, without a step of the sampled index")
 		})
+
+		t.Run("finds that the value matters for a draw whose filling skips", func(t *testing.T) {
+			t.Parallel()
+			got, trace := traced(func(c *engine.Case) string {
+				if engine.Draw(c, small, "x") != 0 {
+					c.Skip("nonzero")
+				}
+				return "always"
+			}, settled())
+			matchesReference(t, got, trace, reference{
+				explanation: []engine.Explained{{Label: "x", Value: 0, Relevance: engine.ValueMatters}},
+				token:       "prop1:AAA",
+				runs:        2,
+				calls:       4,
+				digest:      "32e0b1b870a0668189034f1cbf404a660eb66d6ef19f6c9776e972490c425910",
+			})
+		})
+
+		t.Run("reports no nearest passing value for a step that skips", func(t *testing.T) {
+			t.Parallel()
+			got, trace := traced(func(c *engine.Case) string {
+				v := engine.Draw(c, small, "x")
+				if v == 100 {
+					c.Skip("a hundred")
+				}
+				return failsWhen(v >= 101, "big")
+			}, settled(integers(500)...))
+			matchesReference(t, got, trace, reference{
+				explanation: []engine.Explained{{Label: "x", Value: 101, Relevance: engine.ValueMatters}},
+				token:       "prop1:AGU",
+				runs:        18,
+				calls:       20,
+				digest:      "323ed876ea94d27e70f47d8ca50370820811fc84169586d5d38db501d92c4885",
+			})
+		})
 	})
 }
 

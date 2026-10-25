@@ -64,6 +64,8 @@ const (
 	cancelled stop = 5
 	// refused is a case of Settings.Draws that refused the entry of a draw.
 	refused stop = 6
+	// skipped is a case that skipped the run of its property.
+	skipped stop = 7
 )
 
 // walkStep is one step of a case's walk down the case tree: the bounds and
@@ -109,8 +111,8 @@ func (d Drawn) Neutral() any {
 // The body's assertions report to the case as an [assert.TB], an
 // [assert.Reporter] and an [assert.Clocked]. The case forwards every report
 // to an [assert.Recorder] under [assert.Recorder.WithGoexit], so a fatal
-// failure ends the body's goroutine. A rejection, a repeated case, a
-// divergence and a case past its cap end it the same way.
+// failure ends the body's goroutine. A rejection, a skip, a repeated case,
+// a divergence and a case past its cap end it the same way.
 //
 // When the body ends, however it ends, the case cancels its context and
 // runs its cleanups on the body's goroutine, the last registered first. A
@@ -246,6 +248,8 @@ type Case struct {
 	valuing *valuing
 	// refusal is the refusal that ended a case of Settings.Draws.
 	refusal error
+	// reason is the reason of the skip that ended the case.
+	reason string
 	// ctx is the case's context, and nil until a caller asks for it.
 	ctx context.Context //nolint:containedctx // a case has a context of its own, as testing.T has
 	// cancelCtx cancels ctx.
@@ -305,6 +309,19 @@ func (c *Case) Assume(condition bool) {
 	if !condition {
 		c.end(rejected)
 	}
+}
+
+// Skip ends the run of the property as skipped, with reason, and ends the
+// calling goroutine. Once the run has found a failing case, a case that
+// skips ends as a case that does not fail. A case that stopped earlier, as a
+// cleanup's skip after a rejection does, keeps its earlier stop.
+func (c *Case) Skip(reason string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.stop == running {
+		c.reason = reason
+	}
+	c.halt(skipped)
 }
 
 // Classify counts the case under label. A label counted twice in one case

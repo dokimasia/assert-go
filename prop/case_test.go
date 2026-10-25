@@ -47,6 +47,11 @@ const (
 	// replays one case whose body draws one integer and calls History:
 	// those of drawRunAllocs, and the history.
 	historyRunAllocs = 24
+	// skipfRunAllocs is the ceiling of the allocations of a run that replays
+	// one case whose body calls Skipf, on a seat without Skipf: those of a
+	// replay, the reason that Skipf formats, and the two closures that adapt
+	// the body and give its case a context.
+	skipfRunAllocs = 20
 )
 
 // closing is the label of a draw that a cleanup makes.
@@ -215,6 +220,33 @@ func TestCase(t *testing.T) {
 			}, 7)
 			assert.True(t, after, "the body runs on")
 			assert.False(t, rec.Failed(), "the case passes")
+		})
+	})
+
+	t.Run("Skipf", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("skips the run with the formatted reason", func(t *testing.T) {
+			t.Parallel()
+			detail := recordedDetail(t, func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 9), drawn)
+				c.Skipf("the %s refuses direct I/O", "file system")
+			}, prop.Seed(7))
+			assert.Equal(t, []any{detail[outcomeField], detail[reasonField]},
+				[]any{"skipped", "the file system refuses direct I/O"}, "the outcome and the reason of the run")
+		})
+
+		t.Run("ends the calling goroutine", func(t *testing.T) {
+			t.Parallel()
+			var after bool
+			rec := assert.NewRecorder()
+			prop.ForAll(rec, contract, func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 9), drawn)
+				c.Skipf("unsupported")
+				after = true
+			}, prop.Seed(7))
+			assert.False(t, after, "the body ends at Skipf")
+			assert.False(t, rec.Failed(), "the run does not fail")
 		})
 	})
 
@@ -486,6 +518,9 @@ func TestCaseAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { c.Errorf("late") }, errorfAllocs, "Errorf allocates its message and its frames")
 	assert.MaxAllocs(t, func() { _ = c.Clock() }, 0, "Clock allocates nothing")
 	assert.MaxAllocs(t, func() { c.Assume(true) }, 0, "Assume allocates nothing")
+	skip := func(c *prop.Case) { c.Skipf("unsupported") }
+	assert.MaxAllocs(t, func() { prop.ForAll(rec, contract, skip, prop.Replay(seven)) }, skipfRunAllocs,
+		"a run of a case that calls Skipf")
 	assert.MaxAllocs(t, func() { c.Classify(small) }, 0, "Classify allocates nothing for a counted label")
 	assert.MaxAllocs(t, func() { c.Logf("seen") }, logfAllocs, "Logf allocates its message")
 	assert.MaxAllocs(t, func() { c.Observe(42) }, 0, "Observe allocates only to grow the record")
@@ -579,6 +614,17 @@ func BenchmarkCase(b *testing.B) {
 			cs.Assume(true)
 		}
 		assert.NotNil(b, cs, "the case")
+	})
+
+	b.Run("Skipf", func(b *testing.B) {
+		rec, seven := &matchertest.Seat{}, tokenOf(7)
+		skip := func(c *prop.Case) { c.Skipf("unsupported") }
+		c := bench.Start(b).MaxAllocs(skipfRunAllocs)
+		defer c.End()
+		for c.Loop() {
+			prop.ForAll(rec, contract, skip, prop.Replay(seven))
+		}
+		assert.False(b, rec.Failed(), "the run skips")
 	})
 
 	b.Run("Classify", func(b *testing.B) {

@@ -104,11 +104,11 @@ func TestRender(t *testing.T) {
 					"\ndivergence: the fingerprint at 0, recorded 7, replayed no fingerprint",
 			},
 			{
-				name: "states the failing case and the pass of a replay that passes",
+				name: "states the failing case and a replay that does not fail",
 				body: once(func(c *prop.Case) { fail(c, "once") }),
 				want: fmt.Sprintf(header, "flaky", 0) +
 					"\nfailure of once: " +
-					"\ndivergence: the verdict at 0, recorded once, replayed a pass",
+					"\ndivergence: the verdict at 0, recorded once, replayed no failure",
 			},
 			{
 				name: "states a refuted coverage requirement",

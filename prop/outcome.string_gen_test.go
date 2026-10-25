@@ -26,13 +26,13 @@ func TestOutcomeString(t *testing.T) {
 			enumtest.Spellings(t, map[prop.Outcome]string{
 				prop.Passed: "passed", prop.Counterexample: "counterexample", prop.Flaky: "flaky",
 				prop.Rejected: "rejected", prop.CoverageUnmet: "coverage-unmet", prop.Vacuous: "vacuous",
-				invalidOutcome: "Outcome(6)",
+				prop.Skipped: "skipped", invalidOutcome: "Outcome(7)",
 			})
 		})
 
 		t.Run("returns the engine's spelling of the same value", func(t *testing.T) {
 			t.Parallel()
-			for o := range engine.Vacuous + 2 {
+			for o := range engine.Skipped + 2 {
 				assert.Equal(t, prop.Outcome(o).String(), o.String(), "the spelling of value "+o.String())
 			}
 		})

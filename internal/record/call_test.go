@@ -66,6 +66,18 @@ func TestCall(t *testing.T) {
 					`"verdict":"error","aborting":true,"error":"prop.ForAll: no"}`,
 			},
 			{
+				name: "writes a skipped call with the detail of its run",
+				give: record.Call{
+					Assertion: "prop-for-all",
+					Contract:  "c",
+					Verdict:   record.Skip,
+					Aborting:  true,
+					Detail:    json.RawMessage(`{"outcome":"skipped","reason":"unsupported"}`),
+				},
+				want: `{"definition":"` + record.Definition + `","seq":1,"assertion":"prop-for-all","contract":"c",` +
+					`"verdict":"skip","aborting":true,"detail":{"outcome":"skipped","reason":"unsupported"}}`,
+			},
+			{
 				name: "writes the characters of HTML unescaped",
 				give: call("equal", "a <b> & c"),
 				want: `{"definition":"` + record.Definition + `","seq":1,"assertion":"equal","contract":"a <b> & c",` +

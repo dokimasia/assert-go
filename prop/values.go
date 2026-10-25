@@ -48,8 +48,9 @@ const rejectionsPerValue = 10
 // # Panics
 //
 // Values panics for n below 0, for an option that states a setting other
-// than Using, and when g rejects more than ten cases for each of the n
-// values. A panic of g passes through.
+// than Using, when g rejects more than ten cases for each of the n values,
+// and at a case that g skips. Values runs no test that a skip could skip.
+// A panic of g passes through.
 //
 // # Allocation contract
 //
@@ -84,6 +85,8 @@ func Values[T any](g Generator[T], seed uint64, n int, opts ...Option) []T {
 			}
 		case engine.CaseFailed:
 			panic(e.Panic)
+		case engine.CaseSkipped:
+			panic(fmt.Sprintf("prop: Values(g, %d, %d) stops at a case that g skips: %s", seed, n, e.Reason))
 		default:
 			out = append(out, value)
 		}

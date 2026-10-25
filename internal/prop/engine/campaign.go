@@ -61,7 +61,10 @@ const campaignStream = math.MaxUint64
 // A failing case whose identity no earlier failure had is replayed, shrunk
 // and explained as [Run] concludes its failure, s.Concluded receives the
 // result, and the campaign goes on. A replay that differs ends the campaign
-// as flaky. A refused entry of s.Draws ends it with the refusal.
+// as flaky. A refused entry of s.Draws ends it with the refusal. A case that
+// skips before the first failure ends the campaign as skipped. After the
+// first failure, a case that skips counts as neither a valid nor a rejected
+// case, and the campaign goes on.
 //
 // When the budget has passed, the campaign returns a counterexample of the
 // first failure that it concluded, with every later one among its others,
@@ -216,13 +219,18 @@ func (c *campaign) mutated() provider {
 // take counts the case e, whose calls the slot of the campaign takes under
 // phase. It concludes a failure, admits a valid case to the pool, and
 // returns the result that ends the campaign: the refusal of an entry of
-// Draws, or a failure whose replay differs.
+// Draws, a failure whose replay differs, or a skip before the first
+// failure, with the runs of the stored cases.
 func (c *campaign) take(e Execution, phase record.Phase) (Result, bool) {
 	r, ended := c.t.take(e, phase)
 	if e.Status == CaseFailed {
 		return c.fail(e)
 	}
+	if e.Status == CaseSkipped && c.found != nil {
+		return Result{}, false
+	}
 	if ended {
+		r.Stored = c.stored
 		return r, true
 	}
 	if e.Status == CasePassed {

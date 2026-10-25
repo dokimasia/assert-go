@@ -28,10 +28,10 @@ func init() {
 // A seat that wraps another seat declares a method Unwrap() TB, which
 // returns the seat that it wraps, or nil. An assertion calls Helper,
 // Fatalf and Errorf of the seat itself. It looks for every other method,
-// such as Report, Logf, Clock and Context, on the seat and then on each
-// seat that Unwrap returns, in order. The first seat that has the method
-// provides it, and the call records are those of the first seat that keeps
-// call records. A wrapper declares each method that it changes:
+// such as Report, Logf, Skipf, Clock and Context, on the seat and then on
+// each seat that Unwrap returns, in order. The first seat that has the
+// method provides it, and the call records are those of the first seat that
+// keeps call records. A wrapper declares each method that it changes:
 //
 //	// handle is the seat of a check, with the clock that the check controls.
 //	type handle struct {

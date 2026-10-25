@@ -122,10 +122,10 @@ func (c *Case) Steps() []RecordedStep {
 // Repeat asks the run to run the case up to n times, as a machine whose
 // concurrent section runs on real threads does. When the case passes, the
 // run runs the body again on the case's choices, outside the case tree,
-// until a run fails or n runs in all have passed, and the case is the first
-// run that failed. Every run of a case asks again, so the replay that
-// confirms a failure and every shrink candidate repeat the same way. The
-// case keeps the largest n that it asked for.
+// until a run fails or skips, or n runs in all have passed. The case is the
+// first run that failed or skipped. Every run of a case asks again, so the
+// replay that confirms a failure and every shrink candidate repeat the same
+// way. The case keeps the largest n that it asked for.
 func (c *Case) Repeat(n int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

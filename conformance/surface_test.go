@@ -381,6 +381,7 @@ var pinned = map[conformance.ID]any{
 	"case":              (*prop.Case)(nil),
 	"case.draw":         (*prop.Case).Draw[int],
 	"case.assume":       (*prop.Case).Assume,
+	"case.skip":         (*prop.Case).Skipf,
 	"case.classify":     (*prop.Case).Classify,
 	"case.note":         (*prop.Case).Logf,
 	"case.rand":         (*prop.Case).Rand,

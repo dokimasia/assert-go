@@ -39,7 +39,8 @@ const (
 	minPrefixedChoices = 2
 )
 
-// Outcome is how a run ended. Every outcome but [Passed] fails the test.
+// Outcome is how a run ended. [Passed] passes the test, [Skipped] skips it,
+// and every other outcome fails it.
 type Outcome uint8
 
 const (
@@ -58,11 +59,14 @@ const (
 	CoverageUnmet Outcome = 4 // coverage-unmet
 	// Vacuous is a run whose cases requested no input.
 	Vacuous Outcome = 5 // vacuous
+	// Skipped is a run that ended at a case that skipped before the run
+	// found a failing case.
+	Skipped Outcome = 6 // skipped
 )
 
-// Valid reports whether o is one of the six outcomes.
+// Valid reports whether o is one of the seven outcomes.
 func (o Outcome) Valid() bool {
-	return o <= Vacuous
+	return o <= Skipped
 }
 
 // Requirement is a label that must count at least Share of the valid
@@ -201,6 +205,9 @@ type Result struct {
 	// its label or its value. A refused run states nothing else: every other
 	// field is zero.
 	Refused error
+	// Reason is the reason of the case that ended a skipped run, and empty
+	// for any other run.
+	Reason string
 }
 
 // Run runs the phases of a property and returns how the run ended.
@@ -222,6 +229,12 @@ type Result struct {
 // refuted or left unmet a coverage requirement, checked in that order. A run
 // whose case of the Draws entries refuses an entry ends at once with
 // [Result.Refused].
+//
+// A case that skips before the run finds a failing case ends the run as
+// [Skipped], in every phase. Once the run has found a failing case, a case
+// that skips counts as a case that does not fail: a replay that skips makes
+// the run flaky, a shrink candidate that skips is not accepted, and an
+// explain run that skips neither fails the way the failure fails nor passes.
 //
 // The slot of s takes the calls of every case that a run on one worker
 // runs, in that order, each under the phase of its case: the case of the
@@ -301,6 +314,11 @@ func (t *tally) take(e Execution, phase record.Phase) (Result, bool) {
 	if e.Status == CaseDiverged {
 		r := t.result(Flaky)
 		r.Divergence = e.Divergence
+		return r, true
+	}
+	if e.Status == CaseSkipped {
+		r := t.result(Skipped)
+		r.Reason = e.Reason
 		return r, true
 	}
 	if e.Status == CaseRejected {

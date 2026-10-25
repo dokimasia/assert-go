@@ -128,5 +128,28 @@ func TestConfirm(t *testing.T) {
 			assert.Equal(t, digestOf(trace), "0b176f0efea58cb450463e6523c53e8678843e669718b88d234c7a6eb949201f",
 				"the simplest case, random case 0 and its replay")
 		})
+
+		t.Run("returns a verdict difference for a replay that skips", func(t *testing.T) {
+			t.Parallel()
+			failed := false
+			got, trace := traced(func(c *engine.Case) string {
+				value := engine.Draw(c, wide, "value")
+				if failed {
+					c.Skip("after")
+				}
+				if value > 1000 {
+					failed = true
+					return "once"
+				}
+				return ""
+			}, settled())
+			once := engine.Identity{Assertion: "once"}
+			want := engine.Divergence{What: engine.VerdictDifference, Index: 1, Recorded: once}
+			assert.Equal(t, got.Outcome, engine.Flaky, "a flaky run")
+			assert.Equal(t, *got.Divergence, want, "the recorded failure against a skip, as against a pass")
+			assert.Equal(t, got.Cases, 1, "the simplest case passed")
+			assert.Equal(t, digestOf(trace), "0b176f0efea58cb450463e6523c53e8678843e669718b88d234c7a6eb949201f",
+				"the simplest case, random case 0 and its replay")
+		})
 	})
 }

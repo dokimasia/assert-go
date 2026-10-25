@@ -174,6 +174,14 @@ func TestAhead(t *testing.T) {
 				name: "reports the counterexample of a filter that shrinks",
 				body: atLeast(engine.Integer(0, 1000).Filter(even), 501),
 			},
+			{
+				name: "reports the skip at the case where a run on one worker skips",
+				body: func(c *engine.Case) {
+					if engine.Draw(c, small, drawn) == 1000 {
+						c.Skip("the largest value")
+					}
+				},
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

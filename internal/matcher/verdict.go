@@ -176,6 +176,39 @@ func (r Running) FailRun(mode Mode, f Failure, run json.Marshaler) {
 	r.report(mode, f)
 }
 
+// skipper is a seat that skips its test, as testing.T, testing.B and
+// testing.F do.
+type skipper interface {
+	// Skipf formats its arguments as fmt.Sprintf does, adds the text to the
+	// test's log, and skips the test.
+	Skipf(format string, args ...any)
+}
+
+// SkipRun reports that the run of the call ended at a case that skipped
+// with reason. The call's record states the verdict skip at where, and the
+// JSON object that run encodes, the detail of the run. A call that is not
+// recorded does not encode it. SkipRun then skips the first seat of the
+// call's chain that has Skipf, with reason. A chain without Skipf receives
+// nothing. Under a seat of the package testing, SkipRun does not return.
+//
+// # Allocation contract
+//
+// SkipRun allocates nothing for a call that is not recorded on a chain
+// without Skipf.
+func (r Running) SkipRun(mode Mode, assertion, contract string, where Where, run json.Marshaler, reason string) {
+	r.seat.Helper()
+	if !r.switched() {
+		return
+	}
+	r.write(record.Call{
+		Assertion: assertion, Contract: contract, Verdict: record.Skip, Aborting: mode == Fatal,
+		Where: record.Where(where),
+	}, nil, run)
+	if s, ok := wrap.As[skipper](r.seat); ok {
+		s.Skipf("%s", reason)
+	}
+}
+
 // Fault reports that the call ended without a verdict because of err, as
 // [Fault] does.
 //

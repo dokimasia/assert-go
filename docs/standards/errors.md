@@ -31,8 +31,12 @@ recorded run, and never parse the text.
   builds a sentence or calls `Fatalf`, `Errorf` or `Logf` with text of
   its own.
 - A property reports one record of its assertion, `prop-for-all` or the
-  form's id, whose detail contains the ten fields that the definition
+  form's id, whose detail contains the eleven fields that the definition
   declares for a run.
+- A property whose run skips does not report a record. It writes its call
+  record with the verdict `skip`, and then skips the first seat of the
+  seat's chain that has `Skipf`, such as a `*testing.T`. A chain without
+  `Skipf` receives nothing.
 - The first seat of the seat's chain that implements `Reporter` receives
   the record. The chain is the seat, then the seat that its method
   `Unwrap() TB` returns, and so on. For a chain without a `Reporter`, the
@@ -49,7 +53,7 @@ default.
   number in the test, the assertion's id, the contract, the verdict,
   whether the surface aborts, the call site, and the detail of a
   failure. A property's call record states the detail of its run on a
-  pass as well.
+  pass and on a skip as well.
 - The calls in a body are recorded under the call that ran the body:
   every case of a property, every attempt of `Eventually`, and the check
   that `Rejects` runs. A property writes the call records of its cases
@@ -178,9 +182,10 @@ type Error struct {
   error is not a fault. Its message starts with the package and names the
   call: `assert: Fault(tb, nil) states no fault`.
 - `prop.Values` panics for a count below 0, for an option that states a
-  setting other than `Using`, and when its generator rejects more than ten
-  cases for each value. Its message starts with the package and names the
-  call: `prop: Values(g, 42, -1) states a count below 0`. A panic of the
+  setting other than `Using`, when its generator rejects more than ten
+  cases for each value, and at a case that its generator skips. Its message
+  starts with the package and names the call:
+  `prop: Values(g, 42, -1) states a count below 0`. A panic of the
   generator passes through.
 - A draw of `prop.Of` panics inside its case when the reader refuses its
   type under the generators that the run takes through `Using`. The message

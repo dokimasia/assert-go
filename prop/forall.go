@@ -39,6 +39,11 @@ func duplicate(op, dir, contract string) error {
 // cases for every valid one, when no case requested an input, or when it
 // refuted or left unmet a coverage requirement, checked in that order.
 //
+// A case that calls [Case.Skipf] before the run finds a failing case ends
+// the run as [Skipped]. The run does not report a record, and skips the
+// first seat of the seat's chain that has Skipf, such as a *testing.T. A
+// chain without Skipf receives nothing.
+//
 // Under the campaign profile, which DOKIMI_ASSERT_PROP_PROFILE=campaign
 // names, ForAll runs a campaign instead of a run, for as long as
 // DOKIMI_ASSERT_PROP_BUDGET states in whole seconds of real time. A
@@ -52,7 +57,7 @@ func duplicate(op, dir, contract string) error {
 // [Hermetic] run and a run in a test binary that a mutation run
 // instrumented run no campaign.
 //
-// The record's detail states the ten fields of the definition:
+// The record's detail states the eleven fields of the definition:
 //
 //   - outcome, an [Outcome].
 //   - cases and rejected, the counts as int.
@@ -62,15 +67,16 @@ func duplicate(op, dir, contract string) error {
 //   - choices, the replay token, and others, a []Other, for a
 //     counterexample.
 //   - divergence, a *Divergence, and coverage, a *Shortfall.
+//   - reason, the reason of a skipped run as a string.
 //
 // A field that the outcome does not use is nil. The first [assert.Reporter]
 // of the seat's chain, which [assert.TB] states, receives the record. A
 // chain without one receives the failing case's notes in its log and then
 // the record's sentence through Fatalf.
 //
-// The call's record states the detail of the run on a pass as well, and the
-// calls of each case that a run on one worker runs are recorded under it,
-// with the phase of the case.
+// The call's record states the detail of the run on a pass and on a skip as
+// well, and the calls of each case that a run on one worker runs are
+// recorded under it, with the phase of the case.
 //
 // ForAll ends the call with a fault, without a run, for a profile other than
 // default, ci and campaign, a seed variable that is no decimal number below

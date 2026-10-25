@@ -75,6 +75,8 @@ const (
 	// usingMode fuzzes a body that fails for a draw of Of of int8 other than
 	// 3, from a seed, under Using of the generator of 3.
 	usingMode = "using"
+	// skippingMode fuzzes skipsAtSentinel from the seed of the sentinel.
+	skippingMode = "skipping"
 )
 
 // childSeed is the seed of each property of FuzzChild, which the record of
@@ -281,6 +283,35 @@ func TestFuzzProcess(t *testing.T) {
 				[]any{"prop-for-all", contract, "pass"}, "the input's call passes")
 		})
 
+		t.Run("skips the test of an input whose case skips", func(t *testing.T) {
+			out, err := child(t, skippingMode, t.TempDir(), record.Variable+"=1")
+			assert.NoError(t, err, "the child passes")
+			call := childCall(t, out, "FuzzChild/seed#0", 1)
+			detail, _ := call["detail"].(map[string]any)
+			assert.Equal(t, []any{call["verdict"], counts(detail), detail[reasonField]},
+				[]any{"skip", []any{"skipped", 0.0, 0.0}, "the sentinel"}, "the input's call skips")
+			assert.Contains(t, out, "--- SKIP: FuzzChild/seed#0 ", "the input's test skips")
+		})
+
+		t.Run("skips the fuzz test at a stored case that skips", func(t *testing.T) {
+			dir := t.TempDir()
+			lit, _ := literal.Encode(sentinel)
+			save(t, dir, store.Entry{
+				Definition:     "1.2.0",
+				Property:       contract,
+				Identity:       store.Identity{Assertion: big, Contract: fits},
+				Choices:        []choice.Choice{sentinelChoice},
+				Counterexample: []store.Draw{{Label: drawn, Value: lit}},
+				Found:          earlier,
+			})
+			out, err := child(t, skippingMode, dir, record.Variable+"=1")
+			assert.NoError(t, err, "the child passes")
+			call := childCall(t, out, "FuzzChild", 1)
+			assert.Equal(t, call["verdict"], any("skip"), "the call of the test skips")
+			assert.Contains(t, out, "--- SKIP: FuzzChild ", "the fuzz test skips")
+			assert.NotContains(t, out, "FuzzChild/seed#0", "no input runs")
+		})
+
 		t.Run("records a rejected input as a run of one rejected case", func(t *testing.T) {
 			out, err := child(t, rejectingMode, t.TempDir(), record.Variable+"=1")
 			assert.NoError(t, err, "the child passes")
@@ -478,6 +509,11 @@ func FuzzChild(f *testing.F) {
 		}, stored, seeded, prop.Using(prop.Integer[int8](3, 3)))
 		return
 	}
+	if mode == skippingMode {
+		f.Add(sentinelSeed)
+		prop.Fuzz(f, contract, skipsAtSentinel, stored, seeded)
+		return
+	}
 	if mode == failingMode {
 		f.Add(sentinelSeed)
 	}
@@ -515,6 +551,14 @@ func waitsAtSentinel(c *prop.Case) {
 	synctest.Wait()
 	if bytes.HasPrefix(<-passed, sentinel) {
 		c.Report(assert.Failure{Assertion: big, Contract: fits}, true)
+	}
+}
+
+// skipsAtSentinel is the body that draws a byte string, and skips the run
+// at the sentinel.
+func skipsAtSentinel(c *prop.Case) {
+	if bytes.Equal(c.Draw(prop.Bytes(), drawn), sentinel) {
+		c.Skipf("the sentinel")
 	}
 }
 

@@ -15,11 +15,11 @@ import (
 
 // absent are the words for a side of a divergence that states nothing, by
 // the [Difference] it belongs to: the run ended, observed no fingerprint,
-// or passed.
+// or did not fail.
 var absent = [...]string{
 	RequestDifference:     "no request",
 	FingerprintDifference: "no fingerprint",
-	VerdictDifference:     "a pass",
+	VerdictDifference:     "no failure",
 }
 
 // The text writer takes the sentence of the record of every property
