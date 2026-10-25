@@ -1,5 +1,5 @@
 {
-  "ergon": "0.14.2",
+  "ergon": "0.14.3",
   "files": [
     {
       "path": ".commitlint.yaml",
