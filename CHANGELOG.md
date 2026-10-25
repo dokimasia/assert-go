@@ -1,5 +1,11 @@
 # go.dokimi.dev/assert
 
+## 0.7.1
+
+### Patch Changes
+
+- 987000d: Fix `prop.Of` to refuse a type at the draw, so `prop.Using` can state the generator of an interface without variants.
+
 ## 0.7.0
 
 ### Minor Changes
