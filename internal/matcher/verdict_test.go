@@ -521,8 +521,10 @@ func TestVerdict(t *testing.T) {
 				matcher.Where{File: "/src/codec_test.go", Line: 18}, json.RawMessage(`{"outcome":"skipped"}`),
 				"unsupported")
 			got := seat.lines(t)[0]
-			if got["verdict"] != "skip" || fmt.Sprint(got["detail"]) != "map[outcome:skipped]" {
-				t.Fatalf("wrote %v, want a skip that states the detail of the run", got)
+			if got["verdict"] != "skip" || fmt.Sprint(got["detail"]) != "map[outcome:skipped]" ||
+				got["reason"] != "unsupported" {
+
+				t.Fatalf("wrote %v, want a skip that states the detail of the run and the reason", got)
 			}
 			if where := got["where"].(map[string]any); where["file"] != "codec_test.go" || where["line"] != 18.0 {
 				t.Fatalf("the record states the site %v, want codec_test.go:18", where)

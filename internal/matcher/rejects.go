@@ -4,6 +4,7 @@
 package matcher
 
 import (
+	"fmt"
 	"runtime"
 	"sync"
 
@@ -11,15 +12,15 @@ import (
 )
 
 // rejection is the seat of the check that [Rejects] drives. It keeps each
-// record of the check in call order, whether the check failed at all, and
-// the fault that ended the check. Its Calls keep the records of the check's
-// calls, for the call of Rejects. Its context derives from the context of
-// the seat of Rejects, and ends with the check.
+// record of the check in call order, whether the check failed at all, the
+// fault that ended the check, and the reason of its skip. Its Calls keep the
+// records of the check's calls, for the call of Rejects. Its context derives
+// from the context of the seat of Rejects, and ends with the check.
 //
-// Fatalf, an aborting record and a fault that ends its call end the calling
-// goroutine once they are kept, as a test's Fatalf ends a test, so the check
-// stops at its first failure that stops. The check runs on a goroutine of
-// its own for that reason.
+// Fatalf, Skipf, an aborting record and a fault that ends its call end the
+// calling goroutine once they are kept, as a test's Fatalf ends a test, so
+// the check stops at its first failure that stops and at its skip. The check
+// runs on a goroutine of its own for that reason.
 //
 // It is not the public recorder, because the package that declares the
 // recorder imports this one.
@@ -28,11 +29,15 @@ type rejection struct {
 	bodyContext
 
 	mu      sync.Mutex
-	failed  bool
 	records []Failure
 	// fault is the fault that ended the check, and nil for a check that no
 	// fault ended.
 	fault error
+	// reason is the reason of the check's first skip.
+	reason string
+	failed bool
+	// skipped reports whether the check skipped.
+	skipped bool
 }
 
 func (*rejection) Helper() {}
@@ -73,6 +78,19 @@ func (r *rejection) ReportFault(err error, ending bool) {
 	runtime.Goexit()
 }
 
+// Skipf formats the reason from format and args as fmt.Sprintf does, keeps
+// the first reason, and ends the check as Fatalf does. A check that skips
+// before it fails ends the call of Rejects as skipped.
+func (r *rejection) Skipf(format string, args ...any) {
+	r.mu.Lock()
+	if !r.skipped {
+		r.skipped, r.reason = true, fmt.Sprintf(format, args...)
+	}
+	r.mu.Unlock()
+
+	runtime.Goexit()
+}
+
 // mark marks the check failed.
 func (r *rejection) mark() {
 	r.mu.Lock()
@@ -90,6 +108,14 @@ func (r *rejection) outcome() (records []Failure, failed bool, fault error) {
 	return append([]Failure(nil), r.records...), r.failed, r.fault
 }
 
+// skip returns the reason of the check's skip, and whether it skipped.
+func (r *rejection) skip() (reason string, skipped bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.reason, r.skipped
+}
+
 // Rejects runs fn against an implementation that fn is meant to reject,
 // and reports when fn passes. It returns the failure records of fn, in call
 // order, and none when fn reported none. Its failure is a record of
@@ -105,6 +131,11 @@ func (r *rejection) outcome() (records []Failure, failed bool, fault error) {
 // the call of Rejects, as its run 1. The seat's context derives from the
 // context of seat, as [ContextOf] reads it, and Rejects cancels it when fn
 // ends.
+//
+// fn's seat has Skipf, which ends fn as Fatalf does. When fn skips before it
+// fails, Rejects ends its call as skipped through [Running.SkipRun] and
+// returns no record. A skip is no verdict on the implementation. When fn
+// fails and then skips, Rejects passes and returns fn's records.
 //
 //	got := matcher.Rejects(seat, matcher.Fatal, "an unbounded pool fails the check",
 //	    func(s matcher.Seat) { handsOutEveryItem(s, unboundedPool{}) })
@@ -138,6 +169,10 @@ func Rejects(seat Seat, mode Mode, msg string, fn func(Seat)) []Failure {
 	records, failed, fault := r.outcome()
 	if fault != nil {
 		run.Fault(mode, "rejects", msg, fault)
+		return nil
+	}
+	if reason, skipped := r.skip(); skipped && !failed {
+		run.SkipRun(mode, "rejects", msg, Where{}, nil, reason)
 		return nil
 	}
 	if !failed {

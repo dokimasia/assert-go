@@ -32,6 +32,7 @@ type call struct {
 	Verdict    string          `json:"verdict"`
 	Aborting   bool            `json:"aborting"`
 	Detail     json.RawMessage `json:"detail,omitempty"`
+	Reason     string          `json:"reason,omitempty"`
 }
 
 // callsOf returns the call records that r keeps, in the order of their

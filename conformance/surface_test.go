@@ -355,6 +355,7 @@ var pinned = map[conformance.ID]any{
 	"seat.fail":         assert.TB.Fatalf,
 	"seat.record":       assert.TB.Errorf,
 	"seat.cancellation": testing.TB.Context,
+	"seat.skip":         testing.TB.Skipf,
 	"cancellation-of":   assert.Context,
 	"fault":             assert.Fault,
 	"allocs-checked":    assert.AllocsChecked,

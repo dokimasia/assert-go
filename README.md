@@ -117,6 +117,11 @@ helper passes to `assert.Fault`, ends the call of `Rejects` with the same
 fault. `Rejects` then returns nil, because the check did not decide about
 the implementation.
 
+A check whose environment lacks a capability calls `Skipf` of its seat.
+When it skips before it fails, `Rejects` skips the test with the reason.
+The check cannot run there, so it has no verdict on the implementation.
+On a recorder, which cannot skip, `Rejects` returns nil.
+
 A helper reads the context of its seat with `assert.Context`, and passes
 it to the code under test. The context is the test's own on a
 `*testing.T`, and `NewRecorder().WithContext(ctx)` gives a recorder one.
@@ -770,7 +775,7 @@ the relation, except where the relation requires a failure.
 
 | Name | What it states |
 |---|---|
-| `Rejects` | A check fails against an implementation it is meant to reject. Yields the failure records of the check, in call order. A fault that ends the check ends the call with the same fault. |
+| `Rejects` | A check fails against an implementation it is meant to reject. Yields the failure records of the check, in call order. A fault that ends the check ends the call with the same fault. A check that skips before it fails ends the call as skipped, which yields no record and skips the test where its runner can skip a running test. |
 
 ## The standard
 

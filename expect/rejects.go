@@ -23,7 +23,9 @@ import (
 // call of Rejects, as its run 1.
 //
 // A fault that ends fn ends the call of Rejects with the same fault, as it
-// ends the call of [assert.Rejects], and Rejects returns nil.
+// ends the call of [assert.Rejects], and Rejects returns nil. A check that
+// calls Skipf of its seat before it fails ends the call as skipped. Rejects
+// then skips the test as assert.Rejects does, and returns nil.
 //
 // # Concurrency
 //

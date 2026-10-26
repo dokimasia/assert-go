@@ -73,9 +73,30 @@ func TestCall(t *testing.T) {
 					Verdict:   record.Skip,
 					Aborting:  true,
 					Detail:    json.RawMessage(`{"outcome":"skipped","reason":"unsupported"}`),
+					Reason:    "unsupported",
 				},
 				want: `{"definition":"` + record.Definition + `","seq":1,"assertion":"prop-for-all","contract":"c",` +
-					`"verdict":"skip","aborting":true,"detail":{"outcome":"skipped","reason":"unsupported"}}`,
+					`"verdict":"skip","aborting":true,"detail":{"outcome":"skipped","reason":"unsupported"},` +
+					`"reason":"unsupported"}`,
+			},
+			{
+				name: "writes the reason of a skipped call without detail",
+				give: record.Call{
+					Assertion: "rejects",
+					Contract:  "the check rejects the defect",
+					Verdict:   record.Skip,
+					Aborting:  true,
+					Reason:    "the check needs a disk",
+				},
+				want: `{"definition":"` + record.Definition + `","seq":1,"assertion":"rejects",` +
+					`"contract":"the check rejects the defect","verdict":"skip","aborting":true,` +
+					`"reason":"the check needs a disk"}`,
+			},
+			{
+				name: "writes the empty reason of a skipped call",
+				give: record.Call{Assertion: "rejects", Contract: "c", Verdict: record.Skip},
+				want: `{"definition":"` + record.Definition + `","seq":1,"assertion":"rejects","contract":"c",` +
+					`"verdict":"skip","aborting":false,"reason":""}`,
 			},
 			{
 				name: "writes the characters of HTML unescaped",

@@ -13,6 +13,22 @@ import (
 // errCheckFault is the fault that a check of rejects ends with.
 var errCheckFault = errors.New("matchertest: the check refuses its subject's configuration")
 
+// skipReason is the reason with which a check of rejects skips.
+const skipReason = "the check needs a disk"
+
+// skipper is the seat of a check that can skip, as testing.T can.
+type skipper interface {
+	// Skipf skips the check with the reason that format and args state.
+	Skipf(format string, args ...any)
+}
+
+// skip skips the check on seat with skipReason, where the seat has Skipf.
+func skip(seat matcher.Seat) {
+	if s, ok := seat.(skipper); ok {
+		s.Skipf("%s", skipReason)
+	}
+}
+
 // RejectsInvoke calls a surface's assertion that a check fails, on a check
 // that reports through the matcher on the seat that the surface hands it.
 // This package then does not name the check's seat type, so one suite
@@ -131,6 +147,55 @@ func RunRejects(t *testing.T, invoke RejectsInvoke) {
 				t.Fatalf("returned %+v, want the record of the failure after the noted fault", got)
 			}
 		})
+
+	t.Run("returns no record and reports nothing for a check that skips before it fails", func(t *testing.T) {
+		t.Parallel()
+
+		reached := false
+		seat := &Seat{}
+		got := invoke(seat, contractMsg, func(s matcher.Seat) {
+			skip(s)
+			reached = true
+		})
+
+		if len(got) != 0 || reached || seat.Failed() || len(seat.Faults()) != 0 {
+			t.Fatalf("returned %+v, ran on: %v, and reported %q and the faults %v, "+
+				"want no record, a check that the skip stopped, and nothing reported", got, reached, seat.First(),
+				seat.Faults())
+		}
+	})
+
+	t.Run("returns the records and passes for a check that fails and then skips", func(t *testing.T) {
+		t.Parallel()
+
+		seat := &Seat{}
+		got := invoke(seat, contractMsg, func(s matcher.Seat) {
+			matcher.Equal(s, matcher.Soft, 2, 1, "the value is one")
+			skip(s)
+		})
+
+		checkOutcome(t, seat, Case{})
+		if len(got) != 1 || got[0].Contract != "the value is one" {
+			t.Fatalf("returned %+v, want the record of the failure before the skip", got)
+		}
+	})
+
+	t.Run("passes a fault that the check notes to its seat for a check that then skips", func(t *testing.T) {
+		t.Parallel()
+
+		seat := &Seat{}
+		got := invoke(seat, contractMsg, func(s matcher.Seat) {
+			matcher.NoteFault(s, errCheckFault)
+			skip(s)
+		})
+
+		if faults := seat.Faults(); len(faults) != 1 || !errors.Is(faults[0], errCheckFault) {
+			t.Fatalf("the seat received the faults %v, want the noted fault", faults)
+		}
+		if len(got) != 0 || seat.Failed() {
+			t.Fatalf("returned %+v and reported %q, want no record and no failure", got, seat.First())
+		}
+	})
 
 	t.Run("reports a record of rejects without detail for a check that passes", func(t *testing.T) {
 		t.Parallel()

@@ -44,6 +44,13 @@ import "go.dokimi.dev/assert/internal/matcher"
 // returns nil. A fault that fn notes and runs on past passes to tb as a
 // noted fault.
 //
+// The seat that fn receives has Skipf. A check that calls it before it fails
+// ends the call of Rejects as skipped. The call record states the verdict
+// skip and the reason. Rejects then calls Skipf of the first seat of tb's
+// chain that has it, which skips the test of a *testing.T. A chain without
+// Skipf, such as a [Recorder], receives nothing, and Rejects returns nil. A
+// check that fails and then skips passes Rejects.
+//
 // The call records of the assertions that fn calls are recorded under
 // the call of Rejects, as its run 1.
 //

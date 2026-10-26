@@ -6,6 +6,7 @@ package matcher_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"go.dokimi.dev/assert/internal/matcher"
@@ -14,6 +15,12 @@ import (
 
 // rejection keeps the records that a call of Rejects returns.
 var rejection []matcher.Failure
+
+// skipper is the seat of a check that can skip, as the seat of Rejects can.
+type skipper interface {
+	// Skipf skips the check with the reason that format and args state.
+	Skipf(format string, args ...any)
+}
 
 // TestRejects runs the shared cases of the assertion that a check fails,
 // and the cases of each mode and of the call records.
@@ -83,6 +90,35 @@ func TestRejects(t *testing.T) {
 				lines[0]["error"] != matcher.RenderFault(err) {
 
 				t.Fatalf("wrote %v, want the call of rejects with the verdict error and the text of the fault", lines)
+			}
+		})
+
+		t.Run("records the verdict skip and the reason of a check that skips", func(t *testing.T) {
+			t.Parallel()
+
+			seat := newKeepingSeat()
+			matcher.Rejects(seat, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				s.(skipper).Skipf("the check needs %s", "a disk")
+			})
+
+			lines := seat.lines(t)
+			if len(lines) != 1 || lines[0]["assertion"] != "rejects" || lines[0]["verdict"] != "skip" ||
+				lines[0]["reason"] != "the check needs a disk" {
+
+				t.Fatalf("wrote %v, want the call of rejects with the verdict skip and the reason", lines)
+			}
+		})
+
+		t.Run("skips the seat with the reason of a check that skips", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &skippingSeat{}
+			got := matcher.Rejects(seat, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				s.(skipper).Skipf("the check needs a disk")
+			})
+			if fmt.Sprint(seat.skips) != "[the check needs a disk]" || seat.Failed() || len(got) != 0 {
+				t.Fatalf("Skipf received %q, the seat %q, and Rejects returned %+v, "+
+					"want the reason through Skipf alone and no record", seat.skips, seat.First(), got)
 			}
 		})
 

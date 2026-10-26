@@ -83,6 +83,17 @@ func TestRecording(t *testing.T) {
 					`want {"seq":2,"parent":1,"run":1,"phase":"random","verdict":"fail"}`,
 			},
 			{
+				name: "returns nil for the reason of a run that skips",
+				give: skipped("unsupported"),
+			},
+			{
+				name:     "returns a fault at the verdict for a reason other than the run's",
+				give:     skipped("the disk is full"),
+				wantPath: inVector(fault.Field("verdict")),
+				wantReason: `the call record is {"seq":1,"verdict":"skip","reason":"unsupported"}, ` +
+					`want {"seq":1,"verdict":"skip","reason":"the disk is full"}`,
+			},
+			{
 				name:       "returns a fault at the calls for fewer calls than the run makes",
 				give:       recording(digitBody, replaySeven, "fail", `[]`),
 				wantPath:   inVector(fault.Field("calls")),
@@ -139,4 +150,13 @@ func TestRecording(t *testing.T) {
 // which states the property's verdict and the calls of true.
 func recording(body, settings, verdict, calls string) string {
 	return fmt.Sprintf(`{"body":%s,"settings":%s,"verdict":%q,"calls":%s}`, body, settings, verdict, calls)
+}
+
+// skipped returns a recording vector of a run of the seed 7 whose every case
+// skips with the reason unsupported. The vector states reason as the reason
+// of the property's skip.
+func skipped(reason string) string {
+	body := `{"draw":` + digitGenerator +
+		`,"skips":[{"reason":"unsupported","when":{"kind":"at-least","n":0}}]}`
+	return fmt.Sprintf(`{"body":%s,"settings":%s,"verdict":"skip","reason":%q,"calls":[]}`, body, seven, reason)
 }

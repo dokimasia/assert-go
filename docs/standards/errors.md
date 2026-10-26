@@ -34,9 +34,10 @@ recorded run, and never parse the text.
   form's id, whose detail contains the eleven fields that the definition
   declares for a run.
 - A property whose run skips does not report a record. It writes its call
-  record with the verdict `skip`, and then skips the first seat of the
-  seat's chain that has `Skipf`, such as a `*testing.T`. A chain without
-  `Skipf` receives nothing.
+  record with the verdict `skip` and the reason, and then skips the first
+  seat of the seat's chain that has `Skipf`, such as a `*testing.T`. A
+  chain without `Skipf` receives nothing. A call of `Rejects` whose check
+  skips before it fails ends the same way.
 - The first seat of the seat's chain that implements `Reporter` receives
   the record. The chain is the seat, then the seat that its method
   `Unwrap() TB` returns, and so on. For a chain without a `Reporter`, the

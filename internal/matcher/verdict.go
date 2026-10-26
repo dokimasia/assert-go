@@ -184,12 +184,15 @@ type skipper interface {
 	Skipf(format string, args ...any)
 }
 
-// SkipRun reports that the run of the call ended at a case that skipped
-// with reason. The call's record states the verdict skip at where, and the
-// JSON object that run encodes, the detail of the run. A call that is not
-// recorded does not encode it. SkipRun then skips the first seat of the
-// call's chain that has Skipf, with reason. A chain without Skipf receives
-// nothing. Under a seat of the package testing, SkipRun does not return.
+// SkipRun reports that the call ended as skipped with reason. A property
+// calls it when its run ends at a case that skipped. [Rejects] calls it when
+// its check skips before it fails. The call's record has the verdict skip
+// and the reason. Its site is where, or the site of the caller for a zero
+// where. Its detail is the JSON object that run encodes, and a nil run gives
+// it no detail. A call that is not recorded does not encode the detail.
+// SkipRun then calls Skipf with reason on the first seat of the call's chain
+// that has Skipf. A chain without Skipf receives nothing. Under a seat of the
+// package testing, SkipRun does not return.
 //
 // # Allocation contract
 //
@@ -202,7 +205,7 @@ func (r Running) SkipRun(mode Mode, assertion, contract string, where Where, run
 	}
 	r.write(record.Call{
 		Assertion: assertion, Contract: contract, Verdict: record.Skip, Aborting: mode == Fatal,
-		Where: record.Where(where),
+		Where: record.Where(where), Reason: reason,
 	}, nil, run)
 	if s, ok := wrap.As[skipper](r.seat); ok {
 		s.Skipf("%s", reason)

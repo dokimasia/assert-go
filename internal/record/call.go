@@ -25,7 +25,8 @@ const (
 	// Error is a call that ended without a verdict, because the library
 	// refused an argument or the environment.
 	Error Verdict = "error"
-	// Skip is a call of a property whose run ended at a case that skipped.
+	// Skip is a call of a property whose run ended at a case that skipped,
+	// or a call of rejects whose check skipped before it failed.
 	Skip Verdict = "skip"
 )
 
@@ -92,6 +93,8 @@ type Call struct {
 	// Error is the text of the fault that ended a call of the verdict
 	// [Error].
 	Error string
+	// Reason is the reason of the skip of a call of the verdict [Skip].
+	Reason string
 }
 
 // line is a call record as its JSON states it, with its fields in the
@@ -109,6 +112,9 @@ type line struct {
 	Where      *Where          `json:"where,omitempty"`
 	Detail     json.RawMessage `json:"detail,omitempty"`
 	Error      string          `json:"error,omitempty"`
+	// Reason is the reason of a skip. The record of a skipped call has the
+	// field also when the reason is empty.
+	Reason *string `json:"reason,omitempty"`
 }
 
 // encode returns the record of e, which its Calls numbered, as one line of
@@ -131,6 +137,9 @@ func encode(e *entry) string {
 	}
 	if e.parent != nil {
 		l.Parent, l.Run, l.Phase = e.parent.seq, e.run, e.phase
+	}
+	if e.call.Verdict == Skip {
+		l.Reason = &e.call.Reason
 	}
 	if e.call.Where != (Where{}) {
 		l.Where = &Where{File: filepath.Base(e.call.Where.File), Line: e.call.Where.Line}

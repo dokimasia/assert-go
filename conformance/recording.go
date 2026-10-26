@@ -29,14 +29,16 @@ type recordingSettings struct {
 
 // recorded is a call record as a recording vector states it. The vector
 // states the run, the phase and the verdict of each call in the property's
-// body, and the verdict of the property, whose record has the seq 1. A
-// field that a record does not state is the zero value.
+// body. It states the verdict of the property, whose record has the seq 1,
+// and the reason of a property that skips. A field that a record does not
+// state is the zero value.
 type recorded struct {
 	Seq     int    `json:"seq"`
 	Parent  int    `json:"parent,omitempty"`
 	Run     int    `json:"run,omitempty"`
 	Phase   string `json:"phase,omitempty"`
 	Verdict string `json:"verdict"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // asserting ends a recording vector's case with one call of true, which
@@ -52,8 +54,9 @@ func asserting(c *prop.Case, failure string) {
 
 // checkRecording runs the body of a recording vector under ForAll on a
 // recorder, with its settings, and compares the call records that the
-// recorder keeps with the ones the vector states: the property's verdict,
-// and the run, the phase and the verdict of each call of true in order. The
+// recorder keeps with the ones the vector states: the property's verdict
+// and the reason of its skip, and the run, the phase and the verdict of
+// each call of true in order. The
 // call at position k of the vector, from 0, has the seq k + 2 and the
 // parent 1. The vector's example is the case of a Draws entry, whose value
 // is the one that the example's choices decode to.
@@ -65,6 +68,8 @@ func checkRecording(raw json.RawMessage, dir string) error {
 		Settings recordingSettings `json:"settings"`
 		// Verdict is the property's verdict.
 		Verdict string `json:"verdict"`
+		// Reason is the reason of a property that skips.
+		Reason string `json:"reason"`
 		// Calls are the calls of true in the property's body, in order.
 		Calls []recorded `json:"calls"`
 	}
@@ -85,7 +90,7 @@ func checkRecording(raw json.RawMessage, dir string) error {
 	}
 	rec := assert.NewRecorder()
 	prop.ForAll(rec, behaviourContract, body, append(opts, example...)...)
-	want := []recorded{{Seq: 1, Verdict: v.Verdict}}
+	want := []recorded{{Seq: 1, Verdict: v.Verdict, Reason: v.Reason}}
 	for k, c := range v.Calls {
 		c.Seq, c.Parent = k+2, 1
 		want = append(want, c)
@@ -93,7 +98,14 @@ func checkRecording(raw json.RawMessage, dir string) error {
 	calls := callsOf(rec)
 	got := make([]recorded, len(calls))
 	for i, c := range calls {
-		got[i] = recorded{Seq: c.Seq, Parent: c.Parent, Run: c.Run, Phase: c.Phase, Verdict: c.Verdict}
+		got[i] = recorded{
+			Seq:     c.Seq,
+			Parent:  c.Parent,
+			Run:     c.Run,
+			Phase:   c.Phase,
+			Verdict: c.Verdict,
+			Reason:  c.Reason,
+		}
 	}
 	for i := range min(len(got), len(want)) {
 		if got[i] == want[i] {
