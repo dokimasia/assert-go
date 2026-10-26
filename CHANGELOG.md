@@ -1,5 +1,15 @@
 # go.dokimi.dev/assert
 
+## 0.8.0
+
+### Minor Changes
+
+- e736be5: Implement definition 12.0.0 and write its version into every call record.
+- 6e5a88c: Implement definition 12.1.0 and write its version into every call record.
+- e736be5: **Breaking:** Decode each value of a type with the position generator inside the extension of a stated `prop.Recursive` generator of the type.
+- 6e5a88c: Add `Skipf` to the seat of the check of `Rejects`, and end the call as skipped when the check skips before it fails.
+- 6e5a88c: Write the reason of every skip into the field `reason` of its call record.
+
 ## 0.7.1
 
 ### Patch Changes
