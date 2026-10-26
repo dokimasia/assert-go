@@ -43,8 +43,10 @@
 //   - bool reads as a bool.
 //   - int8 to int64 and uint8 to uint64 read as an int of the type's width
 //     and sign.
-//   - int and uint read as an int of the platform's word.
+//   - int, uint and uintptr read as an int of the platform's word.
 //   - float32 and float64 read as a float of the type's width.
+//   - complex64 and complex128 read as a record of the floats real and
+//     imag. Each float is half as wide as the type.
 //   - string reads as a string.
 //   - []byte reads as bytes.
 //   - [N]byte reads as bytes of exactly N.
@@ -52,6 +54,9 @@
 //   - netip.Addr reads as an ip-address.
 //   - *big.Int reads as an int of 128 bits.
 //   - *big.Rat reads as a decimal of the scale that its tag states.
+//   - *big.Rat without a scale reads as a record of the signed 64-bit int
+//     num and the unsigned 64-bit int den of at least 1. Its value is the
+//     fraction num/den in lowest terms.
 //   - time.Time reads as an instant at nanoseconds.
 //   - time.Duration reads as a duration at nanoseconds.
 //   - *time.Location reads as a zone.
@@ -71,10 +76,9 @@
 //     its package path and its name, and as a ref at each place it occurs.
 //
 // The tag prop:"-" leaves a field out. A field that the reader does not
-// read keeps its zero value. The reader refuses a channel, a function, a
-// complex number, a uintptr, an unsafe.Pointer and an interface without
-// registered variants. Its fault is at the path of the part, such as
-// Order.Lines[].Note.
+// read keeps its zero value. The reader refuses a channel, a function, an
+// unsafe.Pointer and an interface without registered variants. Its fault is
+// at the path of the part, such as Order.Lines[].Note.
 //
 // A field's prop tag states the constraints of its shape, as in
 // `prop:"min=1,max=99"`. The keys are min, max, min_size, max_size,
@@ -84,7 +88,8 @@
 // time.Time, a time.Duration or an integer as the shape of their name. The
 // reader gives each key to the field's own shape when that shape has a
 // parameter of the key's name. It gives any other key to the shape inside
-// an optional, a list, a fixed-list or a set.
+// an optional, a list, a fixed-list or a set. A complex number and a
+// fraction take no key, so min and max of a *big.Rat need the key scale.
 //
 // [Register], [RegisterValues] and [RegisterVariants] state a type's
 // generator, a type's values or an interface's variants for the test

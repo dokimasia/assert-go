@@ -19,8 +19,9 @@ import (
 )
 
 // TestConvert checks the Go values of the shapes of a date, a time, a
-// zone, an address, a decimal and a char: what each decodes to, what runs
-// back, and each value that no neutral value states.
+// zone, an address, a decimal and a char, and of the records of a complex
+// number and a fraction: what each decodes to, what runs back, and each
+// value that no neutral value states.
 func TestConvert(t *testing.T) {
 	t.Parallel()
 
@@ -335,6 +336,34 @@ func TestConvert(t *testing.T) {
 	t.Run("Of", func(t *testing.T) {
 		t.Parallel()
 
+		decodes := []struct {
+			name string
+			give func() any
+			want any
+		}{
+			{
+				name: "decodes the record of a complex64 from its two float32 parts",
+				give: func() any { return decodedBy(prop.Of[complex64](), floating(1.5), floating(-2)) },
+				want: complex64(complex(1.5, -2)),
+			},
+			{
+				name: "decodes the record of a complex128 from its two float64 parts",
+				give: func() any { return decodedBy(prop.Of[complex128](), floating(1.5), floating(-2)) },
+				want: complex(1.5, -2),
+			},
+			{
+				name: "decodes the record of a fraction to a *big.Rat in lowest terms",
+				give: func() any { return decodedBy(prop.Of[*bignum.Rat](), signed(-2), integer(4)) },
+				want: bignum.NewRat(-1, 2),
+			},
+		}
+		for _, tt := range decodes {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				assert.Equal(t, tt.give(), tt.want, "the Go value of the record")
+			})
+		}
+
 		refusals := []struct {
 			name       string
 			give       func() error
@@ -370,6 +399,26 @@ func TestConvert(t *testing.T) {
 				},
 				wantPath:   fault.Path{fault.Field("V")},
 				wantReason: "1970-01-01 00:00:00.000000005 +0000 UTC is finer than the shape's unit of 1ms",
+			},
+			{
+				name:       "refuses a nil *big.Rat without a scale",
+				give:       func() error { return refusal(struct{ V *bignum.Rat }{}) },
+				wantPath:   fault.Path{fault.Field("V")},
+				wantReason: "a nil *big.Rat is no fraction",
+			},
+			{
+				name: "refuses a fraction whose numerator is outside the int64 range",
+				give: func() error {
+					return refusal(new(bignum.Rat).SetInt(new(bignum.Int).Lsh(bignum.NewInt(1), 63)))
+				},
+				wantReason: "the numerator of 9223372036854775808 is outside the int64 range",
+			},
+			{
+				name: "refuses a fraction whose denominator is outside the uint64 range",
+				give: func() error {
+					return refusal(new(bignum.Rat).SetFrac(bignum.NewInt(1), new(bignum.Int).Lsh(bignum.NewInt(1), 64)))
+				},
+				wantReason: "the denominator of 1/18446744073709551616 is outside the uint64 range",
 			},
 		}
 		for _, tt := range refusals {

@@ -204,6 +204,17 @@ type (
 	gateway struct {
 		Address netip.Addr `json:"address" prop:"version=4"`
 	}
+	// signal is a record of the complex field sample. A complex128 reads as
+	// a record of the 64-bit floats real and imag.
+	signal struct {
+		Sample complex128 `json:"sample"`
+	}
+	// share is a record of the rational field part. A *big.Rat without a
+	// scale reads as a record of the signed 64-bit integer num and the
+	// unsigned 64-bit integer den of at least 1.
+	share struct {
+		Part *big.Rat `json:"part"`
+	}
 )
 
 // The values of status, in the order that the fixture states them.
@@ -255,6 +266,8 @@ var fixtures = map[string]func() (string, error){
 	"stamp":       prop.ShapeOf[stamp],
 	"fee":         prop.ShapeOf[fee],
 	"gateway":     prop.ShapeOf[gateway],
+	"signal":      prop.ShapeOf[signal],
+	"share":       prop.ShapeOf[share],
 }
 
 // checkFixtures reads the shape file of the fixture type that a fixtures

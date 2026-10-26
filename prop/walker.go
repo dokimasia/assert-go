@@ -38,7 +38,7 @@ func (w *walker) convert(n node, at fault.Path) (converter, error) {
 		width, _ := n[widthKey].(json.Number).Int64()
 		signed, _ := n[signedKey].(bool)
 		return integerConverter(int(width), signed), nil
-	case "float":
+	case floatID:
 		if width, _ := n[widthKey].(json.Number).Int64(); width == float32Bits {
 			return floatConverter(reflect.TypeFor[float32]()), nil
 		}

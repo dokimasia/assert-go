@@ -49,6 +49,9 @@ const (
 	pingShape = `{"shape":"ref","name":"` + pingName + `","definitions":{"` + pingName + `":` +
 		`{"shape":"record","fields":[["next",{"shape":"optional","of":{"shape":"record","fields":[` +
 		`["next",{"shape":"ref","name":"` + pingName + `"}]]}}]]}}}`
+	// fractionShape is the shape of a *big.Rat without a scale.
+	fractionShape = `{"shape":"record","fields":[["num",{"shape":"int","width":64,"signed":true}],` +
+		`["den",{"shape":"int","width":64,"signed":false,"min":1}]]}`
 )
 
 // The types that only the reader tests read.
@@ -141,6 +144,11 @@ func TestReader(t *testing.T) {
 				want: intShape(64, false),
 			},
 			{
+				name: "reads a uintptr as an unsigned int of the platform's word",
+				give: prop.ShapeOf[uintptr],
+				want: `{"shape":"int","width":` + word + `,"signed":false}`,
+			},
+			{
 				name: "reads a float32 as a float of 32 bits",
 				give: prop.ShapeOf[float32],
 				want: `{"shape":"float","width":32}`,
@@ -149,6 +157,16 @@ func TestReader(t *testing.T) {
 				name: "reads a float64 as a float of 64 bits",
 				give: prop.ShapeOf[float64],
 				want: `{"shape":"float","width":64}`,
+			},
+			{
+				name: "reads a complex64 as a record of the floats real and imag of 32 bits",
+				give: prop.ShapeOf[complex64],
+				want: complexShape(32),
+			},
+			{
+				name: "reads a complex128 as a record of the floats real and imag of 64 bits",
+				give: prop.ShapeOf[complex128],
+				want: complexShape(64),
 			},
 			{name: "reads a string as a string", give: prop.ShapeOf[string], want: `{"shape":"string"}`},
 			{name: "reads a []byte as bytes", give: prop.ShapeOf[[]byte], want: `{"shape":"bytes"}`},
@@ -177,6 +195,11 @@ func TestReader(t *testing.T) {
 				name: "reads a *big.Int as a signed int of 128 bits",
 				give: prop.ShapeOf[*bignum.Int],
 				want: intShape(128, true),
+			},
+			{
+				name: "reads a *big.Rat without a scale as a fraction of num and den",
+				give: prop.ShapeOf[*bignum.Rat],
+				want: fractionShape,
 			},
 			{
 				name: "reads a time.Time as an instant at nanoseconds",
@@ -289,6 +312,13 @@ func TestReader(t *testing.T) {
 					V uint16 `prop:"min=1,max=99"`
 				}],
 				want: `{"shape":"int","width":16,"signed":false,"min":1,"max":99}`,
+			},
+			{
+				name: "reads min and max of a uintptr",
+				give: prop.ShapeOf[struct {
+					V uintptr `prop:"min=1,max=99"`
+				}],
+				want: `{"shape":"int","width":` + word + `,"signed":false,"min":1,"max":99}`,
 			},
 			{
 				name: "reads allow_nan and allow_infinity of a float as true",
@@ -475,16 +505,12 @@ func TestReader(t *testing.T) {
 				wantReason: "func() is no type that a shape states",
 			},
 			{
-				name:       "returns a fault at a field of a complex number",
-				give:       prop.ShapeOf[struct{ X complex128 }],
-				wantPath:   fault.Path{fault.Field("struct { X complex128 }"), fault.Field("X")},
-				wantReason: "complex128 is no type that a shape states",
-			},
-			{
-				name:       "returns a fault at a field of a uintptr",
-				give:       prop.ShapeOf[struct{ U uintptr }],
-				wantPath:   fault.Path{fault.Field("struct { U uintptr }"), fault.Field("U")},
-				wantReason: "uintptr is no type that a shape states",
+				name: "returns a fault at a complex number whose tag states a key",
+				give: prop.ShapeOf[struct {
+					V complex128 `prop:"allow_nan"`
+				}],
+				wantPath:   fieldV("complex128", "allow_nan"),
+				wantReason: "the tag key allow_nan applies to no part of complex128",
 			},
 			{
 				name:       "returns a fault at a field of an unsafe.Pointer",
@@ -636,10 +662,20 @@ func TestReader(t *testing.T) {
 				wantReason: `the unit "d" is none of s, ms, us and ns`,
 			},
 			{
-				name:       "returns a fault at a *big.Rat without a scale",
-				give:       prop.ShapeOf[struct{ V *bignum.Rat }],
-				wantPath:   fault.Path{fault.Field("struct { V *big.Rat }"), fault.Field("V")},
-				wantReason: "a *big.Rat reads as a decimal, which needs the tag key scale",
+				name: "returns a fault at a *big.Rat whose tag states min without a scale",
+				give: prop.ShapeOf[struct {
+					V *bignum.Rat `prop:"min=0"`
+				}],
+				wantPath:   fieldV("*big.Rat", "min=0"),
+				wantReason: "a *big.Rat with a bound reads as a decimal, which needs the tag key scale",
+			},
+			{
+				name: "returns a fault at a *big.Rat whose tag states max without a scale",
+				give: prop.ShapeOf[struct {
+					V *bignum.Rat `prop:"max=1"`
+				}],
+				wantPath:   fieldV("*big.Rat", "max=1"),
+				wantReason: "a *big.Rat with a bound reads as a decimal, which needs the tag key scale",
 			},
 			{
 				name: "returns a fault at a scale that is no count of digits",
@@ -680,4 +716,11 @@ func TestReader(t *testing.T) {
 // intShape returns the JSON of an int shape of width bits.
 func intShape(width int, signed bool) string {
 	return `{"shape":"int","width":` + strconv.Itoa(width) + `,"signed":` + strconv.FormatBool(signed) + `}`
+}
+
+// complexShape returns the JSON of the record of a complex number whose
+// parts are floats of width bits.
+func complexShape(width int) string {
+	part := `{"shape":"float","width":` + strconv.Itoa(width) + `}`
+	return `{"shape":"record","fields":[["real",` + part + `],["imag",` + part + `]]}`
 }

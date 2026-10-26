@@ -175,8 +175,8 @@ func scalar(
 }
 
 // assign stores x in dst, a settable value of a type that x converts to. It
-// stores an integer and a float by its kind, which allocates nothing, where
-// a conversion allocates the converted number.
+// stores an integer, a float and a complex number by its kind, which
+// allocates nothing, where a conversion allocates the converted number.
 func assign(dst reflect.Value, x any) {
 	switch x := x.(type) {
 	case int64:
@@ -189,6 +189,10 @@ func assign(dst reflect.Value, x any) {
 		dst.SetFloat(x)
 	case float32:
 		dst.SetFloat(float64(x))
+	case complex128:
+		dst.SetComplex(x)
+	case complex64:
+		dst.SetComplex(complex128(x))
 	default:
 		dst.Set(reflect.ValueOf(x).Convert(dst.Type()))
 	}
@@ -285,6 +289,28 @@ func floatConverter(plain reflect.Type) converter {
 		func(src reflect.Value) (any, error) { return src.Float(), nil })
 }
 
+// complexConverter returns the converter of the record of a complex type t:
+// to a complex64 from two float32 parts, and to a complex128 from two
+// float64 parts.
+func complexConverter(t reflect.Type) converter {
+	if t.Kind() == reflect.Complex64 {
+		return scalar(reflect.TypeFor[complex64](), func(v any) any {
+			re, im := partsOf(v)
+			return complex(re.(float32), im.(float32))
+		}, ofKind(reflect.Complex64), func(src reflect.Value) (any, error) {
+			c := complex64(src.Complex())
+			return twoParts(realPart, real(c), imagPart, imag(c)), nil
+		})
+	}
+	return scalar(reflect.TypeFor[complex128](), func(v any) any {
+		re, im := partsOf(v)
+		return complex(re.(float64), im.(float64))
+	}, ofKind(reflect.Complex128), func(src reflect.Value) (any, error) {
+		c := src.Complex()
+		return twoParts(realPart, real(c), imagPart, imag(c)), nil
+	})
+}
+
 // timeConverter returns the converter of a shape whose Go value is a
 // time.Time, with the conversions to and from its neutral value.
 func timeConverter(value func(any) time.Time, of func(time.Time) (any, error)) converter {
@@ -304,6 +330,11 @@ func decimalConverter(s scale) converter {
 	return scalar(ratType, func(v any) any { return s.decimal(v) }, ofType(ratType),
 		func(src reflect.Value) (any, error) { return s.decimalOf(src.Interface().(*big.Rat)) })
 }
+
+// fractionConverter is the converter of the record of a *big.Rat without a
+// scale.
+var fractionConverter = scalar(ratType, func(v any) any { return fraction(v) }, ofType(ratType),
+	func(src reflect.Value) (any, error) { return fractionOf(src.Interface().(*big.Rat)) })
 
 // wallConverter returns the converter of a wall-time shape at the unit u.
 func wallConverter(u timeUnit) converter {

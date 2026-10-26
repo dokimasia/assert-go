@@ -59,13 +59,16 @@ const everyShape = `{"shape":"record","fields":[` +
 // The allocation ceilings of a decode of one value through the generator
 // that Of returns: the replay of its case, the value that the shape's
 // generator boxes, and the value that Of returns. A converter stores an
-// integer and a float by its kind, and allocates no converted number.
+// integer, a float and a complex number by its kind, and allocates no
+// converted number.
 const (
-	int8DecodeAllocs    = 17
-	uint64DecodeAllocs  = 15
-	float32DecodeAllocs = 18
-	float64DecodeAllocs = 18
-	charDecodeAllocs    = 23
+	int8DecodeAllocs       = 17
+	uint64DecodeAllocs     = 15
+	float32DecodeAllocs    = 18
+	float64DecodeAllocs    = 18
+	complex64DecodeAllocs  = 29
+	complex128DecodeAllocs = 29
+	charDecodeAllocs       = 23
 )
 
 // The types whose generators the converter tests run back.
@@ -83,15 +86,19 @@ type (
 		U16  uint16
 		U32  uint32
 		U64  uint64
+		UP   uintptr
 		F32  float32
 		F64  float64
+		C64  complex64
+		C128 complex128
 		S    string
 		R    rune `prop:"char"`
 		Raw  []byte
 		Key  [4]byte
 		Temp celsius
 	}
-	// domains has a field of each type that reads as a domain shape.
+	// domains has a field of each type that reads as a domain shape, and a
+	// *big.Rat that reads as a fraction.
 	domains struct {
 		At     time.Time
 		Day    time.Time     `prop:"date"`
@@ -106,6 +113,7 @@ type (
 		V4     netip.Addr `prop:"version=4"`
 		Big    *bignum.Int
 		Price  *bignum.Rat `prop:"scale=2"`
+		Share  *bignum.Rat
 		Wall   prop.WallTime
 	}
 	// collections has a field of each collection that the reader reads.
@@ -588,7 +596,8 @@ func TestConverter(t *testing.T) {
 }
 
 // TestConverterAllocs checks the allocation ceiling of a decode of an
-// integer, a float and a character through the generator that Of returns.
+// integer, a float, a complex number and a character through the generator
+// that Of returns.
 func TestConverterAllocs(t *testing.T) {
 	tests := []struct {
 		name string
@@ -599,6 +608,16 @@ func TestConverterAllocs(t *testing.T) {
 		{name: "uint64", give: decodes(prop.Of[uint64](), integer(7)), want: uint64DecodeAllocs},
 		{name: "float32", give: decodes(prop.Of[float32](), floating(1.5)), want: float32DecodeAllocs},
 		{name: "float64", give: decodes(prop.Of[float64](), floating(1.5)), want: float64DecodeAllocs},
+		{
+			name: "complex64",
+			give: decodes(prop.Of[complex64](), floating(1.5), floating(-2)),
+			want: complex64DecodeAllocs,
+		},
+		{
+			name: "complex128",
+			give: decodes(prop.Of[complex128](), floating(1.5), floating(-2)),
+			want: complex128DecodeAllocs,
+		},
 		{name: "char", give: decodes(prop.Of[letterOf](), sequence(10)), want: charDecodeAllocs},
 	}
 	for _, tt := range tests {

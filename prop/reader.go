@@ -22,6 +22,8 @@ import (
 const (
 	// intID is the id of an integer.
 	intID = "int"
+	// floatID is the id of a floating-point number.
+	floatID = "float"
 	// bytesID is the id of a byte string.
 	bytesID = "bytes"
 	// listID is the id of a list.
@@ -85,6 +87,22 @@ const (
 	offsetBits = 32
 	// float32Bits is the width of a float32.
 	float32Bits = 32
+	// fractionBits is the width of the numerator and the denominator of a
+	// fraction.
+	fractionBits = 64
+)
+
+// The names of the fields of the records that a complex number and a
+// fraction read as.
+const (
+	// realPart is the real part of a complex number.
+	realPart = "real"
+	// imagPart is the imaginary part of a complex number.
+	imagPart = "imag"
+	// numPart is the numerator of a fraction.
+	numPart = "num"
+	// denPart is the denominator of a fraction. It is at least 1.
+	denPart = "den"
 )
 
 // The types that the reader reads as a shape of their own.
@@ -256,7 +274,7 @@ func (r *reader) content(t reflect.Type, variants []variant, k *tags, at fault.P
 		k.copy(n, numeric, minKey, maxKey)
 		return n, bigIntConverter, nil
 	case ratType:
-		return decimalShape(k, at)
+		return ratShape(k, at)
 	case wallType:
 		return r.wallShape(k, at)
 	}
@@ -265,12 +283,14 @@ func (r *reader) content(t reflect.Type, variants []variant, k *tags, at fault.P
 		return node{shapeKey: "bool"}, boolConverter, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return signedShape(t, k, at)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		n := node{shapeKey: intID, widthKey: t.Bits(), signedKey: false}
 		k.copy(n, numeric, minKey, maxKey)
 		return n, integerConverter(t.Bits(), false), nil
 	case reflect.Float32, reflect.Float64:
 		return floatShape(t, k)
+	case reflect.Complex64, reflect.Complex128:
+		return complexShape(t), complexConverter(t), nil
 	case reflect.String:
 		n := node{shapeKey: "string"}
 		k.copy(n, numeric, minSizeKey, maxSizeKey)
@@ -322,7 +342,7 @@ func signedShape(t reflect.Type, k *tags, at fault.Path) (node, converter, error
 
 // floatShape returns the shape of a float type t: a float of its width.
 func floatShape(t reflect.Type, k *tags) (node, converter, error) {
-	n := node{shapeKey: "float", widthKey: t.Bits()}
+	n := node{shapeKey: floatID, widthKey: t.Bits()}
 	k.copy(n, numeric, minKey, maxKey)
 	for _, key := range []string{allowNaNKey, allowInfinityKey} {
 		if k.flag(key) {
@@ -397,12 +417,31 @@ func durationShape(k *tags, at fault.Path) (node, converter, error) {
 	return n, durationConverter(u.duration, u.durationOf), nil
 }
 
-// decimalShape returns the shape of a *big.Rat: a decimal of the scale that
-// its tag states, which a decimal needs.
-func decimalShape(k *tags, at fault.Path) (node, converter, error) {
+// complexShape returns the shape of a complex type t: a record of the floats
+// real and imag. Each float is half as wide as t. A complex number takes no
+// key of the tag.
+func complexShape(t reflect.Type) node {
+	part := t.Bits() / 2
+	return node{shapeKey: recordID, fieldsKey: []any{
+		[]any{realPart, node{shapeKey: floatID, widthKey: part}},
+		[]any{imagPart, node{shapeKey: floatID, widthKey: part}},
+	}}
+}
+
+// ratShape returns the shape of a *big.Rat: a decimal of the scale that its
+// tag states, and a fraction for a tag without a scale. A fraction takes no
+// key of the tag, so a bound without a scale is a fault.
+func ratShape(k *tags, at fault.Path) (node, converter, error) {
 	text, ok := k.take(scaleKey)
 	if !ok {
-		return nil, converter{}, refused(at, "a *big.Rat reads as a decimal, which needs the tag key scale")
+		if k.flag(minKey) || k.flag(maxKey) {
+			return nil, converter{}, refused(at,
+				"a *big.Rat with a bound reads as a decimal, which needs the tag key scale")
+		}
+		return node{shapeKey: recordID, fieldsKey: []any{
+			[]any{numPart, node{shapeKey: intID, widthKey: fractionBits, signedKey: true}},
+			[]any{denPart, node{shapeKey: intID, widthKey: fractionBits, signedKey: false, minKey: 1}},
+		}}, fractionConverter, nil
 	}
 	digits, err := strconv.Atoi(text)
 	if err != nil || digits < 0 {

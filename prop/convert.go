@@ -56,14 +56,15 @@ func (u timeUnit) whole(ns int64, v any) (int64, error) {
 	return ns / u.nanos, nil
 }
 
-// twoParts returns the record of two named parts, the neutral value of a
-// time shape of two parts.
+// twoParts returns the record of two named parts. Such a record is the
+// neutral value of a time shape of two parts, of a complex number and of a
+// fraction.
 func twoParts(first string, a any, second string, b any) literal.Record {
 	return literal.Record{Fields: []literal.Field{{Name: first, Value: a}, {Name: second, Value: b}}}
 }
 
-// partsOf returns the values of the two parts of v, the neutral value of a
-// time shape of two parts.
+// partsOf returns the values of the two parts of v. v is a record that
+// twoParts returns.
 func partsOf(v any) (any, any) {
 	r := v.(literal.Record)
 	return r.Fields[0].Value, r.Fields[1].Value
@@ -278,6 +279,31 @@ func (s scale) decimalOf(r *big.Rat) (any, error) {
 		return nil, uninvertible("%s is outside the int64 range at the scale of %d", r.RatString(), s.digits)
 	}
 	return scaled.Num().Int64(), nil
+}
+
+// fraction returns the *big.Rat in lowest terms of a fraction's neutral
+// value. The neutral value is the record of the numerator and the
+// denominator.
+func fraction(v any) *big.Rat {
+	num, den := partsOf(v)
+	return new(big.Rat).SetFrac(big.NewInt(num.(int64)), new(big.Int).SetUint64(den.(uint64)))
+}
+
+// fractionOf returns the neutral value of r. The neutral value is the record
+// of the numerator and the denominator of r in lowest terms. It returns an
+// error for a nil r, for a numerator outside the int64 range and for a
+// denominator outside the uint64 range.
+func fractionOf(r *big.Rat) (any, error) {
+	if r == nil {
+		return nil, uninvertible("a nil %T is no fraction", r)
+	}
+	if !r.Num().IsInt64() {
+		return nil, uninvertible("the numerator of %s is outside the int64 range", r.RatString())
+	}
+	if !r.Denom().IsUint64() {
+		return nil, uninvertible("the denominator of %s is outside the uint64 range", r.RatString())
+	}
+	return twoParts(numPart, r.Num().Int64(), denPart, r.Denom().Uint64()), nil
 }
 
 // char returns the character of a char shape's neutral value, a string of
