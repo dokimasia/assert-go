@@ -1,5 +1,14 @@
 # go.dokimi.dev/assert
 
+## 0.9.0
+
+### Minor Changes
+
+- ee39282: Read `complex64` and `complex128` in `prop.Of` and `prop.ShapeOf` as a record of the floats `real` and `imag`.
+- ee39282: Read a `*big.Rat` without the tag key `scale` in `prop.Of` and `prop.ShapeOf` as a fraction of the integers `num` and `den`.
+- ee39282: Implement definition 12.2.0 and write its version into every call record.
+- ee39282: Read a `uintptr` in `prop.Of` and `prop.ShapeOf` as an unsigned int of the platform's word.
+
 ## 0.8.0
 
 ### Minor Changes
