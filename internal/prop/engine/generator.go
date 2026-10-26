@@ -156,20 +156,30 @@ func Picking[T any](g Generator[T], pick func(using any) (Generator[T], bool)) G
 // neutral values and the inverse of the result are g's, and so is the
 // absence of an inverse.
 func Within[T any](g Generator[T], using func() any) Generator[T] {
-	within := g
-	within.pick = nil
-	within.decode = func(c *Case) T {
-		outer := c.swapUsing(using())
+	return Rebind(g, func(any) any { return using() })
+}
+
+// Rebind returns g with a decode and an inverse that run under the
+// generators of types that using returns. using receives what the run states
+// for the generators of types where the result decodes or runs backwards,
+// and Rebind calls it each time. A generator of [Picking] inside g picks from
+// what using returns. The id, the explain step, the neutral values and the
+// inverse of the result are g's, and so is the absence of an inverse.
+func Rebind[T any](g Generator[T], using func(outer any) any) Generator[T] {
+	rebound := g
+	rebound.pick = nil
+	rebound.decode = func(c *Case) T {
+		outer := c.swapUsing(using(c.currentUsing()))
 		defer c.swapUsing(outer)
 		return g.decode(c)
 	}
-	within.erased.decode = func(c *Case) any { return within.decode(c) }
+	rebound.erased.decode = func(c *Case) any { return rebound.decode(c) }
 	if g.invert != nil {
-		within.invert = func(_ Inversion, v any) ([]Step, T, error) {
-			return g.invert(Inversion{using: using()}, v)
+		rebound.invert = func(in Inversion, v any) ([]Step, T, error) {
+			return g.invert(Inversion{using: using(in.using)}, v)
 		}
 	}
-	return within
+	return rebound
 }
 
 // ID returns the generator's id in the definition.

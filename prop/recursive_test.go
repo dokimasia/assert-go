@@ -13,9 +13,33 @@ import (
 
 // recursiveAllocs is the ceiling of the allocations of Recursive: the
 // engine's recursion, the closures of its decodes and of the inverses of a
-// position and of the whole, the adapter of extend, and the extension that
-// extend builds.
-const recursiveAllocs = 12
+// position and of the whole, the adapter of extend, the extension that
+// extend builds, the generator of the position for a run that states the
+// type, and the extension that decodes with it.
+const recursiveAllocs = 20
+
+// The types of the stated recursive generators, which only a run's
+// generators produce.
+type (
+	// node is a node of a tree.
+	node interface{ children() []node }
+	// leaf is a node without children.
+	leaf struct{}
+	// branch is a node with children.
+	branch struct{ kids []node }
+	// fork is a struct with a field of node.
+	fork struct {
+		Next node `json:"next"`
+	}
+	// forest is a list of nodes.
+	forest interface{ nodes() []node }
+	// grove is a forest of its members.
+	grove struct{ members []node }
+)
+
+func (leaf) children() []node     { return nil }
+func (b branch) children() []node { return b.kids }
+func (g grove) nodes() []node     { return g.members }
 
 // TestRecursive checks the generator of values whose positions are values
 // of the generator itself, and the bound on their base values.
@@ -60,7 +84,122 @@ func TestRecursive(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, first(pairs()), "x", "the base")
 		})
+
+		t.Run("takes each value of a stated type inside its extension from its position", func(t *testing.T) {
+			t.Parallel()
+			levels := grown(t, prop.Using(prop.Recursive(prop.Just[node](leaf{}), branches)))
+			assert.True(t, levels >= 3, "a branch inside a branch")
+		})
+
+		t.Run("takes the field of a stated type inside its extension from its position", func(t *testing.T) {
+			t.Parallel()
+			chains := prop.Recursive(prop.Just[node](leaf{}), func(prop.Generator[node]) prop.Generator[node] {
+				return prop.Of[fork]().Map(func(f fork) node { return branch{[]node{f.Next}} })
+			})
+			assert.True(t, grown(t, prop.Using(chains)) >= 3, "a branch inside a branch")
+		})
+
+		t.Run("takes a pointer to a stated type inside its extension from its position", func(t *testing.T) {
+			t.Parallel()
+			chains := prop.Recursive(prop.Just[node](leaf{}), func(prop.Generator[node]) prop.Generator[node] {
+				return prop.Of[*node]().Map(func(next *node) node {
+					if next == nil {
+						return branch{}
+					}
+					return branch{[]node{*next}}
+				})
+			})
+			assert.True(t, grown(t, prop.Using(chains)) >= 3, "a branch inside a branch")
+		})
+
+		t.Run("takes the base at every position of a stated type past the bound", func(t *testing.T) {
+			t.Parallel()
+			rec := assert.NewRecorder()
+			most := 0
+			prop.ForAll(rec, contract, func(c *prop.Case) {
+				leaves := 0
+				for _, n := range preorder(nil, c.Draw(prop.Of[node](), drawn)) {
+					if _, ok := n.(leaf); ok {
+						leaves++
+						continue
+					}
+					assert.True(c, leaves < 2, "a branch before the second leaf")
+				}
+				most = max(most, leaves)
+			}, prop.Seed(7), prop.Using(prop.Recursive(prop.Just[node](leaf{}), branches, prop.MaxLeaves(2))))
+			assert.False(t, rec.Failed(), "no branch follows the second leaf")
+			assert.True(t, most > 2, "a value whose positions past the bound take the base")
+		})
+
+		t.Run("decodes a draw of a stated type inside its base without the stated generator", func(t *testing.T) {
+			t.Parallel()
+			inner := prop.Composite(func(c *prop.Case) node { return c.Draw(prop.Of[node](), "inner") })
+			rec := assert.NewRecorder()
+			prop.ForAll(rec, contract, func(c *prop.Case) { c.Draw(prop.Of[node](), drawn) },
+				prop.Seed(7), prop.Using(prop.Recursive(inner, branches)))
+			got, ok := rec.Failures()[0].Detail[failureField].(assert.Failure)
+			assert.True(t, ok, "the failure of the case")
+			assert.Equal(t, got.Contract,
+				"prop: Of[prop_test.node]: node: prop_test.node has no variants, which RegisterVariants states",
+				"the panic of the draw in the base")
+		})
+
+		t.Run("ends a cycle of two stated recursive generators", func(t *testing.T) {
+			t.Parallel()
+			nodes := prop.Recursive(prop.Just[node](leaf{}), func(prop.Generator[node]) prop.Generator[node] {
+				return prop.Composite(func(c *prop.Case) node {
+					return branch{c.Draw(prop.Of[forest](), "forest").nodes()}
+				})
+			})
+			forests := prop.Recursive(prop.Just[forest](grove{}), func(prop.Generator[forest]) prop.Generator[forest] {
+				return prop.Composite(func(c *prop.Case) forest {
+					return grove{c.Draw(prop.Of[[]node](), "members")}
+				})
+			})
+			assert.True(t, grown(t, prop.Using(nodes), prop.Using(forests)) >= 3, "a node of a forest of a node")
+		})
 	})
+}
+
+// branches returns the generator of a branch whose children a draw of Of
+// decodes.
+func branches(prop.Generator[node]) prop.Generator[node] {
+	return prop.Composite(func(c *prop.Case) node {
+		return branch{c.Draw(prop.Of[[]node](), "children")}
+	})
+}
+
+// grown runs a property that draws a node in each case under opts, checks
+// that the run passes, and returns the most levels of one node.
+func grown(t *testing.T, opts ...prop.Option) int {
+	t.Helper()
+	rec := assert.NewRecorder()
+	most := 0
+	prop.ForAll(rec, contract, func(c *prop.Case) {
+		most = max(most, levelsOf(c.Draw(prop.Of[node](), drawn)))
+	}, append([]prop.Option{prop.Seed(7)}, opts...)...)
+	assert.False(t, rec.Failed(), "every case draws a node")
+	return most
+}
+
+// levelsOf returns the number of nodes on the longest path from n to a node
+// without children.
+func levelsOf(n node) int {
+	most := 0
+	for _, child := range n.children() {
+		most = max(most, levelsOf(child))
+	}
+	return most + 1
+}
+
+// preorder appends the nodes of n to out in the order that a decode
+// chooses them: n, then the nodes of each child in order.
+func preorder(out []node, n node) []node {
+	out = append(out, n)
+	for _, child := range n.children() {
+		out = preorder(out, child)
+	}
+	return out
 }
 
 // TestRecursiveAllocs checks the allocation ceilings of the recursive

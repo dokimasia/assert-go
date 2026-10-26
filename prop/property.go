@@ -114,7 +114,7 @@ func newProperty(tb assert.TB, op, contract string, pc uintptr, c config) (prope
 			return property{}, fault.In(op, err)
 		}
 	}
-	gs := generatorsOf(c.using)
+	gs := generatorsOf(c.using, nil)
 	p := property{
 		op:        op,
 		assertion: forAllID,

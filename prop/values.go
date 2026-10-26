@@ -68,7 +68,7 @@ func Values[T any](g Generator[T], seed uint64, n int, opts ...Option) []T {
 		}
 	}
 	decode := engine.Generator[T](g)
-	if gs := generatorsOf(configure(opts).using); gs != nil {
+	if gs := generatorsOf(configure(opts).using, nil); gs != nil {
 		decode = engine.Within(decode, gs.engineUsing)
 	}
 	out := make([]T, 0, n)

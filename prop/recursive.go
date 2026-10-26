@@ -5,6 +5,7 @@ package prop
 
 import (
 	"fmt"
+	"reflect"
 
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
@@ -34,6 +35,19 @@ func MaxLeaves(n int) RecursiveOption {
 // each position, the base first. Once one value has drawn the most base
 // values that [MaxLeaves] allows, every further position takes the base.
 // Its simplest value is the base's simplest.
+//
+// Inside the generator of T that a run states with [Using], a draw of [Of]
+// in the extension takes each T from the generator of the position. That
+// applies to a draw of T, to a draw of a type that contains T, and to the
+// draws inside the stated generator of another type. The base takes T
+// without the stated generator, as Using states.
+//
+//	nodes := prop.Recursive(prop.Just[Node](Leaf{}), func(prop.Generator[Node]) prop.Generator[Node] {
+//		return prop.Composite(func(c *prop.Case) Node {
+//			return Branch{Children: c.Draw(prop.Of[[]Node](), "children")}
+//		})
+//	})
+//	prop.ForAll(t, "a tree has a depth", body, prop.Using(nodes))
 func Recursive[T any](
 	base Generator[T],
 	extend func(self Generator[T]) Generator[T],
@@ -46,7 +60,8 @@ func Recursive[T any](
 		}
 	}
 	inner := func(self engine.Generator[T]) engine.Generator[T] {
-		return engine.Generator[T](extend(Generator[T](self)))
+		position := &using{typ: reflect.TypeFor[T](), erased: engine.Erase(self), typed: Generator[T](self)}
+		return engine.Rebind(engine.Generator[T](extend(Generator[T](self))), position.extending)
 	}
 	return Generator[T](engine.Recursive(engine.Generator[T](base), inner, maxLeaves))
 }
