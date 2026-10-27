@@ -15,11 +15,12 @@ func _() {
 	_ = x[CaseDiverged-4]
 	_ = x[CaseRefused-5]
 	_ = x[CaseSkipped-6]
+	_ = x[CaseFaulted-7]
 }
 
-const _Status_name = "passedfailedrejectedrepeateddivergedrefusedskipped"
+const _Status_name = "passedfailedrejectedrepeateddivergedrefusedskippedfaulted"
 
-var _Status_index = [...]uint8{0, 6, 12, 20, 28, 36, 43, 50}
+var _Status_index = [...]uint8{0, 6, 12, 20, 28, 36, 43, 50, 57}
 
 func (i Status) String() string {
 	idx := int(i) - 0

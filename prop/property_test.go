@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"testing/synctest"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/childtest"
@@ -41,6 +42,31 @@ func (s *skipping) reasons() []string {
 	return slices.Clone(s.skips)
 }
 
+// waitsInBubble is a body that waits for a goroutine with synctest.Wait, and
+// fails for each drawn x. Outside a testing/synctest bubble, synctest.Wait
+// panics.
+func waitsInBubble(c *prop.Case) {
+	x := c.Draw(prop.Integer(2, 3), "x")
+	done := make(chan int, 1)
+	go func() { done <- x }()
+	synctest.Wait()
+	assert.Equal(c, <-done, 1, "x is 1")
+}
+
+// recordingTest returns a wrapper of Around that runs each run in a bubble,
+// and keeps in wrapped the test that it receives. The wrapper of each run
+// receives the same test.
+func recordingTest(wrapped **testing.T) func(*testing.T, func(*testing.T)) {
+	var mu sync.Mutex
+	return func(t *testing.T, run func(*testing.T)) {
+		t.Helper()
+		mu.Lock()
+		*wrapped = t
+		mu.Unlock()
+		synctest.Test(t, run)
+	}
+}
+
 // TestProperty checks how a call of ForAll delivers the faults of its store
 // and its record to its seat, and what it stores.
 func TestProperty(t *testing.T) {
@@ -48,6 +74,27 @@ func TestProperty(t *testing.T) {
 
 	t.Run("ForAll", func(t *testing.T) {
 		t.Parallel()
+
+		t.Run("runs each case under Around in a bubble on the seat of the check of Rejects", func(t *testing.T) {
+			t.Parallel()
+			var wrapped *testing.T
+			failures := assert.Rejects(t, "the property fails", func(seat assert.TB) {
+				prop.ForAll(seat, contract, waitsInBubble, prop.Seed(7), prop.Around(recordingTest(&wrapped)))
+			})
+			assert.Length(t, failures, 1, "the record of the property")
+			assert.Equal(t, failures[0].Assertion, "prop-for-all", "the property fails")
+			assert.True(t, wrapped == t, "the wrapper receives the test of Rejects")
+		})
+
+		t.Run("runs each case under Around in a bubble on a recorder of a test", func(t *testing.T) {
+			t.Parallel()
+			var wrapped *testing.T
+			rec := assert.NewRecorder().WithTest(t)
+			prop.ForAll(rec, contract, waitsInBubble, prop.Seed(7), prop.Around(recordingTest(&wrapped)))
+			assert.Empty(t, rec.Faults(), "no fault")
+			assert.Length(t, rec.Failures(), 1, "the record of the property")
+			assert.True(t, wrapped == t, "the wrapper receives the test of the recorder")
+		})
 
 		t.Run("passes the fault of each skipped file to the seat in the order of the files", func(t *testing.T) {
 			t.Parallel()

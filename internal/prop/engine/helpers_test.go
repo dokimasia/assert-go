@@ -55,8 +55,8 @@ const (
 const (
 	// invalidDifference is the first value past the three differences.
 	invalidDifference engine.Difference = 3
-	// invalidStatus is the first value past the seven statuses.
-	invalidStatus engine.Status = 7
+	// invalidStatus is the first value past the eight statuses.
+	invalidStatus engine.Status = 8
 	// invalidRelevance is the first value past the three relevances.
 	invalidRelevance engine.Relevance = 3
 	// invalidOutcome is the first value past the seven outcomes.
@@ -129,6 +129,9 @@ func ended(body engine.Body) engine.Body {
 
 // errOdd is the error of halve for an odd integer.
 var errOdd = errors.New("engine_test: the integer is odd")
+
+// errEnvironment is the fault of a body whose environment lacks a resource.
+var errEnvironment = errors.New("engine_test: the environment lacks the resource")
 
 // celsius is an integer type defined over int8.
 type celsius int8

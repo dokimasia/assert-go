@@ -315,6 +315,71 @@ func TestCase(t *testing.T) {
 		})
 	})
 
+	t.Run("ReportFault", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("ends the case with a fault that ends its call", func(t *testing.T) {
+			t.Parallel()
+			var after bool
+			e := engine.Replay(func(c *engine.Case) {
+				c.ReportFault(errEnvironment, true)
+				after = true
+			}, nil, nil)
+			assert.False(t, after, "the body ends at the fault")
+			assert.Equal(t, e.Status, engine.CaseFaulted, "the case ends with the fault")
+			assert.ErrorIs(t, e.Fault, errEnvironment, "the fault of the body")
+		})
+
+		t.Run("runs the cleanups of the case", func(t *testing.T) {
+			t.Parallel()
+			var cleaned bool
+			engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { cleaned = true })
+				c.ReportFault(errEnvironment, true)
+			}, nil, nil)
+			assert.True(t, cleaned, "the cleanup runs after the fault")
+		})
+
+		t.Run("keeps the first fault that ends a call", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { c.ReportFault(errOdd, true) })
+				c.ReportFault(errEnvironment, true)
+			}, nil, nil)
+			assert.ErrorIs(t, e.Fault, errEnvironment, "the fault of the body")
+		})
+
+		t.Run("keeps the fault of a cleanup after a rejection", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { c.ReportFault(errEnvironment, true) })
+				c.Assume(false)
+			}, nil, nil)
+			assert.Equal(t, e.Status, engine.CaseFaulted, "the fault outweighs the rejection")
+		})
+
+		t.Run("passes a noted fault to the seat of the run", func(t *testing.T) {
+			t.Parallel()
+			seat := assert.NewRecorder()
+			var after bool
+			e := engine.Bridge(func(c *engine.Case) {
+				c.ReportFault(errEnvironment, false)
+				after = true
+			}, nil, engine.Settings{Seat: seat})
+			assert.True(t, after, "the body runs on past the noted fault")
+			assert.Equal(t, e.Status, engine.CasePassed, "the case passes")
+			assert.Length(t, seat.Faults(), 1, "the seat receives one fault")
+			assert.ErrorIs(t, seat.Faults()[0], errEnvironment, "the noted fault")
+			assert.False(t, seat.Failed(), "the noted fault does not fail the seat")
+		})
+
+		t.Run("drops a noted fault of a run without a seat", func(t *testing.T) {
+			t.Parallel()
+			e := engine.Replay(func(c *engine.Case) { c.ReportFault(errEnvironment, false) }, nil, nil)
+			assert.Equal(t, e.Status, engine.CasePassed, "the case passes")
+		})
+	})
+
 	t.Run("Classify", func(t *testing.T) {
 		t.Parallel()
 

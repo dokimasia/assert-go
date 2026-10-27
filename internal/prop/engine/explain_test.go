@@ -332,6 +332,18 @@ func TestExplain(t *testing.T) {
 				digest:      "323ed876ea94d27e70f47d8ca50370820811fc84169586d5d38db501d92c4885",
 			})
 		})
+
+		t.Run("ends the run at a filling that ends with a fault", func(t *testing.T) {
+			t.Parallel()
+			got, _ := traced(func(c *engine.Case) string {
+				if engine.Draw(c, wide, "x") > 1001 {
+					c.ReportFault(errEnvironment, true)
+				}
+				return "always"
+			}, settled(integers(1001)...))
+			assert.ErrorIs(t, got.Fault, errEnvironment, "the fault of a filling above 1001")
+			assert.Nil(t, got.Explanation, "no explanation")
+		})
 	})
 }
 

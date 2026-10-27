@@ -162,13 +162,13 @@ type runSetup struct {
 // runsOn returns the setup of the runs of the property p on tb. Without
 // Around, each case derives its context from the context of tb. Under
 // Around, each run of the body runs inside the wrapper, which receives the
-// first seat of the chain of tb that is a *testing.T. It reports false under
-// Around for a chain without one.
+// test that [testOf] finds for tb. It reports false under Around for a seat
+// without one.
 func (p property) runsOn(tb assert.TB, body func(*Case)) (runSetup, bool) {
 	if p.around == nil {
 		return runSetup{settings: p.settings, body: bodyOf(matcher.ContextOf(tb), body)}, true
 	}
-	t, ok := wrap.As[*testing.T](tb)
+	t, ok := testOf(tb)
 	if !ok {
 		return runSetup{}, false
 	}
@@ -176,6 +176,42 @@ func (p property) runsOn(tb assert.TB, body func(*Case)) (runSetup, bool) {
 	s := p.settings
 	s.Around = w.run
 	return runSetup{settings: s, body: caseBody(body), wrapper: w}, true
+}
+
+// tested is a seat that runs in a test without wrapping it, as a Recorder
+// of [assert.Recorder.WithTest] does.
+type tested interface {
+	// Test returns the test of the seat, and nil for none.
+	Test() assert.TB
+}
+
+// nested is the seat of the body of an assertion, such as the check of
+// [assert.Rejects], which runs in the test of the assertion's seat.
+type nested interface {
+	// Outer returns the seat of the assertion.
+	Outer() matcher.Seat
+}
+
+// testOf returns the test that the wrapper of Around receives on seat: the
+// first seat of the chain of seat that is a *testing.T, or the test that
+// testOf finds for the test of a tested seat or for the outer seat of a
+// nested seat. It reports false for a seat without one. The search does not
+// unwrap a tested or a nested seat, so a property on it keeps its store, its
+// log and its skips to that seat.
+func testOf(seat any) (*testing.T, bool) {
+	for ; seat != nil; seat = wrap.Unwrap(seat) {
+		switch s := seat.(type) {
+		case *testing.T:
+			return s, true
+		case tested:
+			if t := s.Test(); t != nil {
+				return testOf(t)
+			}
+		case nested:
+			return testOf(s.Outer())
+		}
+	}
+	return nil, false
 }
 
 // wrapper runs each run of a property's body inside the wrapper of
@@ -335,15 +371,20 @@ func (p property) save(r engine.Result) []error {
 }
 
 // report reports the verdict of the property's call run on tb, from r, the
-// result of its run. A run that passed passes, and a run that skipped skips
-// the first seat of the chain of tb that has Skipf with its reason. The
-// record of either states the detail of the run. A run that did neither
-// writes the notes of its failing case into the log of tb, and then fails
-// with its record. The first [assert.Reporter] of the chain of tb receives
-// the record as an aborting failure, and a chain without one receives its
-// sentence through Fatalf.
+// result of its run. A run that a fault of a case ended ends the call with
+// that fault. A run that passed passes, and a run that skipped skips the
+// first seat of the chain of tb that has Skipf with its reason. The record of
+// either states the detail of the run. A run that did none of these writes
+// the notes of its failing case into the log of tb, and then fails with its
+// record. The first [assert.Reporter] of the chain of tb receives the record
+// as an aborting failure, and a chain without one receives its sentence
+// through Fatalf.
 func (p property) report(tb assert.TB, run matcher.Running, r engine.Result) {
 	tb.Helper()
+	if r.Fault != nil {
+		p.fault(tb, run, r.Fault)
+		return
+	}
 	if r.Outcome == engine.Passed || r.Outcome == engine.Skipped {
 		var where assert.Where
 		var detail json.Marshaler

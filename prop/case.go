@@ -16,12 +16,13 @@ import (
 // Case is one call of a property's body. The body's assertions report to
 // the case, and its draws decode the body's inputs from the case's choices.
 //
-// A Case is an [assert.TB], an [assert.Reporter] and an [assert.Clocked],
-// so every assertion of this module works on it. It keeps each record in
-// call order, and its first record is the case's failure. A fatal record
-// ends the calling goroutine through runtime.Goexit, as testing ends a
-// test. Deferred calls run, and a recover returns nil during a Goexit, so a
-// body that recovers every panic cannot run on past the end of its case.
+// A Case is an [assert.TB], an [assert.Reporter], an [assert.FaultReporter]
+// and an [assert.Clocked], so every assertion of this module works on it. It
+// keeps each record in call order, and its first record is the case's
+// failure. A fatal record and a fault that ends a call end the calling
+// goroutine through runtime.Goexit, as testing ends a test. Deferred calls
+// run, and a recover returns nil during a Goexit, so a body that recovers
+// every panic cannot run on past the end of its case.
 //
 // A failure's identity is its assertion and its location, and for a panic
 // the type of its value and the innermost frame of the caller's code: the
@@ -53,7 +54,8 @@ import (
 // Helper, Clock, Assume, Classify of a counted label, Target of a scored
 // label and Rand allocate nothing. Observe and Cleanup allocate only to grow
 // the case's record, and Logf and Skipf allocate the message they format as
-// well.
+// well. ReportFault allocates nothing besides what the property's seat
+// allocates for a noted fault.
 // History allocates the history on its first call. A recording Report
 // allocates twice, for the record's sentence and the message formatted
 // from it. Errorf allocates five times: the message, the frames searched
@@ -63,9 +65,10 @@ import (
 type Case engine.Case
 
 var (
-	_ assert.TB       = (*Case)(nil)
-	_ assert.Reporter = (*Case)(nil)
-	_ assert.Clocked  = (*Case)(nil)
+	_ assert.TB            = (*Case)(nil)
+	_ assert.Reporter      = (*Case)(nil)
+	_ assert.FaultReporter = (*Case)(nil)
+	_ assert.Clocked       = (*Case)(nil)
 )
 
 // Helper marks the calling function as a helper. A record states the frame
@@ -93,6 +96,16 @@ func (c *Case) Errorf(format string, args ...any) {
 // when it returns.
 func (c *Case) Report(f assert.Failure, aborting bool) {
 	(*engine.Case)(c).Report(f, aborting)
+}
+
+// ReportFault ends the case at err, a fault that ends its call, such as the
+// fault of [assert.Fault], and ends the calling goroutine. The run of the
+// property ends with err in every phase, without a shrink, and the property
+// ends its call with err. A fault with ending false, which a call notes and
+// runs on past, passes to the property's seat as a noted fault, and the body
+// runs on.
+func (c *Case) ReportFault(err error, ending bool) {
+	(*engine.Case)(c).ReportFault(err, ending)
 }
 
 // Clock returns the clock of the property's seat, so every case of a

@@ -77,6 +77,8 @@ const (
 	usingMode = "using"
 	// skippingMode fuzzes skipsAtSentinel from the seed of the sentinel.
 	skippingMode = "skipping"
+	// faultingMode fuzzes faultsAtSentinel from the seed of the sentinel.
+	faultingMode = "faulting"
 )
 
 // childSeed is the seed of each property of FuzzChild, which the record of
@@ -291,6 +293,15 @@ func TestFuzzProcess(t *testing.T) {
 			assert.Equal(t, []any{call["verdict"], counts(detail), detail[reasonField]},
 				[]any{"skip", []any{"skipped", 0.0, 0.0}, "the sentinel"}, "the input's call skips")
 			assert.Contains(t, out, "--- SKIP: FuzzChild/seed#0 ", "the input's test skips")
+		})
+
+		t.Run("ends the call of an input whose case ends with a fault", func(t *testing.T) {
+			out, err := child(t, faultingMode, t.TempDir(), record.Variable+"=1")
+			assert.HasError(t, err, "the child fails")
+			call := childCall(t, out, "FuzzChild/seed#0", 1)
+			assert.Equal(t, []any{call["verdict"], call["error"]},
+				[]any{"error", matcher.RenderFault(errEnvironment)}, "the input's call ends with the fault")
+			assert.Contains(t, out, "--- FAIL: FuzzChild/seed#0 ", "the input's test fails")
 		})
 
 		t.Run("skips the fuzz test at a stored case that skips", func(t *testing.T) {
@@ -514,6 +525,11 @@ func FuzzChild(f *testing.F) {
 		prop.Fuzz(f, contract, skipsAtSentinel, stored, seeded)
 		return
 	}
+	if mode == faultingMode {
+		f.Add(sentinelSeed)
+		prop.Fuzz(f, contract, faultsAtSentinel, stored, seeded)
+		return
+	}
 	if mode == failingMode {
 		f.Add(sentinelSeed)
 	}
@@ -559,6 +575,14 @@ func waitsAtSentinel(c *prop.Case) {
 func skipsAtSentinel(c *prop.Case) {
 	if bytes.Equal(c.Draw(prop.Bytes(), drawn), sentinel) {
 		c.Skipf("the sentinel")
+	}
+}
+
+// faultsAtSentinel is the body that draws a byte string, and ends a call
+// with a fault at the sentinel.
+func faultsAtSentinel(c *prop.Case) {
+	if bytes.Equal(c.Draw(prop.Bytes(), drawn), sentinel) {
+		assert.Fault(c, errEnvironment)
 	}
 }
 

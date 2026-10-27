@@ -338,6 +338,29 @@ func TestCampaign(t *testing.T) {
 			assert.Length(t, r.Stored, 1, "the run of the stored case")
 		})
 
+		t.Run("ends at a stored case that ends with a fault", func(t *testing.T) {
+			t.Parallel()
+			r := campaigned(func(c *engine.Case) {
+				if engine.Draw(c, digit, drawn) == 6 {
+					c.ReportFault(errEnvironment, true)
+				}
+			}, settled(integers(6)...), shortCases)
+			assert.ErrorIs(t, r.Fault, errEnvironment, "the fault of the stored case")
+			assert.Equal(t, summary(r), engine.Result{}, "a campaign that ends with a fault states nothing else")
+		})
+
+		t.Run("ends with the fault of a shrink candidate of a failure", func(t *testing.T) {
+			t.Parallel()
+			r := campaigned(func(c *engine.Case) {
+				if engine.Draw(c, engine.Integer(0, 1000), drawn) < 500 {
+					c.ReportFault(errEnvironment, true)
+				}
+				c.Report(assert.Failure{Assertion: "big"}, false)
+			}, settled(integers(500)...), shortCases)
+			assert.ErrorIs(t, r.Fault, errEnvironment, "the fault of the first candidate below 500")
+			assert.Nil(t, r.Failing, "no counterexample")
+		})
+
 		t.Run("goes on past a case that skips after its first failure", func(t *testing.T) {
 			t.Parallel()
 			s := settled()

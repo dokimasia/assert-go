@@ -167,6 +167,32 @@ func TestShrink(t *testing.T) {
 			})
 		})
 
+		t.Run("ends the run at the first candidate that ends with a fault", func(t *testing.T) {
+			t.Parallel()
+			got, trace := traced(func(c *engine.Case) string {
+				if engine.Draw(c, small, "x") < 500 {
+					c.ReportFault(errEnvironment, true)
+				}
+				return "big"
+			}, settled(integers(500)...))
+			assert.ErrorIs(t, got.Fault, errEnvironment, "the fault of the first candidate below 500")
+			assert.Nil(t, got.Failing, "no counterexample")
+			assert.Length(t, trace, 3, "the stored case, its replay and the first candidate")
+		})
+
+		t.Run("ends the run at a candidate that ends with a fault on four workers", func(t *testing.T) {
+			t.Parallel()
+			s := settled(integers(500)...)
+			s.Workers = fourWorkers
+			got := engine.Run(func(c *engine.Case) {
+				if engine.Draw(c, small, "x") < 500 {
+					c.ReportFault(errEnvironment, true)
+				}
+				c.Report(assert.Failure{Assertion: "big"}, false)
+			}, s)
+			assert.ErrorIs(t, got.Fault, errEnvironment, "the fault of the first candidate below 500")
+		})
+
 		t.Run("stops at the smallest case found when the budget is spent", func(t *testing.T) {
 			t.Parallel()
 			s := settled(integers(2000)...)

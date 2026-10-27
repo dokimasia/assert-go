@@ -59,7 +59,9 @@ const fuzzOp = "prop.Fuzz"
 // Fuzz ends the call on f with a fault, without registering the target, for
 // each fault for which ForAll ends its call without a run. It ends the call
 // of an input with a fault at Around, in place of its record, for a wrapper
-// that returned without calling run or that called run a second time.
+// that returned without calling run or that called run a second time. A
+// fault that ends a call in a case of an input, or in a stored case, ends
+// the call of the input or of f with that fault, as it ends a call of ForAll.
 //
 // Under [Around], the wrapper runs each run of the case of an input, its
 // replay, its shrink and its explanation, with the test of the input. A
@@ -110,7 +112,7 @@ func Fuzz(f *testing.F, contract string, body func(*Case), opts ...Option) {
 func (p property) replayStored(seat assert.TB, run matcher.Running, setup runSetup, stored store.Stored) {
 	seat.Helper()
 	s := setup.settings
-	s.Slot = run.Slot()
+	s.Slot, s.Seat = run.Slot(), seat
 	s.Stored = storedChoices(stored)
 	r := engine.RunStored(setup.body, s)
 	if err := setup.wrapper.fault(p.op); err != nil {
@@ -132,7 +134,7 @@ func (p property) input(seat inputSeat, setup runSetup, data []byte) {
 	seat.Helper()
 	run := matcher.Begin(seat)
 	s := setup.settings
-	s.Slot = run.Slot()
+	s.Slot, s.Seat = run.Slot(), seat
 	e := engine.Bridge(setup.body, data, s)
 	r := engine.Result{Outcome: engine.Passed, Cases: 1, Seed: s.Seed}
 	if e.Status == engine.CaseRejected {
@@ -140,6 +142,9 @@ func (p property) input(seat inputSeat, setup runSetup, data []byte) {
 	}
 	if e.Status == engine.CaseSkipped {
 		r = engine.Result{Outcome: engine.Skipped, Seed: s.Seed, Reason: e.Reason}
+	}
+	if e.Status == engine.CaseFaulted {
+		r = engine.Result{Fault: e.Fault}
 	}
 	if e.Status == engine.CaseFailed {
 		r = engine.Conclude(setup.body, s, e)

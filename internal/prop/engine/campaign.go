@@ -219,8 +219,9 @@ func (c *campaign) mutated() provider {
 // take counts the case e, whose calls the slot of the campaign takes under
 // phase. It concludes a failure, admits a valid case to the pool, and
 // returns the result that ends the campaign: the refusal of an entry of
-// Draws, a failure whose replay differs, or a skip before the first
-// failure, with the runs of the stored cases.
+// Draws, a fault, a failure whose replay differs or whose conclusion ends
+// with a fault, or a skip before the first failure, with the runs of the
+// stored cases.
 func (c *campaign) take(e Execution, phase record.Phase) (Result, bool) {
 	r, ended := c.t.take(e, phase)
 	if e.Status == CaseFailed {
@@ -240,14 +241,18 @@ func (c *campaign) take(e Execution, phase record.Phase) (Result, bool) {
 }
 
 // fail concludes the failing case e when no earlier failure had its
-// identity, and returns the flaky result that a replay that differs ends
-// the campaign with. The other failures that the shrink of e finds are
-// among its others, except those of an identity concluded before.
+// identity, and returns the result that ends the campaign: the fault of a
+// conclusion that ends with one, or the flaky result of a replay that
+// differs. The other failures that the shrink of e finds are among its
+// others, except those of an identity concluded before.
 func (c *campaign) fail(e Execution) (Result, bool) {
 	if _, concluded := c.identities[e.Identity]; concluded {
 		return Result{}, false
 	}
 	r := conclude(c.body, c.s, Result{Outcome: Counterexample, Seed: c.s.Seed, Failing: &e})
+	if r.Fault != nil {
+		return Result{Fault: r.Fault, Stored: c.stored}, true
+	}
 	if r.Outcome == Flaky {
 		flaky := c.t.result(Flaky)
 		flaky.Failing, flaky.Divergence, flaky.Stored = r.Failing, r.Divergence, c.stored

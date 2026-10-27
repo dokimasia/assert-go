@@ -30,6 +30,7 @@ var (
 	helpers         int
 	recorderClock   assert.Clock
 	recorderContext any
+	recorderTest    assert.TB
 )
 
 // TestRecorder checks what a recorder records of each call of its seat.
@@ -336,6 +337,31 @@ func TestRecorderContext(t *testing.T) {
 	})
 }
 
+// TestRecorderTest checks the test that a recorder runs in.
+func TestRecorderTest(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Test", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns nil by default", func(t *testing.T) {
+			t.Parallel()
+
+			if got := assert.NewRecorder().Test(); got != nil {
+				t.Fatalf("Test() = %v, want nil", got)
+			}
+		})
+
+		t.Run("returns the test that WithTest set", func(t *testing.T) {
+			t.Parallel()
+
+			if got := assert.NewRecorder().WithTest(t).Test(); got != assert.TB(t) {
+				t.Fatalf("Test() = %v, want the test that WithTest set", got)
+			}
+		})
+	})
+}
+
 // TestRecorderAllocs checks the allocation ceiling of NewRecorder and of
 // each method of a recorder.
 func TestRecorderAllocs(t *testing.T) {
@@ -371,6 +397,8 @@ func recorderCases() []alloctest.Case {
 		{Name: "WithClock", Call: func(assert.TB) { full.WithClock(clock) }},
 		{Name: "Context", Call: func(assert.TB) { recorderContext = full.Context() }},
 		{Name: "WithContext", Call: func(assert.TB) { full.WithContext(ctx) }},
+		{Name: "Test", Call: func(assert.TB) { recorderTest = full.Test() }},
+		{Name: "WithTest", Call: func(tb assert.TB) { full.WithTest(tb) }},
 		{Name: "Helper", Call: func(assert.TB) { full.Helper() }},
 		{Name: "Fatalf", Call: func(assert.TB) { full.Fatalf("the flag is set") }},
 		{Name: "Errorf", Call: func(assert.TB) { full.Errorf("the flag is set") }, Allocs: 2},

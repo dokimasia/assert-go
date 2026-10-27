@@ -183,6 +183,18 @@ func TestValues(t *testing.T) {
 			want := "prop: Values(g, 42, 2) stops at a case that g skips: the generator is unsupported"
 			assert.Equal(t, got, any(want), "the panic states the reason of the skip")
 		})
+
+		t.Run("panics for a generator that ends a case with a fault", func(t *testing.T) {
+			t.Parallel()
+
+			faulting := prop.Composite(func(c *prop.Case) int {
+				assert.Fault(c, errEnvironment)
+				return 0
+			})
+			got := assert.Panics(t, func() { prop.Values(faulting, 42, 2) }, "a generator that ends with a fault")
+			want := "prop: Values(g, 42, 2) stops at a fault of g: " + errEnvironment.Error()
+			assert.Equal(t, got, any(want), "the panic states the text of the fault")
+		})
 	})
 }
 

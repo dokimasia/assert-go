@@ -26,7 +26,8 @@ type calls = record.Calls
 // [Recorder.Records] returns the call record of every assertion call that
 // a Recorder receives, and [Recorder.Faults] every fault that it receives
 // as the error it is. [Recorder.Context] returns the context that
-// [Recorder.WithContext] gave it, which [Context] reads.
+// [Recorder.WithContext] gave it, which [Context] reads, and
+// [Recorder.Test] the test that [Recorder.WithTest] gave it.
 //
 // Call [NewRecorder] for a Recorder: the zero value is not usable.
 //
@@ -66,6 +67,8 @@ type Recorder struct {
 	clock matcher.Clock
 	// ctx is the context of the seat, or nil for context.Background().
 	ctx context.Context //nolint:containedctx // a seat has the context of its test, as testing.T has
+	// test is the test that the Recorder runs in, or nil for none.
+	test TB
 }
 
 // NewRecorder returns a Recorder that records failures and returns
@@ -250,6 +253,39 @@ func (r *Recorder) WithContext(ctx context.Context) *Recorder {
 	defer r.mu.Unlock()
 
 	r.ctx = ctx
+	return r
+}
+
+// Test returns the test that [Recorder.WithTest] set, and nil where it set
+// none.
+//
+// # Allocation contract
+//
+// Test allocates nothing.
+func (r *Recorder) Test() TB {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.test
+}
+
+// WithTest makes tb the test that the Recorder runs in, and returns the
+// receiver so the call chains onto [NewRecorder]. Under prop.Around, a
+// property on the Recorder passes its wrapper the first *testing.T of the
+// chain of tb. The Recorder does not wrap tb, so it keeps every record,
+// fault and skip of a call on it.
+//
+//	rec := assert.NewRecorder().WithTest(t)
+//	prop.ForAll(rec, "each write returns", writes, prop.Around(synctest.Test))
+//
+// # Allocation contract
+//
+// WithTest allocates nothing.
+func (r *Recorder) WithTest(tb TB) *Recorder {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.test = tb
 	return r
 }
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/coverage"
 	"go.dokimi.dev/assert/internal/prop/token"
@@ -152,6 +153,10 @@ type Settings struct {
 	// with the phase of each case. It is nil for a property that is not
 	// recorded.
 	Slot *record.Slot
+	// Seat is the seat of the property, which receives each fault that a case
+	// of the run notes, as [matcher.NoteFault] notes it. It is nil for a run
+	// that drops the noted faults. The run reads nothing else of it.
+	Seat matcher.Seat
 	// Using is what the run states for the generators of types, and nil for
 	// a run that states none. A generator of [Picking] passes it to its
 	// pick, and a generator of [Within] replaces it while it decodes. The
@@ -208,6 +213,10 @@ type Result struct {
 	// Reason is the reason of the case that ended a skipped run, and empty
 	// for any other run.
 	Reason string
+	// Fault is the fault that ended a case of the run, in any phase, which
+	// ends the run. It is nil for any other run. A faulted run states nothing
+	// else besides the runs of the stored cases: every other field is zero.
+	Fault error
 }
 
 // Run runs the phases of a property and returns how the run ended.
@@ -235,6 +244,10 @@ type Result struct {
 // that skips counts as a case that does not fail: a replay that skips makes
 // the run flaky, a shrink candidate that skips is not accepted, and an
 // explain run that skips neither fails the way the failure fails nor passes.
+//
+// A case that ends with a fault ends the run with [Result.Fault], in every
+// phase: before the run finds a failing case, and in the replay, the shrink
+// and the explanation of one.
 //
 // The slot of s takes the calls of every case that a run on one worker
 // runs, in that order, each under the phase of its case: the case of the
@@ -303,6 +316,9 @@ func (t *tally) take(e Execution, phase record.Phase) (Result, bool) {
 	e.take(t.slot, phase)
 	if e.Status == CaseRefused {
 		return Result{Refused: e.Refusal}, true
+	}
+	if e.Status == CaseFaulted {
+		return Result{Fault: e.Fault}, true
 	}
 	t.requested = t.requested || e.Case.requested()
 	if e.Status == CaseFailed {
@@ -586,7 +602,8 @@ func withClocks(s Settings) Settings {
 
 // conclude replays, shrinks and explains the failing case of a
 // counterexample. It reports an example of values as found, without a
-// token.
+// token. A replay, a shrink candidate or a filling that ends with a fault
+// ends the run with that fault.
 func conclude(body Body, s Settings, r Result) Result {
 	if r.Outcome != Counterexample || r.Failing.Case.Valued() {
 		return r
@@ -595,18 +612,25 @@ func conclude(body Body, s Settings, r Result) Result {
 		r.Token = token.Encode(r.Failing.Case.Choices())
 		return r
 	}
-	if d := confirm(body, *r.Failing, s); d != nil {
+	replay, d := confirm(body, *r.Failing, s)
+	if replay.Status == CaseFaulted {
+		return Result{Fault: replay.Fault}
+	}
+	if d != nil {
 		r.Outcome, r.Divergence = Flaky, d
 		return r
 	}
 	sh := newShrinker(body, *r.Failing, s)
 	sh.shrinkAll()
 	first := sh.failures[r.Failing.Identity]
+	if s.Explain && sh.fault == nil {
+		r.Explanation = explain(sh, first, s.Seed)
+	}
+	if sh.fault != nil {
+		return Result{Fault: sh.fault}
+	}
 	for _, identity := range sh.found[1:] {
 		r.Others = append(r.Others, sh.failures[identity].execution)
-	}
-	if s.Explain {
-		r.Explanation = explain(sh, first, s.Seed)
 	}
 	r.Failing, r.Token, r.Runs = &first.execution, token.Encode(first.execution.Case.Choices()), sh.runs
 	return r

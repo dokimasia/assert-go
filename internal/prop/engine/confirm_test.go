@@ -151,5 +151,24 @@ func TestConfirm(t *testing.T) {
 			assert.Equal(t, digestOf(trace), "0b176f0efea58cb450463e6523c53e8678843e669718b88d234c7a6eb949201f",
 				"the simplest case, random case 0 and its replay")
 		})
+
+		t.Run("ends the run with the fault of a replay that ends with a fault", func(t *testing.T) {
+			t.Parallel()
+			failed := false
+			got, trace := traced(func(c *engine.Case) string {
+				value := engine.Draw(c, wide, "value")
+				if failed {
+					c.ReportFault(errEnvironment, true)
+				}
+				if value > 1000 {
+					failed = true
+					return "once"
+				}
+				return ""
+			}, settled())
+			assert.ErrorIs(t, got.Fault, errEnvironment, "the fault of the replay")
+			assert.Equal(t, summary(got), engine.Result{}, "a run that ends with a fault states nothing else")
+			assert.Length(t, trace, 3, "the simplest case, random case 0 and its replay")
+		})
 	})
 }

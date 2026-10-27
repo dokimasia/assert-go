@@ -66,6 +66,8 @@ const (
 	refused stop = 6
 	// skipped is a case that skipped the run of its property.
 	skipped stop = 7
+	// faulted is a case that a fault ended.
+	faulted stop = 8
 )
 
 // walkStep is one step of a case's walk down the case tree: the bounds and
@@ -109,9 +111,10 @@ func (d Drawn) Neutral() any {
 // noted and observed.
 //
 // The body's assertions report to the case as an [assert.TB], an
-// [assert.Reporter] and an [assert.Clocked]. The case forwards every report
-// to an [assert.Recorder] under [assert.Recorder.WithGoexit], so a fatal
-// failure ends the body's goroutine. A rejection, a skip, a repeated case,
+// [assert.Reporter], an [assert.FaultReporter] and an [assert.Clocked]. The
+// case forwards every report to an [assert.Recorder] under
+// [assert.Recorder.WithGoexit], so a fatal failure ends the body's
+// goroutine. A fault that ends a call, a rejection, a skip, a repeated case,
 // a divergence and a case past its cap end it the same way.
 //
 // When the body ends, however it ends, the case cancels its context and
@@ -250,6 +253,9 @@ type Case struct {
 	refusal error
 	// reason is the reason of the skip that ended the case.
 	reason string
+	// fault is the first fault that ended a call of the body, and nil for a
+	// case without one.
+	fault error
 	// ctx is the case's context, and nil until a caller asks for it.
 	ctx context.Context //nolint:containedctx // a case has a context of its own, as testing.T has
 	// cancelCtx cancels ctx.
@@ -257,9 +263,10 @@ type Case struct {
 }
 
 var (
-	_ assert.TB       = (*Case)(nil)
-	_ assert.Reporter = (*Case)(nil)
-	_ assert.Clocked  = (*Case)(nil)
+	_ assert.TB            = (*Case)(nil)
+	_ assert.Reporter      = (*Case)(nil)
+	_ assert.FaultReporter = (*Case)(nil)
+	_ assert.Clocked       = (*Case)(nil)
 )
 
 // newCase returns an empty case whose values come from p, capped at
@@ -282,6 +289,26 @@ func (c *Case) Helper() {
 // calling goroutine.
 func (c *Case) Report(f assert.Failure, aborting bool) {
 	c.recorder.Report(f, aborting)
+}
+
+// ReportFault ends the case at err, a fault that ends its call, and ends the
+// calling goroutine, as a fatal record ends it. The case keeps the first such
+// fault, and the run ends with it. A noted fault passes to the seat of the
+// settings, as [matcher.NoteFault] notes it there, and the body runs on. A
+// run without a seat drops the noted fault.
+func (c *Case) ReportFault(err error, ending bool) {
+	if !ending {
+		if seat := c.settings.Seat; seat != nil {
+			matcher.NoteFault(seat, err)
+		}
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.fault == nil {
+		c.fault = err
+	}
+	c.halt(faulted)
 }
 
 // Fatalf keeps a record without an assertion, whose contract is the message

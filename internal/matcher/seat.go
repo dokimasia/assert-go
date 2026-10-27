@@ -80,6 +80,14 @@ func (b *bodyContext) Context() context.Context {
 	return b.ctx
 }
 
+// Outer returns the seat of the assertion whose body runs on this seat. A
+// property under the option Around on the seat of a body finds the test of
+// its wrapper there. The seat of the body does not wrap that seat, because a
+// property on it keeps its store, its log and its skips to itself.
+func (b *bodyContext) Outer() Seat {
+	return b.parent
+}
+
 // end marks the body ended, and cancels its context where a read derived
 // one.
 func (b *bodyContext) end() {

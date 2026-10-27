@@ -137,6 +137,9 @@ const (
 	fileMode = 0o644
 )
 
+// errEnvironment is the fault of a body whose environment lacks a resource.
+var errEnvironment = errors.New("prop_test: the environment lacks the resource")
+
 // The dates of the entries that the store tests write and read.
 var (
 	// today is the time of the seats' controlled clocks.

@@ -227,10 +227,12 @@ func Hermetic() Option {
 // without the goroutines of an earlier run.
 //
 // wrap receives the first seat of the seat's chain that is a *testing.T, as
-// [go.dokimi.dev/assert.TB] states, and ForAll and the forms end the call
-// with a fault for a chain without one. [Fuzz] hands wrap the test of each
-// input. The case's context derives from the context of the test that wrap
-// hands run.
+// [go.dokimi.dev/assert.TB] states. On a [go.dokimi.dev/assert.Recorder] it
+// receives the test of [go.dokimi.dev/assert.Recorder.WithTest], and on the
+// check of [go.dokimi.dev/assert.Rejects] the test of Rejects. ForAll and
+// the forms end the call with a fault for a seat without a test. [Fuzz]
+// hands wrap the test of each input. The case's context derives from the
+// context of the test that wrap hands run.
 //
 // wrap runs the case of [Draws], each stored case and each generated case,
 // each shrink candidate and each filling that explains a draw, each case of

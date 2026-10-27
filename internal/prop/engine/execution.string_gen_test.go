@@ -24,7 +24,7 @@ func TestStatusString(t *testing.T) {
 			enumtest.Spellings(t, map[engine.Status]string{
 				engine.CasePassed: "passed", engine.CaseFailed: "failed", engine.CaseRejected: "rejected",
 				engine.CaseRepeated: "repeated", engine.CaseDiverged: "diverged", engine.CaseRefused: "refused",
-				engine.CaseSkipped: "skipped", invalidStatus: "Status(7)",
+				engine.CaseSkipped: "skipped", engine.CaseFaulted: "faulted", invalidStatus: "Status(8)",
 			})
 		})
 	})

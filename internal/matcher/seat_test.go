@@ -6,6 +6,7 @@ package matcher_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/matcher"
@@ -104,6 +105,47 @@ func TestSeat(t *testing.T) {
 				t.Fatalf("ContextOf returned %v, want context.Background()", got)
 			}
 		})
+	})
+
+	t.Run("Outer", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			give func(seat matcher.Seat, body func(matcher.Seat))
+		}{
+			{
+				name: "returns the seat of Rejects from the seat of its check",
+				give: func(seat matcher.Seat, body func(matcher.Seat)) {
+					matcher.Rejects(seat, matcher.Soft, "the check fails", func(s matcher.Seat) {
+						body(s)
+						s.Errorf("the check fails")
+					})
+				},
+			},
+			{
+				name: "returns the seat of Eventually from the seat of an attempt",
+				give: func(seat matcher.Seat, body func(matcher.Seat)) {
+					matcher.Eventually(seat, matcher.Soft, time.Minute, time.Millisecond, body, "the attempt passes")
+				},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				seat := &matchertest.Seat{}
+				var got matcher.Seat
+				tt.give(seat, func(s matcher.Seat) {
+					if o, ok := s.(interface{ Outer() matcher.Seat }); ok {
+						got = o.Outer()
+					}
+				})
+				if got != matcher.Seat(seat) {
+					t.Fatalf("Outer returned %v, want the seat of the assertion", got)
+				}
+			})
+		}
 	})
 }
 

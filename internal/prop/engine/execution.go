@@ -39,11 +39,14 @@ const (
 	CaseRefused Status = 5 // refused
 	// CaseSkipped is a case that skipped the run of its property.
 	CaseSkipped Status = 6 // skipped
+	// CaseFaulted is a case that a fault ended, which ends the run of its
+	// property.
+	CaseFaulted Status = 7 // faulted
 )
 
-// Valid reports whether s is one of the seven statuses.
+// Valid reports whether s is one of the eight statuses.
 func (s Status) Valid() bool {
-	return s <= CaseSkipped
+	return s <= CaseFaulted
 }
 
 // Execution is one call of a body: its case and how it ended.
@@ -67,6 +70,8 @@ type Execution struct {
 	Refusal error
 	// Reason is the reason of a skipped case, and empty for any other.
 	Reason string
+	// Fault is the fault that ended a faulted case, and nil for any other.
+	Fault error
 	// ran are the cases of the runs of a case that [Case.Repeat] ran more
 	// than once, in the order they ran, and nil for a case that ran once.
 	ran []*Case
@@ -117,12 +122,13 @@ func Replay(body Body, choices []choice.Choice, clock assert.Clock) Execution {
 
 // Bridge calls body once on a case decoded from a fuzzer's bytes, outside
 // the case tree, with the cap of s.MaxChoices, or of [MaxChoices] when s
-// states none, and reads the clock and the generators of types of s. It
-// runs the case inside s.Around. The slot of s takes the calls of the case
+// states none, and reads the clock, the seat and the generators of types of
+// s. It runs the case inside s.Around. The slot of s takes the calls of the case
 // under the phase fuzz.
 func Bridge(body Body, data []byte, s Settings) Execution {
 	limits := Settings{
 		MaxChoices: cmp.Or(s.MaxChoices, MaxChoices), Clock: s.Clock, Slot: s.Slot, Around: s.Around, Using: s.Using,
+		Seat: s.Seat,
 	}
 	e := execute(body, &bridging{data: data}, limits)
 	e.take(s.Slot, record.Fuzz)
@@ -146,10 +152,11 @@ func finish(c *Case, body Body) Execution {
 // repeat runs the case of e, which ran once, again on its choices when it
 // passed and asked for more runs with [Case.Repeat]. Each run is a case
 // outside the case tree that keeps its walk and its wheres when the first
-// does. The runs go on until one fails or skips, the runs the case asked
-// for have passed, or limit runs in all have run. The first run that fails
-// or skips is the case's end, with its record. The execution keeps the case
-// of every run, whose calls [Execution.take] hands on.
+// does. The runs go on until one fails, skips or ends with a fault, the runs
+// the case asked for have passed, or limit runs in all have run. The first
+// run that fails, skips or ends with a fault is the case's end, with its
+// record. The execution keeps the case of every run, whose calls
+// [Execution.take] hands on.
 func repeat(e Execution, body Body, limit int) Execution {
 	c := e.Case
 	runs := min(c.repeats(), limit)
@@ -166,7 +173,7 @@ func repeat(e Execution, body Body, limit int) Execution {
 		}
 		r := runOnce(again, body)
 		ran = append(ran, again)
-		if r.Status == CaseFailed || r.Status == CaseSkipped {
+		if r.Status == CaseFailed || r.Status == CaseSkipped || r.Status == CaseFaulted {
 			r.ran = ran
 			return r
 		}
@@ -251,13 +258,18 @@ func entered(t *tree.Tree, e Execution) (Execution, int) {
 }
 
 // executionOf returns how the case ended, once its body's goroutine ended.
-// A failure or a panic of the body or of a cleanup fails a case that the
-// body rejected or skipped or that went past its cap, as it fails any other.
-// A case that ended in a repeat, a divergence, a skip or past its cap leaves
-// no leaf in the tree. Every other case ends its walk with a leaf.
+// A fault of the body or of a cleanup ends the case before every other
+// status, a failure included, because the body did not finish. A failure or
+// a panic of the body or of a cleanup fails a case that the body rejected or
+// skipped or that went past its cap, as it fails any other. A case that
+// ended with a fault, in a repeat, a divergence, a skip or past its cap
+// leaves no leaf in the tree. Every other case ends its walk with a leaf.
 func executionOf(c *Case) Execution {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.fault != nil {
+		return Execution{Case: c, Status: CaseFaulted, Fault: c.fault}
+	}
 	if c.stop == refused {
 		return Execution{Case: c, Status: CaseRefused, Refusal: c.refusal}
 	}

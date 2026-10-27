@@ -117,6 +117,9 @@ type shrinker struct {
 	executions []Execution
 	// generating supplies the values of each explanation filling.
 	generating *generating
+	// fault is the fault of the first charged run that ended with a fault,
+	// and nil before one. It spends the budget.
+	fault error
 }
 
 // newShrinker returns a shrinker that starts from the first failing case.
@@ -200,11 +203,16 @@ func (sh *shrinker) run(choices []choice.Choice, phase record.Phase) (Execution,
 // to room runs in all, charges the budget one run for each run of the body,
 // and hands the calls of the runs to the slot of the run under phase. A case
 // that asks for more runs than room allows ends as its runs within room
-// ended, as one worker that ran it with that room left would end it.
+// ended, as one worker that ran it with that room left would end it. The
+// first run that ends with a fault keeps its fault and spends the budget,
+// so the shrinker runs nothing after it.
 func (sh *shrinker) charge(e Execution, room int, phase record.Phase) Execution {
 	e = repeat(e, sh.body, room)
 	sh.runs += e.runs()
 	e.take(sh.s.Slot, phase)
+	if e.Status == CaseFaulted && sh.fault == nil {
+		sh.fault, sh.deadline, sh.limit = e.Fault, time.Time{}, sh.runs
+	}
 	return e
 }
 
@@ -296,8 +304,9 @@ func (sh *shrinker) fresh(nodes []node, batch []candidate) (candidate, bool) {
 //   - keeps the run's failure.
 //
 // It reports whether a run became the best case, and whether the search is
-// over: a candidate was accepted, or the budget or the time is spent. The
-// cases of the runs whose failures it discards become spare.
+// over: a candidate was accepted, a run ended with a fault, or the budget or
+// the time is spent. It takes no run after a run that ended with a fault.
+// The cases of the runs whose failures it discards become spare.
 func (sh *shrinker) settle(batch []candidate) (accepted, over bool) {
 	room := sh.room()
 	if room == 0 {
@@ -314,6 +323,10 @@ func (sh *shrinker) settle(batch []candidate) (accepted, over bool) {
 		e := sh.charge(runs[taken], room, record.Shrink)
 		room -= e.runs()
 		sh.sizes[batch[taken].token] = e.Case.Position()
+		if e.Status == CaseFaulted {
+			sh.release(runs[taken:]...)
+			return false, true
+		}
 		if e.Status != CaseFailed {
 			sh.release(e)
 			continue

@@ -82,14 +82,27 @@ func duplicate(op, dir, contract string) error {
 // default, ci and campaign, a seed variable that is no decimal number below
 // 2^64, a campaign's budget that is no whole number of seconds above 0, a
 // token to replay that no encoder writes, entries of Draws that are no array
-// of draw entries and step entries, a seat under [Around] that is no
-// *testing.T and wraps none, a damaged file in the store, and a second
-// property of the test with the same contract and store. It ends the
-// call with a fault before any other case for a draw or a machine of the
-// case of Draws that refuses its entry, and the fault is at the entry's
-// label, value or step. It ends the call with a fault at Around, in place of
-// the run's record, for a wrapper that returned without calling run or that
-// called run a second time. It writes an entry for each failure of a
+// of draw entries and step entries, a seat under [Around] without a test, a
+// damaged file in the store, and a second property of the test with the
+// same contract and store. It ends the call with a fault before any other
+// case for a draw or a machine of the case of Draws that refuses its entry,
+// and the fault is at the entry's label, value or step. It ends the call
+// with a fault at Around, in place of the run's record, for a wrapper that
+// returned without calling run or that called run a second time.
+//
+// A fault that ends a call in the body, such as the fault of [assert.Fault]
+// on the case, ends the run in every phase: before the run finds a failing
+// case, and in the replay, the shrink and the explanation of one. ForAll
+// then ends its call with that fault, as the error it is, and stores no
+// entry. A fault that the body notes passes to the seat as a noted fault.
+//
+// Under Around, the wrapper receives the first seat of the seat's chain that
+// is a *testing.T, the test of an [assert.Recorder] of
+// [assert.Recorder.WithTest], or the test of the assertion whose check runs
+// on the seat, such as the check of [assert.Rejects]. A seat without one
+// ends the call with a fault.
+//
+// It writes an entry for each failure of a
 // counterexample to the store, unless a file of the entry's name exists or
 // a mutation run instrumented the test binary, and logs the fault of a
 // store that cannot keep it.
@@ -116,15 +129,15 @@ func ForAll(tb assert.TB, contract string, body func(*Case), opts ...Option) {
 
 // run runs body as the property p on tb, as the call run, and reports a
 // run that does not pass, as [ForAll] states. It ends the call with a fault
-// of p's operation for a seat under Around that is no *testing.T and wraps
-// none, a second property of the test with p's contract and store, a
-// damaged file in the store, a wrapper of Around that misused its run, and
-// a case of Draws that refuses an entry.
+// of p's operation for a seat under Around without a test, a second property
+// of the test with p's contract and store, a damaged file in the store, a
+// wrapper of Around that misused its run, and a case of Draws that refuses an
+// entry. It ends the call with the fault of a case that a fault ended.
 func (p property) run(tb assert.TB, run matcher.Running, body func(*Case)) {
 	tb.Helper()
 	setup, ok := p.runsOn(tb, body)
 	if !ok {
-		p.fault(tb, run, fault.In(p.op, fault.At(fault.New("the seat is no *testing.T and wraps none"),
+		p.fault(tb, run, fault.In(p.op, fault.At(fault.New("the seat has no *testing.T"),
 			fault.Field(aroundOption))))
 		return
 	}
@@ -133,7 +146,7 @@ func (p property) run(tb assert.TB, run matcher.Running, body func(*Case)) {
 		return
 	}
 	s := setup.settings
-	s.Slot = run.Slot()
+	s.Slot, s.Seat = run.Slot(), tb
 	if p.replaying {
 		r := engine.RunReplay(setup.body, s, p.replay, record.Token)
 		if err := setup.wrapper.fault(p.op); err != nil {

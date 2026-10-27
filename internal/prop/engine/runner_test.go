@@ -330,6 +330,19 @@ func TestRunner(t *testing.T) {
 				"both calls")
 		})
 
+		t.Run("returns the fault of a case that ends with a fault, before a shrink", func(t *testing.T) {
+			t.Parallel()
+			got, trace := recorded(func(c *engine.Case) {
+				if engine.Draw(c, small, drawn) == 1000 {
+					c.ReportFault(errEnvironment, true)
+				}
+			}, settled())
+			assert.ErrorIs(t, got.Fault, errEnvironment, "the fault of the largest value")
+			assert.Equal(t, summary(got), engine.Result{}, "a run that ends with a fault states nothing else")
+			assert.Nil(t, got.Failing, "no failing case")
+			assert.Length(t, trace, 5, "the cases up to the edge case of the largest value")
+		})
+
 		t.Run("returns Skipped for a case that skips where an earlier case made a request", func(t *testing.T) {
 			t.Parallel()
 			calls := 0
@@ -728,6 +741,19 @@ func TestRunner(t *testing.T) {
 			want := engine.Result{Outcome: engine.Skipped, Cases: 1, Seed: referenceSeed, Reason: "seven"}
 			assert.Equal(t, summary(got), want, "a skip after one valid case")
 			assert.Length(t, got.Stored, 2, "the runs up to the case that skips")
+		})
+
+		t.Run("returns the fault of the first stored case that ends with one", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Stored = [][]choice.Choice{integers(3), integers(7), integers(9)}
+			got := engine.RunStored(func(c *engine.Case) {
+				if engine.Draw(c, digit, drawn) == 7 {
+					c.ReportFault(errEnvironment, true)
+				}
+			}, s)
+			assert.ErrorIs(t, got.Fault, errEnvironment, "the fault of the second stored case")
+			assert.Length(t, got.Stored, 2, "the runs up to the case that ends with a fault")
 		})
 
 		t.Run("records the calls of each case under stored", func(t *testing.T) {

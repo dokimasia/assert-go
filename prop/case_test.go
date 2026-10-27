@@ -250,6 +250,40 @@ func TestCase(t *testing.T) {
 		})
 	})
 
+	t.Run("ReportFault", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("ends the call of the property with a fault that ends a call in the body", func(t *testing.T) {
+			t.Parallel()
+			rec := assert.NewRecorder()
+			cases := 0
+			prop.ForAll(rec, contract, func(c *prop.Case) {
+				cases++
+				c.Draw(prop.Integer(0, 9), drawn)
+				assert.Fault(c, errEnvironment)
+			}, prop.Seed(7))
+			assert.Equal(t, cases, 1, "the run ends at the first case, without a shrink")
+			assert.Length(t, rec.Faults(), 1, "the seat receives one fault")
+			assert.ErrorIs(t, rec.Faults()[0], errEnvironment, "the fault of the body")
+			assert.Empty(t, rec.Failures(), "no failure record")
+			calls := decodedCalls(t, rec.Records())
+			assert.Equal(t, calls[len(calls)-1]["verdict"], any("error"), "the property's call ends without a verdict")
+		})
+
+		t.Run("passes a noted fault to the seat of the property", func(t *testing.T) {
+			t.Parallel()
+			rec := assert.NewRecorder()
+			prop.ForAll(rec, contract, func(c *prop.Case) {
+				if c.Draw(prop.Integer(0, 9), drawn) == 0 {
+					c.ReportFault(errEnvironment, false)
+				}
+			}, prop.Seed(7))
+			assert.Length(t, rec.Faults(), 1, "the noted fault of the simplest case")
+			assert.ErrorIs(t, rec.Faults()[0], errEnvironment, "the noted fault")
+			assert.False(t, rec.Failed(), "the run passes")
+		})
+	})
+
 	t.Run("Classify", func(t *testing.T) {
 		t.Parallel()
 
