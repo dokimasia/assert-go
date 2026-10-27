@@ -128,6 +128,10 @@ type Error struct {
   one, the seat receives the writer's text of the fault through `Fatalf`.
   The call record of a recorded run states the verdict `error` and the
   same text.
+- A case of a property takes a fault that ends a call in its body as the
+  error it is. The fault ends the run in every phase, and the property ends
+  its call with that fault. A fault that the body notes passes to the
+  property's seat as a noted fault.
 - A helper that is no assertion, such as `files.Workspace` and
   `files.Read`, ends its call with a fault through `matcher.End`. The
   seat receives the fault as it receives the fault of an assertion, and
@@ -184,7 +188,8 @@ type Error struct {
   call: `assert: Fault(tb, nil) states no fault`.
 - `prop.Values` panics for a count below 0, for an option that states a
   setting other than `Using`, when its generator rejects more than ten
-  cases for each value, and at a case that its generator skips. Its message
+  cases for each value, at a case that its generator skips, and at a case
+  that its generator ends with a fault. Its message
   starts with the package and names the call:
   `prop: Values(g, 42, -1) states a count below 0`. A panic of the
   generator passes through.
