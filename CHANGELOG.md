@@ -1,5 +1,17 @@
 # go.dokimi.dev/assert
 
+## 0.10.0
+
+### Minor Changes
+
+- 3c2f787: Add `Recorder.WithTest`, and run a property under `prop.Around` on the seat of `Rejects` and on a recorder of a test.
+- 3c2f787: **Breaking:** End the call of a property with the fault that ends a call in one of its cases.
+- 3c2f787: Implement definition 13.0.0 and write its version into every call record.
+
+### Patch Changes
+
+- e86ec14: Fix `CompletesWithin` to fail a function that returns after the deadline of its context on every clock of a seat.
+
 ## 0.9.0
 
 ### Minor Changes
