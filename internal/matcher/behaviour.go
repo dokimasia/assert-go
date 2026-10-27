@@ -85,9 +85,11 @@ func HonoursDeadline(seat Seat, mode Mode, fn func(ctx context.Context) error, m
 // deadline is within from now, so a subject that watches the context can
 // return before it runs long. The deadline is read from the runtime
 // clock, because [context] does not accept another clock. The verdict on
-// a subject that returns is measured on the seat's clock, and a test that
-// drives a controlled clock sets the time that the subject took. Under
-// the default clock the two clocks agree.
+// a subject that returns before the deadline is measured on the seat's
+// clock, and a test that drives a controlled clock sets the time that the
+// subject took. Under the default clock the two clocks agree. A subject
+// that returns after the deadline fails on every clock, with got the time
+// waited on the runtime clock.
 //
 // A subject that has not returned when the deadline passes fails then,
 // with got the time waited on the runtime clock, and the assertion
@@ -122,7 +124,7 @@ func CompletesWithin(seat Seat, mode Mode, within time.Duration, fn func(ctx con
 	go func() {
 		defer s.end()
 		_ = fn(ctx)
-		s.returned = true
+		s.returned, s.late = true, ctx.Err() != nil
 	}()
 
 	switch raised := (<-s.outcome).(type) {
@@ -133,7 +135,11 @@ func CompletesWithin(seat Seat, mode Mode, within time.Duration, fn func(ctx con
 			gotField:  time.Since(waited).Round(time.Millisecond),
 		})
 	case nil:
-		if elapsed := clock.Now().Sub(started); elapsed > within {
+		elapsed := clock.Now().Sub(started)
+		if s.late {
+			elapsed = time.Since(waited)
+		}
+		if s.late || elapsed > within {
 			Fail(seat, mode, "completes-within", msg, map[string]any{
 				wantField: within,
 				gotField:  elapsed.Round(time.Millisecond),
@@ -166,6 +172,10 @@ type subject struct {
 	// returned reports that the subject returned. Only the subject's
 	// goroutine reads and writes it.
 	returned bool
+	// late reports that the subject returned after the deadline of its
+	// context. The subject's goroutine writes it before it sends the
+	// outcome, and the caller reads it after it receives the outcome.
+	late bool
 	// outcome receives one value: the value that the subject panicked
 	// with, nil for a subject that returned, exited, or expired.
 	outcome chan any

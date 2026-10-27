@@ -7,6 +7,8 @@ import (
 	"context"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -113,6 +115,44 @@ func TestBehaviour(t *testing.T) {
 		want := map[string]any{"want": time.Minute, "got": time.Minute + time.Second}
 		if got := records[0].Detail; got["want"] != want["want"] || got["got"] != want["got"] {
 			t.Fatalf("the record states %v, want %v", got, want)
+		}
+	})
+
+	t.Run("CompletesWithin fails a subject that returns when its context ends on the seat's clock", func(t *testing.T) {
+		t.Parallel()
+
+		// The subject and the deadline race to end the wait, and the subject
+		// ends it in about one call of 200. The case makes 2,000 calls, so the
+		// subject ends the wait in some of them.
+		const calls = 2000
+		var (
+			wg            sync.WaitGroup
+			passed, short atomic.Int32
+		)
+		for range calls {
+			wg.Go(func() {
+				seat := &clockedSeat{clock: matcher.NewControlled(clockEpoch)}
+				matcher.CompletesWithin(seat, matcher.Fatal, time.Millisecond, func(ctx context.Context) error {
+					<-ctx.Done()
+					return ctx.Err()
+				}, "the subject finishes in time")
+				records := seat.Records()
+				if len(records) == 0 {
+					passed.Add(1)
+					return
+				}
+				if got, _ := records[0].Detail["got"].(time.Duration); got < time.Millisecond {
+					short.Add(1)
+				}
+			})
+		}
+		wg.Wait()
+
+		if n := passed.Load(); n != 0 {
+			t.Fatalf("passed %d of %d calls of a subject that returns at its deadline", n, calls)
+		}
+		if n := short.Load(); n != 0 {
+			t.Fatalf("%d records state a time below the duration", n)
 		}
 	})
 
