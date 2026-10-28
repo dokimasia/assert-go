@@ -1,5 +1,5 @@
 {
-  "ergon": "0.15.0",
+  "ergon": "0.16.0",
   "files": [
     {
       "path": ".commitlint.yaml",
@@ -132,7 +132,7 @@
     {
       "path": "Makefile",
       "producer": "common",
-      "sha256": "d5c536537e30303cd00a10dec15ea17217caebeadbc6ed55c0940bd9cbc96c17"
+      "sha256": "e30b87ce345090be579313a7615fb8fd5a4153980dd7d368e3ece5016d23ab8a"
     },
     {
       "path": "lint/.goreleaser.yaml",
