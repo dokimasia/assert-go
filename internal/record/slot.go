@@ -39,8 +39,9 @@ func Begin(seat any) *Slot {
 // Take takes the result of the next run of the slot's body, whose calls
 // body keeps, and moves them to the Calls that keeps the slot: each call
 // of the run, with the slot's call as its parent, the run's number and
-// phase. A call of a body inside the run keeps its own parent. body is
-// empty afterwards.
+// phase. A call of a body inside the run keeps its own parent. The observer
+// of the slot's call receives each call of the run. body is empty
+// afterwards.
 //
 // Take numbers every run that it takes, a run without calls included.
 //
@@ -61,12 +62,17 @@ func (s *Slot) Take(body *Calls, phase Phase) {
 		if e.parent == nil {
 			e.parent, e.run, e.phase = s.entry, s.runs, phase
 		}
+		if e.observer == nil {
+			e.observer = s.entry.observer
+		}
 		home.add(e)
+		observe(e)
 	}
 }
 
 // Write ends the slot's call with its record c, which the Calls that keeps
-// the slot writes under the number that the call took when it began.
+// the slot writes under the number that the call took when it began. The
+// observer of the call then receives it.
 //
 // # Panics
 //
@@ -82,9 +88,10 @@ func (s *Slot) Write(c Call) {
 	}
 	home := s.entry.home.Load()
 	home.mu.Lock()
-	defer home.mu.Unlock()
 	s.entry.call, s.entry.done = c, true
 	if s.entry.seq != 0 {
 		home.emit(s.entry)
 	}
+	home.mu.Unlock()
+	observe(s.entry)
 }

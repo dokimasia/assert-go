@@ -23,6 +23,9 @@ const (
 	// running keeps the records of one run of a body, unnumbered, until the
 	// call that ran the body takes them.
 	running
+	// observing passes each call to an observer, and its record to the Calls
+	// that keeps or writes it.
+	observing
 )
 
 // entry is one call in Calls: its record, and its place in the calls of
@@ -33,6 +36,8 @@ type entry struct {
 	// done reports whether the call has ended. A call that runs a body
 	// takes its number before it ends.
 	done bool
+	// observed reports whether the observer has received the call.
+	observed bool
 	// parent is the entry of the call whose body this call ran in, and nil
 	// for a call that ran in no body.
 	parent *entry
@@ -48,6 +53,9 @@ type entry struct {
 	seq int
 	// home is the Calls that keeps the entry now.
 	home atomic.Pointer[Calls]
+	// observer receives the call once it has ended, and is nil for a call on
+	// a chain without an observer.
+	observer Observer
 }
 
 // Calls keeps the records of the calls of one test, one recorder or one run
@@ -81,6 +89,12 @@ type Calls struct {
 	// position returns how many steps the walk of the run's case has made,
 	// and nil for a run whose calls are never cut.
 	position func() int
+	// observer is the observer of an observing Calls. It and to do not
+	// change after the Calls is made.
+	observer Observer
+	// to is the Calls to which an observing Calls hands each record, and nil
+	// for a call whose record nothing keeps.
+	to *Calls
 }
 
 // keeper is a seat of this module, which embeds a Calls.
@@ -93,10 +107,10 @@ func (c *Calls) calls() *Calls {
 	return c
 }
 
-// Of returns the Calls that keeps the record of a call on seat, and nil
-// when the call is not recorded. The chain of seat is the seat and the seats
-// that it wraps, as [wrap.As] walks it. Of takes the first seat of the chain
-// that keeps call records:
+// Of returns the Calls that takes the record of a call on seat, and nil
+// when the call is neither recorded nor observed. The chain of seat is the
+// seat and the seats that it wraps, as [wrap.As] walks it. Of takes the first
+// seat of the chain that keeps call records:
 //
 //   - A seat of this module that embeds a Calls has its Calls, unless that
 //     Calls records nothing.
@@ -106,29 +120,49 @@ func (c *Calls) calls() *Calls {
 //     The package keeps the Calls of a test for the life of the process,
 //     because a cleanup of the test can make calls until the test ends.
 //
-// A chain without such a seat has none.
+// When an [Observer] comes before that seat in the chain, or the chain has no
+// such seat, Of returns new Calls that pass each call to the first Observer
+// and then hand its record to the Calls of that seat. A chain without either
+// has none.
 //
 // # Allocation contract
 //
-// Of allocates nothing, except the Calls of a test on the test's first
-// recorded call.
+// Of allocates nothing on a chain without an Observer, except the Calls of a
+// test on the test's first recorded call. It allocates the Calls of the
+// Observer on a chain with one.
 func Of(seat any) *Calls {
+	var observer Observer
 	for ; seat != nil; seat = wrap.Unwrap(seat) {
+		if o, ok := seat.(Observer); ok && observer == nil {
+			observer = o
+		}
 		if k, ok := seat.(keeper); ok {
-			c := k.calls()
-			c.mu.Lock()
-			live := c.state != off
-			c.mu.Unlock()
-			if live {
-				return c
-			}
-			return nil
+			return withObserver(observer, live(k.calls()))
 		}
 		if t, ok := seat.(attrSeat); ok {
-			return testCalls(t)
+			return withObserver(observer, testCalls(t))
 		}
 	}
-	return nil
+	return withObserver(observer, nil)
+}
+
+// live returns c, and nil for a c that records nothing.
+func live(c *Calls) *Calls {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.state == off {
+		return nil
+	}
+	return c
+}
+
+// withObserver returns c for a nil observer, and the Calls that pass each call
+// to observer and hand its record to c otherwise.
+func withObserver(observer Observer, c *Calls) *Calls {
+	if observer == nil {
+		return c
+	}
+	return observed(observer, c)
 }
 
 // Add gives c its number in calls and writes it, or keeps it until the
@@ -147,8 +181,21 @@ func Add(calls *Calls, c Call) {
 }
 
 // add puts e in c: numbered and written when c keeps or writes, and kept
-// unnumbered when c is the Calls of a run.
+// unnumbered when c is the Calls of a run. Observing Calls pass a call that has
+// ended to their observer, and hand e to the Calls after them.
 func (c *Calls) add(e *entry) {
+	if c.observer != nil {
+		if e.observer == nil {
+			e.observer = c.observer
+		}
+		if c.to != nil {
+			c.to.add(e)
+		} else {
+			e.home.Store(c)
+		}
+		observe(e)
+		return
+	}
 	steps := 0
 	if position := c.positionOf(); position != nil {
 		steps = position()
@@ -166,8 +213,9 @@ func (c *Calls) add(e *entry) {
 		if e.done {
 			c.emit(e)
 		}
-	case off:
-		// A Calls that is off records nothing.
+	case off, observing:
+		// A Calls that is off records nothing, and observing Calls hand each
+		// entry on before this switch.
 	}
 }
 

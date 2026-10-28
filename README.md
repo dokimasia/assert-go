@@ -150,6 +150,9 @@ if path == "" {
 }
 ```
 
+The first seat of the chain that is an `assert.Observer` receives each
+assertion call as an `assert.Call`, a passing one included.
+
 A record's `Want` and `Got` return the fields `want` and `got` of its
 detail, and whether its assertion declares them. `CaseFailure` returns
 the record of a property's failing case:

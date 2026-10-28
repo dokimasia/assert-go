@@ -59,6 +59,22 @@ func TestCalls(t *testing.T) {
 			t.Parallel()
 			assert.Nil(t, record.Of(wrapper{}), "no Calls")
 		})
+		t.Run("returns Calls that pass each call to an observer of the chain", func(t *testing.T) {
+			t.Parallel()
+			w := &watching{}
+			calls := record.Of(wrapper{w})
+			assert.NotNil(t, calls, "Calls of the observer")
+			record.Add(calls, call("true", "observed"))
+			assert.Equal(t, w.observed(), []string{"observed"}, "the call")
+		})
+		t.Run("returns Calls that also keep the records of the seat under the observer", func(t *testing.T) {
+			t.Parallel()
+			r := assert.NewRecorder()
+			w := &watching{TB: r}
+			record.Add(record.Of(w), call("true", "kept"))
+			assert.Equal(t, w.observed(), []string{"kept"}, "the observed call")
+			assert.Length(t, r.Records(), 1, "the kept record")
+		})
 	})
 
 	t.Run("Add", func(t *testing.T) {

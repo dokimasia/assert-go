@@ -82,6 +82,38 @@ func (a *attrs) attributes() [][2]string {
 	return append([][2]string(nil), a.written...)
 }
 
+// watching is a seat that observes each assertion call, as the handle of a
+// generated check does. It wraps another seat, which may keep records.
+type watching struct {
+	assert.TB
+
+	// mu guards seen.
+	mu sync.Mutex
+	// seen are the calls observed, in order.
+	seen []record.Observation
+}
+
+// ObserveCall keeps call.
+func (w *watching) ObserveCall(call record.Observation) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.seen = append(w.seen, call)
+}
+
+// Unwrap returns the wrapped seat.
+func (w *watching) Unwrap() assert.TB { return w.TB }
+
+// observed returns the contracts of the calls observed so far, in order.
+func (w *watching) observed() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	out := make([]string, len(w.seen))
+	for i, c := range w.seen {
+		out[i] = c.Contract
+	}
+	return out
+}
+
 // call returns a passing record of assertion with the contract.
 func call(assertion, contract string) record.Call {
 	return record.Call{Assertion: assertion, Contract: contract, Verdict: record.Pass, Aborting: true}
