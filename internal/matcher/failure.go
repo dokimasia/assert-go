@@ -53,6 +53,9 @@ const (
 	// totalField is the allocations of the counted calls of an allocation
 	// ceiling.
 	totalField = "total"
+	// probesField is the calls of the probe in the run of a ceiling on the
+	// live heap whose excess the failure reports.
+	probesField = "probes"
 )
 
 // Failure is what a failing assertion reports.

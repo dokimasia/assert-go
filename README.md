@@ -323,6 +323,25 @@ if checked, reason := assert.AllocsChecked(); !checked {
 }
 ```
 
+A filter that buffers its input allocates as many bytes as a filter that
+streams it. `MaxLiveBytes` bounds what a call keeps reachable instead.
+The function receives a probe. At each call of the probe the assertion
+collects and reads the live heap. It fails when the largest reading
+exceeds the reading before the call by more than the ceiling:
+
+```go
+assert.MaxLiveBytes(t, func(probe func()) {
+    for e := range filter(entries) {
+        probe()
+        sink = e
+    }
+}, 64<<10, "the filter keeps at most 64 KiB of a prefix")
+```
+
+A build with the race detector reads the same heap as an ordinary build,
+so it checks the ceiling too. Each reading costs a full collection. The
+reading covers the whole process, so the test does not call `t.Parallel`.
+
 ## Properties
 
 `prop.ForAll` runs a body against generated inputs. When a case fails,
@@ -726,6 +745,7 @@ the relation, except where the relation requires a failure.
 |---|---|
 | `MaxAllocs` | A callable makes at most a stated number of heap allocations per call. One call warms it first, and a count covers the 100 calls after it. A ceiling of 0 admits one allocation in all. Any other ceiling compares with the average per call, rounded to the nearest whole number, and a half rounds up. A count that exceeds the ceiling is taken again, ten times at most. |
 | `MaxAllocsWithSetup` | A callable makes at most a stated number of heap allocations per call on an input that a setup builds before each call. The setup is not counted. One setup and one call warm both first, and each count is checked as `MaxAllocs` checks it. |
+| `MaxLiveBytes` | A callable keeps at most a stated number of bytes of the heap reachable at each call of a probe that the assertion hands it. One call warms it first. A run whose largest reading exceeds the reading before the call by more than the ceiling is taken again, ten times at most. |
 
 ### Golden files
 

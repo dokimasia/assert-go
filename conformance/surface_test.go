@@ -655,6 +655,13 @@ var recordingFunctions = map[string]func(tb assert.TB){
 	"MaxAllocsWithSetup": func(tb assert.TB) {
 		expect.MaxAllocsWithSetup(tb, func() int { return 64 }, func(n int) { escaped = make([]byte, n) }, 0, rejected)
 	},
+	"MaxLiveBytes": func(tb assert.TB) {
+		expect.MaxLiveBytes(tb, func(probe func()) {
+			escaped = make([]byte, 1<<20)
+			probe()
+			escaped = nil
+		}, 0, rejected)
+	},
 	"Monotonic": func(tb assert.TB) {
 		expect.Monotonic(tb, func() int { return 0 }, func() error { return io.EOF }, 1, rejected)
 	},
@@ -828,6 +835,13 @@ var abortingFunctions = map[string]func(tb assert.TB){
 	},
 	"MaxAllocsWithSetup": func(tb assert.TB) {
 		assert.MaxAllocsWithSetup(tb, func() int { return 64 }, func(n int) { escaped = make([]byte, n) }, 0, rejected)
+	},
+	"MaxLiveBytes": func(tb assert.TB) {
+		assert.MaxLiveBytes(tb, func(probe func()) {
+			escaped = make([]byte, 1<<20)
+			probe()
+			escaped = nil
+		}, 0, rejected)
 	},
 	"Monotonic": func(tb assert.TB) {
 		assert.Monotonic(tb, func() int { return 0 }, func() error { return io.EOF }, 1, rejected)

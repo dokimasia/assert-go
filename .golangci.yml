@@ -281,6 +281,11 @@ linters:
       # vector's schema guarantees. A checked assertion would replace one panic with another.
       - path: \.go$
         linters: [forcetypeassert]
+      # A test of a ceiling on the live heap reads the heap of the whole process, so it runs
+      # serially, and its name ends in LiveBytes.
+      - path: _test\.go$
+        linters: [paralleltest, tparallel]
+        text: 'Test\w*LiveBytes\b'
       # internal/matchertest states the cases of every assertion as tables that each surface's
       # tests run. A case states its values inline, as a test does, because the value is the case.
       - path: ^internal/matchertest/
