@@ -10,12 +10,11 @@ import (
 // readFinding returns the finding of an anomaly that the committed read r
 // shows by its value at index i.
 func (g *graph) readFinding(a Anomaly, r committedRead, i int) *finding {
-	return &finding{
-		anomaly: a, involved: []int32{r.number},
-		explanation: []Evidence{Observation{
-			Anomaly: a, Calls: []int{g.call(r.number)}, Key: r.key, Reads: [][]any{r.list}, Value: r.list[i],
-		}},
+	o := Observation{Anomaly: a, Calls: []int{g.call(r.number)}, Key: r.key, Reads: [][]any{r.list}, Value: r.list[i]}
+	if g.registers {
+		o.Register, o.Reads, o.Read = true, nil, r.list[i]
 	}
+	return &finding{anomaly: a, involved: []int32{r.number}, explanation: []Evidence{o}}
 }
 
 // garbageRead returns the first committed read of a value that no
@@ -65,7 +64,11 @@ func (g *graph) internalInconsistency() *finding {
 		if g.transactions[number].record.Kind != OK {
 			continue
 		}
-		if f := g.internal(int32(number)); f != nil {
+		internal := g.internal
+		if g.registers {
+			internal = g.internalRegister
+		}
+		if f := internal(int32(number)); f != nil {
 			return f
 		}
 	}
@@ -150,8 +153,8 @@ func (g *graph) abortedRead() *finding {
 			return &finding{
 				anomaly: AbortedRead, involved: []int32{r.number, appender},
 				explanation: []Evidence{Observation{
-					Anomaly: AbortedRead, Calls: []int{g.call(r.number)}, Key: r.key, Value: r.list[i],
-					Appender: g.call(appender),
+					Anomaly: AbortedRead, Register: g.registers, Calls: []int{g.call(r.number)}, Key: r.key,
+					Value: r.list[i], Appender: g.call(appender),
 				}},
 			}
 		}
@@ -177,8 +180,8 @@ func (g *graph) intermediateRead() *finding {
 		return &finding{
 			anomaly: IntermediateRead, involved: []int32{r.number, appender},
 			explanation: []Evidence{Observation{
-				Anomaly: IntermediateRead, Calls: []int{g.call(r.number)}, Key: r.key, Value: r.list[last],
-				Appender: g.call(appender), Next: next,
+				Anomaly: IntermediateRead, Register: g.registers, Calls: []int{g.call(r.number)}, Key: r.key,
+				Value: r.list[last], Appender: g.call(appender), Next: next,
 			}},
 		}
 	}

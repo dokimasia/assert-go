@@ -22,7 +22,7 @@ import (
 // path-absent, 7 recording, 12 seam, 19 serializable, 54 shapes, 38
 // shrinking, 19 snapshot-isolation, 21 store, 17 token, 5 tree-contains, 13
 // tree-equal and 4 tree-unchanged vectors.
-const vectorCount = 588
+const vectorCount = 616
 
 // firstVector is the id of the first case of behaviour.json, the file whose
 // name sorts first.

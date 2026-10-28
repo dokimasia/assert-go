@@ -142,6 +142,31 @@ func TestEvidence(t *testing.T) {
 				},
 				want: `{"call":4,"key":` + keyX + `,"value":` + oneLiteral + `,"appender":2,"next":` + twoLiteral + `}`,
 			},
+			{
+				name: "states the value that a garbage read of a register returned",
+				give: history.Observation{
+					Anomaly: history.GarbageRead, Register: true, Calls: []int{4}, Key: "x", Read: 1, Value: 1,
+				},
+				want: `{"call":4,"key":` + keyX + `,"read":` + oneLiteral + `,"value":` + oneLiteral + `}`,
+			},
+			{
+				name: "states the value that an internally inconsistent read of a register expected",
+				give: history.Observation{
+					Anomaly: history.InternalInconsistency, Register: true, Calls: []int{4}, Key: "x", Read: 1,
+					Known: 2, Whole: true,
+				},
+				want: `{"call":4,"key":` + keyX + `,"read":` + oneLiteral + `,"expected":` + twoLiteral +
+					`,"whole":true,"future":null}`,
+			},
+			{
+				name: "states null for the initial value that an internally inconsistent read of a register returned",
+				give: history.Observation{
+					Anomaly: history.InternalInconsistency, Register: true, Calls: []int{4}, Key: "x", Known: 2,
+					Whole: true,
+				},
+				want: `{"call":4,"key":` + keyX + `,"read":null,"expected":` + twoLiteral +
+					`,"whole":true,"future":null}`,
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

@@ -495,6 +495,15 @@ default:
 }
 ```
 
+A store without lists checks the same levels with registers. A
+transaction then writes a value with `[]any{"write", "lease", 8}`, and a
+read returns the register's value, or nil for its initial value. A
+history that writes is a register history. The test writes each value to
+its key once. When a transaction reads a register before it writes it, the
+read reveals the version that the write replaces. Blind writes do not
+reveal an order, so a register history shows fewer anomalies than a
+list-append history.
+
 A check derives the dependencies between the committed transactions that
 the reads reveal, and fails with the first anomaly that its level
 forbids. Serializability forbids an inconsistent read, an aborted or
@@ -791,8 +800,8 @@ the relation, except where the relation requires a failure.
 | Name | What it states |
 |---|---|
 | `history.Linearizable` | The calls of each partition of a recorded history have a linearization: an order that respects their real-time order and that the spec accepts. Two calls that share a key are in one partition. A search that uses up its budget or its memo limit is undecided, and fails. |
-| `history.Serializable` | The list-append transactions of a history exhibit no anomaly that serializability forbids, among the dependencies that their reads reveal. |
-| `history.HasSnapshotIsolation` | The list-append transactions of a history exhibit no anomaly that snapshot isolation forbids: every cycle of their dependencies has two adjacent read-write dependencies. |
+| `history.Serializable` | The list-append or register transactions of a history exhibit no anomaly that serializability forbids, among the dependencies that their reads reveal. |
+| `history.HasSnapshotIsolation` | The list-append or register transactions of a history exhibit no anomaly that snapshot isolation forbids: every cycle of their dependencies has two adjacent read-write dependencies. |
 
 ### Proof
 
@@ -825,7 +834,7 @@ holds itself to it on every run:
   generates and shrinks inputs, decides coverage, encodes replay tokens,
   stores failures, reports a run and records its calls, shared with
   every other implementation.
-- **Histories.** 80 vectors state the events that a history records, the
+- **Histories.** 108 vectors state the events that a history records, the
   history that `FromIntervals` builds from a log, the verdict, the steps
   and the record of each check of a history against a named spec, and
   the verdict and the record of each isolation check of a history of

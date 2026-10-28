@@ -20,8 +20,10 @@ const (
 	transactionOperation = "txn"
 	// appendFunction appends a value to a key's list.
 	appendFunction = "append"
-	// readFunction reads a key's list.
+	// readFunction reads a key's list, or a register's value.
 	readFunction = "read"
+	// writeFunction writes a value to a register.
+	writeFunction = "write"
 	// microOperationParts is the number of parts of a micro-operation: its
 	// function, its key and its value.
 	microOperationParts = 3
@@ -36,9 +38,9 @@ const (
 )
 
 // ErrTransaction is the kind of the fault of a history that [Serializable]
-// and [HasSnapshotIsolation] refuse: a call that is no list-append
-// transaction.
-var ErrTransaction = errors.New("history: a call that is no list-append transaction")
+// and [HasSnapshotIsolation] refuse: a call that is no list-append or
+// register transaction, or a history that both appends and writes.
+var ErrTransaction = errors.New("history: a call that is no list-append or register transaction")
 
 // Transaction is a transaction that an anomaly involves, as the record of an
 // isolation check states it.
@@ -55,8 +57,8 @@ type Transaction struct {
 	Process int
 	// Args are its micro-operations, as its invocation states them.
 	Args []any
-	// Output is its micro-operations with each read's list, for a transaction
-	// that completed as OK, and nil for any other.
+	// Output is its micro-operations with each read's list or value, for a
+	// transaction that completed as OK, and nil for any other.
 	Output any
 }
 
@@ -92,19 +94,27 @@ func (t Transaction) MarshalJSON() ([]byte, error) {
 }
 
 // microOperation is one micro-operation of a transaction: an append of a
-// value to a key, or a read of a key's list. A key and a value are known by
-// the identity of their typed literal.
+// value to a key, a write of a value to a register, or a read of a key's
+// list or a register's value. A key and a value are known by the identity
+// of their typed literal.
 type microOperation struct {
 	// key is the key. keyID is its identity.
 	key   any
 	keyID int32
-	// read reports whether the micro-operation reads a list.
-	read bool
-	// value is the value that an append appends. valueID is its identity.
+	// read reports whether the micro-operation reads, and write whether it
+	// writes a register. A micro-operation that does neither appends.
+	read, write bool
+	// value is the value that an append appends or a write writes. valueID
+	// is its identity.
 	value   any
 	valueID int32
+	// returned is what a read of a transaction that completed as OK
+	// returned, before the workload of the history decides how to read it.
+	returned any
 	// list is the list that a read of a transaction that completed as OK
-	// returned. ids are the identities of its values.
+	// returned. ids are the identities of its values. A register read
+	// returned the list of its one value, or the empty list for the initial
+	// value.
 	list []any
 	ids  []int32
 	// appenders are the numbers of the transactions that appended the values
@@ -112,7 +122,8 @@ type microOperation struct {
 	appenders []int32
 }
 
-// transaction is a call of a history, read as a list-append transaction.
+// transaction is a call of a history, read as a list-append or a register
+// transaction.
 type transaction struct {
 	// record is the transaction as the record of a check states it.
 	record Transaction
@@ -160,14 +171,25 @@ func (ids *identities) of(v any) (int32, error) {
 	return id, nil
 }
 
-// transactionsOf returns the transactions of events, in the order of their
-// invocations, and the number of the identities of their keys and values. It
+// workload is what a history of transactions is: its transactions, the
+// number of the identities of their keys and values, and whether it is a
+// register history.
+type workload struct {
+	transactions []transaction
+	identities   int
+	registers    bool
+}
+
+// transactionsOf returns the workload of events, with the transactions in
+// the order of their invocations. A history whose micro-operations write is
+// a register history, and any other history is a list-append history. It
 // returns a fault of the kind [ErrTransaction] at the call and the part of
 // the first call that breaks the workload's contract: a call that is no
 // transaction, an output that does not repeat its invocation's
-// micro-operations, a key or a value without a typed literal, and a value
-// that two appends append to one key.
-func transactionsOf(events []Event) ([]transaction, int, error) {
+// micro-operations, a key or a value without a typed literal, a value that
+// two appends or two writes produce on one key, a history that both appends
+// and writes, and a list-append read that returned no list.
+func transactionsOf(events []Event) (workload, error) {
 	completion := make([]int, len(events))
 	for _, e := range events {
 		if e.Kind != Invoke {
@@ -175,7 +197,7 @@ func transactionsOf(events []Event) ([]transaction, int, error) {
 		}
 	}
 	ids := &identities{byText: map[string]int32{}, byValue: map[any]int32{}}
-	appenders := make(map[[2]int32]int)
+	producers := make(map[[2]int32]int)
 	var out []transaction
 	for _, e := range events {
 		if e.Kind != Invoke {
@@ -183,14 +205,124 @@ func transactionsOf(events []Event) ([]transaction, int, error) {
 		}
 		t, err := ids.transactionOf(e, events, completion[e.Index])
 		if err == nil {
-			err = t.register(appenders)
+			err = t.register(producers)
 		}
 		if err != nil {
-			return nil, 0, fault.At(err, fault.Field(callsMember), fault.Index(e.Index))
+			return workload{}, fault.At(err, fault.Field(callsMember), fault.Index(e.Index))
 		}
 		out = append(out, t)
 	}
-	return out, len(ids.byText), nil
+	registers, err := registersOf(out)
+	if err != nil {
+		return workload{}, err
+	}
+	for i := range out {
+		if err := ids.readsOf(&out[i], registers); err != nil {
+			return workload{}, fault.At(err, fault.Field(callsMember), fault.Index(out[i].record.Call))
+		}
+	}
+	return workload{transactions: out, identities: len(ids.byText), registers: registers}, nil
+}
+
+// registersOf reports whether transactions write, which makes their history a
+// register history. It returns a fault at the argument that first both
+// appends and writes in a history: the first append after a write, or the
+// first write after an append.
+func registersOf(transactions []transaction) (bool, error) {
+	appends, writes := -1, -1
+	for _, t := range transactions {
+		for i, m := range t.microOperations {
+			if m.read {
+				continue
+			}
+			if m.write && writes < 0 {
+				writes = t.record.Call
+			}
+			if !m.write && appends < 0 {
+				appends = t.record.Call
+			}
+			if appends >= 0 && writes >= 0 {
+				return false, fault.At(
+					fault.Of(ErrTransaction, "call %d appends and call %d writes, and a history is either "+
+						"list-append or registers", appends, writes),
+					fault.Field(callsMember), fault.Index(t.record.Call), fault.Field(argsMember), fault.Index(i))
+			}
+		}
+	}
+	return writes >= 0, nil
+}
+
+// readsOf fills in what each read of t returned, as the workload reads it:
+// the list of the one value of a register read, or the empty list for its
+// initial value, and the list that a list-append read returned. It returns a
+// fault at the output of a list-append read that returned no list.
+func (ids *identities) readsOf(t *transaction, registers bool) error {
+	if t.record.Kind != OK {
+		return nil
+	}
+	for i := range t.microOperations {
+		m := &t.microOperations[i]
+		if !m.read {
+			continue
+		}
+		var err error
+		if registers {
+			err = ids.registerRead(m)
+		} else {
+			err = ids.listRead(m)
+		}
+		if err != nil {
+			return fault.At(fault.At(err, fault.Index(i)), fault.Field(outputMember))
+		}
+	}
+	return nil
+}
+
+// registerRead fills in m's list with the value that the register read
+// returned, and leaves it empty for the initial value, which nil states. It
+// returns a fault for a value that no typed literal states.
+func (ids *identities) registerRead(m *microOperation) error {
+	if m.returned == nil {
+		m.list, m.ids = []any{}, []int32{}
+		return nil
+	}
+	id, err := ids.of(m.returned)
+	if err != nil {
+		return err
+	}
+	m.list, m.ids = []any{m.returned}, []int32{id}
+	return nil
+}
+
+// listRead fills in m's list with the list that the list-append read
+// returned. A read that returned nil returned the empty list. It returns a
+// fault for a read whose list is no list, and for a value that no typed
+// literal states.
+func (ids *identities) listRead(m *microOperation) error {
+	switch list := m.returned.(type) {
+	case nil:
+		m.list = []any{}
+	case []any:
+		m.list = list
+	default:
+		values := reflect.ValueOf(list)
+		if values.Kind() != reflect.Slice && values.Kind() != reflect.Array || literal.IsBytes(values.Type()) {
+			return fault.Of(ErrTransaction, "the read returned %s, which is no list", text.Sprintf("%#v", list))
+		}
+		m.list = make([]any, values.Len())
+		for i := range values.Len() {
+			m.list[i] = values.Index(i).Interface()
+		}
+	}
+	m.ids = make([]int32, len(m.list))
+	for i, value := range m.list {
+		id, err := ids.of(value)
+		if err != nil {
+			return err
+		}
+		m.ids[i] = id
+	}
+	return nil
 }
 
 // transactionOf returns the transaction of the call that invocation starts,
@@ -232,23 +364,28 @@ func (ids *identities) transactionOf(invocation Event, events []Event, completed
 
 // invoked returns the micro-operation that one argument of an invocation
 // states. It returns a fault for an argument that is no micro-operation, a
-// read that states a list, and a key or a value that no typed literal
-// states.
+// read that states a value, a write of nil, and a key or a value that no
+// typed literal states.
 func (ids *identities) invoked(arg any) (microOperation, error) {
 	parts, ok := arg.([]any)
-	if !ok || len(parts) != microOperationParts || (parts[0] != appendFunction && parts[0] != readFunction) {
+	if !ok || len(parts) != microOperationParts ||
+		(parts[0] != appendFunction && parts[0] != readFunction && parts[0] != writeFunction) {
+
 		return microOperation{}, fault.Of(ErrTransaction, "%s is no micro-operation", text.Sprintf("%#v", arg))
 	}
 	keyID, err := ids.of(parts[1])
 	if err != nil {
 		return microOperation{}, err
 	}
-	m := microOperation{read: parts[0] == readFunction, key: parts[1], keyID: keyID}
+	m := microOperation{read: parts[0] == readFunction, write: parts[0] == writeFunction, key: parts[1], keyID: keyID}
 	if m.read {
 		if parts[2] != nil {
-			return microOperation{}, fault.Of(ErrTransaction, "the read states a list before it ran")
+			return microOperation{}, fault.Of(ErrTransaction, "the read states a value before it ran")
 		}
 		return m, nil
+	}
+	if m.write && parts[2] == nil {
+		return microOperation{}, fault.Of(ErrTransaction, "the write writes nil, the initial value of every key")
 	}
 	if m.valueID, err = ids.of(parts[2]); err != nil {
 		return microOperation{}, err
@@ -277,10 +414,9 @@ func (ids *identities) returned(t *transaction, output any) error {
 	return nil
 }
 
-// repeated fills in m's list from part, the micro-operation of the output
-// that repeats m. A read that returned nil returned the empty list. It
-// returns a fault for a part that does not repeat m's function, key and
-// appended value, and for a read whose list is no list.
+// repeated keeps what a read returned from part, the micro-operation of the
+// output that repeats m. It returns a fault for a part that does not repeat
+// m's function, key and appended or written value.
 func (ids *identities) repeated(m *microOperation, part any) error {
 	parts, ok := part.([]any)
 	if !ok || len(parts) != microOperationParts || parts[0] != m.function() || !ids.same(parts[1], m.keyID) ||
@@ -289,31 +425,8 @@ func (ids *identities) repeated(m *microOperation, part any) error {
 		return fault.Of(ErrTransaction, "%s does not repeat %s", text.Sprintf("%#v", part),
 			text.Sprintf("%#v", []any{m.function(), m.key, m.value}))
 	}
-	if !m.read {
-		return nil
-	}
-	switch list := parts[2].(type) {
-	case nil:
-		m.list = []any{}
-	case []any:
-		m.list = list
-	default:
-		values := reflect.ValueOf(list)
-		if values.Kind() != reflect.Slice && values.Kind() != reflect.Array || literal.IsBytes(values.Type()) {
-			return fault.Of(ErrTransaction, "the read returned %s, which is no list", text.Sprintf("%#v", list))
-		}
-		m.list = make([]any, values.Len())
-		for i := range values.Len() {
-			m.list[i] = values.Index(i).Interface()
-		}
-	}
-	m.ids = make([]int32, len(m.list))
-	for i, value := range m.list {
-		id, err := ids.of(value)
-		if err != nil {
-			return err
-		}
-		m.ids[i] = id
+	if m.read {
+		m.returned = parts[2]
 	}
 	return nil
 }
@@ -326,31 +439,39 @@ func (ids *identities) same(v any, id int32) bool {
 
 // function returns the function of m.
 func (m *microOperation) function() string {
-	if m.read {
+	switch {
+	case m.read:
 		return readFunction
+	case m.write:
+		return writeFunction
+	default:
+		return appendFunction
 	}
-	return appendFunction
 }
 
-// register records in appenders, by the identities of its key and its
-// value, the call of each value that t appends. It returns a fault at the
-// argument of an append of a value that an append of t or of an earlier
-// transaction already appended to the key.
-func (t transaction) register(appenders map[[2]int32]int) error {
+// register records in producers, by the identities of its key and its
+// value, the call of each value that t appends or writes. It returns a fault
+// at the argument of an append or a write of a value that t or an earlier
+// transaction already produced on the key.
+func (t transaction) register(producers map[[2]int32]int) error {
 	for i, m := range t.microOperations {
 		if m.read {
 			continue
 		}
 		name := [2]int32{m.keyID, m.valueID}
-		first, appended := appenders[name]
-		if !appended {
-			appenders[name] = t.record.Call
+		first, produced := producers[name]
+		if !produced {
+			producers[name] = t.record.Call
 			continue
 		}
+		verb := "appended to"
+		if m.write {
+			verb = "written to"
+		}
 		value, key := text.Sprintf("%#v", m.value), text.Sprintf("%#v", m.key)
-		reason := fault.Of(ErrTransaction, "%s is appended to %s by calls %d and %d", value, key, first, t.record.Call)
+		reason := fault.Of(ErrTransaction, "%s is %s %s by calls %d and %d", value, verb, key, first, t.record.Call)
 		if first == t.record.Call {
-			reason = fault.Of(ErrTransaction, "%s is appended to %s twice by call %d", value, key, first)
+			reason = fault.Of(ErrTransaction, "%s is %s %s twice by call %d", value, verb, key, first)
 		}
 		return fault.At(reason, fault.Field(argsMember), fault.Index(i))
 	}

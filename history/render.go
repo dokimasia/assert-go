@@ -97,6 +97,10 @@ func isolationSentence(f assert.Failure) string {
 // relation, and the key and the values that prove it.
 func writeEdge(b *strings.Builder, e Edge) {
 	fmt.Fprintf(b, "call %d -%v-> call %d: ", e.From, e.Relation, e.To)
+	if e.Register {
+		writeRegisterEdge(b, e)
+		return
+	}
 	if e.Relation == WW {
 		text.Fprintf(b, "call %d appended %#v to %#v after %#v", e.To, e.Next, e.Key, e.Value)
 		return
@@ -113,9 +117,62 @@ func writeEdge(b *strings.Builder, e Edge) {
 		e.From, e.Key, e.Value, e.To, e.Next)
 }
 
+// writeRegisterEdge writes the values and the calls that prove an edge of a
+// register history.
+func writeRegisterEdge(b *strings.Builder, e Edge) {
+	switch {
+	case e.Relation == WW:
+		text.Fprintf(b, "call %d wrote %#v to %#v after %#v", e.To, e.Next, e.Key, e.Value)
+	case e.Relation == WR:
+		text.Fprintf(b, "call %d read %#v from %#v", e.To, e.Value, e.Key)
+	case e.Empty:
+		text.Fprintf(b, "call %d read the initial value of %#v, and call %d wrote %#v to it",
+			e.From, e.Key, e.To, e.Next)
+	default:
+		text.Fprintf(b, "call %d read %#v from %#v, and call %d wrote %#v after it",
+			e.From, e.Value, e.Key, e.To, e.Next)
+	}
+}
+
+// writeRegisterObservation writes the reads and the writes that show an
+// anomaly of a register history that is no cycle.
+func writeRegisterObservation(b *strings.Builder, o Observation) {
+	switch o.Anomaly {
+	case GarbageRead:
+		text.Fprintf(b, "call %d read %#v from %#v, and no transaction wrote it", o.Calls[0], o.Read, o.Key)
+	case InternalInconsistency:
+		fmt.Fprintf(b, "call %d read %s from %s", o.Calls[0], registerText(o.Read), text.Sprintf("%#v", o.Key))
+		if o.Whole {
+			fmt.Fprintf(b, ", and it knew the value was %s", registerText(o.Known))
+		}
+		if o.HasFuture {
+			text.Fprintf(b, ", and %#v is a value that call %d writes later", o.Future, o.Calls[0])
+		}
+	case AbortedRead:
+		text.Fprintf(b, "call %d read %#v from %#v, which call %d wrote and aborted",
+			o.Calls[0], o.Value, o.Key, o.Appender)
+	default:
+		text.Fprintf(b, "call %d read %#v from %#v, which call %d overwrote with %#v",
+			o.Calls[0], o.Value, o.Key, o.Appender, o.Next)
+	}
+}
+
+// registerText returns the text of a register's value as a Go literal, and
+// "the initial value" for nil.
+func registerText(v any) string {
+	if v == nil {
+		return "the initial value"
+	}
+	return text.Sprintf("%#v", v)
+}
+
 // writeObservation writes the text of the observation of an anomaly that is
 // no cycle: the reads and the appends that show it.
 func writeObservation(b *strings.Builder, o Observation) {
+	if o.Register {
+		writeRegisterObservation(b, o)
+		return
+	}
 	switch o.Anomaly {
 	case GarbageRead:
 		text.Fprintf(b, "call %d read %s from %#v, and no transaction appended %#v",

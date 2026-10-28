@@ -40,14 +40,18 @@ type Edge struct {
 	From, To int
 	// Relation is the dependency of To on From.
 	Relation Relation
-	// Empty reports an RW edge whose From read the empty list, so Value
-	// states no value.
+	// Register reports an edge of a register history.
+	Register bool
+	// Empty reports an RW edge whose From read the empty list, or the initial
+	// value of a register, so Value states no value.
 	Empty bool
-	// Key is the key whose list proves the dependency.
+	// Key is the key whose list or register proves the dependency.
 	Key any
 	// Value is a value of From in Key's version order for [WW], the last
 	// value of the list that To read for [WR], and the last value of the
-	// list that From read for [RW].
+	// list that From read for [RW]. In a register history, it is the value
+	// that From installed for WW, and the value that the reading transaction
+	// read for WR and RW.
 	Value any
 	// Next is the value of To that follows Value in Key's version order, for
 	// WW and RW, and nil for WR.
@@ -105,15 +109,24 @@ func (Edge) evidence() {}
 //   - [AbortedRead]: Calls of the one read, Key, Value and Appender.
 //   - [IntermediateRead]: Calls of the one read, Key, Value, Appender and
 //     Next.
+//
+// An observation of a register history sets Register, and states the value
+// that its read returned in Read rather than a list in Reads. Its internal
+// inconsistency states the value the transaction knew in Known rather than
+// a list in Expected. Appender is the call that wrote Value.
 type Observation struct {
 	// Anomaly is the anomaly that the observation shows.
 	Anomaly Anomaly
+	// Register reports an observation of a register history.
+	Register bool
 	// Whole reports whether the transaction knew the whole list before the
 	// read. It is false when the transaction knew only its own appends at
-	// the end of the list.
+	// the end of the list. For a register, it reports whether the
+	// transaction knew the register's value.
 	Whole bool
 	// HasFuture reports whether the read contains a value that the
-	// transaction appends to Key after the read.
+	// transaction appends to Key after the read, or for a register returned
+	// a value that the transaction writes to Key after the read.
 	HasFuture bool
 	// Calls are the calls of the transactions that read.
 	Calls []int
@@ -132,6 +145,12 @@ type Observation struct {
 	// Future is the first value of the read that the transaction appends to
 	// Key after the read, when HasFuture reports one.
 	Future any
+	// Read is the value that a register read returned, and nil for the
+	// initial value.
+	Read any
+	// Known is the value of the register that the transaction knew before
+	// the read, and nil when it knew none or knew the initial value.
+	Known any
 }
 
 // readJSON is the observation of a garbage read or a duplicate append.
@@ -180,9 +199,11 @@ func (o Observation) MarshalJSON() ([]byte, error) {
 	key := literal.Detail(o.Key)
 	switch o.Anomaly {
 	case InternalInconsistency:
-		out := inconsistencyJSON{
-			Call: o.Calls[0], Key: key, Read: literal.Detail(o.Reads[0]), Expected: literal.Detail(o.Expected),
-			Whole: o.Whole, Future: json.RawMessage(jsonNull),
+		out := inconsistencyJSON{Call: o.Calls[0], Key: key, Whole: o.Whole, Future: json.RawMessage(jsonNull)}
+		if o.Register {
+			out.Read, out.Expected = orNull(o.Read), orNull(o.Known)
+		} else {
+			out.Read, out.Expected = literal.Detail(o.Reads[0]), literal.Detail(o.Expected)
 		}
 		if o.HasFuture {
 			out.Future = literal.Detail(o.Future)
@@ -197,10 +218,23 @@ func (o Observation) MarshalJSON() ([]byte, error) {
 		}
 		return json.Marshal(out)
 	default:
-		return json.Marshal(
-			readJSON{Call: o.Calls[0], Key: key, Read: literal.Detail(o.Reads[0]), Value: literal.Detail(o.Value)},
-		)
+		out := readJSON{Call: o.Calls[0], Key: key, Value: literal.Detail(o.Value)}
+		if o.Register {
+			out.Read = orNull(o.Read)
+		} else {
+			out.Read = literal.Detail(o.Reads[0])
+		}
+		return json.Marshal(out)
 	}
+}
+
+// orNull returns the typed literal of a register's value, and null for its
+// initial value, which nil states.
+func orNull(v any) json.RawMessage {
+	if v == nil {
+		return json.RawMessage(jsonNull)
+	}
+	return literal.Detail(v)
 }
 
 // evidence marks an Observation as evidence.

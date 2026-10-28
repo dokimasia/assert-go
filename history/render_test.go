@@ -182,6 +182,84 @@ func TestRender(t *testing.T) {
 				},
 				want: `call 2 read "x" ending in 1, which call 0 followed with 2`,
 			},
+			{
+				name: "writes the two values of a write-write edge of a register",
+				give: history.Edge{From: 0, To: 2, Relation: history.WW, Register: true, Key: "x", Value: 1, Next: 2},
+				want: `call 0 -ww-> call 2: call 2 wrote 2 to "x" after 1`,
+			},
+			{
+				name: "writes the value that the reader read of a write-read edge of a register",
+				give: history.Edge{From: 0, To: 2, Relation: history.WR, Register: true, Key: "x", Value: 1},
+				want: `call 0 -wr-> call 2: call 2 read 1 from "x"`,
+			},
+			{
+				name: "writes the value read and the next value of a read-write edge of a register",
+				give: history.Edge{From: 0, To: 2, Relation: history.RW, Register: true, Key: "x", Value: 1, Next: 2},
+				want: `call 0 -rw-> call 2: call 0 read 1 from "x", and call 2 wrote 2 after it`,
+			},
+			{
+				name: "writes the read of the initial value of a read-write edge of a register",
+				give: history.Edge{
+					From:     0,
+					To:       2,
+					Relation: history.RW,
+					Register: true,
+					Key:      "x",
+					Next:     2,
+					Empty:    true,
+				},
+				want: `call 0 -rw-> call 2: call 0 read the initial value of "x", and call 2 wrote 2 to it`,
+			},
+			{
+				name: "writes the value of a garbage read of a register",
+				give: history.Observation{
+					Anomaly: history.GarbageRead, Register: true, Calls: []int{0}, Key: "x", Read: 7, Value: 7,
+				},
+				want: `call 0 read 7 from "x", and no transaction wrote it`,
+			},
+			{
+				name: "writes the value that an internally inconsistent read of a register contradicts",
+				give: history.Observation{
+					Anomaly:  history.InternalInconsistency,
+					Register: true,
+					Calls:    []int{2},
+					Key:      "x",
+					Read:     2,
+					Known:    1,
+					Whole:    true,
+				},
+				want: `call 2 read 2 from "x", and it knew the value was 1`,
+			},
+			{
+				name: "writes the initial value that an internally inconsistent read of a register contradicts",
+				give: history.Observation{
+					Anomaly: history.InternalInconsistency, Register: true, Calls: []int{2}, Key: "x", Known: 1,
+					Whole: true,
+				},
+				want: `call 2 read the initial value from "x", and it knew the value was 1`,
+			},
+			{
+				name: "writes the later write that an internally inconsistent read of a register returned",
+				give: history.Observation{
+					Anomaly: history.InternalInconsistency, Register: true, Calls: []int{0}, Key: "x", Read: 1,
+					Future: 1, HasFuture: true,
+				},
+				want: `call 0 read 1 from "x", and 1 is a value that call 0 writes later`,
+			},
+			{
+				name: "writes the value and its writer of an aborted read of a register",
+				give: history.Observation{
+					Anomaly: history.AbortedRead, Register: true, Calls: []int{2}, Key: "x", Value: 1,
+				},
+				want: `call 2 read 1 from "x", which call 0 wrote and aborted`,
+			},
+			{
+				name: "writes the value, its writer and the writer's next value of an intermediate read of a register",
+				give: history.Observation{
+					Anomaly: history.IntermediateRead, Register: true, Calls: []int{2}, Key: "x", Value: 1, Next: 2,
+				},
+				want: `call 2 read 1 from "x", which call 0 overwrote with 2`,
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

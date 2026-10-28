@@ -119,16 +119,20 @@ type graph struct {
 	parent []int32
 	via    []Relation
 	mark   uint32
-	queue  []int32
+	// registers reports a register history.
+	registers bool
+	queue     []int32
 }
 
-// newGraph returns the derivation over transactions, the transactions of a
-// history in the order of their invocations, whose keys and values have
-// identities identities.
-func newGraph(transactions []transaction, identities int) *graph {
+// newGraph returns the derivation over the transactions of the workload w.
+// A register read is a read of the list of its one value, so the appender of
+// a value is its writer, and the reads find the anomalies that need no graph
+// as a list-append history's reads do.
+func newGraph(w workload) *graph {
+	transactions, identities := w.transactions, w.identities
 	n := len(transactions)
 	g := &graph{
-		transactions: transactions, identities: identities, appender: make(map[[2]int32]int32),
+		transactions: transactions, identities: identities, registers: w.registers, appender: make(map[[2]int32]int32),
 		later: make(map[[2]int32]any), key: make([]any, identities), appends: make([][]appendedValue, identities),
 		committed: make([]bool, n), edgeOf: make(map[[2]int32]int32), seen: make([]uint32, states*n),
 		parent: make([]int32, states*n), via: make([]Relation, states*n),
@@ -165,7 +169,11 @@ func newGraph(transactions []transaction, identities int) *graph {
 			}
 		}
 	}
-	g.derive()
+	if g.registers {
+		g.deriveRegisters()
+	} else {
+		g.derive()
+	}
 	g.indexEdges()
 	return g
 }

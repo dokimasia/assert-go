@@ -57,32 +57,41 @@ func (s kinds) has(a Anomaly) bool {
 	return s&(1<<a) != 0
 }
 
-// Serializable checks that the list-append transactions of the history h
-// exhibit no anomaly that serializability forbids, among the dependencies
-// that their reads reveal, and fails tb with one record of the assertion
-// serializable when they do. The record's contract is contract, and its
-// location is the call of Serializable. Serializability forbids every kind
-// of [Anomaly].
+// Serializable checks that the list-append or register transactions of the
+// history h exhibit no anomaly that serializability forbids, among the
+// dependencies that their reads reveal, and fails tb with one record of the
+// assertion serializable when they do. The record's contract is contract,
+// and its location is the call of Serializable. Serializability forbids
+// every kind of [Anomaly].
 //
 // A transaction is a call of the operation "txn" whose arguments are its
-// micro-operations, each a []any of three parts: "append", a key and a
-// value, or "read", a key and nil. An [OK] completion commits the
+// micro-operations, each a []any of three parts. A list-append transaction
+// states "append", a key and a value, or "read", a key and nil. A register
+// transaction states "write", a key and a value, or "read", a key and nil.
+// A history whose micro-operations write is a register history, and any
+// other history is a list-append history. An [OK] completion commits the
 // transaction, and its output is a []any that repeats the micro-operations
-// with each read's list, as a slice, or nil for the empty list. A [Fail]
+// with each read's list, as a slice, or nil for the empty list, and with
+// each register read's value, or nil for the initial value. A [Fail]
 // completion aborts it. A transaction whose outcome is unknown, or that is
-// pending, is committed when a committed read observed one of its appends.
-// Every value is appended to its key once. Keys and values compare by their
-// typed literals, so the ints 1 and int64(1) are one value.
+// pending, is committed when a committed read observed one of its appends
+// or writes. Every value is appended or written to its key once. Keys and
+// values compare by their typed literals, so the ints 1 and int64(1) are
+// one value.
 //
-// The check reads each key's version order from its longest committed
-// read, places every committed append that no read observed after that
-// order, derives the write-write, write-read and read-write dependencies
-// between committed transactions, and searches them for cycles, in the
-// order and by the search that the definition fixes. The derivation and the
-// searches for G0, G1c and G2 take time linear in the transactions and their
-// dependencies. The searches for G-single and G-nonadjacent run a
-// breadth-first search per read-write dependency until one closes a cycle,
-// which is quadratic in the worst case.
+// Over a list-append history the check reads each key's version order from
+// its longest committed read, and places every committed append that no
+// read observed after that order. Over a register history it orders the
+// initial value before each installed value, and a transaction's first read
+// of a register before its last write of it. Blind writes do not reveal an
+// order, so a register history shows fewer anomalies. The check derives the
+// write-write, write-read and read-write dependencies between committed
+// transactions, and searches them for cycles, in the order and by the
+// search that the definition fixes. The derivation and the searches for G0,
+// G1c and G2 take time linear in the transactions and their dependencies.
+// The searches for G-single and G-nonadjacent run a breadth-first search per
+// read-write dependency until one closes a cycle, which is quadratic in the
+// worst case.
 //
 // The record's detail states the five fields of the definition:
 //
@@ -103,7 +112,8 @@ func (s kinds) has(a Anomaly) bool {
 //
 // The check ends the call with a fault for a nil history, and with a fault
 // of the kind [ErrTransaction] at the call and the part of a call that is no
-// list-append transaction.
+// list-append or register transaction, and at the micro-operation of a
+// history that both appends and writes.
 //
 // # Allocation contract
 //
@@ -116,10 +126,10 @@ func Serializable(tb assert.TB, h *History, contract string) {
 	isolated(tb, h, contract, serializableID, serializableOp, everyKind)
 }
 
-// HasSnapshotIsolation checks that the list-append transactions of the
-// history h exhibit no anomaly that snapshot isolation forbids, among the
-// dependencies that their reads reveal, and fails tb with one record of the
-// assertion snapshot-isolation when they do. Snapshot isolation forbids
+// HasSnapshotIsolation checks that the list-append or register transactions
+// of the history h exhibit no anomaly that snapshot isolation forbids, among
+// the dependencies that their reads reveal, and fails tb with one record of
+// the assertion snapshot-isolation when they do. Snapshot isolation forbids
 // every kind of [Anomaly] but [G2]: it permits a cycle in which two
 // read-write dependencies are adjacent, such as a write skew.
 //
@@ -145,12 +155,12 @@ func isolated(tb assert.TB, h *History, contract, id, op string, forbids kinds) 
 		run.Fault(matcher.Fatal, id, contract, fault.In(op, fault.New("the history is nil")))
 		return
 	}
-	transactions, identities, err := transactionsOf(h.Events())
+	w, err := transactionsOf(h.Events())
 	if err != nil {
 		run.Fault(matcher.Fatal, id, contract, fault.In(op, err))
 		return
 	}
-	d := newGraph(transactions, identities).check(forbids)
+	d := newGraph(w).check(forbids)
 	if d.anomaly == 0 {
 		run.Pass(matcher.Fatal, id, contract)
 		return

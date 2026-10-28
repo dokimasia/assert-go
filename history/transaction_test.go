@@ -112,10 +112,10 @@ func TestTransaction(t *testing.T) {
 				wantReason: `"x" is no micro-operation`,
 			},
 			{
-				name:       "refuses an argument of another function than append and read",
-				give:       func(h *history.History) { h.Invoke(0, "txn", []any{[]any{"write", "x", 1}}) },
+				name:       "refuses an argument of another function than append, read and write",
+				give:       func(h *history.History) { h.Invoke(0, "txn", []any{[]any{"delete", "x", 1}}) },
 				wantPath:   at(fault.Index(0), fault.Field("args"), fault.Index(0)),
-				wantReason: `[]interface {}{"write", "x", 1} is no micro-operation`,
+				wantReason: `[]interface {}{"delete", "x", 1} is no micro-operation`,
 			},
 			{
 				name:       "refuses an argument of two parts",
@@ -124,10 +124,10 @@ func TestTransaction(t *testing.T) {
 				wantReason: `[]interface {}{"read", "x"} is no micro-operation`,
 			},
 			{
-				name:       "refuses a read that states a list before it ran",
+				name:       "refuses a read that states a value before it ran",
 				give:       func(h *history.History) { h.Invoke(0, "txn", []any{readOf("x")}) },
 				wantPath:   at(fault.Index(0), fault.Field("args"), fault.Index(0)),
-				wantReason: "the read states a list before it ran",
+				wantReason: "the read states a value before it ran",
 			},
 			{
 				name:       "refuses a key that no typed literal states",
@@ -214,6 +214,54 @@ func TestTransaction(t *testing.T) {
 				},
 				wantPath:   at(fault.Index(2), fault.Field("args"), fault.Index(0)),
 				wantReason: `1 is appended to "x" by calls 0 and 2`,
+			},
+			{
+				name:       "refuses a write of nil, the initial value of every register",
+				give:       func(h *history.History) { h.Invoke(0, "txn", []any{writeOf("x", nil)}) },
+				wantPath:   at(fault.Index(0), fault.Field("args"), fault.Index(0)),
+				wantReason: "the write writes nil, the initial value of every key",
+			},
+			{
+				name: "refuses a value that two transactions write to a register",
+				give: func(h *history.History) {
+					transact(h, 0, history.OK, writeOf("x", 1))
+					transact(h, 1, history.OK, writeOf("x", 1))
+				},
+				wantPath:   at(fault.Index(2), fault.Field("args"), fault.Index(0)),
+				wantReason: `1 is written to "x" by calls 0 and 2`,
+			},
+			{
+				name:       "refuses a value that one transaction writes to a register twice",
+				give:       func(h *history.History) { transact(h, 0, history.OK, writeOf("x", 1), writeOf("x", 1)) },
+				wantPath:   at(fault.Index(0), fault.Field("args"), fault.Index(1)),
+				wantReason: `1 is written to "x" twice by call 0`,
+			},
+			{
+				name: "refuses a history that appends and then writes",
+				give: func(h *history.History) {
+					transact(h, 0, history.OK, appendOf("x", 1))
+					transact(h, 1, history.OK, readOf("y"), writeOf("y", 2))
+				},
+				wantPath:   at(fault.Index(2), fault.Field("args"), fault.Index(1)),
+				wantReason: "call 0 appends and call 2 writes, and a history is either list-append or registers",
+			},
+			{
+				name: "refuses a history that writes and then appends",
+				give: func(h *history.History) {
+					transact(h, 0, history.OK, writeOf("x", 1))
+					transact(h, 1, history.OK, appendOf("y", 2))
+				},
+				wantPath:   at(fault.Index(2), fault.Field("args"), fault.Index(0)),
+				wantReason: "call 2 appends and call 0 writes, and a history is either list-append or registers",
+			},
+			{
+				name: "refuses a register read of a value that no typed literal states",
+				give: func(h *history.History) {
+					transact(h, 0, history.OK, writeOf("x", 1))
+					h.Invoke(1, "txn", []any{[]any{"read", "x", nil}}).OK([]any{loadOf("x", make(chan int))})
+				},
+				wantPath:   at(fault.Index(2), fault.Field("output"), fault.Index(0)),
+				wantReason: "chan int is no value that a typed literal states",
 			},
 		}
 		for _, tt := range tests {

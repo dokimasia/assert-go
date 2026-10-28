@@ -270,6 +270,17 @@ func readOf(key any, values ...any) []any {
 	return []any{"read", key, append([]any{}, values...)}
 }
 
+// writeOf returns the micro-operation that writes value to the register key.
+func writeOf(key, value any) []any {
+	return []any{"write", key, value}
+}
+
+// loadOf returns the micro-operation that read the register key, with value
+// as the value that the read returned, nil for the initial value.
+func loadOf(key, value any) []any {
+	return []any{"read", key, value}
+}
+
 // transact records a transaction of client whose micro-operations ran as
 // operations, each read with the list that it returned, and completes it as
 // kind: OK with operations as its output, Fail or Unknown, and not at all
