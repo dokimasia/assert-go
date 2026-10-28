@@ -1,5 +1,16 @@
 # go.dokimi.dev/assert
 
+## 0.11.0
+
+### Minor Changes
+
+- a94b83a: Implement definition 13.1.0 and write its version into every call record.
+- f9f356f: Implement definition 13.2.0 and write its version into every call record.
+- f6a47ec: Implement definition 13.3.0 and write its version into every call record.
+- f9f356f: Add `MaxLiveBytes` to `assert` and `expect`, a ceiling on the heap that a call keeps reachable at each call of a probe.
+- a94b83a: Add `Observer` and `Call` to `assert` and `expect`, so a seat observes every assertion call, a passing one included.
+- f6a47ec: Let `history.Serializable` and `history.HasSnapshotIsolation` check histories of read-write register transactions.
+
 ## 0.10.0
 
 ### Minor Changes
