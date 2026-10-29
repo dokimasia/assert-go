@@ -137,6 +137,23 @@ func loaded(tb assert.TB, path string) *catalog.Catalog {
 }
 ```
 
+`assert.Cleanup(tb, f)` registers `f` to release what a helper starts. It
+calls `Cleanup` of the first seat of the chain that has the method. A
+`*testing.T` runs `f` when the test ends. The check of `Rejects` and each
+attempt of `Eventually` run theirs when the body ends, before the assertion
+returns. A recorder keeps them until `Recorder.RunCleanups`, so a test of a
+helper can check what the release does. On a chain without `Cleanup`, the
+helper ends the call with a fault:
+
+```go
+func witness(tb assert.TB) *httptest.Server {
+    tb.Helper()
+    srv := httptest.NewServer(newWitness())
+    assert.Cleanup(tb, srv.Close)
+    return srv
+}
+```
+
 A helper that refuses its arguments ends its call with `assert.Fault`. The
 faults of this module end their calls the same way. The first seat of the
 chain that is an `assert.FaultReporter` receives the fault as the error it

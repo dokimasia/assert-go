@@ -31,6 +31,17 @@ const decodedReason = "the stored case decodes to other values than it records, 
 // platform: it contains a NUL byte, which no file system accepts in a name.
 const unlistable = "no\x00store"
 
+// plainSeat is a seat with the three methods of the seat and Failed alone, so
+// it has no Cleanup. Its seat is a recorder, which keeps each failure.
+type plainSeat struct {
+	assert.TB
+
+	recorder *assert.Recorder
+}
+
+// Failed reports whether the recorder received a failure.
+func (s plainSeat) Failed() bool { return s.recorder.Failed() }
+
 // TestStore checks what a run reads from its store and writes to it, and
 // the claim that keeps two properties of a test from sharing one store. A
 // run in a test binary that a mutation run instrumented writes no entry, so
@@ -374,7 +385,10 @@ func TestStore(t *testing.T) {
 			},
 			{
 				name: "claims nothing for a seat without Cleanup",
-				seat: func(string) assert.TB { return assert.NewRecorder() },
+				seat: func(string) assert.TB {
+					r := assert.NewRecorder()
+					return plainSeat{TB: r, recorder: r}
+				},
 			},
 		}
 		for _, tt := range claims {

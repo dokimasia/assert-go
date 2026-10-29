@@ -6,6 +6,8 @@ package matcher_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -127,6 +129,45 @@ func TestWaiting(t *testing.T) {
 				t.Fatalf("the context of attempt %d returns %v and ended with %v, "+
 					"want the seat's value and context.Canceled", i+1, attempt.Value(ledgerKey{}), attempt.Err())
 			}
+		}
+	})
+
+	t.Run("Eventually runs the cleanups of an attempt before the next attempt starts", func(t *testing.T) {
+		t.Parallel()
+
+		var tr trace
+		attempts := 0
+		matcher.Eventually(&matchertest.Seat{}, matcher.Fatal, matchertest.PatientTimeout,
+			matchertest.ShortInterval, func(trial matcher.Seat) {
+				attempts++
+				tr.step(fmt.Sprintf("attempt %d", attempts))()
+				matcher.Cleanup(trial, "assert.Cleanup", tr.step(fmt.Sprintf("cleanup %d", attempts)))
+				matcher.True(trial, matcher.Fatal, attempts > 1, "the second attempt passes")
+			}, "the body settles")
+
+		want := []string{"attempt 1", "cleanup 1", "attempt 2", "cleanup 2"}
+		if got := tr.ran(); !slices.Equal(got, want) {
+			t.Fatalf("the attempts ran %v, want %v", got, want)
+		}
+	})
+
+	t.Run("Eventually fails an attempt at a failure in its cleanup", func(t *testing.T) {
+		t.Parallel()
+
+		seat := &matchertest.Seat{}
+		attempts := 0
+		matcher.Eventually(seat, matcher.Fatal, matchertest.PatientTimeout,
+			matchertest.ShortInterval, func(trial matcher.Seat) {
+				attempts++
+				first := attempts == 1
+				matcher.Cleanup(trial, "assert.Cleanup", func() {
+					matcher.True(trial, matcher.Fatal, !first, "the first release fails")
+				})
+			}, "the body settles")
+
+		if attempts != 2 || seat.Failed() {
+			t.Fatalf("the body ran %d times, and the seat failed: %v, want 2 attempts and a pass",
+				attempts, seat.Failed())
 		}
 	})
 

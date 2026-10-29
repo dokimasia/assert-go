@@ -362,6 +362,86 @@ func TestRecorderTest(t *testing.T) {
 	})
 }
 
+// TestRecorderCleanups checks the cleanups that a recorder keeps and runs.
+func TestRecorderCleanups(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Cleanup", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("keeps f until RunCleanups", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			ran := false
+			r.Cleanup(func() { ran = true })
+
+			if ran {
+				t.Fatal("Cleanup ran f, want f kept until RunCleanups")
+			}
+		})
+	})
+
+	t.Run("RunCleanups", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("runs the functions that Cleanup registered, the last registered first", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			var steps []string
+			assert.Cleanup(r, func() { steps = append(steps, "first") })
+			r.Cleanup(func() { steps = append(steps, "second") })
+			r.RunCleanups()
+
+			if got, want := fmt.Sprint(steps), "[second first]"; got != want {
+				t.Fatalf("RunCleanups ran %s, want %s", got, want)
+			}
+		})
+
+		t.Run("leaves a function that arrives after it to the next call", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			var steps []string
+			r.Cleanup(func() { steps = append(steps, "first run") })
+			r.RunCleanups()
+			r.Cleanup(func() { steps = append(steps, "second run") })
+
+			if got, want := fmt.Sprint(steps), "[first run]"; got != want {
+				t.Fatalf("one call ran %s, want %s", got, want)
+			}
+			r.RunCleanups()
+			if got, want := fmt.Sprint(steps), "[first run second run]"; got != want {
+				t.Fatalf("two calls ran %s, want %s", got, want)
+			}
+		})
+
+		t.Run("runs the earlier functions when a function ends the goroutine under WithGoexit", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder().WithGoexit()
+			var steps []string
+			r.Cleanup(func() { steps = append(steps, "first") })
+			r.Cleanup(func() {
+				steps = append(steps, "second")
+				assert.True(r, false, "the release fails")
+			})
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				r.RunCleanups()
+			}()
+			<-done
+
+			if got, want := fmt.Sprint(steps), "[second first]"; got != want || r.Message() == "" {
+				t.Fatalf("RunCleanups ran %s, and recorded %q, want %s and the failure of the release",
+					got, r.Message(), want)
+			}
+		})
+	})
+}
+
 // TestRecorderAllocs checks the allocation ceiling of NewRecorder and of
 // each method of a recorder.
 func TestRecorderAllocs(t *testing.T) {
@@ -382,6 +462,7 @@ func recorderCases() []alloctest.Case {
 	full := assert.NewRecorder()
 	assert.Equal(full, 1, 2, "the values match")
 	goexits := assert.NewRecorder()
+	cleaning := assert.NewRecorder()
 	f := assert.Failure{Assertion: "true", Contract: allocContract}
 	clock := assert.NewControlled(epoch)
 	ctx := context.Background()
@@ -406,5 +487,10 @@ func recorderCases() []alloctest.Case {
 		{Name: "Message", Call: func(assert.TB) { message = full.Message() }},
 		{Name: "Messages", Call: func(assert.TB) { messages = full.Messages() }, Allocs: 2},
 		{Name: "HelperCalls", Call: func(assert.TB) { helpers = full.HelperCalls() }},
+		{Name: "Cleanup", Call: func(assert.TB) {
+			cleaning.Cleanup(noCleanup)
+			cleaning.RunCleanups()
+		}},
+		{Name: "RunCleanups", Call: func(assert.TB) { cleaning.RunCleanups() }},
 	}
 }

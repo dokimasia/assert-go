@@ -5,12 +5,14 @@ package assert_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/alloctest"
 	"go.dokimi.dev/assert/internal/childtest"
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/record"
 )
 
@@ -41,6 +43,25 @@ type wrapped struct {
 
 // Unwrap returns the wrapped seat.
 func (w wrapped) Unwrap() assert.TB { return w.TB }
+
+// faultSeat is a seat that keeps each fault that it receives, and has no
+// Cleanup.
+type faultSeat struct {
+	bareSeat
+
+	faults []error
+}
+
+// ReportFault keeps err.
+func (s *faultSeat) ReportFault(err error, _ bool) { s.faults = append(s.faults, err) }
+
+// cleaningSeat is a seat whose Cleanup does nothing.
+type cleaningSeat struct {
+	bareSeat
+}
+
+// Cleanup drops f.
+func (cleaningSeat) Cleanup(func()) {}
 
 func TestTB(t *testing.T) {
 	t.Parallel()
@@ -141,6 +162,64 @@ func TestTB(t *testing.T) {
 		})
 	})
 
+	t.Run("Cleanup", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("registers f with the test of a *testing.T", func(t *testing.T) {
+			t.Parallel()
+
+			ran := false
+			t.Cleanup(func() {
+				if !ran {
+					t.Error("the test ended without the function that Cleanup registered")
+				}
+			})
+			assert.Cleanup(t, func() { ran = true })
+		})
+
+		t.Run("registers f with a recorder, which runs it at RunCleanups", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			ran := false
+			assert.Cleanup(r, func() { ran = true })
+			r.RunCleanups()
+
+			if !ran {
+				t.Fatal("RunCleanups did not run the function that Cleanup registered")
+			}
+		})
+
+		t.Run("registers f with the first seat of the chain that has the method", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			ran := false
+			assert.Cleanup(wrapped{wrapped{r}}, func() { ran = true })
+			r.RunCleanups()
+
+			if !ran {
+				t.Fatal("the wrapped recorder did not run the function that Cleanup registered")
+			}
+		})
+
+		t.Run("ends the call with a fault on a chain without the method", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &faultSeat{}
+			ran := false
+			assert.Cleanup(wrapped{seat}, func() { ran = true })
+
+			var got *fault.Error
+			if len(seat.faults) != 1 || !errors.As(seat.faults[0], &got) || got.Op != "assert.Cleanup" ||
+				got.Reason != "the seat has no Cleanup" || ran {
+
+				t.Fatalf("Cleanup reported %v and ran f: %v, want the fault of assert.Cleanup and no run",
+					seat.faults, ran)
+			}
+		})
+	})
+
 	t.Run("Unwrap", func(t *testing.T) {
 		t.Parallel()
 
@@ -200,23 +279,25 @@ func TestTB(t *testing.T) {
 	})
 }
 
-// TestTBAllocs checks the allocation ceiling of Context.
+// TestTBAllocs checks the allocation ceilings of Context and Cleanup.
 func TestTBAllocs(t *testing.T) {
 	alloctest.Check(t, tbCases())
 }
 
-// BenchmarkTB measures Context.
+// BenchmarkTB measures Context and Cleanup.
 func BenchmarkTB(b *testing.B) {
 	for _, c := range tbCases() {
 		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
 	}
 }
 
-// tbCases returns a call of Context on a recorder that states a context,
-// with its allocation ceiling.
+// tbCases returns a call of Context on a recorder that states a context, and a
+// call of Cleanup on a seat whose Cleanup does nothing, each with its
+// allocation ceiling.
 func tbCases() []alloctest.Case {
 	seat := assert.NewRecorder().WithContext(context.Background())
 	return []alloctest.Case{
 		{Name: "Context", Call: func(assert.TB) { tbContext = assert.Context(seat) }},
+		{Name: "Cleanup", Call: func(assert.TB) { assert.Cleanup(cleaningSeat{}, noCleanup) }},
 	}
 }

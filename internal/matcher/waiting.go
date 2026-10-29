@@ -29,7 +29,7 @@ type calls = record.Calls
 // Fatalf does, so an aborting assertion stops the trial at its first
 // failure. A trial runs on a goroutine of its own for that reason. Its
 // context derives from the context of the retrying assertion's seat, and
-// ends with the trial.
+// ends with the trial. Its cleanups run when the trial ends.
 type probe struct {
 	calls
 	bodyContext
@@ -68,10 +68,11 @@ func (p *probe) outcome() (msg string, failed bool) {
 
 // trial runs fn once with a probe of its own, whose calls are a run of the
 // call that slot started and whose context derives from the context of
-// seat, on a goroutine of its own. It returns the probe once fn has
-// returned or a fatal failure has ended it, and cancels the probe's context
-// then. A panic in fn panics again on the calling goroutine with the same
-// value, so it is not taken for a failed attempt.
+// seat, on a goroutine of its own. Once fn has returned or a fatal failure
+// has ended it, the goroutine cancels the probe's context and runs the
+// probe's cleanups, and trial returns the probe. A panic in fn panics again
+// on the calling goroutine with the same value, so it is not taken for a
+// failed attempt.
 func trial(seat Seat, fn func(Seat), slot *record.Slot) *probe {
 	p := &probe{parent: seat}
 	record.Run(&p.calls, slot, nil)
@@ -80,10 +81,10 @@ func trial(seat Seat, fn func(Seat), slot *record.Slot) *probe {
 		// recover returns nil for a body that returned and for one that a
 		// fatal failure ended through runtime.Goexit.
 		defer func() { ended <- recover() }()
+		defer p.finish()
 		fn(p)
 	}()
 	raised := <-ended
-	p.end()
 	if raised != nil {
 		panic(raised)
 	}
@@ -101,7 +102,10 @@ func trial(seat Seat, fn func(Seat), slot *record.Slot) *probe {
 // called Eventually. The calls of each attempt are recorded under the
 // call of Eventually, which takes its number before them. The context of
 // each attempt's seat derives from the context of seat, as [ContextOf]
-// reads it, and Eventually cancels it when the attempt ends.
+// reads it, and Eventually cancels it when the attempt ends. The attempt's
+// seat has Cleanup: the functions that an attempt registers run on its
+// goroutine when it ends, after the cancel and before the next attempt. A
+// failure in one fails the attempt.
 //
 //	matcher.Eventually(seat, matcher.Fatal, 5*time.Second, 100*time.Millisecond,
 //	    func(s matcher.Seat) {

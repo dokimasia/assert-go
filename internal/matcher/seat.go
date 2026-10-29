@@ -45,15 +45,19 @@ func ContextOf(seat Seat) context.Context {
 	return context.Background()
 }
 
-// bodyContext is the context of the seat that an assertion makes for a
-// body: the check of [Rejects], or an attempt of [Eventually]. It derives
-// from the context of the assertion's seat on its first read, and the
-// assertion cancels it when the body ends, so work that the body starts
-// with it stops before the assertion returns.
+// bodyContext is the context and the cleanups of the seat that an assertion
+// makes for a body: the check of [Rejects], or an attempt of [Eventually].
+// The context derives from the context of the assertion's seat on its first
+// read, and the assertion cancels it when the body ends, so work that the
+// body starts with it stops before the assertion returns. The body's
+// cleanups run on the goroutine of the body after the cancel, before the
+// assertion returns.
 type bodyContext struct {
 	// parent is the assertion's seat, from whose context the body's
 	// context derives.
 	parent Seat
+	// cleanups are the functions that the body registered through Cleanup.
+	cleanups Cleanups
 
 	mu     sync.Mutex
 	ctx    context.Context //nolint:containedctx // a body's seat has the context of the body, as testing.T has
@@ -86,6 +90,19 @@ func (b *bodyContext) Context() context.Context {
 // property on it keeps its store, its log and its skips to itself.
 func (b *bodyContext) Outer() Seat {
 	return b.parent
+}
+
+// Cleanup registers f to run when the body ends, the last registered first. A
+// function that arrives after the body's cleanups ran runs at once.
+func (b *bodyContext) Cleanup(f func()) {
+	b.cleanups.Add(f)
+}
+
+// finish ends the body on the goroutine of the body: it cancels the body's
+// context, and then runs the functions that Cleanup registered.
+func (b *bodyContext) finish() {
+	b.end()
+	b.cleanups.Close()
 }
 
 // end marks the body ended, and cancels its context where a read derived

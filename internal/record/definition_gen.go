@@ -5,4 +5,4 @@ package record
 // Definition is the version of the definition that this module implements,
 // which every call record states: the version of the vendored definition,
 // which the file VERSION of conformance contains.
-const Definition = "13.3.0"
+const Definition = "13.4.0"

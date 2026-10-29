@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 
 	"go.dokimi.dev/assert/internal/matcher"
@@ -185,6 +186,94 @@ func TestRejects(t *testing.T) {
 			if err := matcher.ContextOf(check).Err(); !errors.Is(err, context.Canceled) {
 				t.Fatalf("a first read after the check ended returned a context that ended with %v, "+
 					"want context.Canceled", err)
+			}
+		})
+
+		t.Run("runs the cleanups of the check before it returns, the last registered first", func(t *testing.T) {
+			t.Parallel()
+
+			var tr trace
+			matcher.Rejects(&matchertest.Seat{}, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				matcher.Cleanup(s, "assert.Cleanup", tr.step("first"))
+				matcher.Cleanup(s, "assert.Cleanup", tr.step("second"))
+				s.Errorf("the check fails")
+			})
+			if got := tr.ran(); !slices.Equal(got, []string{"second", "first"}) {
+				t.Fatalf("the check's cleanups ran %v before Rejects returned, want the last registered first", got)
+			}
+		})
+
+		t.Run("cancels the context of the check before the first cleanup runs", func(t *testing.T) {
+			t.Parallel()
+
+			var ended error
+			matcher.Rejects(&contextSeat{ctx: t.Context()}, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				ctx := matcher.ContextOf(s)
+				matcher.Cleanup(s, "assert.Cleanup", func() { ended = ctx.Err() })
+				s.Errorf("the check fails")
+			})
+			if !errors.Is(ended, context.Canceled) {
+				t.Fatalf("the cleanup read a context that ended with %v, want context.Canceled", ended)
+			}
+		})
+
+		t.Run("runs the cleanups after a failure that stops the check", func(t *testing.T) {
+			t.Parallel()
+
+			var tr trace
+			got := matcher.Rejects(&matchertest.Seat{}, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				matcher.Cleanup(s, "assert.Cleanup", tr.step("released"))
+				matcher.True(s, matcher.Fatal, false, "the check fails")
+				tr.step("after the failure")()
+			})
+			if steps := tr.ran(); len(got) != 1 || !slices.Equal(steps, []string{"released"}) {
+				t.Fatalf("Rejects returned %+v and ran %v, want the failure and the cleanup alone", got, steps)
+			}
+		})
+
+		t.Run("fails the check at a failure in a cleanup, and returns its record", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &matchertest.Seat{}
+			got := matcher.Rejects(seat, matcher.Fatal, "a stopped server fails the check", func(s matcher.Seat) {
+				matcher.Cleanup(s, "assert.Cleanup", func() {
+					matcher.True(s, matcher.Fatal, false, "the server stopped")
+				})
+			})
+			if len(got) != 1 || got[0].Contract != "the server stopped" || seat.Failed() {
+				t.Fatalf("Rejects returned %+v, and its seat failed: %v, want the cleanup's record and a pass",
+					got, seat.Failed())
+			}
+		})
+
+		t.Run("runs the later cleanups when a cleanup stops the check", func(t *testing.T) {
+			t.Parallel()
+
+			var tr trace
+			matcher.Rejects(&matchertest.Seat{}, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				matcher.Cleanup(s, "assert.Cleanup", tr.step("first"))
+				matcher.Cleanup(s, "assert.Cleanup", func() {
+					matcher.True(s, matcher.Fatal, false, "the release fails")
+					tr.step("after the failure")()
+				})
+			})
+			if got := tr.ran(); !slices.Equal(got, []string{"first"}) {
+				t.Fatalf("the check's cleanups ran %v, want the first cleanup after the stopped one", got)
+			}
+		})
+
+		t.Run("runs a cleanup that arrives after the check ended at once", func(t *testing.T) {
+			t.Parallel()
+
+			var tr trace
+			var check matcher.Seat
+			matcher.Rejects(&matchertest.Seat{}, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				check = s
+				s.Errorf("the check fails")
+			})
+			matcher.Cleanup(check, "assert.Cleanup", tr.step("late"))
+			if got := tr.ran(); !slices.Equal(got, []string{"late"}) {
+				t.Fatalf("a cleanup after the check ran %v, want the cleanup at once", got)
 			}
 		})
 	})

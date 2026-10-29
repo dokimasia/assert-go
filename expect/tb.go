@@ -25,3 +25,17 @@ type TB = assert.TB
 func Context(tb TB) context.Context {
 	return assert.Context(tb)
 }
+
+// Cleanup registers f to run when the test of tb ends, as
+// [go.dokimi.dev/assert.Cleanup] does: through the method Cleanup of tb, or of
+// the first seat that it wraps with the method. A chain without the method
+// ends the call with a fault, and f does not run.
+//
+// # Allocation contract
+//
+// Cleanup allocates nothing besides what the method Cleanup of tb
+// allocates.
+func Cleanup(tb TB, f func()) {
+	tb.Helper()
+	assert.Cleanup(tb, f)
+}

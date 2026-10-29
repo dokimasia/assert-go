@@ -16,6 +16,9 @@ var epoch = time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
 // allocContract is the contract of every call of the allocation cases.
 const allocContract = "the call passes"
 
+// noCleanup is a function that a cleanup of the allocation cases registers.
+func noCleanup() {}
+
 // ledgerKey is the key of a value in the context of a seat, which every
 // context that derives from that context returns.
 type ledgerKey struct{}

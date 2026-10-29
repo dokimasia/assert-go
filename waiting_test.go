@@ -4,6 +4,7 @@
 package assert_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -69,6 +70,25 @@ func TestWaiting(t *testing.T) {
 			if attempts != 3 {
 				t.Fatalf("ran %d attempts, want 3", attempts)
 			}
+		})
+
+		t.Run("runs the cleanups of an attempt before the next attempt starts", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder().WithClock(assert.NewControlled(epoch))
+			var steps []string
+			attempts := 0
+			assert.Eventually(r, time.Hour, time.Minute, func(tb assert.TB) {
+				attempts++
+				steps = append(steps, fmt.Sprintf("attempt %d", attempts))
+				assert.Cleanup(tb, func() { steps = append(steps, fmt.Sprintf("cleanup %d", attempts)) })
+				if attempts < 2 {
+					tb.Errorf("not yet")
+				}
+			}, "the body settles by the second attempt")
+
+			assert.Equal(t, steps, []string{"attempt 1", "cleanup 1", "attempt 2", "cleanup 2"},
+				"each attempt's cleanups ran before the next attempt started")
 		})
 	})
 

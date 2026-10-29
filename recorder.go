@@ -28,6 +28,8 @@ type calls = record.Calls
 // as the error it is. [Recorder.Context] returns the context that
 // [Recorder.WithContext] gave it, which [Context] reads, and
 // [Recorder.Test] the test that [Recorder.WithTest] gave it.
+// [Recorder.Cleanup] keeps the functions that [Cleanup] registers, and
+// [Recorder.RunCleanups] runs them.
 //
 // Call [NewRecorder] for a Recorder: the zero value is not usable.
 //
@@ -69,6 +71,9 @@ type Recorder struct {
 	ctx context.Context //nolint:containedctx // a seat has the context of its test, as testing.T has
 	// test is the test that the Recorder runs in, or nil for none.
 	test TB
+	// cleanups are the functions that Cleanup registered and RunCleanups has
+	// not run yet.
+	cleanups matcher.Cleanups
 }
 
 // NewRecorder returns a Recorder that records failures and returns
@@ -287,6 +292,37 @@ func (r *Recorder) WithTest(tb TB) *Recorder {
 
 	r.test = tb
 	return r
+}
+
+// Cleanup registers f to run at [Recorder.RunCleanups]. A helper that a test
+// checks on a Recorder registers the release of what it starts through
+// [Cleanup], and the Recorder keeps the release until the test runs it.
+//
+// # Allocation contract
+//
+// Cleanup allocates nothing besides the growth of the list of cleanups.
+func (r *Recorder) Cleanup(f func()) {
+	r.cleanups.Add(f)
+}
+
+// RunCleanups runs the functions that [Recorder.Cleanup] registered, the last
+// registered first, and forgets them. A function that a function registers
+// runs before RunCleanups returns, and a function that arrives after the call
+// waits for the next call. RunCleanups calls each function in a frame of its
+// own, so a function that ends the goroutine, as Fatalf does under
+// [Recorder.WithGoexit], or that panics leaves the earlier functions to run.
+//
+// A test runs the cleanups at a point of its own to check their effect, or it
+// registers the run with its own test:
+//
+//	rec := assert.NewRecorder()
+//	t.Cleanup(rec.RunCleanups)
+//
+// # Allocation contract
+//
+// RunCleanups allocates nothing besides what the functions allocate.
+func (r *Recorder) RunCleanups() {
+	r.cleanups.Run()
 }
 
 // Helper counts one helper-frame mark. A Recorder has no stack to

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -119,6 +120,29 @@ func benchAllocs(b *testing.B, cases []allocCase) {
 			}
 		})
 	}
+}
+
+// trace is the order in which the functions of a test ran. Its methods are
+// safe for concurrent use.
+type trace struct {
+	mu    sync.Mutex
+	steps []string
+}
+
+// step returns a function that adds name to the trace.
+func (tr *trace) step(name string) func() {
+	return func() {
+		tr.mu.Lock()
+		defer tr.mu.Unlock()
+		tr.steps = append(tr.steps, name)
+	}
+}
+
+// ran returns the names in the trace, in the order of the steps.
+func (tr *trace) ran() []string {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	return slices.Clone(tr.steps)
 }
 
 // wrapper is a seat that wraps another seat, as the handle of a check does.

@@ -123,6 +123,20 @@ func TestRejects(t *testing.T) {
 			assert.ErrorIs(t, ctx.Err(), context.Canceled, "the check's context ends with the check")
 		})
 
+		t.Run("runs the cleanups that the check registers before it returns", func(t *testing.T) {
+			t.Parallel()
+
+			var released []string
+			assert.Rejects(t, "the check fails", func(tb assert.TB) {
+				assert.Cleanup(tb, func() { released = append(released, "first") })
+				assert.Cleanup(tb, func() { released = append(released, "second") })
+				assert.True(tb, false, "the check fails")
+			})
+
+			assert.Equal(t, released, []string{"second", "first"},
+				"the check's cleanups ran before Rejects returned, the last registered first")
+		})
+
 		t.Run("leaves no goroutine behind", func(t *testing.T) {
 			t.Parallel()
 

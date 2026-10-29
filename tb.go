@@ -28,8 +28,8 @@ func init() {
 // A seat that wraps another seat declares a method Unwrap() TB, which
 // returns the seat that it wraps, or nil. An assertion calls Helper,
 // Fatalf and Errorf of the seat itself. It looks for every other method,
-// such as Report, Logf, Skipf, Clock and Context, on the seat and then on
-// each seat that Unwrap returns, in order. The first seat that has the
+// such as Report, Logf, Skipf, Clock, Context and Cleanup, on the seat and
+// then on each seat that Unwrap returns, in order. The first seat that has the
 // method provides it, and the call records are those of the first seat that
 // keeps call records. A wrapper declares each method that it changes:
 //
@@ -86,4 +86,31 @@ func unwrap(seat any) any {
 // allocates.
 func Context(tb TB) context.Context {
 	return matcher.ContextOf(tb)
+}
+
+// Cleanup registers f to run when the test of tb ends, through the method
+// Cleanup of tb. *testing.T, *testing.B, *testing.F, a *prop.Case and a
+// [Recorder] have the method. A seat without it registers f with the first
+// seat that it wraps with the method, as [TB] states. The seat that [Rejects]
+// hands its check, and the seat of each attempt of [Eventually], run their
+// cleanups when the body ends, before the assertion returns. A chain without
+// the method ends the call with a fault, as [Fault] ends one, and f does not
+// run.
+//
+// A helper that takes a TB registers the release of what it starts:
+//
+//	func witness(tb assert.TB) *httptest.Server {
+//	    tb.Helper()
+//	    srv := httptest.NewServer(newWitness())
+//	    assert.Cleanup(tb, srv.Close)
+//	    return srv
+//	}
+//
+// # Allocation contract
+//
+// Cleanup allocates nothing besides what the method Cleanup of tb
+// allocates.
+func Cleanup(tb TB, f func()) {
+	tb.Helper()
+	matcher.Cleanup(tb, "assert.Cleanup", f)
 }

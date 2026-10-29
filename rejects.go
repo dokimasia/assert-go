@@ -51,6 +51,12 @@ import "go.dokimi.dev/assert/internal/matcher"
 // Skipf, such as a [Recorder], receives nothing, and Rejects returns nil. A
 // check that fails and then skips passes Rejects.
 //
+// The seat that fn receives has Cleanup, which [Cleanup] finds. The
+// functions that fn registers run on the goroutine of fn when fn ends, the
+// last registered first, after the context of the check ends and before
+// Rejects returns. A failure in one is a failure of fn, and Rejects returns
+// its record with the others.
+//
 // The call records of the assertions that fn calls are recorded under
 // the call of Rejects, as its run 1.
 //

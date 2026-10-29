@@ -15,7 +15,8 @@ import (
 // record of the check in call order, whether the check failed at all, the
 // fault that ended the check, and the reason of its skip. Its Calls keep the
 // records of the check's calls, for the call of Rejects. Its context derives
-// from the context of the seat of Rejects, and ends with the check.
+// from the context of the seat of Rejects, and ends with the check. Its
+// cleanups run when the check ends.
 //
 // Fatalf, Skipf, an aborting record and a fault that ends its call end the
 // calling goroutine once they are kept, as a test's Fatalf ends a test, so
@@ -130,7 +131,10 @@ func (r *rejection) skip() (reason string, skipped bool) {
 // passes to seat as [NoteFault] notes it. The calls of fn are recorded under
 // the call of Rejects, as its run 1. The seat's context derives from the
 // context of seat, as [ContextOf] reads it, and Rejects cancels it when fn
-// ends.
+// ends. The seat has Cleanup: the functions that fn registers run on the
+// goroutine of fn when fn ends, after the cancel and before Rejects reads the
+// outcome. A failure in one is a failure of fn, and its record is among the
+// records that Rejects returns.
 //
 // fn's seat has Skipf, which ends fn as Fatalf does. When fn skips before it
 // fails, Rejects ends its call as skipped through [Running.SkipRun] and
@@ -160,10 +164,10 @@ func Rejects(seat Seat, mode Mode, msg string, fn func(Seat)) []Failure {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		defer r.finish()
 		fn(r)
 	}()
 	<-done
-	r.end()
 	run.Slot().Take(&r.calls, record.NoPhase)
 
 	records, failed, fault := r.outcome()

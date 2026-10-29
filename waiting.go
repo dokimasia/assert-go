@@ -20,7 +20,10 @@ import (
 // fn receives a seat of its own, so an assertion inside it records an
 // attempt and does not end the test. fn runs at least once however short
 // the timeout, and an attempt that passes after the timeout fails the call.
-// An interval below a millisecond waits a millisecond.
+// An interval below a millisecond waits a millisecond. The seat of an
+// attempt has Cleanup, which [Cleanup] finds. The functions that an attempt
+// registers run when the attempt ends, before the next attempt starts, and a
+// failure in one fails the attempt.
 //
 // Eventually waits on the seat's clock. On the runtime clock it spends
 // real time, up to timeout, so it suits a condition that another goroutine

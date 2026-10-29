@@ -362,7 +362,9 @@ var pinned = map[conformance.ID]any{
 	"seat.record":       assert.TB.Errorf,
 	"seat.cancellation": testing.TB.Context,
 	"seat.skip":         testing.TB.Skipf,
+	"seat.cleanup":      testing.TB.Cleanup,
 	"cancellation-of":   assert.Context,
+	"cleanup":           assert.Cleanup,
 	"fault":             assert.Fault,
 	"allocs-checked":    assert.AllocsChecked,
 
@@ -372,6 +374,7 @@ var pinned = map[conformance.ID]any{
 	"recorder-seat.helper-calls": (*assert.Recorder).HelperCalls,
 	"recorder-seat.records":      (*assert.Recorder).Records,
 	"recorder-seat.faults":       (*assert.Recorder).Faults,
+	"recorder-seat.run-cleanups": (*assert.Recorder).RunCleanups,
 
 	"contract.loop":         (*bench.Contract).Loop,
 	"contract.check":        (*bench.Contract).End,
