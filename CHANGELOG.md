@@ -1,5 +1,14 @@
 # go.dokimi.dev/assert
 
+## 0.12.0
+
+### Minor Changes
+
+- ff9296a: Run the cleanups of the check of `Rejects` and of each attempt of `Eventually` when the body ends.
+- ff9296a: Implement definition 13.4.0 and write its version into every call record.
+- ff9296a: Add `Recorder.Cleanup` and `Recorder.RunCleanups`.
+- ff9296a: Add `assert.Cleanup` and `expect.Cleanup` to register a cleanup on any seat.
+
 ## 0.11.0
 
 ### Minor Changes
