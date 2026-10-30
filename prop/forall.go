@@ -78,6 +78,9 @@ func duplicate(op, dir, contract string) error {
 // well, and the calls of each case that a run on one worker runs are
 // recorded under it, with the phase of the case.
 //
+// [OnResult] hands the [Result] of the run to a function before the call
+// reports its verdict. The result has the values of the eleven fields.
+//
 // ForAll ends the call with a fault, without a run, for a profile other than
 // default, ci and campaign, a seed variable that is no decimal number below
 // 2^64, a campaign's budget that is no whole number of seconds above 0, a

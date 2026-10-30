@@ -697,6 +697,94 @@ func TestOption(t *testing.T) {
 		})
 	})
 
+	t.Run("OnResult", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("hands the result of a run once", func(t *testing.T) {
+			t.Parallel()
+			var got []prop.Result
+			prop.ForAll(assert.NewRecorder(), contract, draws(prop.Integer(0, 1000)), prop.Seed(7),
+				prop.OnResult(func(r prop.Result) { got = append(got, r) }))
+			assert.Equal(t, got, []prop.Result{{Outcome: prop.Passed, Cases: 100, Seed: 7}}, "the result of the run")
+		})
+
+		t.Run("hands the result before the seat receives the failure", func(t *testing.T) {
+			t.Parallel()
+			rec := assert.NewRecorder()
+			var failed bool
+			prop.ForAll(rec, contract, failsAtLeast(10000, 1001, big), prop.Seed(7),
+				prop.OnResult(func(prop.Result) { failed = rec.Failed() }))
+			assert.False(t, failed, "the seat has no failure when the function runs")
+			assert.True(t, rec.Failed(), "the seat receives the failure after the function returns")
+		})
+
+		t.Run("hands the result before the call record is written", func(t *testing.T) {
+			t.Parallel()
+			rec := assert.NewRecorder()
+			written := -1
+			prop.ForAll(rec, contract, draws(prop.Integer(0, 9)), prop.Seed(7),
+				prop.OnResult(func(prop.Result) { written = len(rec.Records()) }))
+			assert.Equal(t, written, 0, "the recorder keeps no call record when the function runs")
+			assert.Length(t, rec.Records(), 1, "the call record of the property follows the function")
+		})
+
+		t.Run("hands no result for a run that a fault of a case ends", func(t *testing.T) {
+			t.Parallel()
+			seat := &matchertest.Seat{}
+			var calls int
+			prop.ForAll(seat, contract, func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 9), drawn)
+				assert.Fault(c, errEnvironment)
+			}, prop.Seed(7), prop.OnResult(func(prop.Result) { calls++ }))
+			assert.Equal(t, calls, 0, "no result")
+			assert.Length(t, seat.Faults(), 1, "the fault of the case ends the call")
+		})
+
+		t.Run("hands no result for a call that a fault ends before its run", func(t *testing.T) {
+			t.Parallel()
+			seat := &matchertest.Seat{}
+			var calls int
+			prop.ForAll(seat, contract, draws(prop.Integer(0, 9)), prop.Replay("prop2:AAc"),
+				prop.OnResult(func(prop.Result) { calls++ }))
+			assert.Equal(t, calls, 0, "no result")
+			assert.Length(t, seat.Faults(), 1, "the fault of the token ends the call")
+		})
+
+		t.Run("hands on four workers the result that one worker hands", func(t *testing.T) {
+			t.Parallel()
+			var four, one []prop.Result
+			prop.ForAll(assert.NewRecorder(), contract, failsAtLeast(10000, 1001, big), prop.Seed(7), prop.Workers(4),
+				prop.OnResult(func(r prop.Result) { four = append(four, r) }))
+			prop.ForAll(assert.NewRecorder(), contract, failsAtLeast(10000, 1001, big), prop.Seed(7),
+				prop.OnResult(func(r prop.Result) { one = append(one, r) }))
+			assert.Length(t, four, 1, "one result of the run on four workers")
+			assert.Equal(t, four, one, "the result of the run on one worker")
+		})
+
+		t.Run("hands the result of a property form", func(t *testing.T) {
+			t.Parallel()
+			var got []prop.Result
+			prop.Equal(assert.NewRecorder(), same, next, contractOfForm, prop.Seed(7),
+				prop.OnResult(func(r prop.Result) { got = append(got, r) }))
+			assert.Length(t, got, 1, "one result of the form's run")
+			assert.Equal(t, got[0].Outcome, prop.Counterexample, "the outcome of the form's run")
+		})
+
+		t.Run("applies the last of two functions", func(t *testing.T) {
+			t.Parallel()
+			var first, last int
+			prop.ForAll(assert.NewRecorder(), contract, draws(prop.Integer(0, 9)), prop.Seed(7),
+				prop.OnResult(func(prop.Result) { first++ }), prop.OnResult(func(prop.Result) { last++ }))
+			assert.Equal(t, []int{first, last}, []int{0, 1}, "the last function alone receives the result")
+		})
+
+		t.Run("panics for a nil function", func(t *testing.T) {
+			t.Parallel()
+			got := assert.Panics(t, func() { prop.OnResult(nil) }, "no function")
+			assert.Equal(t, got, any("prop: OnResult(nil) states no function"), "the panic names the option")
+		})
+	})
+
 	t.Run("Option", func(t *testing.T) {
 		t.Parallel()
 
@@ -726,6 +814,8 @@ func TestOptionAllocs(t *testing.T) {
 	assert.NotEqual(t, kept, prop.Option{}, "the kept option states a setting")
 	assert.MaxAllocs(t, func() { kept = prop.Around(synctest.Test) }, optionAllocs, "Around allocates its setting")
 	assert.MaxAllocs(t, func() { kept = prop.Bubble() }, optionAllocs, "Bubble allocates its setting")
+	assert.MaxAllocs(t, func() { kept = prop.OnResult(func(prop.Result) {}) }, optionAllocs,
+		"OnResult allocates its setting")
 	assert.NotEqual(t, kept, prop.Option{}, "the kept option states a setting")
 	assert.MaxAllocs(t, func() { kept = prop.Hermetic() }, 0, "Hermetic's setting captures nothing")
 	assert.NotEqual(t, kept, prop.Option{}, "Hermetic states a setting")
@@ -751,6 +841,11 @@ func BenchmarkOption(b *testing.B) {
 		{name: "Draws", option: func() prop.Option { return prop.Draws("[]") }, allocs: optionAllocs},
 		{name: "Around", option: func() prop.Option { return prop.Around(synctest.Test) }, allocs: optionAllocs},
 		{name: "Bubble", option: prop.Bubble, allocs: optionAllocs},
+		{
+			name:   "OnResult",
+			option: func() prop.Option { return prop.OnResult(func(prop.Result) {}) },
+			allocs: optionAllocs,
+		},
 		{name: "Hermetic", option: prop.Hermetic},
 	}
 	for _, tt := range tests {

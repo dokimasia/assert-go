@@ -438,6 +438,20 @@ prop.ForAll(t, "a write is read back", writeRead, prop.Seed(seed))
 prop.ForAll(t, "a delete hides the key", deleteHides, prop.Seed(seed))
 ```
 
+`prop.OnResult(f)` hands the `prop.Result` of each run to `f`. The call
+runs `f` after the run ends and before it reports its verdict, so `f` also
+receives the result of a run that fails the test. The result has the
+eleven fields of the detail of the run, such as the outcome, the counts of
+valid and rejected cases, the seed and the counterexample of a failing
+case. A tool that runs many properties writes them into a record of its
+own:
+
+```go
+var results []prop.Result
+prop.ForAll(t, "a write is read back", writeRead, prop.Seed(seed),
+    prop.OnResult(func(r prop.Result) { results = append(results, r) }))
+```
+
 `prop.Around(synctest.Test)` runs each run of a property's body in a
 `testing/synctest` bubble of its own, under `ForAll`, the forms and
 `Fuzz`. Each run starts at the bubble's first instant, and a body can wait

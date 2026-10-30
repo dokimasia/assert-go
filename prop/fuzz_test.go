@@ -79,6 +79,9 @@ const (
 	skippingMode = "skipping"
 	// faultingMode fuzzes faultsAtSentinel from the seed of the sentinel.
 	faultingMode = "faulting"
+	// resultMode fuzzes passesTrue from a seed under OnResult, whose function
+	// prints the outcome and the counts of each result.
+	resultMode = "result"
 )
 
 // childSeed is the seed of each property of FuzzChild, which the record of
@@ -283,6 +286,15 @@ func TestFuzzProcess(t *testing.T) {
 				[]any{1.0, 1.0, "fuzz", "true"}, "the call of the case under the input's call")
 			assert.Equal(t, []any{input["assertion"], input["contract"], input["verdict"]},
 				[]any{"prop-for-all", contract, "pass"}, "the input's call passes")
+		})
+
+		t.Run("hands the result of each call to the function of OnResult", func(t *testing.T) {
+			out, err := child(t, resultMode, t.TempDir())
+			assert.NoError(t, err, "the child passes")
+			assert.ContainsInOrder(t, out, []string{
+				"result: passed, 0 valid, 0 rejected",
+				"result: passed, 1 valid, 0 rejected",
+			}, "the result of the replay of the empty store, then the result of the input")
 		})
 
 		t.Run("skips the test of an input whose case skips", func(t *testing.T) {
@@ -528,6 +540,13 @@ func FuzzChild(f *testing.F) {
 	if mode == faultingMode {
 		f.Add(sentinelSeed)
 		prop.Fuzz(f, contract, faultsAtSentinel, stored, seeded)
+		return
+	}
+	if mode == resultMode {
+		f.Add([]byte{5})
+		prop.Fuzz(f, contract, passesTrue, stored, seeded, prop.OnResult(func(r prop.Result) {
+			fmt.Fprintf(os.Stdout, "result: %v, %d valid, %d rejected\n", r.Outcome, r.Cases, r.Rejected)
+		}))
 		return
 	}
 	if mode == failingMode {

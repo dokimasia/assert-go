@@ -52,65 +52,19 @@ const (
 )
 
 // runDetail is the detail of the record of a property's run: the eleven
-// fields of the definition. A field that the outcome does not use is nil:
-//
-//   - counterexample and failure are set for a run with a failing case: a
-//     counterexample, and a flaky run whose replay differed.
-//   - others is set for a counterexample, and choices for a counterexample
-//     that is no example of values, which has no replay token.
-//   - divergence is set for a flaky run, and coverage for a run that missed
-//     a coverage requirement.
-//   - reason is set for a skipped run.
+// fields of the definition, which the run's [Result] contains, and the
+// engine's divergence of a flaky run.
 type runDetail struct {
-	// outcome is how the run ended.
-	outcome Outcome
-	// cases and rejected are the counts of the valid and the rejected cases.
-	cases, rejected int
-	// seed is the run's seed as a decimal string.
-	seed string
-	// counterexample are the failing case's entries.
-	counterexample []Entry
-	// failure is the failing case's record.
-	failure *assert.Failure
-	// choices is the failing case's replay token.
-	choices *string
-	// others are the run's other failures.
-	others []Other
+	// result is the result of the run.
+	result Result
 	// divergence is the engine's divergence, whose sides the JSON states as
-	// the corpus does.
+	// the corpus does, and nil for a run that is not flaky.
 	divergence *engine.Divergence
-	// coverage is the requirement that the run missed.
-	coverage *Shortfall
-	// reason is the reason of a skipped run.
-	reason *string
 }
 
 // detailOf returns the detail of the record of r.
 func detailOf(r engine.Result) runDetail {
-	d := runDetail{
-		outcome:  Outcome(r.Outcome),
-		cases:    r.Cases,
-		rejected: r.Rejected,
-		seed:     strconv.FormatUint(r.Seed, 10),
-	}
-	if r.Failing != nil {
-		failure := failureOf(*r.Failing)
-		d.counterexample, d.failure = counterexampleOf(*r.Failing, r.Explanation), &failure
-	}
-	if r.Outcome == engine.Counterexample {
-		d.others = othersOf(r.Others)
-		if !r.Failing.Case.Valued() {
-			d.choices = &r.Token
-		}
-	}
-	d.divergence = r.Divergence
-	if r.Shortfall != nil {
-		d.coverage = shortfallOf(*r.Shortfall)
-	}
-	if r.Outcome == engine.Skipped {
-		d.reason = &r.Reason
-	}
-	return d
+	return runDetail{result: resultOf(r), divergence: r.Divergence}
 }
 
 // MarshalJSON returns the detail as the call record of a property states
@@ -119,16 +73,21 @@ func detailOf(r engine.Result) runDetail {
 // failure as its failure record, the bounds of a request as an object, and
 // null for a field that the outcome does not use.
 func (d runDetail) MarshalJSON() ([]byte, error) {
+	r := d.result
 	out := detailJSON{
-		Outcome: d.outcome, Cases: d.cases, Rejected: d.rejected, Seed: d.seed,
-		Counterexample: d.counterexample, Failure: d.failure, Choices: d.choices, Others: d.others,
-		Coverage: d.coverage, Reason: d.reason,
+		Outcome: r.Outcome, Cases: r.Cases, Rejected: r.Rejected, Seed: strconv.FormatUint(r.Seed, 10),
+		Counterexample: r.Counterexample, Failure: r.Failure, Others: r.Others, Coverage: r.Coverage,
+	}
+	if r.Choices != "" {
+		out.Choices = &r.Choices
+	}
+	if r.Outcome == Skipped {
+		out.Reason = &r.Reason
 	}
 	if v := d.divergence; v != nil {
-		public := divergenceOf(*v)
 		out.Divergence = &divergenceJSON{
 			What: Difference(v.What), Index: v.Index, Recorded: sideOf(v.Recorded),
-			Replayed: sideOf(v.Replayed), Label: public.Label, Step: public.Step,
+			Replayed: sideOf(v.Replayed), Label: r.Divergence.Label, Step: r.Divergence.Step,
 		}
 	}
 	return json.Marshal(out)
@@ -168,11 +127,12 @@ type divergenceJSON struct {
 // the outcome does not use. A run that fails did not skip, so its reason is
 // nil.
 func (d runDetail) fields() map[string]any {
+	r := d.result
 	detail := map[string]any{
-		outcomeField:        d.outcome,
-		casesField:          d.cases,
-		rejectedField:       d.rejected,
-		seedField:           d.seed,
+		outcomeField:        r.Outcome,
+		casesField:          r.Cases,
+		rejectedField:       r.Rejected,
+		seedField:           strconv.FormatUint(r.Seed, 10),
 		counterexampleField: nil,
 		failureField:        nil,
 		choicesField:        nil,
@@ -181,20 +141,20 @@ func (d runDetail) fields() map[string]any {
 		coverageField:       nil,
 		reasonField:         nil,
 	}
-	if d.failure != nil {
-		detail[counterexampleField], detail[failureField] = d.counterexample, *d.failure
+	if r.Failure != nil {
+		detail[counterexampleField], detail[failureField] = r.Counterexample, *r.Failure
 	}
-	if d.outcome == Counterexample {
-		detail[othersField] = d.others
+	if r.Outcome == Counterexample {
+		detail[othersField] = r.Others
 	}
-	if d.choices != nil {
-		detail[choicesField] = *d.choices
+	if r.Choices != "" {
+		detail[choicesField] = r.Choices
 	}
-	if d.divergence != nil {
-		detail[divergenceField] = divergenceOf(*d.divergence)
+	if r.Divergence != nil {
+		detail[divergenceField] = r.Divergence
 	}
-	if d.coverage != nil {
-		detail[coverageField] = d.coverage
+	if r.Coverage != nil {
+		detail[coverageField] = r.Coverage
 	}
 	return detail
 }

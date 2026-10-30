@@ -57,8 +57,9 @@ const (
 // operation that names its faults, the assertion of its record, the
 // contract it checks, the call's program counter, the settings of its runs,
 // the generators of types that its options state, the token it replays,
-// the directory of its store and the wrapper of its runs. A property is a
-// value that its runs do not change.
+// the directory of its store, the wrapper of its runs and the function that
+// receives the result of each run. A property is a value that its runs do
+// not change.
 type property struct {
 	// op is the operation of the call: prop.ForAll, prop.Fuzz, or a form's.
 	op string
@@ -84,6 +85,9 @@ type property struct {
 	// around is the wrapper of each run of the body, and nil for a call
 	// without Around.
 	around func(*testing.T, func(*testing.T))
+	// onResult receives the result of each run, and is nil for a call without
+	// OnResult.
+	onResult func(Result)
 	// replaying reports whether the call replays a token.
 	replaying bool
 }
@@ -137,6 +141,7 @@ func newProperty(tb assert.TB, op, contract string, pc uintptr, c config) (prope
 		generators: gs,
 		dir:        directoryOf(tb, c),
 		around:     c.around,
+		onResult:   c.onResult,
 	}
 	if tok, source, ok := tokenOf(c); ok {
 		if p.replay, err = token.Decode(tok); err != nil {
@@ -372,24 +377,29 @@ func (p property) save(r engine.Result) []error {
 
 // report reports the verdict of the property's call run on tb, from r, the
 // result of its run. A run that a fault of a case ended ends the call with
-// that fault. A run that passed passes, and a run that skipped skips the
-// first seat of the chain of tb that has Skipf with its reason. The record of
-// either states the detail of the run. A run that did none of these writes
-// the notes of its failing case into the log of tb, and then fails with its
-// record. The first [assert.Reporter] of the chain of tb receives the record
-// as an aborting failure, and a chain without one receives its sentence
-// through Fatalf.
+// that fault. Any other run first hands its result to the function of
+// OnResult, when the property has one. A run that passed passes, and a run
+// that skipped skips the first seat of the chain of tb that has Skipf with
+// its reason. The record of either states the detail of the run. A run that
+// did none of these writes the notes of its failing case into the log of tb,
+// and then fails with its record. The first [assert.Reporter] of the chain of
+// tb receives the record as an aborting failure, and a chain without one
+// receives its sentence through Fatalf.
 func (p property) report(tb assert.TB, run matcher.Running, r engine.Result) {
 	tb.Helper()
 	if r.Fault != nil {
 		p.fault(tb, run, r.Fault)
 		return
 	}
+	d := detailOf(r)
+	if p.onResult != nil {
+		p.onResult(d.result)
+	}
 	if r.Outcome == engine.Passed || r.Outcome == engine.Skipped {
 		var where assert.Where
 		var detail json.Marshaler
 		if run.Slot() != nil {
-			where, detail = whereOf(p.pc), detailOf(r)
+			where, detail = whereOf(p.pc), d
 		}
 		if r.Outcome == engine.Skipped {
 			run.SkipRun(matcher.Fatal, p.assertion, p.contract, where, detail, r.Reason)
@@ -401,7 +411,6 @@ func (p property) report(tb assert.TB, run matcher.Running, r engine.Result) {
 	for _, n := range notesOf(r) {
 		matcher.Note(tb, n)
 	}
-	d := detailOf(r)
 	run.FailRun(matcher.Fatal, assert.Failure{
 		Assertion: p.assertion, Contract: p.contract, Detail: d.fields(),
 		Where: whereOf(p.pc),

@@ -142,6 +142,10 @@
 // and 30 seconds, a cap of 8,192 choices per case, and one worker. Each
 // [Option] overrides one of them.
 //
+// [OnResult] hands the [Result] of a run to a function before the call
+// reports its verdict. A tool that runs many properties reads the counts, the
+// seed and the counterexample of each run from it.
+//
 // The seed is random for each run, unless [Seed] states one, the variable
 // DOKIMI_ASSERT_PROP_SEED states one in decimal, or the variable
 // DOKIMI_ASSERT_PROP_PROFILE names the ci profile, which derives the seed

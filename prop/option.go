@@ -263,6 +263,31 @@ func Around(wrap func(t *testing.T, run func(*testing.T))) Option {
 	}}
 }
 
+// OnResult makes each run hand its [Result] to f. A call of [ForAll], of a
+// property form or of [Fuzz] calls f once for each run. It calls f after the
+// run ends and before the call reports its verdict, so the notes of the
+// failing case, the call record, and the failure or the skip that the seat
+// receives all come after f returns. Fuzz calls f for the replay of the
+// stored cases on its testing.F and for each input.
+//
+// f runs on the goroutine of the call, whatever the number of [Workers]. A
+// run that a fault ends does not call f, and neither does a call that a fault
+// ends before its run. A panic of f passes through the call, and the call
+// does not report a verdict. Given more than once, the last f applies. It
+// panics for a nil f.
+//
+// The result shares its entries, its failure records and their maps with the
+// record that the call reports after f returns, so f must not change them.
+func OnResult(f func(Result)) Option {
+	if f == nil {
+		panic("prop: OnResult(nil) states no function")
+	}
+	return Option{set: func(c config) config {
+		c.onResult = f
+		return c
+	}}
+}
+
 // Bubble runs each run of the body in a testing/synctest bubble of its own,
 // as Around(synctest.Test) does.
 //
@@ -309,6 +334,9 @@ type config struct {
 	// around is the wrapper of each run of the body that Around states, and
 	// nil without one.
 	around func(*testing.T, func(*testing.T))
+	// onResult is the function that OnResult states, which receives the
+	// result of each run, and nil without one.
+	onResult func(Result)
 	// using are the generators of types that Using states, in the order
 	// stated.
 	using []using

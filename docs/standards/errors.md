@@ -183,6 +183,10 @@ type Error struct {
   wrapper again on the goroutine of the run. `synctest.Test` raises such a
   panic for a bubble that deadlocks. On one worker the goroutine of the run
   is the goroutine of the call.
+- `prop.OnResult` panics for a nil function. Its message starts with the
+  package and names the call: `prop: OnResult(nil) states no function`. The
+  call of a property runs the function on its own goroutine, so a panic of
+  the function passes through the call.
 - `Fault` of `assert` and `expect` panics for a nil error, because a nil
   error is not a fault. Its message starts with the package and names the
   call: `assert: Fault(tb, nil) states no fault`.

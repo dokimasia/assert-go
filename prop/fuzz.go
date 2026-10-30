@@ -33,7 +33,9 @@ const fuzzOp = "prop.Fuzz"
 // case that decodes to other values than its entry records, as ForAll does.
 // Fuzz runs no campaign, also under the campaign profile. [Replay],
 // DOKIMI_ASSERT_PROP_REPLAY, [Draws], [Cases] and [Require] apply to ForAll
-// and the property forms alone.
+// and the property forms alone. Under [OnResult], Fuzz hands the function
+// the result of the replay of the stored cases on f and the result of each
+// input.
 //
 // Each input's bytes decode into the choices of one case by the definition's
 // bridge rules, so every input is a valid case. A body that draws one byte
