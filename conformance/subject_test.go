@@ -80,6 +80,33 @@ func TestSubject(t *testing.T) {
 				"the subject fails on the read")
 		})
 
+		t.Run("returns a leaves-files-alone that fails on a file that its owner may not read", func(t *testing.T) {
+			t.Parallel()
+			mustRecordModes(t)
+			dir := files.Workspace(t, files.Tree{"a.txt": files.Text("a").WithMode(0o200)})
+			assert.ErrorIs(t, conformance.Subjects["leaves-files-alone"]().Files(dir), fs.ErrPermission,
+				"the subject fails on the read")
+		})
+
+		tests := []struct {
+			name string
+			give string
+		}{
+			{name: "returns a writes-a-file that fails in a directory that does not exist", give: "writes-a-file"},
+			{
+				name: "returns a writes-a-large-file that fails in a directory that does not exist",
+				give: "writes-a-large-file",
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				missing := filepath.Join(t.TempDir(), "missing")
+				assert.ErrorIs(t, conformance.Subjects[tt.give]().Files(missing), fs.ErrNotExist,
+					"the subject fails on the write")
+			})
+		}
+
 		t.Run("returns a settles-after that fails twice before it passes", func(t *testing.T) {
 			t.Parallel()
 			seated := conformance.Subjects["settles-after"]().Seated
