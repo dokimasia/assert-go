@@ -1,5 +1,5 @@
 {
-  "ergon": "0.17.0",
+  "ergon": "0.17.1",
   "files": [
     {
       "path": ".commitlint.yaml",
@@ -80,7 +80,7 @@
     {
       "path": ".github/workflows/release.yml",
       "producer": "github",
-      "sha256": "2997e71de585bdf3edb86d921b3518a76bdb9ba69973182ff2528e18325e2827"
+      "sha256": "56d0be0cfcf5ef85b80e1bf744769005dd874fa73288f615e77d0c85d5948da1"
     },
     {
       "path": ".github/workflows/security.yml",
