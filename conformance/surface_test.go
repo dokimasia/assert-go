@@ -366,6 +366,7 @@ var pinned = map[conformance.ID]any{
 	"cancellation-of":   assert.Context,
 	"cleanup":           assert.Cleanup,
 	"fault":             assert.Fault,
+	"write-record":      assert.WriteRecord,
 	"allocs-checked":    assert.AllocsChecked,
 
 	"recorder-seat.failed":       (*assert.Recorder).Failed,
@@ -422,6 +423,7 @@ var pinned = map[conformance.ID]any{
 	"prop.composite":       prop.Composite[int],
 	"prop.cases":           prop.Cases,
 	"prop.seed":            prop.Seed,
+	"prop.run-seed":        prop.RunSeed,
 	"prop.replay":          prop.Replay,
 	"prop.require":         prop.Require,
 	"prop.shrink":          prop.Shrink,

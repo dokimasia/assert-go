@@ -57,14 +57,29 @@ func TestTB(t *testing.T) {
 			expect.True(t, ran, "the recorder runs the function that Cleanup registered")
 		})
 	})
+
+	t.Run("WriteRecord", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("ends the call with a fault for a refused kind, as the aborting surface does", func(t *testing.T) {
+			t.Parallel()
+
+			r := expect.NewRecorder()
+			expect.WriteRecord(r, "suite", `{}`)
+			expect.Length(t, r.Faults(), 1, "one fault")
+			expect.Equal(t, r.Message(), `assert.WriteRecord: kind: "suite" does not match dokimi\.[a-z][a-z0-9-]*`,
+				"the fault of the aborting surface")
+		})
+	})
 }
 
-// TestTBAllocs checks the allocation ceilings of Context and Cleanup.
+// TestTBAllocs checks the allocation ceilings of Context, Cleanup and
+// WriteRecord.
 func TestTBAllocs(t *testing.T) {
 	alloctest.Check(t, tbCases())
 }
 
-// BenchmarkTB measures Context and Cleanup.
+// BenchmarkTB measures Context, Cleanup and WriteRecord.
 func BenchmarkTB(b *testing.B) {
 	for _, c := range tbCases() {
 		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
@@ -74,11 +89,11 @@ func BenchmarkTB(b *testing.B) {
 // noCleanup is a function that the allocation case of Cleanup registers.
 func noCleanup() {}
 
-// tbCases returns a call of Context on a recorder that states a context, and a
-// call of Cleanup on a recorder that runs the function, each with its
-// allocation ceiling. The recorder keeps the capacity of its list of
-// cleanups, so a registration that a run follows allocates nothing after the
-// first call.
+// tbCases returns a call of Context on a recorder that states a context, a
+// call of Cleanup on a recorder that runs the function, and a call of
+// WriteRecord on a recorder, which writes nothing, each with its allocation
+// ceiling. The recorder keeps the capacity of its list of cleanups, so a
+// registration that a run follows allocates nothing after the first call.
 func tbCases() []alloctest.Case {
 	seat := expect.NewRecorder().WithContext(context.Background())
 	cleaning := expect.NewRecorder()
@@ -87,6 +102,9 @@ func tbCases() []alloctest.Case {
 		{Name: "Cleanup", Call: func(assert.TB) {
 			expect.Cleanup(cleaning, noCleanup)
 			cleaning.RunCleanups()
+		}},
+		{Name: "WriteRecord", Allocs: 2, Call: func(assert.TB) {
+			expect.WriteRecord(seat, "dokimi.suite", `{"seed":"7"}`)
 		}},
 	}
 }

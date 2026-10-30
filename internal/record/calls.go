@@ -4,6 +4,7 @@
 package record
 
 import (
+	"strconv"
 	"sync"
 	"sync/atomic"
 
@@ -232,7 +233,7 @@ func (c *Calls) positionOf() func() int {
 func (c *Calls) emit(e *entry) {
 	text := encode(e)
 	if c.state == writing {
-		write(c.sink, e.seq, text)
+		write(c.sink, CallKind+"."+strconv.Itoa(e.seq), text)
 		return
 	}
 	for len(c.lines) < e.seq {

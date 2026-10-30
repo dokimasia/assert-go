@@ -114,3 +114,37 @@ func Cleanup(tb TB, f func()) {
 	tb.Helper()
 	matcher.Cleanup(tb, "assert.Cleanup", f)
 }
+
+// WriteRecord writes record into the output of the test of tb. record is the
+// JSON text of one record of kind. The output receives an attr event with the
+// key <kind>.<n>, and WriteRecord numbers the records of each kind of a test
+// from 1. An attr event is one line, so WriteRecord replaces each line break of
+// record with a space. The JSON value of the record stays the same. A record
+// that does not fit the line buffer of test2json is split over consecutive
+// attr events of the key, as a call record is. A tool of dokimasia writes its
+// own records into the output of a test this way:
+//
+//	assert.WriteRecord(t, "dokimi.suite", `{"suite":"ledger","seed":"7"}`)
+//
+// WriteRecord looks for the seat of the test along the chain of tb, as [TB]
+// describes. It writes into the first seat that is or embeds a *testing.T,
+// *testing.B or *testing.F. It does not write when a seat that keeps its call
+// records as values comes first, and a [Recorder] is such a seat. WriteRecord
+// ignores DOKIMI_ASSERT_RECORD.
+//
+// WriteRecord ends the call with a fault, as [Fault] ends one, and does not
+// write the record in these cases:
+//
+//   - kind does not match dokimi\.[a-z][a-z0-9-]*.
+//   - kind is dokimi.assert, the kind of the call records of this module.
+//   - record is not the JSON text of one object.
+//
+// # Allocation contract
+//
+// WriteRecord allocates a copy of record to check it. On a test's seat it also
+// allocates the key of the record and what the method Attr allocates. For a
+// refused kind or record it allocates the fault.
+func WriteRecord(tb TB, kind, record string) {
+	tb.Helper()
+	matcher.WriteRecord(tb, "assert.WriteRecord", kind, record)
+}

@@ -6,7 +6,6 @@ package record
 import (
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf16"
@@ -26,9 +25,9 @@ const (
 	attrSeparators = 3
 )
 
-// keyPrefix starts the key of every attribute of a call record, which ends
-// with the call's number.
-const keyPrefix = "dokimi.assert."
+// CallKind is the kind of the call records of this module. The key of every
+// attribute of a call record is the kind, a dot and the call's number.
+const CallKind = "dokimi.assert"
 
 // attrSeat is a test's seat, which writes attributes into the test's
 // output: testing.T, testing.B and testing.F, and a type that embeds one of
@@ -63,11 +62,11 @@ func testCalls(t attrSeat) *Calls {
 	return c.(*Calls)
 }
 
-// write writes the record of call seq through the Attr of seat, under the
-// key dokimi.assert.<seq>. It splits a record whose line would not fit
-// test2json's buffer over consecutive attributes of the same key, and a
-// reader joins their values in order. Each value is valid UTF-8, because
-// every split falls between two runes:
+// write writes the record text through the Attr of seat, under key. It
+// splits a record whose line would not fit test2json's buffer over
+// consecutive attributes of the same key, and a reader joins their values in
+// order. Each value is valid UTF-8, because every split falls between two
+// runes:
 //
 //   - A line with room for a rune of any length gets the runes that fit.
 //   - A line with room for fewer bytes than a rune can take gets the record
@@ -75,8 +74,7 @@ func testCalls(t attrSeat) *Calls {
 //     rune.
 //   - A line without room for one byte gets the whole record, which
 //     test2json reports as output and not as an attribute.
-func write(seat attrSeat, seq int, text string) {
-	key := keyPrefix + strconv.Itoa(seq)
+func write(seat attrSeat, key, text string) {
 	room := lineBuffer - attrFraming - attrSeparators - len(seat.Name()) - len(key)
 	switch {
 	case room < 1:

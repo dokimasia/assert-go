@@ -39,3 +39,16 @@ func Cleanup(tb TB, f func()) {
 	tb.Helper()
 	assert.Cleanup(tb, f)
 }
+
+// WriteRecord writes record into the output of the test of tb, as
+// [go.dokimi.dev/assert.WriteRecord] does. record is the JSON text of one
+// record of kind. For a refused kind or record, WriteRecord ends the call with
+// a fault and does not write the record.
+//
+// # Allocation contract
+//
+// WriteRecord allocates what [go.dokimi.dev/assert.WriteRecord] allocates.
+func WriteRecord(tb TB, kind, record string) {
+	tb.Helper()
+	assert.WriteRecord(tb, kind, record)
+}

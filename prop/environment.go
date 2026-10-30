@@ -9,10 +9,14 @@ import (
 	"strconv"
 	"time"
 
+	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/prop/random"
 )
+
+// runSeedOp is the operation in the faults of RunSeed.
+const runSeedOp = "prop.RunSeed"
 
 // The environment variables that set the defaults of every property of a
 // test run, which a [Hermetic] run does not read. An unset variable and an
@@ -127,6 +131,36 @@ func seedOf(c config, contract string) (uint64, error) {
 		return random.Mix(contract), nil
 	}
 	return rand.Uint64(), nil //nolint:gosec // a seed varies the cases of a run and needs no secrecy
+}
+
+// RunSeed returns the seed that a run of contract takes without the options
+// [Seed] and [Hermetic]. It returns the value of DOKIMI_ASSERT_PROP_SEED when
+// the variable is set. In a test binary that a mutation run instrumented, and
+// under the ci profile, it returns the seed that a run derives from the
+// contract. Otherwise each call returns a new random seed.
+//
+// A caller that passes the result to Seed in each of its runs gives every run
+// the seed that its first run would take:
+//
+//	seed := prop.RunSeed(t, "the suite of the ledger")
+//	prop.ForAll(t, "a write is read back", writeRead, prop.Seed(seed))
+//	prop.ForAll(t, "a delete hides the key", deleteHides, prop.Seed(seed))
+//
+// A malformed DOKIMI_ASSERT_PROP_SEED and a profile other than default, ci
+// and campaign end the call with a fault of prop.RunSeed, as [assert.Fault]
+// ends one. RunSeed then returns 0.
+//
+// # Allocation contract
+//
+// RunSeed does not allocate, except for the fault of a malformed variable.
+func RunSeed(tb assert.TB, contract string) uint64 {
+	tb.Helper()
+	seed, err := seedOf(config{}, contract)
+	if err != nil {
+		matcher.End(tb, fault.In(runSeedOp, err))
+		return 0
+	}
+	return seed
 }
 
 // tokenOf returns the token that a run replays and the name of where it is

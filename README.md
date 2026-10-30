@@ -425,6 +425,19 @@ that a mutation run instrumented, which runs with `DOKIMI_MUTATE_MUTANT`
 in its environment, every property derives its seed from its contract
 and runs as an ordinary run, without writing to the store.
 
+`prop.RunSeed(tb, contract)` returns the seed that a run of `contract`
+takes without `prop.Seed`. It returns the value of `DOKIMI_ASSERT_PROP_SEED`
+when the variable is set. In a mutation run and under the profile `ci`, it
+returns the seed that a run derives from the contract. Otherwise each call
+returns a new random seed. A tool that runs many properties under one seed
+passes the result to `prop.Seed` in each run:
+
+```go
+seed := prop.RunSeed(t, "the suite of the ledger")
+prop.ForAll(t, "a write is read back", writeRead, prop.Seed(seed))
+prop.ForAll(t, "a delete hides the key", deleteHides, prop.Seed(seed))
+```
+
 `prop.Around(synctest.Test)` runs each run of a property's body in a
 `testing/synctest` bubble of its own, under `ForAll`, the forms and
 `Fuzz`. Each run starts at the bubble's first instant, and a body can wait
@@ -601,6 +614,19 @@ Recording is off by default, and an unset, empty or `0` value turns it
 off. Any other value is an error that every assertion reports. An
 `assert.Recorder` keeps the call records of its own calls whatever the
 variable states, and `Records` returns them.
+
+A tool of dokimasia writes its own records into the output of a test with
+`assert.WriteRecord`. Each record is an `attr` event of the test under the
+key `<kind>.<n>`. The kind matches `dokimi\.[a-z][a-z0-9-]*`, and
+`WriteRecord` numbers the records of each kind of a test from 1:
+
+```go
+assert.WriteRecord(t, "dokimi.suite", `{"suite":"ledger","seed":"7"}`)
+```
+
+`WriteRecord` ignores `DOKIMI_ASSERT_RECORD`, and it does not write on a
+recorder. A kind outside the pattern, the kind `dokimi.assert` of the call
+records and a record that is not one JSON object end the call with a fault.
 
 ## Hand-written checks
 

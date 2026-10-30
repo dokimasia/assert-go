@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/bench"
 	"go.dokimi.dev/assert/internal/childtest"
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/matcher"
@@ -253,6 +254,101 @@ func TestEnvironmentEnv(t *testing.T) {
 			t.Setenv(profileVariable, "campaign")
 			inMutationRun(t)
 		})
+	})
+
+	t.Run("RunSeed", func(t *testing.T) {
+		t.Run("returns the seed of DOKIMI_ASSERT_PROP_SEED", func(t *testing.T) {
+			clean(t)
+			t.Setenv(seedVariable, "7")
+			assert.Equal(t, prop.RunSeed(&matchertest.Seat{}, contract), uint64(7), "the variable's seed")
+		})
+
+		t.Run("derives the seed from the contract under the ci profile", func(t *testing.T) {
+			clean(t)
+			t.Setenv(profileVariable, "ci")
+			assert.Equal(t, prop.RunSeed(&matchertest.Seat{}, contract), random.Mix(contract), "the contract's seed")
+		})
+
+		t.Run("takes the seed variable over the ci profile", func(t *testing.T) {
+			clean(t)
+			t.Setenv(profileVariable, "ci")
+			t.Setenv(seedVariable, "7")
+			assert.Equal(t, prop.RunSeed(&matchertest.Seat{}, contract), uint64(7), "the variable's seed")
+		})
+
+		t.Run("draws a new random seed for each call without a variable", func(t *testing.T) {
+			clean(t)
+			seat := &matchertest.Seat{}
+			one, other := prop.RunSeed(seat, contract), prop.RunSeed(seat, contract)
+			if matcher.Mutated() {
+				assert.Equal(t, []uint64{one, other}, []uint64{random.Mix(contract), random.Mix(contract)},
+					"the contract's seed in each call of a mutation run")
+				return
+			}
+			assert.NotEqual(t, one, other, "two seeds, equal once in 2^64 calls")
+		})
+
+		t.Run("ends the call with a fault of RunSeed for a seed that is no decimal number", func(t *testing.T) {
+			clean(t)
+			t.Setenv(seedVariable, "seven")
+			seat := &matchertest.Seat{}
+			assert.Equal(t, prop.RunSeed(seat, contract), uint64(0), "no seed")
+			expectOnlyFault(t, seat.Faults(), fault.Error{
+				Op:     runSeedOp,
+				Path:   fault.Path{fault.Field(seedVariable)},
+				Reason: `"seven" is no decimal number below 2^64`,
+			})
+		})
+
+		t.Run("ends the call with a fault of RunSeed for a profile other than default, ci and campaign",
+			func(t *testing.T) {
+				clean(t)
+				t.Setenv(profileVariable, "nightly")
+				seat := &matchertest.Seat{}
+				assert.Equal(t, prop.RunSeed(seat, contract), uint64(0), "no seed")
+				expectOnlyFault(t, seat.Faults(), profileFault(runSeedOp))
+			})
+
+		t.Run("gives a run under Seed the seed that a run of the contract without Seed takes", func(t *testing.T) {
+			clean(t)
+			t.Setenv(profileVariable, "ci")
+			seed := prop.RunSeed(&matchertest.Seat{}, contract)
+			assert.Equal(t, detailOf(failsAtLeast(10000, 1001, big), prop.Seed(seed))[seedField],
+				detailOf(failsAtLeast(10000, 1001, big))[seedField], "the seed of a run without Seed")
+		})
+
+		t.Run("derives the seed from the contract in a test binary that a mutation run instrumented",
+			func(t *testing.T) {
+				if childtest.InChild(t) {
+					assert.Equal(t, prop.RunSeed(t, contract), random.Mix(contract), "the contract's seed")
+					return
+				}
+				clean(t)
+				inMutationRun(t)
+			})
+	})
+}
+
+// runSeedOp is the operation of RunSeed, which names its faults.
+const runSeedOp = "prop.RunSeed"
+
+// TestEnvironmentAllocs checks the allocation ceiling of RunSeed. It sets the
+// process's environment, so it does not run in parallel.
+func TestEnvironmentAllocs(t *testing.T) {
+	clean(t)
+	seat := &matchertest.Seat{}
+	assert.MaxAllocs(t, func() { _ = prop.RunSeed(seat, contract) }, 0, "RunSeed allocates nothing")
+}
+
+// BenchmarkEnvironment measures RunSeed.
+func BenchmarkEnvironment(b *testing.B) {
+	b.Run("RunSeed", func(b *testing.B) {
+		seat := &matchertest.Seat{}
+		c := bench.Start(b).MaxAllocs(0)
+		defer c.End()
+		for c.Loop() {
+			_ = prop.RunSeed(seat, contract)
+		}
 	})
 }
 

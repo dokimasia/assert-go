@@ -220,6 +220,57 @@ func TestTB(t *testing.T) {
 		})
 	})
 
+	t.Run("WriteRecord", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("writes each record of a kind into the output of the test, numbered from 1", func(t *testing.T) {
+			t.Parallel()
+			if childtest.InChild(t) {
+				assert.WriteRecord(t, "dokimi.suite", `{"seed":"7"}`)
+				assert.WriteRecord(wrapped{t}, "dokimi.suite", `{"seed":"8"}`)
+				assert.WriteRecord(t, "dokimi.suite", "{\n\"seed\":\"9\"}")
+				return
+			}
+			out, err := childtest.Run(t, t.Name())
+			if err != nil || !strings.Contains(out, "--- PASS: "+t.Name()+" ") {
+				t.Fatalf("the child exits with %v, want a pass:\n%s", err, out)
+			}
+			for _, want := range []string{
+				"=== ATTR  " + t.Name() + ` dokimi.suite.1 {"seed":"7"}`,
+				"=== ATTR  " + t.Name() + ` dokimi.suite.2 {"seed":"8"}`,
+				"=== ATTR  " + t.Name() + ` dokimi.suite.3 { "seed":"9"}`,
+			} {
+				if !strings.Contains(out, want) {
+					t.Fatalf("the child wrote no %q, without DOKIMI_ASSERT_RECORD:\n%s", want, out)
+				}
+			}
+		})
+
+		t.Run("writes nothing on a recorder", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			assert.WriteRecord(r, "dokimi.suite", `{}`)
+			if r.Failed() || len(r.Records()) != 0 {
+				t.Fatalf("the recorder failed: %v, and kept %v, want neither", r.Failed(), r.Records())
+			}
+		})
+
+		t.Run("ends the call with a fault of WriteRecord for the kind of the call records", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &faultSeat{}
+			assert.WriteRecord(seat, "dokimi.assert", `{}`)
+
+			var got *fault.Error
+			if len(seat.faults) != 1 || !errors.As(seat.faults[0], &got) || got.Op != "assert.WriteRecord" ||
+				got.Reason != "dokimi.assert is the kind of the call records of assert" {
+
+				t.Fatalf("WriteRecord reported %v, want the fault of assert.WriteRecord", seat.faults)
+			}
+		})
+	})
+
 	t.Run("Unwrap", func(t *testing.T) {
 		t.Parallel()
 
@@ -279,25 +330,30 @@ func TestTB(t *testing.T) {
 	})
 }
 
-// TestTBAllocs checks the allocation ceilings of Context and Cleanup.
+// TestTBAllocs checks the allocation ceilings of Context, Cleanup and
+// WriteRecord.
 func TestTBAllocs(t *testing.T) {
 	alloctest.Check(t, tbCases())
 }
 
-// BenchmarkTB measures Context and Cleanup.
+// BenchmarkTB measures Context, Cleanup and WriteRecord.
 func BenchmarkTB(b *testing.B) {
 	for _, c := range tbCases() {
 		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
 	}
 }
 
-// tbCases returns a call of Context on a recorder that states a context, and a
-// call of Cleanup on a seat whose Cleanup does nothing, each with its
-// allocation ceiling.
+// tbCases returns a call of Context on a recorder that states a context, a
+// call of Cleanup on a seat whose Cleanup does nothing, and a call of
+// WriteRecord on a recorder, which writes nothing, each with its allocation
+// ceiling.
 func tbCases() []alloctest.Case {
 	seat := assert.NewRecorder().WithContext(context.Background())
 	return []alloctest.Case{
 		{Name: "Context", Call: func(assert.TB) { tbContext = assert.Context(seat) }},
 		{Name: "Cleanup", Call: func(assert.TB) { assert.Cleanup(cleaningSeat{}, noCleanup) }},
+		{Name: "WriteRecord", Allocs: 2, Call: func(assert.TB) {
+			assert.WriteRecord(seat, "dokimi.suite", `{"seed":"7"}`)
+		}},
 	}
 }
