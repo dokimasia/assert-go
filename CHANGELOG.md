@@ -1,5 +1,17 @@
 # go.dokimi.dev/assert
 
+## 0.13.0
+
+### Minor Changes
+
+- 65068ee: Implement definition 13.5.0 and write its version into every call record.
+- 65068ee: Add `prop.RunSeed` to return the seed that a run takes without `prop.Seed`.
+- 65068ee: Add `assert.WriteRecord` and `expect.WriteRecord` to write a record of another kind into the output of a test.
+
+### Patch Changes
+
+- a2d2d17: Fix the allocation contract of `prop.RunSeed` to include the allocations of `os.Getenv` on Windows.
+
 ## 0.12.0
 
 ### Minor Changes
