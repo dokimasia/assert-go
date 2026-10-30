@@ -1,5 +1,12 @@
 # go.dokimi.dev/assert
 
+## 0.14.0
+
+### Minor Changes
+
+- 2011042: Implement definition 13.6.0 and write its version into every call record.
+- 2011042: Add `prop.OnResult` and `prop.Result` to hand a function the result of each run of a property.
+
 ## 0.13.0
 
 ### Minor Changes
