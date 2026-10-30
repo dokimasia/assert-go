@@ -4,6 +4,7 @@
 package prop_test
 
 import (
+	"runtime"
 	"strconv"
 	"testing"
 
@@ -329,22 +330,34 @@ func TestEnvironmentEnv(t *testing.T) {
 	})
 }
 
-// runSeedOp is the operation of RunSeed, which names its faults.
+// runSeedOp is the operation in the faults of RunSeed.
 const runSeedOp = "prop.RunSeed"
+
+// runSeedAllocs returns the allocation ceiling of RunSeed for two empty
+// variables. On Windows os.Getenv allocates a UTF-16 copy of the name and a
+// buffer for the value on each call.
+func runSeedAllocs() uint64 {
+	if runtime.GOOS == "windows" {
+		return 4
+	}
+	return 0
+}
 
 // TestEnvironmentAllocs checks the allocation ceiling of RunSeed. It sets the
 // process's environment, so it does not run in parallel.
 func TestEnvironmentAllocs(t *testing.T) {
 	clean(t)
 	seat := &matchertest.Seat{}
-	assert.MaxAllocs(t, func() { _ = prop.RunSeed(seat, contract) }, 0, "RunSeed allocates nothing")
+	assert.MaxAllocs(t, func() { _ = prop.RunSeed(seat, contract) }, runSeedAllocs(),
+		"RunSeed allocates only what os.Getenv allocates")
 }
 
 // BenchmarkEnvironment measures RunSeed.
 func BenchmarkEnvironment(b *testing.B) {
 	b.Run("RunSeed", func(b *testing.B) {
+		clean(b)
 		seat := &matchertest.Seat{}
-		c := bench.Start(b).MaxAllocs(0)
+		c := bench.Start(b).MaxAllocs(runSeedAllocs())
 		defer c.End()
 		for c.Loop() {
 			_ = prop.RunSeed(seat, contract)
@@ -352,11 +365,11 @@ func BenchmarkEnvironment(b *testing.B) {
 	})
 }
 
-// clean sets each variable of the environment of a run to the empty
-// string, which states nothing, until the test ends.
-func clean(t *testing.T) {
-	t.Helper()
+// clean sets each variable that a run reads to the empty string until the
+// test ends.
+func clean(tb testing.TB) {
+	tb.Helper()
 	for _, name := range []string{seedVariable, profileVariable, replayVariable, budgetVariable} {
-		t.Setenv(name, "")
+		tb.Setenv(name, "")
 	}
 }

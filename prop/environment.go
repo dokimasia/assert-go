@@ -152,7 +152,10 @@ func seedOf(c config, contract string) (uint64, error) {
 //
 // # Allocation contract
 //
-// RunSeed does not allocate, except for the fault of a malformed variable.
+// RunSeed allocates nothing beyond the allocations of os.Getenv and the fault
+// of a malformed variable. os.Getenv does not allocate on Linux and macOS. On
+// Windows it allocates a UTF-16 copy of the name and a buffer for the value on
+// each call. It also allocates the string of a value that is not empty.
 func RunSeed(tb assert.TB, contract string) uint64 {
 	tb.Helper()
 	seed, err := seedOf(config{}, contract)
