@@ -172,7 +172,7 @@ func (d *differ) pointers(path *trail, x, y reflect.Value, depth int) {
 	if d.descended(x, y) {
 		return
 	}
-	d.walk(path, x.Elem(), y.Elem(), depth+1)
+	d.walk(path, target(x), target(y), depth+1)
 }
 
 // slices adds the differences of two slices: the two whole when one is

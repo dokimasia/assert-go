@@ -143,7 +143,7 @@ func (h *hasher) pointer(v reflect.Value, depth int) {
 		h.mix(nilWord)
 		return
 	}
-	h.value(v.Elem(), depth+1)
+	h.value(target(v), depth+1)
 }
 
 // slice mixes a slice into the hash: a nil slice as itself, and any other

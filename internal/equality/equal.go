@@ -260,7 +260,7 @@ func part(v reflect.Value, i int) reflect.Value {
 	case reflect.Struct:
 		return v.Field(i)
 	default:
-		return v.Elem()
+		return target(v)
 	}
 }
 
