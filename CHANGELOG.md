@@ -1,5 +1,11 @@
 # go.dokimi.dev/assert
 
+## 0.14.1
+
+### Patch Changes
+
+- 7280efe: Fix `Equal` and every comparison of values to read `time.Local` after the time package fills it.
+
 ## 0.14.0
 
 ### Minor Changes
