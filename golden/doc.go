@@ -31,6 +31,10 @@
 // mode, and a new one gets the mode 0o644. An update of a golden tree also
 // writes each file that changes through a temporary file and a rename.
 //
+// On Windows, a reader or a virus scanner that has a golden file open can
+// refuse its read and its rename. A call retries a refused read or rename of
+// a golden file for up to 2 seconds.
+//
 // # Scrubbing
 //
 // Output that contains a timestamp, a digest or a generated identifier
@@ -71,5 +75,5 @@
 // Imports go.dokimi.dev/assert, its internal fault, filetree and matcher,
 // and the standard library's bytes, cmp, encoding/json, errors, flag, fmt,
 // io, io/fs, os, path/filepath, regexp, runtime, strconv, strings, sync and
-// unicode/utf8.
+// unicode/utf8. On Windows it also imports syscall and time.
 package golden

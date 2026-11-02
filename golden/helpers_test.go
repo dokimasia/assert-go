@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/filetree"
@@ -23,6 +24,12 @@ const (
 
 // goldenPerm is the mode of a golden file that a test writes.
 const goldenPerm = 0o644
+
+// lockWait is how long a case gives a call on a golden file to read or
+// replace the file while another call has the file's lock or while a handle
+// refuses to share the file. A call that read or replaced the file would do
+// so within microseconds.
+const lockWait = 100 * time.Millisecond
 
 // mustRecordModes skips t on a platform whose file systems record no
 // permission bits, where a tree reads no mode and no execute bit.

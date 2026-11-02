@@ -152,7 +152,7 @@ func replace(f *os.File, path, content string) error {
 	_, err := f.WriteString(content)
 	err = errors.Join(err, f.Close(), os.Chmod(f.Name(), mode))
 	if err == nil {
-		err = os.Rename(f.Name(), path)
+		_, err = retried(func() (struct{}, error) { return struct{}{}, os.Rename(f.Name(), path) })
 	}
 	if err != nil {
 		return errors.Join(err, os.Remove(f.Name()))
@@ -203,7 +203,7 @@ func matchFile(c call, got []byte, update bool, scrubbers []Scrubber) {
 	c.tb.Helper()
 
 	mine := scrub(string(got), scrubbers)
-	raw, err := os.ReadFile(c.path)
+	raw, err := retried(func() ([]byte, error) { return os.ReadFile(c.path) })
 	if os.IsNotExist(err) {
 		if update {
 			c.write(mine)

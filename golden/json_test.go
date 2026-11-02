@@ -5,6 +5,7 @@ package golden_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -303,14 +304,21 @@ func TestJSON(t *testing.T) {
 
 			path := writtenJSON(t, `{}`)
 			const writers = 32
+			recorders := make([]*assert.Recorder, writers)
 			var wg sync.WaitGroup
 			for i := range writers {
+				recorders[i] = assert.NewRecorder()
 				wg.Go(func() {
-					golden.MatchJSONField(assert.NewRecorder(), path, fmt.Sprintf("f%02d", i), []byte(strconv.Itoa(i)),
+					golden.MatchJSONField(recorders[i], path, fmt.Sprintf("f%02d", i), []byte(strconv.Itoa(i)),
 						updating)
 				})
 			}
 			wg.Wait()
+			var faults []error
+			for _, r := range recorders {
+				faults = append(faults, r.Faults()...)
+			}
+			assert.NoError(t, errors.Join(faults...), "every call ends without a fault")
 			assert.Length(t, parse(t, path), writers, "the file contains the field of every call")
 		})
 
@@ -372,11 +380,6 @@ func TestJSON(t *testing.T) {
 		}
 	})
 }
-
-// lockWait is how long a call on a golden file is given to read the file
-// while another call has the file's lock. A call that read it would do so
-// within microseconds.
-const lockWait = 100 * time.Millisecond
 
 // TestJSONEnv checks the calls of MatchJSONField on the paths that name one
 // golden file. Its case changes the working directory of the process, which
