@@ -4,19 +4,13 @@
 package equality_test
 
 import (
-	"os"
-	"os/exec"
 	"reflect"
 	"testing"
 	"time"
 
+	"go.dokimi.dev/assert/internal/childtest"
 	"go.dokimi.dev/assert/internal/equality"
 )
-
-// childVariable is the variable that makes a process of the test binary run
-// a walk beside the first formatting of a local time, in place of starting
-// processes that do.
-const childVariable = "DOKIMI_EQUALITY_LOCAL_CHILD"
 
 // children is the number of processes that each case starts. The time
 // package fills the fields of time.Local once in each process, so a process
@@ -71,14 +65,12 @@ func TestLocal(t *testing.T) {
 
 			t.Run("reads time.Local after the time package fills it", func(t *testing.T) {
 				t.Parallel()
-				if os.Getenv(childVariable) != "" {
+				if childtest.InChild(t) {
 					beside(t, tt.walk, tt.failure)
 					return
 				}
 				for range children {
-					cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestLocal$/^"+tt.name+"$")
-					cmd.Env = append(os.Environ(), childVariable+"=1")
-					if out, err := cmd.CombinedOutput(); err != nil {
+					if out, err := childtest.Run(t, t.Name()); err != nil {
 						t.Fatalf("a process that runs %s beside the first formatting of a local time fails: %v\n%s",
 							tt.name, err, out)
 					}
