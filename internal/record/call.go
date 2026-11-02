@@ -52,6 +52,9 @@ const (
 	Edge Phase = "edge"
 	// Coverage is a random case after the first coverage check.
 	Coverage Phase = "coverage"
+	// Confirm is the replay of a valid case under Confirm, right after the
+	// case.
+	Confirm Phase = "confirm"
 	// Replay is the replay of the failing case before shrinking.
 	Replay Phase = "replay"
 	// Shrink is a candidate that the shrinker runs.

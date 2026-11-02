@@ -132,6 +132,7 @@ func newProperty(tb assert.TB, op, contract string, pc uintptr, c config) (prope
 			Shrink:       c.shrink,
 			ShrinkTime:   c.shrinkTime,
 			Explain:      c.explain,
+			Confirm:      c.confirm,
 			Clock:        matcher.ClockOf(tb),
 			Workers:      c.workers,
 			Draws:        entries,

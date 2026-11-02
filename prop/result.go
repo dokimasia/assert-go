@@ -16,8 +16,9 @@ import (
 // A field that the outcome does not use is nil, and a text that the outcome
 // does not use is empty:
 //
-//   - Counterexample and Failure are set for a run with a failing case: a
-//     counterexample, and a flaky run whose replay differed.
+//   - Counterexample is set for a counterexample and for a flaky run whose
+//     replay differed, and Failure for such a run whose replayed case failed.
+//     A flaky replay of a valid case under [Confirm] has no failure.
 //   - Others is set for a counterexample, and Choices for a counterexample
 //     that is no example of values. An example of values has no replay token.
 //   - Divergence is set for a flaky run, and Coverage for a run that missed a
@@ -56,8 +57,11 @@ func resultOf(r engine.Result) Result {
 		Outcome: Outcome(r.Outcome), Cases: r.Cases, Rejected: r.Rejected, Seed: r.Seed, Reason: r.Reason,
 	}
 	if r.Failing != nil {
+		result.Counterexample = counterexampleOf(*r.Failing, r.Explanation)
+	}
+	if r.Failing != nil && r.Failing.Status == engine.CaseFailed {
 		failure := failureOf(*r.Failing)
-		result.Counterexample, result.Failure = counterexampleOf(*r.Failing, r.Explanation), &failure
+		result.Failure = &failure
 	}
 	if r.Outcome == engine.Counterexample {
 		result.Others = othersOf(r.Others)

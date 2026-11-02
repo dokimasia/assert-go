@@ -131,6 +131,10 @@ type Settings struct {
 	ShrinkClock LimitClock
 	// Explain reports whether the run explains its counterexample.
 	Explain bool
+	// Confirm is the interval of the replays of valid cases: the run replays
+	// each valid case whose count is a multiple of Confirm right after the
+	// case, from its choices. 0 replays none.
+	Confirm int
 	// Clock is the clock of the test, which every case reads, and the
 	// platform clock when nil.
 	Clock assert.Clock
@@ -249,12 +253,18 @@ type Result struct {
 // phase: before the run finds a failing case, and in the replay, the shrink
 // and the explanation of one.
 //
+// Under s.Confirm, the run replays each valid case whose count is a multiple
+// of s.Confirm right after the case, as it replays a failing case. A replay
+// that requests other bounds, observes another fingerprint or fails ends the
+// run as [Flaky], with the valid case as [Result.Failing]. An example of
+// values has no choices, and the run does not replay it.
+//
 // The slot of s takes the calls of every case that a run on one worker
 // runs, in that order, each under the phase of its case: the case of the
 // Draws entries and the examples under example, then stored, simplest,
 // random before the first coverage check and coverage after it, prefix,
-// edge, and replay, shrink and explain for the runs that conclude a
-// failing case.
+// edge, confirm for the replay of a valid case, and replay, shrink and
+// explain for the runs that conclude a failing case.
 func Run(body Body, s Settings) Result {
 	s = withClocks(s)
 	return conclude(body, s, explore(body, s))
@@ -271,12 +281,12 @@ func Conclude(body Body, s Settings, failing Execution) Result {
 }
 
 // RunReplay runs the one case that choices record, and reports a failure
-// as found, without shrinking or explaining it. The calls of the case are
-// recorded under phase: [record.Token] for the case of a replay token, and
-// [record.Stored] for a stored case.
+// as found, without shrinking or explaining it. The case is the first valid
+// case of the run when it passes, and s.Confirm of 1 replays it. The calls of
+// the case are recorded under phase: [record.Token] for the case of a replay
+// token, and [record.Stored] for a stored case.
 func RunReplay(body Body, s Settings, choices []choice.Choice, phase record.Phase) Result {
-	s = withClocks(s)
-	t := newTally(s)
+	t := newTally(body, s)
 	r, ended := t.take(execute(body, replaying{choices: choices}, s), phase)
 	if !ended {
 		if r, ended = t.missing(); !ended {
@@ -284,36 +294,58 @@ func RunReplay(body Body, s Settings, choices []choice.Choice, phase record.Phas
 		}
 		return r
 	}
-	if r.Failing != nil {
+	if r.Outcome == Counterexample {
 		r.Token = token.Encode(r.Failing.Case.Choices())
 	}
 	return r
 }
 
-// tally counts the cases of a run so far.
+// Count counts e, a case that a body ran outside a run, such as a case that
+// [Bridge] decoded from a fuzzer's bytes, as the one case of a run, and
+// returns the result of that run. A passing case is the one valid case of
+// the run, and s.Confirm of 1 replays it as [Run] replays a valid case. A
+// rejected case passes the run with one rejected case. A case that fails,
+// skips or ends with a fault ends the run as it ends a run of [Run]. The
+// result reports a failing case as found, and [Conclude] concludes it.
+func Count(body Body, s Settings, e Execution) Result {
+	t := newTally(body, s)
+	if r, ended := t.count(e); ended {
+		return r
+	}
+	return t.result(Passed)
+}
+
+// tally counts the cases of a run so far, and replays each valid case whose
+// count is a multiple of the run's Confirm.
 type tally struct {
-	// seed is the seed of the run.
-	seed uint64
+	// body is the property's body, and s the settings of the run.
+	body Body
+	s    Settings
 	// valid and rejected count the valid and the rejected cases.
 	valid, rejected int
 	// requested reports whether any case requested an input.
 	requested bool
 	// labels count the valid cases under each label.
 	labels map[string]int
-	// slot is the slot of the property's call record, and nil for a
-	// property that is not recorded.
-	slot *record.Slot
 }
 
-// newTally returns the tally of a run of s.
-func newTally(s Settings) *tally {
-	return &tally{seed: s.Seed, labels: make(map[string]int), slot: s.Slot}
+// newTally returns the tally of a run of body under s.
+func newTally(body Body, s Settings) *tally {
+	return &tally{body: body, s: s, labels: make(map[string]int)}
 }
 
 // take counts one case, whose calls the property's record takes under
 // phase, and returns the result it ends the run with.
 func (t *tally) take(e Execution, phase record.Phase) (Result, bool) {
-	e.take(t.slot, phase)
+	e.take(t.s.Slot, phase)
+	return t.count(e)
+}
+
+// count counts one case whose calls the property's record has taken, and
+// returns the result it ends the run with. It replays a valid case whose
+// count is a multiple of the run's Confirm, unless the case is an example of
+// values.
+func (t *tally) count(e Execution) (Result, bool) {
 	if e.Status == CaseRefused {
 		return Result{Refused: e.Refusal}, true
 	}
@@ -345,13 +377,32 @@ func (t *tally) take(e Execution, phase record.Phase) (Result, bool) {
 		for _, label := range e.Case.Labels() {
 			t.labels[label]++
 		}
+		if t.s.Confirm > 0 && t.valid%t.s.Confirm == 0 && !e.Case.Valued() {
+			return t.confirm(e)
+		}
 	}
 	return Result{}, false
 }
 
+// confirm replays the valid case e under the phase confirm, and returns the
+// result that the replay ends the run with: its fault, or a flaky result
+// when it differs from e.
+func (t *tally) confirm(e Execution) (Result, bool) {
+	replay, d := confirm(t.body, e, t.s, record.Confirm)
+	if replay.Status == CaseFaulted {
+		return Result{Fault: replay.Fault}, true
+	}
+	if d == nil {
+		return Result{}, false
+	}
+	r := t.result(Flaky)
+	r.Failing, r.Divergence = &e, d
+	return r, true
+}
+
 // result returns a result of outcome with the counts so far.
 func (t *tally) result(outcome Outcome) Result {
-	return Result{Outcome: outcome, Cases: t.valid, Rejected: t.rejected, Seed: t.seed}
+	return Result{Outcome: outcome, Cases: t.valid, Rejected: t.rejected, Seed: t.s.Seed}
 }
 
 // missing returns the result of too many rejections or of no input, if
@@ -443,10 +494,10 @@ func (p *phases) runTo(target int) (Result, bool) {
 // them, or the result that the first of them that does not pass ends a run
 // with, a failing case as found, without shrinking or explaining it. The
 // result states the runs of the stored cases up to that one, and the calls
-// of each case are recorded under [record.Stored].
+// of each case are recorded under [record.Stored]. Under s.Confirm, it
+// replays each valid case as [Run] replays it.
 func RunStored(body Body, s Settings) Result {
-	s = withClocks(s)
-	t := newTally(s)
+	t := newTally(body, s)
 	r, ended := stored(body, s, t)
 	if !ended {
 		runs := r.Stored
@@ -454,7 +505,7 @@ func RunStored(body Body, s Settings) Result {
 		r.Stored = runs
 		return r
 	}
-	if r.Failing != nil {
+	if r.Outcome == Counterexample {
 		r.Token = token.Encode(r.Failing.Case.Choices())
 	}
 	return r
@@ -463,7 +514,7 @@ func RunStored(body Body, s Settings) Result {
 // explore runs the phases until the run ends, without concluding a
 // counterexample, and returns the result with the runs of the stored cases.
 func explore(body Body, s Settings) Result {
-	t := newTally(s)
+	t := newTally(body, s)
 	if r, ended := known(body, s, t); ended {
 		return r
 	}
@@ -612,7 +663,7 @@ func conclude(body Body, s Settings, r Result) Result {
 		r.Token = token.Encode(r.Failing.Case.Choices())
 		return r
 	}
-	replay, d := confirm(body, *r.Failing, s)
+	replay, d := confirm(body, *r.Failing, s, record.Replay)
 	if replay.Status == CaseFaulted {
 		return Result{Fault: replay.Fault}
 	}

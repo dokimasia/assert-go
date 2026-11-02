@@ -47,7 +47,9 @@ const fuzzOp = "prop.Fuzz"
 // A failing input's case is replayed, shrunk and explained as [ForAll]
 // does with a failing case. Fuzz writes the counterexample to the store,
 // unless a mutation run instrumented the test binary, and reports it
-// through the input's *testing.T with its replay token.
+// through the input's *testing.T with its replay token. Under [Confirm](1),
+// a passing input's case is replayed, and a replay that differs ends the
+// input's call as flaky.
 //
 // Each input is a call of its own, whose record states the calls of the
 // input's case under the phase fuzz. The record of a passing input counts
@@ -130,24 +132,16 @@ func (p property) replayStored(seat assert.TB, run matcher.Running, setup runSet
 // input runs the case that data decodes to as a call of the property on
 // seat, the seat of the input's test, with the runs of setup, and reports
 // the call's verdict. A failing case is concluded as ForAll concludes one,
-// and the failures of a counterexample are written to the store. A wrapper
-// of Around that misused its run ends the call with a fault.
+// a passing case is confirmed under Confirm(1), and the failures of a
+// counterexample are written to the store. A wrapper of Around that misused
+// its run ends the call with a fault.
 func (p property) input(seat inputSeat, setup runSetup, data []byte) {
 	seat.Helper()
 	run := matcher.Begin(seat)
 	s := setup.settings
 	s.Slot, s.Seat = run.Slot(), seat
 	e := engine.Bridge(setup.body, data, s)
-	r := engine.Result{Outcome: engine.Passed, Cases: 1, Seed: s.Seed}
-	if e.Status == engine.CaseRejected {
-		r.Cases, r.Rejected = 0, 1
-	}
-	if e.Status == engine.CaseSkipped {
-		r = engine.Result{Outcome: engine.Skipped, Seed: s.Seed, Reason: e.Reason}
-	}
-	if e.Status == engine.CaseFaulted {
-		r = engine.Result{Fault: e.Fault}
-	}
+	r := engine.Count(setup.body, s, e)
 	if e.Status == engine.CaseFailed {
 		r = engine.Conclude(setup.body, s, e)
 	}

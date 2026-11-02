@@ -82,6 +82,10 @@ const (
 	// resultMode fuzzes passesTrue from a seed under OnResult, whose function
 	// prints the outcome and the counts of each result.
 	resultMode = "result"
+	// confirmingMode fuzzes observesItsCalls from a seed under Confirm(1).
+	confirmingMode = "confirming"
+	// sparseMode fuzzes observesItsCalls from a seed under Confirm(2).
+	sparseMode = "sparse"
 )
 
 // childSeed is the seed of each property of FuzzChild, which the record of
@@ -296,6 +300,22 @@ func TestFuzzProcess(t *testing.T) {
 				"result: passed, 1 valid, 0 rejected",
 			}, "the result of the replay of the empty store, then the result of the input")
 		})
+
+		t.Run("reports an input whose replay differs as flaky under Confirm(1)", func(t *testing.T) {
+			out, err := child(t, confirmingMode, t.TempDir(), record.Variable+"=1")
+			assert.HasError(t, err, "the child fails")
+			detail, _ := childCall(t, out, "FuzzChild/seed#0", 1)["detail"].(map[string]any)
+			assert.Equal(t, counts(detail), []any{"flaky", 1.0, 0.0}, "a flaky run after the input's valid case")
+			assert.Equal(t, detail[divergenceField], any(map[string]any{
+				"what": "fingerprint", "index": 0.0, "recorded": 1.0, "replayed": 2.0, "label": nil, "step": nil,
+			}), "the fingerprint of the input against that of its replay")
+		})
+
+		t.Run("replays no input under Confirm(2), because each input is the first valid case of its call",
+			func(t *testing.T) {
+				_, err := child(t, sparseMode, t.TempDir())
+				assert.NoError(t, err, "the child passes")
+			})
 
 		t.Run("skips the test of an input whose case skips", func(t *testing.T) {
 			out, err := child(t, skippingMode, t.TempDir(), record.Variable+"=1")
@@ -547,6 +567,15 @@ func FuzzChild(f *testing.F) {
 		prop.Fuzz(f, contract, passesTrue, stored, seeded, prop.OnResult(func(r prop.Result) {
 			fmt.Fprintf(os.Stdout, "result: %v, %d valid, %d rejected\n", r.Outcome, r.Cases, r.Rejected)
 		}))
+		return
+	}
+	if mode == confirmingMode || mode == sparseMode {
+		f.Add([]byte{5})
+		every := 1
+		if mode == sparseMode {
+			every = 2
+		}
+		prop.Fuzz(f, contract, observesItsCalls(), stored, seeded, prop.Confirm(every))
 		return
 	}
 	if mode == failingMode {

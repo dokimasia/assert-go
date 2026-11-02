@@ -785,6 +785,41 @@ func TestOption(t *testing.T) {
 		})
 	})
 
+	t.Run("Confirm", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("replays the fifth and the tenth valid case under Confirm(5)", func(t *testing.T) {
+			t.Parallel()
+			calls := callsOf(t, func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 1000), drawn)
+				assert.True(c, true, "the case ends")
+			}, prop.Seed(7), prop.Cases(10), prop.Confirm(5))
+			var confirmed []any
+			for _, call := range calls[1:] {
+				if call["phase"] == "confirm" {
+					confirmed = append(confirmed, call["run"])
+				}
+			}
+			assert.Equal(t, confirmed, []any{7.0, 14.0}, "the runs of the two replays in the definition's vector")
+		})
+
+		t.Run("passes the body of the definition's vector without the option", func(t *testing.T) {
+			t.Parallel()
+			assert.Nil(t, detailOf(observesItsCalls(), prop.Seed(7)), "no record of a run that replays no valid case")
+		})
+
+		t.Run("panics for every below 1", func(t *testing.T) {
+			t.Parallel()
+			got := assert.Panics(t, func() { prop.Confirm(0) }, "no interval")
+			assert.Equal(t, got, any("prop: Confirm(0) is below 1"), "the panic names the option")
+		})
+
+		t.Run("returns the option of a replay of each valid case", func(t *testing.T) {
+			t.Parallel()
+			assert.NotPanics(t, func() { prop.Confirm(1) }, "an interval of one case")
+		})
+	})
+
 	t.Run("Option", func(t *testing.T) {
 		t.Parallel()
 
@@ -816,6 +851,7 @@ func TestOptionAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { kept = prop.Bubble() }, optionAllocs, "Bubble allocates its setting")
 	assert.MaxAllocs(t, func() { kept = prop.OnResult(func(prop.Result) {}) }, optionAllocs,
 		"OnResult allocates its setting")
+	assert.MaxAllocs(t, func() { kept = prop.Confirm(5) }, optionAllocs, "Confirm allocates its setting")
 	assert.NotEqual(t, kept, prop.Option{}, "the kept option states a setting")
 	assert.MaxAllocs(t, func() { kept = prop.Hermetic() }, 0, "Hermetic's setting captures nothing")
 	assert.NotEqual(t, kept, prop.Option{}, "Hermetic states a setting")
@@ -846,6 +882,7 @@ func BenchmarkOption(b *testing.B) {
 			option: func() prop.Option { return prop.OnResult(func(prop.Result) {}) },
 			allocs: optionAllocs,
 		},
+		{name: "Confirm", option: func() prop.Option { return prop.Confirm(5) }, allocs: optionAllocs},
 		{name: "Hermetic", option: prop.Hermetic},
 	}
 	for _, tt := range tests {

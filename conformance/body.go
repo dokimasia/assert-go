@@ -22,6 +22,9 @@ const (
 	// diverges draws an integer in [0, 9] on its first call and a boolean
 	// on every later call.
 	diverges = "diverges"
+	// observesItsCalls draws an integer in [0, 9] and observes the number of
+	// its calls so far: 1 on its first call.
+	observesItsCalls = "observes-its-calls"
 	// failsOnce draws an integer in [0, 10^9], and fails with the identity
 	// once the first time it draws a value above 1,000.
 	failsOnce = "fails-once"
@@ -43,7 +46,8 @@ const (
 	onceMax = 1000000000
 	// afterReason is the reason of the skips of failsThenSkips.
 	afterReason = "after"
-	// digitMax is the upper bound of the first draw of diverges.
+	// digitMax is the upper bound of the first draw of diverges and of the
+	// draw of observesItsCalls.
 	digitMax = 9
 )
 
@@ -113,6 +117,8 @@ func bodyOf(raw json.RawMessage, end ender) (func(*prop.Case), error) {
 		return func(c *prop.Case) { end(c, "") }, nil
 	case diverges:
 		return diverging(end), nil
+	case observesItsCalls:
+		return observingCalls(end), nil
 	case failsOnce:
 		return failingOnce(end), nil
 	case failsThenSkips:
@@ -190,6 +196,18 @@ func diverging(end ender) func(*prop.Case) {
 			c.Draw(digit, drawnLabel)
 		}
 		drawn = true
+		end(c, "")
+	}
+}
+
+// observingCalls returns the body of observes-its-calls, which end ends.
+func observingCalls(end ender) func(*prop.Case) {
+	digit := prop.Integer(0, digitMax)
+	calls := uint64(0)
+	return func(c *prop.Case) {
+		c.Draw(digit, drawnLabel)
+		calls++
+		c.Observe(calls)
 		end(c, "")
 	}
 }

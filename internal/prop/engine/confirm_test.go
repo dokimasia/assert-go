@@ -152,6 +152,20 @@ func TestConfirm(t *testing.T) {
 				"the simplest case, random case 0 and its replay")
 		})
 
+		t.Run("returns a verdict difference for a passing replay of a failure without an identity", func(t *testing.T) {
+			t.Parallel()
+			failed := false
+			got := engine.Run(func(c *engine.Case) {
+				if engine.Draw(c, wide, drawn) > 1000 && !failed {
+					failed = true
+					c.Report(assert.Failure{}, false)
+				}
+			}, settled())
+			want := engine.Divergence{What: engine.VerdictDifference, Index: 1, Recorded: engine.Identity{}}
+			assert.Equal(t, got.Outcome, engine.Flaky, "a flaky run")
+			assert.Equal(t, *got.Divergence, want, "a failure without an assertion or a site against a pass")
+		})
+
 		t.Run("ends the run with the fault of a replay that ends with a fault", func(t *testing.T) {
 			t.Parallel()
 			failed := false
@@ -169,6 +183,88 @@ func TestConfirm(t *testing.T) {
 			assert.ErrorIs(t, got.Fault, errEnvironment, "the fault of the replay")
 			assert.Equal(t, summary(got), engine.Result{}, "a run that ends with a fault states nothing else")
 			assert.Length(t, trace, 3, "the simplest case, random case 0 and its replay")
+		})
+
+		confirming := settled()
+		confirming.Confirm = 1
+
+		t.Run("returns a fingerprint difference for the replay of a valid case", func(t *testing.T) {
+			t.Parallel()
+			calls := uint64(0)
+			got, trace := traced(func(c *engine.Case) string {
+				engine.Draw(c, small, drawn)
+				calls++
+				c.Observe(calls)
+				return ""
+			}, confirming)
+			want := engine.Divergence{What: engine.FingerprintDifference, Recorded: uint64(1), Replayed: uint64(2)}
+			assert.Equal(t, got.Outcome, engine.Flaky, "a flaky run")
+			assert.Equal(t, *got.Divergence, want, "the fingerprint of the simplest case against its replay")
+			assert.Equal(t, got.Failing.Status, engine.CasePassed, "the replayed case passed")
+			assert.Equal(t, got.Cases, 1, "the simplest case is the first valid case")
+			assert.Length(t, trace, 2, "the simplest case and its replay")
+		})
+
+		t.Run("returns a verdict difference for a valid case whose replay fails", func(t *testing.T) {
+			t.Parallel()
+			calls := 0
+			got, _ := traced(func(c *engine.Case) string {
+				engine.Draw(c, small, drawn)
+				calls++
+				return failsWhen(calls == 2, "second")
+			}, confirming)
+			want := engine.Divergence{
+				What: engine.VerdictDifference, Index: 1, Replayed: engine.Identity{Assertion: "second"},
+			}
+			assert.Equal(t, got.Outcome, engine.Flaky, "a flaky run")
+			assert.Equal(t, *got.Divergence, want, "a pass against the failure of the replay")
+			assert.Equal(t, got.Cases, 1, "the simplest case is the first valid case")
+		})
+
+		passes := []struct {
+			name    string
+			giveEnd func(c *engine.Case)
+		}{
+			{
+				name:    "passes a run whose replay of a valid case is rejected",
+				giveEnd: func(c *engine.Case) { c.Assume(false) },
+			},
+			{
+				name:    "passes a run whose replay of a valid case skips",
+				giveEnd: func(c *engine.Case) { c.Skip("replayed") },
+			},
+		}
+		for _, tt := range passes {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				calls := 0
+				got, _ := traced(func(c *engine.Case) string {
+					engine.Draw(c, small, drawn)
+					calls++
+					if calls == 2 {
+						tt.giveEnd(c)
+					}
+					return ""
+				}, confirming)
+				assert.Equal(t, got.Outcome, engine.Passed, "a replay that does not fail agrees with a valid case")
+				assert.Equal(t, got.Rejected, 0, "a replay counts as no case")
+			})
+		}
+
+		t.Run("ends the run with the fault of a replay of a valid case", func(t *testing.T) {
+			t.Parallel()
+			calls := 0
+			got, trace := traced(func(c *engine.Case) string {
+				engine.Draw(c, small, drawn)
+				calls++
+				if calls == 2 {
+					c.ReportFault(errEnvironment, true)
+				}
+				return ""
+			}, confirming)
+			assert.ErrorIs(t, got.Fault, errEnvironment, "the fault of the replay")
+			assert.Equal(t, summary(got), engine.Result{}, "a run that ends with a fault states nothing else")
+			assert.Length(t, trace, 2, "the simplest case and its replay")
 		})
 	})
 }

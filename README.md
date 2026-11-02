@@ -458,6 +458,17 @@ prop.ForAll(t, "a write is read back", writeRead, prop.Seed(seed),
     prop.OnResult(func(r prop.Result) { results = append(results, r) }))
 ```
 
+`prop.Confirm(every)` replays each valid case whose count is a multiple of
+`every` right after the case, from its choices. A replay that requests
+other bounds, observes another fingerprint with `Case.Observe` or fails
+ends the run as flaky. A simulation that iterates a map or reads the wall
+clock then fails while its cases pass. Each replay costs one more run of
+the body:
+
+```go
+prop.ForAll(t, "each step observes the checksum of the state", simulate, prop.Confirm(16))
+```
+
 `prop.Around(synctest.Test)` runs each run of a property's body in a
 `testing/synctest` bubble of its own, under `ForAll`, the forms and
 `Fuzz`. Each run starts at the bubble's first instant, and a body can wait

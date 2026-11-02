@@ -403,6 +403,34 @@ func TestCampaign(t *testing.T) {
 				assert.True(t, cases > 0, "the campaign runs the case of Draws, and ends after 10 ms of real time")
 			})
 		})
+
+		t.Run("replays each valid case whose count is a multiple of Confirm right after it", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Confirm = 3
+			got := recordedRun(t, s, func(s engine.Settings) {
+				campaigned(ended(func(c *engine.Case) { engine.Draw(c, digit, drawn) }), s, 8)
+			})
+			want := []string{"random", "random", "random", "confirm", "random", "random", "random", "confirm"}
+			assert.Equal(t, phasesOf(got), want, "the replays of the third and the sixth valid case")
+		})
+
+		t.Run("ends as flaky at a valid case whose replay differs", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Confirm = 2
+			calls := uint64(0)
+			r := campaigned(func(c *engine.Case) {
+				engine.Draw(c, digit, drawn)
+				calls++
+				c.Observe(calls)
+			}, s, shortCases)
+			divergence := &engine.Divergence{
+				What: engine.FingerprintDifference, Recorded: uint64(2), Replayed: uint64(3),
+			}
+			want := engine.Result{Outcome: engine.Flaky, Cases: 2, Seed: referenceSeed, Divergence: divergence}
+			assert.Equal(t, summary(r), want, "the replay observes 3 where the second valid case observed 2")
+		})
 	})
 }
 

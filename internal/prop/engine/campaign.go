@@ -61,7 +61,10 @@ const campaignStream = math.MaxUint64
 // A failing case whose identity no earlier failure had is replayed, shrunk
 // and explained as [Run] concludes its failure, s.Concluded receives the
 // result, and the campaign goes on. A replay that differs ends the campaign
-// as flaky. A refused entry of s.Draws ends it with the refusal. A case that
+// as flaky. Under s.Confirm, the campaign replays each valid case whose count
+// is a multiple of s.Confirm as Run replays it, and a replay that differs ends
+// the campaign as flaky too. A refused entry of s.Draws ends it with the
+// refusal. A case that
 // skips before the first failure ends the campaign as skipped. After the
 // first failure, a case that skips counts as neither a valid nor a rejected
 // case, and the campaign goes on.
@@ -73,13 +76,14 @@ const campaignStream = math.MaxUint64
 // and states the runs of the stored cases.
 //
 // The slot of s takes the calls of every case, those of the random and the
-// mutated cases under the phase random.
+// mutated cases under the phase random, and those of the replay of a valid
+// case under confirm.
 func Campaign(body Body, s Settings) Result {
 	s = withClocks(s)
 	c := &campaign{
 		body:         body,
 		s:            s,
-		t:            newTally(s),
+		t:            newTally(body, s),
 		end:          s.BudgetClock.Now().Add(s.Budget),
 		source:       random.ForCase(s.Seed, campaignStream),
 		labels:       make(map[string]struct{}),

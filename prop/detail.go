@@ -141,8 +141,11 @@ func (d runDetail) fields() map[string]any {
 		coverageField:       nil,
 		reasonField:         nil,
 	}
+	if r.Counterexample != nil {
+		detail[counterexampleField] = r.Counterexample
+	}
 	if r.Failure != nil {
-		detail[counterexampleField], detail[failureField] = r.Counterexample, *r.Failure
+		detail[failureField] = *r.Failure
 	}
 	if r.Outcome == Counterexample {
 		detail[othersField] = r.Others

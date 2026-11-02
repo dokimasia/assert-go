@@ -146,6 +146,11 @@
 // reports its verdict. A tool that runs many properties reads the counts, the
 // seed and the counterexample of each run from it.
 //
+// [Confirm] replays each n-th valid case right after the case. A replay that
+// requests other bounds, observes another fingerprint or fails ends the run
+// as flaky, so a body whose subject decides outside the engine fails while
+// its cases pass.
+//
 // The seed is random for each run, unless [Seed] states one, the variable
 // DOKIMI_ASSERT_PROP_SEED states one in decimal, or the variable
 // DOKIMI_ASSERT_PROP_PROFILE names the ci profile, which derives the seed

@@ -125,6 +125,27 @@ func TestDetail(t *testing.T) {
 			}), "the divergence of a replay without the fingerprint")
 		})
 
+		t.Run("records the replayed case and a null failure for a valid case whose replay differs", func(t *testing.T) {
+			t.Parallel()
+			want := map[string]any{
+				outcomeField:        prop.Flaky,
+				casesField:          1,
+				rejectedField:       0,
+				seedField:           "7",
+				counterexampleField: []prop.Entry{prop.Drawn{Label: drawn, Value: 0}},
+				failureField:        nil,
+				choicesField:        nil,
+				othersField:         nil,
+				divergenceField: &prop.Divergence{
+					What: prop.FingerprintDifference, Recorded: uint64(1), Replayed: uint64(2),
+				},
+				coverageField: nil,
+				reasonField:   nil,
+			}
+			got := detailOf(observesItsCalls(), prop.Seed(7), prop.Confirm(1))
+			assert.Equal(t, got, want, "the record of the definition's vector")
+		})
+
 		t.Run("records the requirement that a run missed", func(t *testing.T) {
 			t.Parallel()
 			detail := recordedDetail(t, classifies(1000, even, isEven), prop.Seed(7), prop.Require(even, 0.9))

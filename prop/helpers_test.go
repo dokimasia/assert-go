@@ -477,6 +477,18 @@ func diverges[T, U any](first prop.Generator[T], then prop.Generator[U]) func(*p
 	}
 }
 
+// observesItsCalls returns the body that draws a digit and observes the
+// number of its calls so far, as the definition's body observes-its-calls
+// does, so the replay of a case observes another fingerprint than the case.
+func observesItsCalls() func(*prop.Case) {
+	var calls uint64
+	return func(c *prop.Case) {
+		c.Draw(prop.Integer(0, 9), drawn)
+		calls++
+		c.Observe(calls)
+	}
+}
+
 // placed returns the body that runs body at place p of a machine's steps,
 // as the steps of a machine set it.
 func placed(p engine.Place, body func(*prop.Case)) func(*prop.Case) {

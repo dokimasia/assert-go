@@ -39,6 +39,10 @@ const (
 	// that confirms it, with the list of where it made its request, the
 	// runs of its shrink and of its explanation, and the result.
 	concludeAllocs = 590
+	// countAllocs is the ceiling of the allocations of counting a bridged
+	// case that draws one integer and passes under a Confirm of 1: the tally,
+	// and the replay with the list of where it made its request.
+	countAllocs = 23
 )
 
 // largestBytes are the fuzzer's bytes that the bridge decodes as 10,000
@@ -616,6 +620,55 @@ func TestRunner(t *testing.T) {
 			assert.True(t, runs.Load() > int32(r.Runs), "the cases, the replay, the shrink and the explanation ran")
 			assert.Equal(t, outside.Load(), int32(0), "no run of the body runs outside Around")
 		})
+
+		t.Run("replays each valid case whose count is a multiple of Confirm right after it", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Cases, s.Confirm = 10, 5
+			got := recordedRun(t, s, func(s engine.Settings) {
+				engine.Run(ended(func(c *engine.Case) { engine.Draw(c, small, drawn) }), s)
+			})
+			want := []callRecord{
+				{Run: 1, Phase: "simplest"},
+				{Run: 2, Phase: "random"},
+				{Run: 4, Phase: "random"},
+				{Run: 5, Phase: "edge"},
+				{Run: 6, Phase: "random"},
+				{Run: 7, Phase: "confirm"},
+				{Run: 8, Phase: "edge"},
+				{Run: 9, Phase: "random"},
+				{Run: 11, Phase: "random"},
+				{Run: 12, Phase: "random"},
+				{Run: 13, Phase: "random"},
+				{Run: 14, Phase: "confirm"},
+			}
+			assert.Equal(t, got, want, "the replays of the fifth and the tenth valid case")
+		})
+
+		t.Run("replays on four workers the cases that one worker replays", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Cases, s.Confirm = 30, 4
+			body := ended(func(c *engine.Case) { engine.Draw(c, small, drawn) })
+			one := recordedRun(t, s, func(s engine.Settings) { engine.Run(body, s) })
+			s.Workers = fourWorkers
+			four := recordedRun(t, s, func(s engine.Settings) { engine.Run(body, s) })
+			assert.Equal(t, four, one, "the calls of the cases and of the replays of one worker")
+		})
+
+		t.Run("does not replay an example of values", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Confirm = 1
+			s.Examples = []engine.Example{{Values: []any{7}}}
+			var r engine.Result
+			got := recordedRun(t, s, func(s engine.Settings) {
+				r = engine.Run(ended(func(c *engine.Case) { c.Observe(uint64(engine.Draw(c, digit, drawn))) }), s)
+			})
+			assert.Equal(t, r.Outcome, engine.Passed, "no replay draws the target in place of the stated 7")
+			assert.Equal(t, phasesOf(got)[:3], []string{"example", "simplest", "confirm"},
+				"the example, then the simplest case and its replay")
+		})
 	})
 
 	t.Run("RunReplay", func(t *testing.T) {
@@ -696,6 +749,35 @@ func TestRunner(t *testing.T) {
 			})
 			assert.Equal(t, got, []callRecord{{Run: 1, Phase: "stored"}}, "the one case, as stored")
 		})
+
+		t.Run("replays the case under a Confirm of 1", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Confirm = 1
+			got := recordedRun(t, s, func(s engine.Settings) {
+				engine.RunReplay(ended(atLeast5), s, integers(3), record.Token)
+			})
+			want := []callRecord{{Run: 1, Phase: "token"}, {Run: 2, Phase: "confirm"}}
+			assert.Equal(t, got, want, "the case and its replay")
+		})
+
+		t.Run("returns Flaky without a token for a case whose replay differs", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Confirm = 1
+			calls := uint64(0)
+			got := engine.RunReplay(func(c *engine.Case) {
+				engine.Draw(c, digit, drawn)
+				calls++
+				c.Observe(calls)
+			}, s, integers(3), record.Token)
+			divergence := &engine.Divergence{
+				What: engine.FingerprintDifference, Recorded: uint64(1), Replayed: uint64(2),
+			}
+			want := engine.Result{Outcome: engine.Flaky, Cases: 1, Seed: referenceSeed, Divergence: divergence}
+			assert.Equal(t, summary(got), want, "the replay observes 2 where the case observed 1")
+			assert.Equal(t, got.Token, "", "a flaky run has no token")
+		})
 	})
 
 	t.Run("RunStored", func(t *testing.T) {
@@ -762,6 +844,98 @@ func TestRunner(t *testing.T) {
 			s.Stored = [][]choice.Choice{integers(3), integers(4)}
 			got := recordedRun(t, s, func(s engine.Settings) { engine.RunStored(ended(atLeast5), s) })
 			assert.Equal(t, got, []callRecord{{Run: 1, Phase: "stored"}, {Run: 2, Phase: "stored"}}, "both cases")
+		})
+
+		t.Run("replays each stored case under a Confirm of 1", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Stored, s.Confirm = [][]choice.Choice{integers(3), integers(4)}, 1
+			got := recordedRun(t, s, func(s engine.Settings) { engine.RunStored(ended(atLeast5), s) })
+			want := []callRecord{
+				{Run: 1, Phase: "stored"},
+				{Run: 2, Phase: "confirm"},
+				{Run: 3, Phase: "stored"},
+				{Run: 4, Phase: "confirm"},
+			}
+			assert.Equal(t, got, want, "each stored case and its replay")
+		})
+	})
+
+	t.Run("Count", func(t *testing.T) {
+		t.Parallel()
+
+		confirming := settled()
+		confirming.Confirm = 1
+
+		t.Run("returns a pass of one valid case without a replay under a Confirm of 2", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Confirm = 2
+			calls := 0
+			body := func(c *engine.Case) {
+				calls++
+				engine.Draw(c, digit, drawn)
+			}
+			got := engine.Count(body, s, engine.Bridge(body, []byte{7}, engine.Settings{}))
+			assert.Equal(t, summary(got), engine.Result{Outcome: engine.Passed, Cases: 1, Seed: referenceSeed},
+				"the case is the first valid case")
+			assert.Equal(t, calls, 1, "the bridged case alone")
+		})
+
+		t.Run("returns a pass of one rejected case for a rejected case", func(t *testing.T) {
+			t.Parallel()
+			body := func(c *engine.Case) {
+				engine.Draw(c, digit, drawn)
+				c.Assume(false)
+			}
+			got := engine.Count(body, confirming, engine.Bridge(body, []byte{7}, engine.Settings{}))
+			assert.Equal(t, summary(got), engine.Result{Outcome: engine.Passed, Rejected: 1, Seed: referenceSeed},
+				"no valid case, so no replay")
+		})
+
+		t.Run("records the bridged case and its replay under a Confirm of 1", func(t *testing.T) {
+			t.Parallel()
+			body := ended(func(c *engine.Case) { engine.Draw(c, digit, drawn) })
+			var r engine.Result
+			got := recordedRun(t, confirming, func(s engine.Settings) {
+				r = engine.Count(body, s, engine.Bridge(body, []byte{7}, s))
+			})
+			assert.Equal(t, got, []callRecord{{Run: 1, Phase: "fuzz"}, {Run: 2, Phase: "confirm"}},
+				"the bridged case and its replay")
+			assert.Equal(t, summary(r), engine.Result{Outcome: engine.Passed, Cases: 1, Seed: referenceSeed},
+				"a replay that agrees")
+		})
+
+		t.Run("returns Flaky for a case whose replay differs", func(t *testing.T) {
+			t.Parallel()
+			calls := uint64(0)
+			body := func(c *engine.Case) {
+				engine.Draw(c, digit, drawn)
+				calls++
+				c.Observe(calls)
+			}
+			got := engine.Count(body, confirming, engine.Bridge(body, []byte{7}, engine.Settings{}))
+			divergence := &engine.Divergence{
+				What: engine.FingerprintDifference, Recorded: uint64(1), Replayed: uint64(2),
+			}
+			want := engine.Result{Outcome: engine.Flaky, Cases: 1, Seed: referenceSeed, Divergence: divergence}
+			assert.Equal(t, summary(got), want, "the replay observes 2 where the case observed 1")
+			assert.Equal(t, drawValues(got.Failing.Case.Draws()), []any{7}, "the bridged case")
+		})
+
+		t.Run("returns the fault of a replay that ends with one", func(t *testing.T) {
+			t.Parallel()
+			calls := 0
+			body := func(c *engine.Case) {
+				engine.Draw(c, digit, drawn)
+				calls++
+				if calls == 2 {
+					c.ReportFault(errEnvironment, true)
+				}
+			}
+			got := engine.Count(body, confirming, engine.Bridge(body, []byte{7}, engine.Settings{}))
+			assert.ErrorIs(t, got.Fault, errEnvironment, "the fault of the replay")
+			assert.Equal(t, summary(got), engine.Result{}, "a run that ends with a fault states nothing else")
 		})
 	})
 
@@ -841,8 +1015,8 @@ func TestRunner(t *testing.T) {
 }
 
 // TestRunnerAllocs checks the allocation ceilings of a run, of a replay, of
-// a run of the stored cases and of concluding a bridged case, and that
-// Valid allocates nothing.
+// a run of the stored cases, of concluding a bridged case and of counting
+// one, and that Valid allocates nothing.
 func TestRunnerAllocs(t *testing.T) {
 	small := engine.Integer(0, 1000)
 	body := func(c *engine.Case) { engine.Draw(c, small, drawn) }
@@ -850,15 +1024,19 @@ func TestRunnerAllocs(t *testing.T) {
 	stored := settled(seven...)
 	big := fromThousand()
 	failing := engine.Bridge(big, largestBytes, engine.Settings{})
+	confirming := settled()
+	confirming.Confirm = 1
+	passed := engine.Bridge(body, largestBytes, engine.Settings{})
 	assert.MaxAllocs(t, func() { engine.Run(body, s) }, runAllocs, "a run of 100 cases")
 	assert.MaxAllocs(t, func() { engine.RunReplay(body, s, seven, record.Token) }, replayAllocs, "a replay of one case")
 	assert.MaxAllocs(t, func() { engine.RunStored(body, stored) }, storedAllocs, "a run of one stored case")
 	assert.MaxAllocs(t, func() { engine.Conclude(big, s, failing) }, concludeAllocs, "the conclusion of a case")
+	assert.MaxAllocs(t, func() { engine.Count(body, confirming, passed) }, countAllocs, "the count of a case")
 	assert.MaxAllocs(t, func() { _ = engine.Vacuous.Valid() }, 0, "Valid allocates nothing")
 }
 
 // BenchmarkRunner measures a run of 100 cases, a replay of one case, the
-// conclusion of a bridged case, and Valid.
+// conclusion and the count of a bridged case, and Valid.
 func BenchmarkRunner(b *testing.B) {
 	small := engine.Integer(0, 1000)
 	body := func(c *engine.Case) { engine.Draw(c, small, drawn) }
@@ -906,6 +1084,19 @@ func BenchmarkRunner(b *testing.B) {
 			got = engine.Conclude(big, s, failing)
 		}
 		assert.Equal(b, got.Token, "prop1:AOkH", "the minimal case's token")
+	})
+
+	b.Run("Count", func(b *testing.B) {
+		var got engine.Result
+		s := settled()
+		s.Confirm = 1
+		passed := engine.Bridge(body, largestBytes, engine.Settings{})
+		c := bench.Start(b).MaxAllocs(countAllocs)
+		defer c.End()
+		for c.Loop() {
+			got = engine.Count(body, s, passed)
+		}
+		assert.Equal(b, got.Outcome, engine.Passed, "the replay agrees with the case")
 	})
 
 	b.Run("Valid", func(b *testing.B) {

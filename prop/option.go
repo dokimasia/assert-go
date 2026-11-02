@@ -288,6 +288,29 @@ func OnResult(f func(Result)) Option {
 	}}
 }
 
+// Confirm makes a run replay each valid case whose count is a multiple of
+// every, right after the case, from its choices, as a run replays a failing
+// case before it shrinks the case. A replay that requests other bounds,
+// observes another fingerprint or fails ends the run as [Flaky], with the
+// valid case as its counterexample and without a failure. A replay that is
+// rejected or skips agrees with the case. The replay counts as no case, and
+// its calls state the phase confirm. An example of values has no choices, so
+// a run does not replay it.
+//
+// [ForAll], each property form, the campaign profile and the case of [Replay]
+// count the valid cases of a call from 1. Each input of [Fuzz] is the one
+// case of its call, so only Confirm(1) replays it. It panics for every below
+// 1.
+func Confirm(every int) Option {
+	if every < 1 {
+		panic(fmt.Sprintf("prop: Confirm(%d) is below 1", every))
+	}
+	return Option{set: func(c config) config {
+		c.confirm = every
+		return c
+	}}
+}
+
 // Bubble runs each run of the body in a testing/synctest bubble of its own,
 // as Around(synctest.Test) does.
 //
@@ -337,6 +360,9 @@ type config struct {
 	// onResult is the function that OnResult states, which receives the
 	// result of each run, and nil without one.
 	onResult func(Result)
+	// confirm is the interval of the replays of valid cases that Confirm
+	// states, and 0 without one.
+	confirm int
 	// using are the generators of types that Using states, in the order
 	// stated.
 	using []using

@@ -93,6 +93,21 @@ func TestResult(t *testing.T) {
 			assert.Equal(t, got.Divergence, want, "the verdict that the replay did not repeat")
 		})
 
+		t.Run("hands the replayed case without a failure for a valid case whose replay differs", func(t *testing.T) {
+			t.Parallel()
+			got := resultOf(t, observesItsCalls(), prop.Seed(7), prop.Confirm(1))
+			want := prop.Result{
+				Outcome:        prop.Flaky,
+				Cases:          1,
+				Seed:           7,
+				Counterexample: []prop.Entry{prop.Drawn{Label: drawn, Value: 0}},
+				Divergence: &prop.Divergence{
+					What: prop.FingerprintDifference, Recorded: uint64(1), Replayed: uint64(2),
+				},
+			}
+			assert.Equal(t, got, want, "the result of the definition's vector")
+		})
+
 		t.Run("hands the requirement that a run missed", func(t *testing.T) {
 			t.Parallel()
 			got := resultOf(t, classifies(1000, even, isEven), prop.Seed(7), prop.Require(even, 0.9))
