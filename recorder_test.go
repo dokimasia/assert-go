@@ -25,6 +25,7 @@ var (
 	faults          []error
 	lines           []string
 	messages        []string
+	notes           []string
 	message         string
 	failed          bool
 	helpers         int
@@ -90,6 +91,46 @@ func TestRecorder(t *testing.T) {
 
 			if !r.Failed() {
 				t.Fatal("Failed() = false, want true")
+			}
+		})
+	})
+
+	t.Run("Logf", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("keeps a note without failing the recorder", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			r.Logf("opened the %s", "ledger")
+
+			if r.Failed() || len(r.Messages()) != 0 || r.Message() != "" {
+				t.Fatalf("Failed() = %v, Messages() = %q and Message() = %q, want no failure for a note",
+					r.Failed(), r.Messages(), r.Message())
+			}
+		})
+	})
+
+	t.Run("Notes", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns nothing for a recorder that received no note", func(t *testing.T) {
+			t.Parallel()
+
+			if got := assert.NewRecorder().Notes(); len(got) != 0 {
+				t.Fatalf("Notes() = %q, want none", got)
+			}
+		})
+
+		t.Run("returns every note in call order", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			r.Logf("opened the %s", "ledger")
+			r.Logf("appended %d entries", 2)
+
+			if got, want := fmt.Sprint(r.Notes()), "[opened the ledger appended 2 entries]"; got != want {
+				t.Fatalf("Notes() = %s, want %s", got, want)
 			}
 		})
 	})
@@ -486,6 +527,8 @@ func recorderCases() []alloctest.Case {
 		{Name: "Failed", Call: func(assert.TB) { failed = full.Failed() }},
 		{Name: "Message", Call: func(assert.TB) { message = full.Message() }},
 		{Name: "Messages", Call: func(assert.TB) { messages = full.Messages() }, Allocs: 2},
+		{Name: "Logf", Call: func(assert.TB) { full.Logf("the flag is set") }, Allocs: 2},
+		{Name: "Notes", Call: func(assert.TB) { notes = full.Notes() }, Allocs: 2},
 		{Name: "HelperCalls", Call: func(assert.TB) { helpers = full.HelperCalls() }},
 		{Name: "Cleanup", Call: func(assert.TB) {
 			cleaning.Cleanup(noCleanup)

@@ -114,8 +114,24 @@ func TestProperty(t *testing.T) {
 			dir := t.TempDir()
 			write(t, filepath.Join(dir, "later.json"), `{"store": 2}`)
 			rec := assert.NewRecorder()
-			prop.ForAll(rec, contract, draws(prop.Integer(0, 9)), prop.Seed(7), prop.Store(dir))
+			bare := struct{ assert.TB }{rec}
+			prop.ForAll(bare, contract, draws(prop.Integer(0, 9)), prop.Seed(7), prop.Store(dir))
 			assert.False(t, rec.Failed(), "the run passes without a note")
+			assert.Empty(t, rec.Notes(), "the seat has no log")
+			assert.Empty(t, rec.Faults(), "the seat has no ReportFault")
+		})
+
+		t.Run("passes the notes of the failing case to a recorder in order", func(t *testing.T) {
+			t.Parallel()
+			rec := assert.NewRecorder()
+			prop.ForAll(rec, contract, func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 9), drawn)
+				c.Logf("step %d", 1)
+				c.Logf("step %d", 2)
+				c.Fatalf("stop")
+			}, prop.Seed(7), prop.Store(""))
+			assert.Length(t, rec.Failures(), 1, "the record of the property")
+			assert.Equal(t, rec.Notes(), []string{"step 1", "step 2"}, "the notes of the failing case")
 		})
 
 		t.Run("reports a failing run and the fault of each skipped file", func(t *testing.T) {

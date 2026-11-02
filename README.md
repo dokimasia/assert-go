@@ -170,6 +170,12 @@ if path == "" {
 The first seat of the chain that is an `assert.Observer` receives each
 assertion call as an `assert.Call`, a passing one included.
 
+The first seat of the chain that has `Logf` receives each note. A property
+passes the notes of its failing case before its failure. An allocation
+check notes a ceiling that the test log keeps it from checking, and a
+linearizability check notes a spec without `Hash`. `Recorder.Notes` returns
+each note that a recorder received.
+
 A record's `Want` and `Got` return the fields `want` and `got` of its
 detail, and whether its assertion declares them. `CaseFailure` returns
 the record of a property's failing case:

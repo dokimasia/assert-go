@@ -24,10 +24,11 @@ type calls = record.Calls
 // that continues reports each one.
 //
 // [Recorder.Records] returns the call record of every assertion call that
-// a Recorder receives, and [Recorder.Faults] every fault that it receives
-// as the error it is. [Recorder.Context] returns the context that
-// [Recorder.WithContext] gave it, which [Context] reads, and
-// [Recorder.Test] the test that [Recorder.WithTest] gave it.
+// a Recorder receives, [Recorder.Faults] every fault that it receives as
+// the error it is, and [Recorder.Notes] every note that it receives.
+// [Recorder.Context] returns the context that [Recorder.WithContext] gave
+// it, which [Context] reads, and [Recorder.Test] the test that
+// [Recorder.WithTest] gave it.
 // [Recorder.Cleanup] keeps the functions that [Cleanup] registers, and
 // [Recorder.RunCleanups] runs them.
 //
@@ -54,6 +55,8 @@ type Recorder struct {
 	msg string
 	// errors contains every non-fatal message in call order.
 	errors []string
+	// notes contains every note in call order.
+	notes []string
 	// records contains every failure that arrived as a record, in call
 	// order, whether fatal or not. An assertion reports one, and a
 	// message passed to Fatalf or Errorf directly leaves none.
@@ -419,6 +422,41 @@ func (r *Recorder) Messages() []string {
 	defer r.mu.Unlock()
 
 	return append([]string(nil), r.errors...)
+}
+
+// Logf keeps a note: the text that format and args state, as fmt.Sprintf
+// formats them. A note does not fail the Recorder, and [Recorder.Message]
+// and [Recorder.Messages] do not return it.
+//
+// Logf makes a Recorder a seat with a log, so each note that the module
+// passes to its seat reaches the Recorder. A property passes the notes of
+// its failing case before its failure. An allocation check notes a ceiling
+// that the test log keeps it from checking, and a linearizability check
+// notes a spec without Hash.
+//
+// # Allocation contract
+//
+// A call with a format and no arguments allocates once on average: the
+// note. The list of notes grows with each call.
+func (r *Recorder) Logf(format string, args ...any) {
+	note := fmt.Sprintf(format, args...)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.notes = append(r.notes, note)
+}
+
+// Notes returns every note that [Recorder.Logf] kept, in call order. The
+// slice is a fresh copy.
+//
+// # Allocation contract
+//
+// Notes allocates once: the copy.
+func (r *Recorder) Notes() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return append([]string(nil), r.notes...)
 }
 
 // HelperCalls returns how many times [Recorder.Helper] was called.
