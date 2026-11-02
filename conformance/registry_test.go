@@ -12,6 +12,10 @@ import (
 	"go.dokimi.dev/assert/expect"
 )
 
+// transformed is the relaxation equate-by, whose transform no typed literal
+// states, so no corpus case names it and the registry maps no option to it.
+const transformed conformance.ID = "equate-by"
+
 // TestRegistry checks the registry of the invokers of each assertion in
 // each form, and the options of the relaxations.
 func TestRegistry(t *testing.T) {
@@ -88,14 +92,14 @@ func TestRegistry(t *testing.T) {
 	t.Run("Relaxations", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("maps every relaxation that the overlay does not decline to an option", func(t *testing.T) {
+		t.Run("maps every relaxation that a corpus case can name to an option", func(t *testing.T) {
 			t.Parallel()
 
 			overlay := conformance.Overlay()
 			for id := range conformance.RelaxationNames() {
 				_, mapped := conformance.Relaxations[id]
-				assert.Equal(t, mapped, !overlay.DeclinesRelaxation(id),
-					"the registry maps "+string(id)+" unless the overlay declines it")
+				assert.Equal(t, mapped, !overlay.DeclinesRelaxation(id) && id != transformed,
+					"the registry maps "+string(id)+" unless the overlay declines it or a case cannot name it")
 			}
 		})
 	})
