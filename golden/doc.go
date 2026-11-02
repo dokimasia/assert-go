@@ -32,8 +32,8 @@
 // writes each file that changes through a temporary file and a rename.
 //
 // On Windows, a reader or a virus scanner that has a golden file open can
-// refuse its read and its rename. A call retries a refused read or rename of
-// a golden file for up to 2 seconds.
+// refuse a rename over it. A call retries a refused rename over a golden file
+// for up to 2 seconds.
 //
 // # Scrubbing
 //

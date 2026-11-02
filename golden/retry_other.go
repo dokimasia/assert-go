@@ -5,9 +5,9 @@
 
 package golden
 
-// retried calls f once and returns its result. f reads a golden file or
-// renames a file over one. No other handle on a file refuses its read or a
-// rename over it on this platform.
-func retried[T any](f func() (T, error)) (T, error) {
-	return f()
+// retried calls rename once and returns its error. rename renames a file
+// over a golden file. No other handle on either file refuses the rename on
+// this platform.
+func retried(rename func() error) error {
+	return rename()
 }

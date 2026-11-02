@@ -163,7 +163,7 @@ func identity(path string) string {
 func (c call) readObject() (map[string]json.RawMessage, bool) {
 	c.tb.Helper()
 
-	raw, err := retried(func() ([]byte, error) { return os.ReadFile(c.path) })
+	raw, err := os.ReadFile(c.path)
 	if os.IsNotExist(err) {
 		return map[string]json.RawMessage{}, true
 	}

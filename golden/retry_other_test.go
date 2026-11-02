@@ -16,9 +16,9 @@ import (
 	"go.dokimi.dev/assert/golden"
 )
 
-// TestRetry checks the calls on a golden file while another handle on the
-// file is open. No handle refuses the read of a file or a rename over it on
-// this platform, so a call does not wait for the handle to close.
+// TestRetry checks a call on a golden file while another handle on the file
+// is open. No handle refuses a rename over a file on this platform, so the
+// call does not wait for the handle to close.
 func TestRetry(t *testing.T) {
 	t.Parallel()
 
@@ -42,19 +42,6 @@ func TestRetry(t *testing.T) {
 			files.Equal(t, os.DirFS(dir), files.Tree{"golden.txt": files.Text("current")},
 				"the file contains the new output, and no temporary file remains")
 			assert.Equal(t, string(replaced), "stale", "the handle reads the content of the replaced file")
-		})
-
-		t.Run("reads a golden file while another handle on it is open", func(t *testing.T) {
-			t.Parallel()
-
-			path := filepath.Join(files.Workspace(t, files.Tree{"golden.txt": files.Text("recorded")}), "golden.txt")
-			f, err := os.Open(path)
-			assert.NoError(t, err, "the golden file opens")
-			r := assert.NewRecorder()
-			golden.MatchAt(r, path, []byte("recorded"), checking)
-			assert.NoError(t, f.Close(), "the handle closes")
-
-			assert.Equal(t, verdicts(t, r), []string{"pass"}, "the comparison passes while the handle is open")
 		})
 	})
 }
