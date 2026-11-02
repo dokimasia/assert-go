@@ -34,3 +34,4 @@ they record why not.
 | [0021](0021-definition-9-in-go.md) | Definition 9.0.0 in Go | Accepted |
 | [0022](0022-definition-10-in-go.md) | Definition 10.0.0 in Go | Accepted |
 | [0023](0023-definition-13-in-go.md) | Definition 13.0.0 in Go, and the test of Around on every seat | Accepted |
+| [0024](0024-the-notes-of-a-recorder.md) | The notes of a recorder | Accepted |
