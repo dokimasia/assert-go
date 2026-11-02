@@ -126,6 +126,13 @@ type entry struct {
 // between a head and a tail. The search takes a linearized call's entries
 // out of the scan and puts them back in constant time.
 //
+// The search skips a configuration that a configuration in the memo covers:
+// the two have the same states and the same known calls, and the calls of
+// the one in the memo that are not known are among the other's. A call that
+// is not known, whose outcome is unknown or which is pending, need not take
+// effect, so every order that follows the configuration also follows the
+// one in the memo.
+//
 // The states of every configuration are in one store, and a configuration
 // and a frame refer to their states through an extent of it. A step leaves
 // its states in a buffer, and the search copies them to the store only for a
@@ -179,6 +186,9 @@ type search[S any] struct {
 	steps int
 	// done is the set of linearized calls, a bit for each call's position.
 	done []uint64
+	// optional is the set of the calls that are not known, in the words of
+	// done.
+	optional []uint64
 	// states are the states that the linearized calls leave.
 	states extent
 	// stack are the linearized calls, in the order linearized.
@@ -302,6 +312,12 @@ func (s *search[S]) add(first int) {
 	s.prev[tailEntry] = last
 
 	s.widen()
+	for i, c := range calls {
+		if !c.span.Operation.Known {
+			p := first + i
+			s.optional[p>>6] |= uint64(1) << (p & 63)
+		}
+	}
 	s.capacity = s.memoLimit / int64(max(len(s.calls), 1))
 }
 
@@ -336,7 +352,9 @@ func (s *search[S]) widen() {
 		copy(widened[i*wider:], s.words[i*stride:(i+1)*stride])
 	}
 	s.words = widened
-	s.done = append(s.done, make([]uint64, words-len(s.done))...)
+	added := make([]uint64, words-len(s.done))
+	s.done = append(s.done, added...)
+	s.optional = append(s.optional, added...)
 }
 
 // run searches the partition and passes how the search ended to deliver, on
@@ -515,18 +533,24 @@ func (s *search[S]) left(state *S, hash uint64) bool {
 }
 
 // remember stores the configuration of the linearized calls and of the
-// states in scratch, whose hashes sum to sum, unless the memo has it
-// already. It returns the states in the store and reports whether it stored
-// the configuration, and the limit that stops the search before a
+// states in scratch, whose hashes sum to sum, unless a configuration in the
+// memo covers it. It returns the states in the store and reports whether it
+// stored the configuration, and the limit that stops the search before a
 // configuration that would pass the memo limit.
 //
-// The key mixes the words of the set up to its last word with a call, so a
-// set keeps its key when the search grows by calls.
+// The key mixes the known calls of the set and the hashes of the states, so
+// every configuration that covers this one has its key. It mixes the words
+// of the set up to its last word with a known call, so a set keeps its key
+// when the search grows by calls.
 func (s *search[S]) remember(sum uint64) (extent, bool, Limit) {
 	key, mixed := sum, sum
-	for _, word := range s.done {
-		mixed = (mixed ^ word) * keyPrime
-		if word != 0 {
+	//dokimi:mutate-skip sbr-delete: the key groups the configurations of a chain, which the search compares one by one, so a coarser key changes neither a step nor a verdict
+	for i, word := range s.done {
+		known := word &^ s.optional[i]
+		//dokimi:mutate-skip sbr-delete,aor: a coarser key changes neither a step nor a verdict
+		mixed = (mixed ^ known) * keyPrime
+		//dokimi:mutate-skip sbr-delete,ror-false: a key of the states alone is coarser, and changes neither a step nor a verdict
+		if known != 0 {
 			key = mixed
 		}
 	}
@@ -537,9 +561,7 @@ func (s *search[S]) remember(sum uint64) (extent, bool, Limit) {
 	rest := s.done[1:]
 	for i := head; i != -1; i = s.configurations[i].next {
 		c := s.configurations[i]
-		if c.first == s.done[0] && slices.Equal(s.words[i*len(rest):i*len(rest)+len(rest)], rest) &&
-			s.same(c.states) {
-
+		if s.covers(c.first, s.words[i*len(rest):i*len(rest)+len(rest)]) && s.same(c.states) {
 			return extent{}, false, 0
 		}
 	}
@@ -552,6 +574,30 @@ func (s *search[S]) remember(sum uint64) (extent, bool, Limit) {
 	s.words = append(s.words, rest...)
 	s.store = append(s.store, s.scratch...)
 	return states, true, 0
+}
+
+// covers reports whether the set of calls of a configuration in the memo,
+// whose first word is first and whose further words are rest, covers the
+// linearized calls: it has the same known calls, and its other calls are
+// among them.
+func (s *search[S]) covers(first uint64, rest []uint64) bool {
+	if !coveredWord(first, s.done[0], s.optional[0]) {
+		return false
+	}
+	for i, word := range rest {
+		if !coveredWord(word, s.done[i+1], s.optional[i+1]) {
+			return false
+		}
+	}
+	return true
+}
+
+// coveredWord reports whether seen, one word of a set in the memo, covers
+// done, the same word of the linearized calls: the calls of seen are among
+// those of done, and every call of done that seen lacks is in optional.
+func coveredWord(seen, done, optional uint64) bool {
+	//dokimi:mutate-skip ror-true,lcr-left: the key separates two sets of other known calls, so only a collision of two keys reaches the second clause
+	return seen&^done == 0 && (done&^seen)&^optional == 0
 }
 
 // same reports whether the states at seen, a configuration's in the memo,

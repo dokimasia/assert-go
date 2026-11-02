@@ -114,6 +114,49 @@ func TestSearch(t *testing.T) {
 				)
 			})
 
+		t.Run("skips a configuration that only adds calls of unknown outcome to one with its states",
+			func(t *testing.T) {
+				t.Parallel()
+				h := history.New()
+				for i := range 12 {
+					h.Invoke(i%3, write, []any{1 + i%3}, "x").Unknown(errLost)
+				}
+				recordOK(h, 0, read, nil, 0, "x")
+				assert.Nil(t, detailOf(h, register, history.Budget(1325)),
+					"the search passes in 1,325 steps, as the reference does")
+				got := detailOf(h, register, history.Budget(1324))
+				assert.Equal(t, []any{got[outcomeField], got[limitField]}, []any{history.Undecided, history.LimitSteps},
+					"1,324 steps leave the read undecided")
+			})
+
+		t.Run("keeps apart two configurations of more than 64 calls whose calls of unknown outcome differ",
+			func(t *testing.T) {
+				t.Parallel()
+				h := history.New()
+				for v := range 64 {
+					recordOK(h, 0, write, []any{v + 1}, nil, "x")
+				}
+				h.Invoke(1, write, []any{7}, "x").Unknown(errLost)
+				h.Invoke(2, write, []any{7}, "x").Unknown(errLost)
+				recordOK(h, 0, read, nil, 9, "x")
+				got := detailOf(h, register)
+				assert.Equal(t, []any{got[callsField], got[stepsField], got[statesField]}, []any{67, 71, []int{7}},
+					"neither configuration of one unknown write covers the other, as in the reference")
+			})
+
+		t.Run("states no covered configuration as the frontier", func(t *testing.T) {
+			t.Parallel()
+			h := history.New()
+			h.Invoke(0, write, writeOne, "x").Unknown(errLost)
+			h.Invoke(1, write, writeOne, "x").Unknown(errLost)
+			recordOK(h, 2, read, nil, 7, "x")
+			got := detailOf(h, register)
+			first := history.Span{Call: 0, Completion: 1, Operation: history.Operation{Name: write, Args: writeOne}}
+			assert.Equal(t, []any{got[stepsField], got[linearizedField], got[statesField]},
+				[]any{7, []history.Span{first}, []int{1}},
+				"the configuration of both writes of 1 is covered by the configuration of the first")
+		})
+
 		t.Run("ends a partition's search before its first step once the time limit has passed", func(t *testing.T) {
 			t.Parallel()
 			h := history.New()
