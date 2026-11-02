@@ -435,6 +435,7 @@ var pinned = map[conformance.ID]any{
 	"prop.hermetic":        prop.Hermetic,
 	"prop.around":          prop.Around,
 	"prop.on-result":       prop.OnResult,
+	"prop.confirm":         prop.Confirm,
 	"prop.fuzz":            prop.Fuzz,
 
 	"run-result":                prop.Result{},
