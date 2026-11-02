@@ -4,7 +4,6 @@
 package matcher
 
 import (
-	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
@@ -130,11 +129,9 @@ func portable(expr string) (*regexp.Regexp, error) {
 		}
 		b.WriteByte(c)
 	}
-	re, err := regexp.Compile(b.String())
-	if err != nil {
-		return nil, fmt.Errorf("matcher: the pattern %q does not compile: %w", expr, err)
-	}
-	return re, nil
+	// The grammar of pattern refuses every count past the limits of RE2, so
+	// the translation of a parsed pattern compiles.
+	return regexp.MustCompile(b.String()), nil
 }
 
 // textOf reads a value as text, accepting a string, a []byte, or any
