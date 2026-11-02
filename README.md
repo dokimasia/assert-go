@@ -74,7 +74,7 @@ stated instead:
 | NaN does not equal NaN | `EquateNaNs()` |
 | A pointer, a map or a slice compares by the values it refers to | `ByIdentity()` compares it by identity |
 | Floats compare exactly | `CloseTo` applies a tolerance |
-| Unexported fields take part | — |
+| Unexported fields take part | `EquateBy(f)` compares the values of one type by `f(value)` |
 | No method of a value runs, so a type's `Equal` method does not decide | — |
 | A map key compares as any value compares | — |
 | Two functions are equal when they have the same code pointer, so two closures of one function literal are equal whatever they capture | — |
@@ -86,6 +86,15 @@ same assertions exist in Python, Java, Kotlin and TypeScript, where
 `None`, `null` and `undefined` are distinct from an empty list. Equating
 them everywhere would make those libraries report values they were never
 given.
+
+A protobuf message keeps the state of its implementation in unexported
+fields, so two messages with the same fields can differ. `EquateBy`
+compares them by their text, and the failure states the two texts:
+
+```go
+assert.Equal(t, got, want, "the stored book is the written book",
+    assert.EquateBy(prototext.Format))
+```
 
 An option applies to the call it is passed to and to nothing else.
 

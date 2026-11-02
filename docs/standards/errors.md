@@ -190,6 +190,10 @@ type Error struct {
 - `Fault` of `assert` and `expect` panics for a nil error, because a nil
   error is not a fault. Its message starts with the package and names the
   call: `assert: Fault(tb, nil) states no fault`.
+- `EquateBy` of `assert` and `expect` panics for a nil function. Its message
+  starts with the package and names the call:
+  `assert: EquateBy(nil) states no transform`. A panic of the function passes
+  through the call that compares.
 - `prop.Values` panics for a count below 0, for an option that states a
   setting other than `Using`, when its generator rejects more than ten
   cases for each value, at a case that its generator skips, and at a case

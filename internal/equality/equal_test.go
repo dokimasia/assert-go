@@ -76,6 +76,38 @@ func two() int { return 2 }
 // counter returns a closure of one function literal that returns n.
 func counter(n int) func() int { return func() int { return n } }
 
+// valued is a value with a Get method, which cached has.
+type valued interface {
+	Get() int
+}
+
+// Get returns the Value of c.
+func (c cached) Get() int { return c.Value }
+
+// pointing keeps a pointer to a cached value in an unexported field.
+type pointing struct {
+	p *cached
+}
+
+// nested is a value with a cache of its own that can contain another.
+type nested struct {
+	Value int
+	Inner *nested
+	size  int
+}
+
+// shown is the result of the transform byNested: the value of a nested value
+// and the value that it contains.
+type shown struct {
+	Value int
+	Inner *nested
+}
+
+// transformed returns the rules of the transforms ts, in order.
+func transformed(ts ...equality.Transform) equality.Rules {
+	return equality.Rules{Transforms: ts}
+}
+
 // TestEqual checks each rule by which Equal compares two values, under
 // each relaxation.
 func TestEqual(t *testing.T) {
@@ -103,6 +135,16 @@ func TestEqual(t *testing.T) {
 		object, twin := new(1), new(1)
 		elements, table := []int{1, 2}, map[string]int{"a": 1}
 		byIdentity := equality.Rules{ByIdentity: true}
+		byPointer := transformed(transformOf(func(c *cached) int { return c.Value }))
+		byGet := transformed(transformOf(func(v valued) int { return v.Get() }))
+		valueThenSize := transformed(
+			transformOf(func(c cached) int { return c.Value }),
+			transformOf(func(c cached) int { return c.size }),
+		)
+		byNested := transformed(transformOf(func(n nested) shown { return shown{Value: n.Value, Inner: n.Inner} }))
+		toNil := transformed(transformOf(func(cached) any { return nil }))
+		pointerByIdentity := byPointer
+		pointerByIdentity.ByIdentity = true
 		tests := []struct {
 			name      string
 			giveX     any
@@ -393,6 +435,121 @@ func TestEqual(t *testing.T) {
 				giveX:     hidden{1, 2},
 				giveY:     hidden{1, 2},
 				giveRules: byIdentity,
+				want:      true,
+			},
+			{
+				name:      "reports two values equal whose results are equal",
+				giveX:     cached{Value: 1, size: 5},
+				giveY:     cached{Value: 1, size: 9},
+				giveRules: byValue,
+				want:      true,
+			},
+			{
+				name:      "reports two values unequal whose results differ",
+				giveX:     cached{Value: 1, size: 5},
+				giveY:     cached{Value: 2, size: 5},
+				giveRules: byValue,
+			},
+			{
+				name:      "compares an element of a slice by its result",
+				giveX:     []cached{{Value: 1, size: 5}},
+				giveY:     []cached{{Value: 1, size: 9}},
+				giveRules: byValue,
+				want:      true,
+			},
+			{
+				name:      "compares a value of a map by its result",
+				giveX:     map[string]cached{"a": {Value: 1, size: 5}},
+				giveY:     map[string]cached{"a": {Value: 1, size: 9}},
+				giveRules: byValue,
+				want:      true,
+			},
+			{
+				name:      "compares a key of a map by its result",
+				giveX:     map[cached]bool{{Value: 1, size: 5}: true},
+				giveY:     map[cached]bool{{Value: 1, size: 9}: true},
+				giveRules: byValue,
+				want:      true,
+			},
+			{
+				name:      "compares a field of an interface type by its result",
+				giveX:     holder{V: cached{Value: 1, size: 5}},
+				giveY:     holder{V: cached{Value: 1, size: 9}},
+				giveRules: byValue,
+				want:      true,
+			},
+			{
+				name:      "compares an unexported field by its result",
+				giveX:     sealed{c: cached{Value: 1, size: 5}},
+				giveY:     sealed{c: cached{Value: 1, size: 9}},
+				giveRules: byValue,
+				want:      true,
+			},
+			{
+				name:      "compares an unexported field of a value of a map by its result",
+				giveX:     map[string]sealed{"a": {c: cached{Value: 1, size: 5}}},
+				giveY:     map[string]sealed{"a": {c: cached{Value: 1, size: 9}}},
+				giveRules: byValue,
+				want:      true,
+			},
+			{
+				name:      "compares a pointer in an unexported field by its result",
+				giveX:     pointing{p: &cached{Value: 1, size: 5}},
+				giveY:     pointing{p: &cached{Value: 1, size: 9}},
+				giveRules: byPointer,
+				want:      true,
+			},
+			{
+				name:      "compares a value whose type implements the interface of a transform by its result",
+				giveX:     cached{Value: 1, size: 5},
+				giveY:     cached{Value: 1, size: 9},
+				giveRules: byGet,
+				want:      true,
+			},
+			{
+				name:      "compares a value by the last transform that it matches",
+				giveX:     cached{Value: 1, size: 5},
+				giveY:     cached{Value: 1, size: 9},
+				giveRules: valueThenSize,
+			},
+			{
+				name:      "does not apply a transform to its own result at the same place",
+				giveX:     halved(4),
+				giveY:     halved(6),
+				giveRules: halving,
+			},
+			{
+				name:      "applies no second transform at the place of a result",
+				giveX:     cached{Value: 4},
+				giveY:     cached{Value: 6},
+				giveRules: chained,
+			},
+			{
+				name:      "compares a value that does not implement the interface of a transform as without it",
+				giveX:     1,
+				giveY:     1,
+				giveRules: byGet,
+				want:      true,
+			},
+			{
+				name:      "applies a transform to a value of its type deeper in its result",
+				giveX:     nested{Value: 1, size: 5, Inner: &nested{Value: 2, size: 7}},
+				giveY:     nested{Value: 1, size: 9, Inner: &nested{Value: 2, size: 3}},
+				giveRules: byNested,
+				want:      true,
+			},
+			{
+				name:      "reports two nil results equal",
+				giveX:     cached{Value: 1, size: 5},
+				giveY:     cached{Value: 2, size: 9},
+				giveRules: toNil,
+				want:      true,
+			},
+			{
+				name:      "applies a transform before ByIdentity",
+				giveX:     &cached{Value: 1, size: 5},
+				giveY:     &cached{Value: 1, size: 9},
+				giveRules: pointerByIdentity,
 				want:      true,
 			},
 		}

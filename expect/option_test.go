@@ -16,6 +16,20 @@ import (
 // option keeps the option that a call of an option's constructor returns.
 var option expect.Option
 
+// equateByAllocs is the ceiling of the allocations of EquateBy: its transform
+// and the option.
+const equateByAllocs = 3
+
+// stamp is a value with a count of reads of its own, which stampID leaves
+// out.
+type stamp struct {
+	ID    int
+	reads int
+}
+
+// stampID returns the ID of s.
+func stampID(s stamp) int { return s.ID }
+
 // TestOption checks that an option changes the call it is passed to alone.
 func TestOption(t *testing.T) {
 	t.Parallel()
@@ -82,6 +96,34 @@ func TestOption(t *testing.T) {
 			}
 		})
 	})
+
+	t.Run("EquateBy", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("applies to the call it is passed to", func(t *testing.T) {
+			t.Parallel()
+
+			transformed, structural := &matchertest.Seat{}, &matchertest.Seat{}
+			first, second := stamp{ID: 1, reads: 5}, stamp{ID: 1, reads: 9}
+
+			expect.Equal(transformed, first, second, "opted in", expect.EquateBy(stampID))
+			expect.Equal(structural, first, second, "not opted in")
+
+			if transformed.Failed() {
+				t.Fatalf("the opted-in call reported %q", transformed.First())
+			}
+			if !structural.Failed() {
+				t.Fatal("the second call inherited the first call's option")
+			}
+		})
+
+		t.Run("panics for a nil function", func(t *testing.T) {
+			t.Parallel()
+
+			got := assert.Panics(t, func() { expect.EquateBy[stamp, int](nil) }, "no transform")
+			assert.Equal(t, got, any("expect: EquateBy(nil) states no transform"), "the panic names the option")
+		})
+	})
 }
 
 // TestOptionAllocs checks the allocation ceiling of each constructor of an
@@ -104,5 +146,6 @@ func optionCases() []alloctest.Case {
 		{Name: "EquateEmpty", Call: func(assert.TB) { option = expect.EquateEmpty() }},
 		{Name: "EquateNaNs", Call: func(assert.TB) { option = expect.EquateNaNs() }},
 		{Name: "ByIdentity", Call: func(assert.TB) { option = expect.ByIdentity() }},
+		{Name: "EquateBy", Call: func(assert.TB) { option = expect.EquateBy(stampID) }, Allocs: equateByAllocs},
 	}
 }

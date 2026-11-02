@@ -6,13 +6,14 @@ package assert
 import "go.dokimi.dev/assert/internal/matcher"
 
 // Option changes one comparison rule for the call it is passed to:
-// [EquateEmpty] and [EquateNaNs] relax a rule, and [ByIdentity] narrows
-// one.
+// [EquateEmpty] and [EquateNaNs] relax a rule, [ByIdentity] narrows one,
+// and [EquateBy] compares the values of one type by a transform.
 //
-// An Option has no state, and is safe to reuse across calls and across
-// goroutines. The order of options does not matter, and passing one twice
-// has the same effect as passing it once. An Option applies only to the
-// call that it is passed to.
+// An Option is safe to reuse across calls, and across goroutines when the
+// transform of EquateBy is. Passing an option twice has the same effect as
+// passing it once. The order of options matters only for two transforms
+// that one value matches, of which the last applies. An Option applies only
+// to the call that it is passed to.
 //
 // [go.dokimi.dev/assert/expect] names the same type, so an option
 // built by either package works with both.
@@ -59,3 +60,37 @@ func EquateNaNs() Option { return matcher.EquateNaNs() }
 //
 // ByIdentity allocates nothing.
 func ByIdentity() Option { return matcher.ByIdentity() }
+
+// EquateBy makes a value of type T compare by f(value), for the call it is
+// passed to. It applies at every depth: at the top, in an element, in a key
+// and a value of a map and in a field, also an unexported one. A value
+// matches when its type is T, or implements T when T is an interface. At one
+// place at most one EquateBy applies: the result compares as it is, and its
+// parts compare under every EquateBy again. EquateBy applies before
+// [ByIdentity], and the last EquateBy of a type applies.
+//
+// The record of [Equal] states f(want) and f(got) in place of want and got
+// when they match, so its diff lists the differences of the results, and the
+// record of [NotEqual] states f(got). A panic of f passes through the call.
+// f must not change its argument, and its result must not contain its
+// argument.
+//
+// A protobuf message keeps the state of its implementation in unexported
+// fields, so two messages with the same fields compare by their text:
+//
+//	assert.Equal(t, got, want, "the stored book is the written book",
+//	    assert.EquateBy(prototext.Format))
+//
+// EquateBy keeps f, so the option is safe for concurrent use when f is. It
+// panics for a nil f.
+//
+// # Allocation contract
+//
+// EquateBy allocates twice: its transform and the option. Each run of f
+// allocates what f allocates and its result.
+func EquateBy[T, R any](f func(T) R) Option {
+	if f == nil {
+		panic("assert: EquateBy(nil) states no transform")
+	}
+	return matcher.EquateBy(f)
+}

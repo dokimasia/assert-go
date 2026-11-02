@@ -9,9 +9,10 @@ import "reflect"
 // [Equal] compares them.
 //
 // A needle that no key of m can equal, such as an int64 in a map[int]bool,
-// is not found at once. A needle whose type's == agrees with equal is
-// looked up with a map index. Every other needle compares with each key, so
-// a needle that Go cannot hash, such as a slice, is never hashed.
+// is not found at once. A needle whose type's == agrees with equal under no
+// transform is looked up with a map index. Every other needle compares with
+// each key, so a needle that Go cannot hash, such as a slice, is never
+// hashed.
 //
 // # Allocation contract
 //
@@ -136,8 +137,13 @@ func accepts(keyType reflect.Type, key reflect.Value) bool {
 // lookup reports whether == on values of type t agrees with equal under r,
 // so a map index finds each key of type t that equals a needle: a bool, an
 // integer, a string, a channel or an unsafe pointer, a float or a complex
-// number without EquateNaNs, and an array or a struct of those.
+// number without EquateNaNs, and an array or a struct of those, all under no
+// transform.
 func lookup(t reflect.Type, r Rules) bool {
+	//dokimi:mutate-skip ror-boundary: a comparison with each key finds what the map index finds, only slower
+	if len(r.Transforms) > 0 {
+		return false
+	}
 	switch t.Kind() {
 	case reflect.Bool, reflect.String, reflect.Chan, reflect.UnsafePointer,
 		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,

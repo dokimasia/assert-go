@@ -41,6 +41,8 @@
 //   - A pointer, a map or a slice compares by the values it refers to, so
 //     two allocations of one value are equal. Pass [ByIdentity] to compare
 //     each by identity.
+//   - Pass [EquateBy] to compare the values of one type by a function of
+//     them, such as a protobuf message by its text.
 //   - Floats compare exactly, and -0 equals +0.
 //   - A map key compares as any value compares, so a pointer key matches a
 //     needle whose target is equal, and a NaN key matches only under

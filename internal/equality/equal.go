@@ -22,6 +22,12 @@ type Rules struct {
 	// apply to them. A channel and a function compare by their address
 	// under every rule.
 	ByIdentity bool
+	// Transforms are transforms of the values of one type each. A value
+	// compares by the result of the last transform that it matches, at the
+	// top and in every part, before ByIdentity applies. At one place at most
+	// one transform applies: the result compares as it is, and its parts
+	// compare under every transform again.
+	Transforms []Transform
 }
 
 // stackBuffer is the most frames that a walk keeps on the stack of its
@@ -42,12 +48,19 @@ const logBuffer = 8
 // slices of bytes in one step, as bytes.Equal does. A map compares its
 // entries in a nested walk.
 //
+// A value that a transform of r matches compares by its result, in a nested
+// walk. The transform also receives a value of an unexported field, so the
+// walk reads the fields of a struct under a transform from memory that it can
+// address.
+//
 // # Allocation contract
 //
 // Equal allocates nothing for two values without a map, nested at most 16
 // levels deep, whose containers contain no container. A pair of containers
 // whose parts can contain a container allocates the set of pairs that the
-// walk entered, once.
+// walk entered, once. Under a transform, Equal also allocates what the
+// transform allocates, and a copy of each struct whose fields it reads and
+// cannot address.
 func Equal(x, y reflect.Value, r Rules) bool {
 	c := comparison{rules: r}
 	return c.equal(x, y)
@@ -90,9 +103,15 @@ type comparison struct {
 // of frames of its own. A frame leaves the stack when its last part begins,
 // so the parts of a list in its last field add no frame for each node.
 func (c *comparison) equal(x, y reflect.Value) bool {
+	return c.from(x, y, false)
+}
+
+// from reports whether x and y are equal as equal does. Two results of a
+// transform compare without a transform at their top.
+func (c *comparison) from(x, y reflect.Value, results bool) bool {
 	var buf [stackBuffer]frame
 	stack := buf[:0]
-	f, same := c.begin(x, y)
+	f, same := c.begin(x, y, results)
 	for {
 		if f.parts > 0 {
 			stack = append(stack, f)
@@ -107,20 +126,24 @@ func (c *comparison) equal(x, y reflect.Value) bool {
 		} else {
 			stack[top].next++
 		}
-		f, same = c.begin(part(f.x, f.next), part(f.y, f.next))
+		f, same = c.begin(part(f.x, f.next), part(f.y, f.next), false)
 	}
 }
 
 // begin compares x and y themselves, and returns the frame of their parts,
 // which has none for a pair without parts or that the walk entered before.
-// It reports false when x and y differ in themselves.
-func (c *comparison) begin(x, y reflect.Value) (frame, bool) {
-	x, y = inside(x), inside(y)
+// It reports false when x and y differ in themselves. A pair that a transform
+// matches compares by its results, unless the pair is two results already.
+func (c *comparison) begin(x, y reflect.Value, results bool) (frame, bool) {
+	x, y = inside(c.rules.expose(x)), inside(c.rules.expose(y))
 	if !x.IsValid() || !y.IsValid() {
 		return frame{}, x.IsValid() == y.IsValid()
 	}
 	if x.Type() != y.Type() {
 		return frame{}, false
+	}
+	if u, ok := c.rules.matching(x.Type()); ok && !results {
+		return frame{}, c.from(u.Apply(x), u.Apply(y), true)
 	}
 	if c.rules.ByIdentity && reference(x.Kind()) {
 		return frame{}, sameObject(x, y)
@@ -146,7 +169,7 @@ func (c *comparison) begin(x, y reflect.Value) (frame, bool) {
 	case reflect.Array:
 		return frame{x: x, y: y, parts: x.Len()}, true
 	case reflect.Struct:
-		return frame{x: x, y: y, parts: x.NumField()}, true
+		return frame{x: c.rules.address(x), y: c.rules.address(y), parts: x.NumField()}, true
 	case reflect.Slice:
 		return c.slices(x, y)
 	default:

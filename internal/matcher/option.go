@@ -3,16 +3,20 @@
 
 package matcher
 
-import "go.dokimi.dev/assert/internal/equality"
+import (
+	"reflect"
+
+	"go.dokimi.dev/assert/internal/equality"
+)
 
 // Option changes one comparison rule for the call it is passed to: it
-// relaxes a rule, or narrows the comparison of references to their
-// identity.
+// relaxes a rule, narrows the comparison of references to their identity,
+// or compares the values of one type by a transform.
 //
-// An Option has no state of its own, and is safe to reuse across calls
-// and across goroutines. The order of options has no effect, and passing
-// one twice has the effect of passing it once: each sets an independent
-// flag.
+// An Option is safe to reuse across calls, and across goroutines when the
+// transform of EquateBy is. Passing an option twice has the effect of passing
+// it once. The order of options matters only for two transforms that one
+// value matches, of which the last applies.
 type Option func(equality.Rules) equality.Rules
 
 // FormSeal is the parameter type of the method that makes a type an
@@ -79,9 +83,33 @@ func ByIdentity() Option {
 	}
 }
 
+// EquateBy makes a value of type T compare by f(value): at the top, in an
+// element, in a key and a value of a map and in a field, also an unexported
+// one. A value matches when its type is T, or implements T when T is an
+// interface. At one place at most one EquateBy applies: the result compares
+// as it is, and its parts compare under every EquateBy again. EquateBy
+// applies before ByIdentity, and the last EquateBy of a type applies. A panic
+// of f passes through the call.
+//
+// The record of Equal states f(want) and f(got) in place of want and got when
+// they match, and the record of NotEqual f(got) in place of got.
+//
+// # Allocation contract
+//
+// EquateBy allocates its transform and the closure of the option. A call that
+// takes the option allocates the list of its transforms, and each run of f
+// allocates what f allocates and its result.
+func EquateBy[T, R any](f func(T) R) Option {
+	t := equality.Transform{
+		In:    reflect.TypeFor[T](),
+		Apply: func(v reflect.Value) reflect.Value { return reflect.ValueOf(f(v.Interface().(T))) },
+	}
+	return func(r equality.Rules) equality.Rules { return r.WithTransform(t) }
+}
+
 // rulesOf returns the rules of one call, with opts applied in order. Each
 // option takes and returns the rules by value, so building them allocates
-// nothing.
+// nothing, except the list of the transforms of EquateBy.
 func rulesOf(opts []Option) equality.Rules {
 	var r equality.Rules
 	for _, opt := range opts {

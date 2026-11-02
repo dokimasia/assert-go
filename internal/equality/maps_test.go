@@ -289,6 +289,13 @@ func TestMaps(t *testing.T) {
 				},
 				giveKey: pair{A: &link{ID: 9}, B: &link{ID: 2}},
 			},
+			{
+				name:      "finds a key by the result of a transform",
+				giveMap:   map[cached]int{{Value: 1, size: 5}: 1},
+				giveKey:   cached{Value: 1, size: 9},
+				giveRules: byValue,
+				want:      true,
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

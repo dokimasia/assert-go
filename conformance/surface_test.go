@@ -604,6 +604,7 @@ var silent = map[string]string{
 	"EquateEmpty":   "returns a comparison option",
 	"EquateNaNs":    "returns a comparison option",
 	"ByIdentity":    "returns a comparison option",
+	"EquateBy":      "returns a comparison option",
 	"NewRecorder":   "constructs the recorder seat",
 	"NewControlled": "constructs the controlled clock",
 	"Context":       "returns the context of a seat",

@@ -22,9 +22,11 @@
 //     finite time.
 //
 // [Rules] relax the comparison of NaNs and of empty containers for one
-// call, or narrow the comparison of pointers, maps and slices to their
-// identity. No method of a value runs, so a type's Equal or String method
-// cannot change a verdict, or panic inside one. A walk calls the String
+// call, narrow the comparison of pointers, maps and slices to their
+// identity, or compare the values of one type by a [Transform]. No method of
+// a value runs, so a type's Equal or String method cannot change a verdict,
+// or panic inside one. The function of a transform runs, and its panic passes
+// through the comparison. A walk calls the String
 // method of time.Local before it reads that location, because the time
 // package fills its fields on the first call of a method. [Diff] walks two
 // unequal values under the same rules, and descends only into the parts

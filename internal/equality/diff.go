@@ -67,6 +67,9 @@ type Step struct {
 // Outside the alignment of slices and the pairing of map entries without a
 // map index, the walk visits each part once.
 //
+// A pair that a transform of r matches descends into its results at the same
+// place, so a difference there states the results.
+//
 // # Allocation contract
 //
 // Diff allocates its differences and their paths, a step of a path for
@@ -75,7 +78,7 @@ type Step struct {
 // part that it compares.
 func Diff(x, y reflect.Value, r Rules, limit int) []Difference {
 	d := differ{rules: r, limit: limit}
-	d.walk(nil, x, y, 0)
+	d.walk(nil, x, y, 0, false)
 	return d.found
 }
 
@@ -121,16 +124,23 @@ func (t *trail) steps() []Step {
 }
 
 // walk adds the differences of x and y at path, depth levels below the
-// roots.
-func (d *differ) walk(path *trail, x, y reflect.Value, depth int) {
+// roots. Two results of a transform walk without a transform at their top.
+func (d *differ) walk(path *trail, x, y reflect.Value, depth int, results bool) {
 	//dokimi:mutate-skip ror-false,sbr-delete: add does not add a difference past the limit, so the walk only takes longer
 	if len(d.found) == d.limit {
 		return
 	}
+	x, y = d.rules.expose(x), d.rules.expose(y)
 	ix, iy := inside(x), inside(y)
-	if depth == maxDepth || !ix.IsValid() || !iy.IsValid() || ix.Type() != iy.Type() ||
-		d.rules.ByIdentity && reference(ix.Kind()) {
-
+	if !ix.IsValid() || !iy.IsValid() || ix.Type() != iy.Type() {
+		d.whole(path, x, y)
+		return
+	}
+	if u, ok := d.rules.matching(ix.Type()); ok && !results {
+		d.walk(path, u.Apply(ix), u.Apply(iy), depth, true)
+		return
+	}
+	if depth == maxDepth || d.rules.ByIdentity && reference(ix.Kind()) {
 		d.whole(path, x, y)
 		return
 	}
@@ -138,12 +148,13 @@ func (d *differ) walk(path *trail, x, y reflect.Value, depth int) {
 	case reflect.Pointer:
 		d.pointers(path, ix, iy, depth)
 	case reflect.Struct:
+		ix, iy = d.rules.address(ix), d.rules.address(iy)
 		for i := range ix.NumField() {
-			d.walk(path.to(Step{Field: ix.Type().Field(i).Name, Index: -1}), ix.Field(i), iy.Field(i), depth+1)
+			d.walk(path.to(Step{Field: ix.Type().Field(i).Name, Index: -1}), ix.Field(i), iy.Field(i), depth+1, false)
 		}
 	case reflect.Array:
 		for i := range ix.Len() {
-			d.walk(path.to(Step{Index: i}), ix.Index(i), iy.Index(i), depth+1)
+			d.walk(path.to(Step{Index: i}), ix.Index(i), iy.Index(i), depth+1, false)
 		}
 	case reflect.Slice:
 		d.slices(path, ix, iy, depth)
@@ -154,10 +165,13 @@ func (d *differ) walk(path *trail, x, y reflect.Value, depth int) {
 	}
 }
 
-// whole adds x and y as one difference at path when [Equal] reports them
-// unequal.
+// whole adds x and y as one difference at path when they are unequal, as
+// [Equal] compares them without a transform at their top. The walk applies
+// the transform of a place before it states the place whole, and an invalid
+// side or two types differ before a transform applies.
 func (d *differ) whole(path *trail, x, y reflect.Value) {
-	if !Equal(x, y, d.rules) {
+	c := comparison{rules: d.rules}
+	if !c.from(x, y, true) {
 		d.add(path, x, y)
 	}
 }
@@ -172,7 +186,7 @@ func (d *differ) pointers(path *trail, x, y reflect.Value, depth int) {
 	if d.descended(x, y) {
 		return
 	}
-	d.walk(path, target(x), target(y), depth+1)
+	d.walk(path, target(x), target(y), depth+1, false)
 }
 
 // slices adds the differences of two slices: the two whole when one is
@@ -209,7 +223,7 @@ func (d *differ) slices(path *trail, x, y reflect.Value, depth int) {
 func (d *differ) run(path *trail, x, y reflect.Value, deleted, inserted []int, depth int) {
 	pairs := min(len(deleted), len(inserted))
 	for k := range pairs {
-		d.walk(path.to(Step{Index: deleted[k]}), x.Index(deleted[k]), y.Index(inserted[k]), depth+1)
+		d.walk(path.to(Step{Index: deleted[k]}), x.Index(deleted[k]), y.Index(inserted[k]), depth+1, false)
 	}
 	for _, i := range deleted[pairs:] {
 		d.add(path.to(Step{Index: i}), x.Index(i), reflect.Value{})
@@ -241,7 +255,7 @@ func (d *differ) maps(path *trail, x, y reflect.Value, depth int) {
 	for _, e := range entries {
 		where := path.to(Step{Index: -1, Key: e.key})
 		if e.x.IsValid() && e.y.IsValid() {
-			d.walk(where, e.x, e.y, depth+1)
+			d.walk(where, e.x, e.y, depth+1, false)
 			continue
 		}
 		d.add(where, e.x, e.y)

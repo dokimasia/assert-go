@@ -485,6 +485,47 @@ func TestDiff(t *testing.T) {
 				giveLimit: 1,
 				want:      []string{".Shown: -int(1) +int(3)"},
 			},
+			{
+				name:      "returns the results of a transform at its place",
+				giveX:     holder{V: cached{Value: 1, size: 5}},
+				giveY:     holder{V: cached{Value: 2, size: 9}},
+				giveRules: byValue,
+				want:      []string{".V: -int(1) +int(2)"},
+			},
+			{
+				name:      "returns no difference of two values whose results are equal",
+				giveX:     []cached{{Value: 1, size: 5}},
+				giveY:     []cached{{Value: 1, size: 9}},
+				giveRules: byValue,
+			},
+			{
+				name:      "returns the results of a transform in an unexported field",
+				giveX:     sealed{c: cached{Value: 1, size: 5}},
+				giveY:     sealed{c: cached{Value: 2, size: 9}},
+				giveRules: byValue,
+				want:      []string{".c: -int(1) +int(2)"},
+			},
+			{
+				name:      "returns the results of a transform in an unexported field of an array",
+				giveX:     [1]sealed{{c: cached{Value: 1, size: 5}}},
+				giveY:     [1]sealed{{c: cached{Value: 2, size: 9}}},
+				giveRules: byValue,
+				want:      []string{"[0].c: -int(1) +int(2)"},
+			},
+			{
+				name:      "does not apply a transform to its own result at the same place",
+				giveX:     halved(4),
+				giveY:     halved(6),
+				giveRules: halving,
+				want:      []string{": -equality_test.halved(2) +equality_test.halved(3)"},
+			},
+			{
+				name:      "applies no second transform at the place of a result",
+				giveX:     cached{Value: 4},
+				giveY:     cached{Value: 6},
+				giveRules: chained,
+				want:      []string{": -equality_test.halved(4) +equality_test.halved(6)"},
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

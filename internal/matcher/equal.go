@@ -15,7 +15,8 @@ import (
 // The failure is msg, then a diff labelled -want +got. opts relax the
 // comparison for this call alone. Two values are equal as the definition's
 // equal states: the same type and the same value, every field taking part,
-// and no method of either running.
+// and no method of either running. Under [EquateBy], the record states the
+// results of its transform in place of want and got when they match.
 //
 //	matcher.Equal(seat, matcher.Fatal, store.Get(id), item,
 //	    "Get returns the stored item")
@@ -28,8 +29,9 @@ import (
 // A passing call on two ints below 256 allocates nothing.
 func Equal[T any](seat Seat, mode Mode, got, want T, msg string, opts ...Option) {
 	seat.Helper()
-	if !equal(got, want, rulesOf(opts)) {
-		Fail(seat, mode, "equal", msg, map[string]any{wantField: want, gotField: got})
+	r := rulesOf(opts)
+	if !equal(got, want, r) {
+		Fail(seat, mode, "equal", msg, map[string]any{wantField: result(want, r), gotField: result(got, r)})
 		return
 	}
 	Pass(seat, mode, "equal", msg)
@@ -38,6 +40,16 @@ func Equal[T any](seat Seat, mode Mode, got, want T, msg string, opts ...Option)
 // equal reports whether x and y are equal as [Equal] compares them under r.
 func equal(x, y any, r equality.Rules) bool {
 	return equality.Equal(reflect.ValueOf(x), reflect.ValueOf(y), r)
+}
+
+// result returns v as the record of a comparison under r states it: the
+// result of the transform of r that v matches, and v when it matches none.
+func result(v any, r equality.Rules) any {
+	out := equality.Result(reflect.ValueOf(v), r)
+	if !out.IsValid() {
+		return nil
+	}
+	return out.Interface()
 }
 
 // NotEqual compares got against want and reports when they are equal.
@@ -55,8 +67,9 @@ func equal(x, y any, r equality.Rules) bool {
 // A passing call on two ints below 256 allocates nothing.
 func NotEqual[T any](seat Seat, mode Mode, got, want T, msg string, opts ...Option) {
 	seat.Helper()
-	if equal(got, want, rulesOf(opts)) {
-		Fail(seat, mode, "not-equal", msg, map[string]any{gotField: got})
+	r := rulesOf(opts)
+	if equal(got, want, r) {
+		Fail(seat, mode, "not-equal", msg, map[string]any{gotField: result(got, r)})
 		return
 	}
 	Pass(seat, mode, "not-equal", msg)
