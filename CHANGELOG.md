@@ -1,5 +1,20 @@
 # go.dokimi.dev/assert
 
+## 0.15.0
+
+### Minor Changes
+
+- bd7aa71: Add `assert.EquateBy` and `expect.EquateBy` to compare the values of one type by a function of them.
+- cb6f57e: Implement definition 14.0.0 and write its version into every call record.
+- 48658cd: Implement definition 14.1.0 and write its version into every call record.
+- c93a76f: **Breaking:** Skip each configuration of the search of `history.Linearizable` that its memo covers.
+- 1be958f: Add `prop.Confirm` to replay every n-th valid case of a run from its choices.
+- 96482dc: Add `Recorder.Logf` and `Recorder.Notes` to keep the notes that a recorder receives.
+
+### Patch Changes
+
+- 456d9a5: Fix `golden` to retry a rename over a golden file that another handle refuses on Windows.
+
 ## 0.14.1
 
 ### Patch Changes
