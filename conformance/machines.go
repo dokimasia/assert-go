@@ -107,12 +107,13 @@ type machinesVector struct {
 // machineSetup is the setup of a machines vector. A nil field states the
 // default of the definition.
 type machineSetup struct {
-	Mean       *int            `json:"mean"`
-	Max        *int            `json:"max"`
-	Swarm      *bool           `json:"swarm"`
-	Clients    *int            `json:"clients"`
-	Concurrent *int            `json:"concurrent"`
-	Strategy   json.RawMessage `json:"strategy"`
+	Mean           *int            `json:"mean"`
+	Max            *int            `json:"max"`
+	Swarm          *bool           `json:"swarm"`
+	Clients        *int            `json:"clients"`
+	Concurrent     *int            `json:"concurrent"`
+	ConcurrentMean *int            `json:"concurrent-mean"`
+	Strategy       json.RawMessage `json:"strategy"`
 }
 
 // machineOptions are the options of a subject's steps: those that every
@@ -204,6 +205,9 @@ func (s machineSetup) options() (machineOptions, error) {
 	}
 	if s.Concurrent != nil {
 		o.section = append(o.section, stateful.Concurrent(*s.Concurrent))
+	}
+	if s.ConcurrentMean != nil {
+		o.section = append(o.section, stateful.ConcurrentMean(*s.ConcurrentMean))
 	}
 	var err error
 	o.strategy, err = strategyOf(s.Strategy)
