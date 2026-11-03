@@ -451,6 +451,23 @@ func every(n int) func() {
 	}
 }
 
+// onFirstCall returns a body that makes 2 × iterations allocations of 24
+// bytes on its first call and none after it. Counted in a run of iterations,
+// they come to 2 allocations per iteration. A few allocations elsewhere in
+// the process round to zero over the same run.
+func onFirstCall() func() {
+	called := false
+	return func() {
+		if called {
+			return
+		}
+		called = true
+		for range 2 * iterations {
+			sink = make([][]int, 1)
+		}
+	}
+}
+
 // runExcluding drives a contract over a body that receives the contract,
 // so that the body can call Excluding.
 func runExcluding(
@@ -489,28 +506,17 @@ func TestContractCountingAllocs(t *testing.T) {
 		})
 
 		t.Run("leaves the warm-up out of the allocation ceilings", func(t *testing.T) {
-			warmed := false
-			seat := run(1, func(c *bench.Contract) *bench.Contract { return c.Warmup(1).MaxAllocs(0) }, func() {
-				if !warmed {
-					warmed = true
-					sink = make([][]int, 128)
-				}
-			})
+			seat := run(iterations, func(c *bench.Contract) *bench.Contract { return c.Warmup(1).MaxAllocs(0) },
+				onFirstCall())
 
-			assert.Equal(t, seat.First(), "", "the allocation of the warm-up iteration counts against no ceiling")
+			assert.Equal(t, seat.First(), "", "the allocations of the warm-up iteration count against no ceiling")
 		})
 
 		t.Run("counts the first iteration of a run without a warm-up", func(t *testing.T) {
-			warmed := false
-			seat := run(1, func(c *bench.Contract) *bench.Contract { return c.MaxAllocs(0) }, func() {
-				if !warmed {
-					warmed = true
-					sink = make([][]int, 128)
-				}
-			})
+			seat := run(iterations, func(c *bench.Contract) *bench.Contract { return c.MaxAllocs(0) }, onFirstCall())
 
 			assert.Equal(t, seat.Failed(), matcher.AllocationsCounted(),
-				"the allocation of the one measured iteration exceeds a ceiling of zero in a build that checks it")
+				"the allocations of the first iteration exceed a ceiling of zero in a build that checks it")
 		})
 
 		t.Run("adds no bytes to testing's count without a latency ceiling", func(t *testing.T) {
