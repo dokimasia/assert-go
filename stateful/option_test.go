@@ -185,6 +185,48 @@ func TestOption(t *testing.T) {
 		})
 	})
 
+	t.Run("ConcurrentMean", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			give []stateful.Option
+			want uint64
+		}{
+			{name: "continues the first step of a section by a coin of 5 in 6 by default", want: 5},
+			{
+				name: "continues the first step of a section by a coin of the mean in one more",
+				give: []stateful.Option{stateful.ConcurrentMean(12)},
+				want: 12,
+			},
+			{
+				name: "stops a section at its first flag for a mean of 0",
+				give: []stateful.Option{stateful.ConcurrentMean(0)},
+				want: 0,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				for index := range uint64(optionCases) {
+					log := &runLog{}
+					e := engine.Generate(bodyOf(func(c *prop.Case) {
+						opts := append([]stateful.Option{stateful.Swarm(false), stateful.Max(0)}, tasks(c)...)
+						stateful.Steps(c, machineOf(log, put), append(opts, tt.give...)...)
+					}), seed, index, nil)
+					twin := random.ForCase(seed, index)
+					assert.Equal(t, len(stepsOf(e)) > 0, twin.Coin(tt.want, tt.want+1), "the first flag of the section")
+				}
+			})
+		}
+
+		t.Run("panics for n below 0", func(t *testing.T) {
+			t.Parallel()
+			got := assert.Panics(t, func() { stateful.ConcurrentMean(-1) }, "a negative mean")
+			assert.Equal(t, got, any("stateful: ConcurrentMean(-1) is below 0"), "the panic names the option")
+		})
+	})
+
 	t.Run("Tasks", func(t *testing.T) {
 		t.Parallel()
 
@@ -261,6 +303,7 @@ var optionAllocsCases = []alloctest.Case{
 	{Name: "Swarm", Call: func(assert.TB) { kept = stateful.Swarm(false) }, Allocs: optionAllocs},
 	{Name: "Clients", Call: func(assert.TB) { kept = stateful.Clients(2) }, Allocs: optionAllocs},
 	{Name: "Concurrent", Call: func(assert.TB) { kept = stateful.Concurrent(1) }, Allocs: optionAllocs},
+	{Name: "ConcurrentMean", Call: func(assert.TB) { kept = stateful.ConcurrentMean(1) }, Allocs: optionAllocs},
 	{Name: "Tasks", Call: func(assert.TB) { kept = stateful.Tasks(scheduler) }, Allocs: optionAllocs},
 	{Name: "Repeat", Call: func(assert.TB) { kept = stateful.Repeat(2) }, Allocs: optionAllocs},
 }

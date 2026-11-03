@@ -33,8 +33,9 @@ const unlimited = time.Duration(math.MaxInt64)
 //     of its run, which requests the step's input and runs the action. The
 //     check and the invariant follow each step.
 //  4. A concurrent section, for [Clients] of 2 or more. The section lists
-//     its steps before any runs: each a flag with the most steps of
-//     [Concurrent], a client from 0 to Clients, an index into the kept
+//     its steps before any runs: each a flag with the mean of
+//     [ConcurrentMean] and the most steps of [Concurrent], a client from 0
+//     to Clients, an index into the kept
 //     actions without Enabled, and the step's input. Client 0 runs its steps
 //     on the goroutine of the body, and then the other clients run theirs at
 //     once. The check follows.
@@ -214,6 +215,9 @@ func (r *run[S]) concurrent(kept []Action[S]) {
 	}
 	sizes, _ := choice.NewSizes(0, r.cfg.concurrent)
 	average := random.Average(sizes)
+	if r.cfg.concurrentMean >= 0 {
+		average = r.cfg.concurrentMean
+	}
 	planned := make([][]plannedStep[S], r.cfg.clients+1)
 	for count := 0; ; count++ {
 		r.at(engine.ConcurrentPart, count)

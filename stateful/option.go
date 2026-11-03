@@ -93,6 +93,20 @@ func Concurrent(n int) Option {
 	}}
 }
 
+// ConcurrentMean sets the mean number of steps of a concurrent section. A
+// section without it averages 5 steps for a maximum of 10 or more, and half
+// the maximum, rounded up, below. The maximum of [Concurrent] still stops a
+// section. It panics for n below 0.
+func ConcurrentMean(n int) Option {
+	if n < 0 {
+		panic(fmt.Sprintf("stateful: ConcurrentMean(%d) is below 0", n))
+	}
+	return Option{set: func(c config) config {
+		c.concurrentMean = n
+		return c
+	}}
+}
+
 // Tasks makes the clients of a concurrent section run as tasks of s, which
 // replay, instead of on threads. It panics for a nil s.
 func Tasks(s *Scheduler) Option {
@@ -129,6 +143,9 @@ type config struct {
 	clients int
 	// concurrent is the most steps of a concurrent section.
 	concurrent int
+	// concurrentMean is the mean number of steps of a concurrent section,
+	// and below 0 for the average length of its sizes.
+	concurrentMean int
 	// scheduler runs the clients of a section as tasks, and is nil for
 	// threads.
 	scheduler *Scheduler
@@ -139,12 +156,13 @@ type config struct {
 // configure returns the defaults with each option of opts applied in order.
 func configure(opts []Option) config {
 	c := config{
-		mean:       defaultMean,
-		max:        defaultMax,
-		swarm:      true,
-		clients:    defaultClients,
-		concurrent: defaultConcurrent,
-		repeat:     defaultRepeat,
+		mean:           defaultMean,
+		max:            defaultMax,
+		swarm:          true,
+		clients:        defaultClients,
+		concurrent:     defaultConcurrent,
+		concurrentMean: -1,
+		repeat:         defaultRepeat,
 	}
 	for _, o := range opts {
 		if o.set != nil {
