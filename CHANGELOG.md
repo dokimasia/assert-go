@@ -1,5 +1,12 @@
 # go.dokimi.dev/assert
 
+## 0.16.0
+
+### Minor Changes
+
+- 3ee4d57: Add `stateful.ConcurrentMean` to set the mean number of steps of a concurrent section.
+- bc013dd: Implement definition 14.2.0 and write its version into every call record.
+
 ## 0.15.0
 
 ### Minor Changes
