@@ -19,12 +19,12 @@ func TestAnomaly(t *testing.T) {
 	t.Run("Valid", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("reports true for each of the eleven kinds and false for the values around them", func(t *testing.T) {
+		t.Run("reports true for each of the twelve kinds and false for the values around them", func(t *testing.T) {
 			t.Parallel()
 			enumtest.Members(t, []history.Anomaly{
 				history.GarbageRead, history.DuplicateAppend, history.InternalInconsistency,
-				history.IncompatibleOrder, history.AbortedRead, history.IntermediateRead, history.G0,
-				history.G1c, history.GSingle, history.GNonadjacent, history.G2,
+				history.IncompatibleOrder, history.AbortedRead, history.IntermediateRead, history.LostUpdate,
+				history.G0, history.G1c, history.GSingle, history.GNonadjacent, history.G2,
 			}, []history.Anomaly{0, invalidAnomaly})
 		})
 	})

@@ -187,3 +187,67 @@ func (g *graph) intermediateRead() *finding {
 	}
 	return nil
 }
+
+// lostUpdate returns the first two transactions that completed as OK, read
+// one list or value of a key by their first micro-operation on the key, and
+// append or write to the key, and nil for none. Such a write follows the
+// read. The transactions are taken in the order of their invocations, so the
+// finding is the first transaction whose read returned what the read of an
+// earlier one returned, and that earlier one.
+func (g *graph) lostUpdate() *finding {
+	// touched and written mark, with the number of a transaction plus 1, the
+	// keys that the transaction touched before a micro-operation, and the
+	// keys that it appends or writes to.
+	touched, written := make([]int32, g.identities), make([]int32, g.identities)
+	// readers maps the identity of a key, the length of a read and the
+	// identity of its last value, initialValue for none, to the reads with
+	// that key, length and last value, each as the number of its transaction
+	// and the position of its micro-operation.
+	readers := make(map[[3]int32][][2]int32)
+	for number := range g.transactions {
+		t := &g.transactions[number]
+		if t.record.Kind != OK {
+			continue
+		}
+		stamp := int32(number) + 1
+		for _, m := range t.microOperations {
+			if !m.read {
+				written[m.keyID] = stamp
+			}
+		}
+		for position := range t.microOperations {
+			m := &t.microOperations[position]
+			first := touched[m.keyID] != stamp
+			touched[m.keyID] = stamp
+			if !m.read || !first || written[m.keyID] != stamp {
+				continue
+			}
+			version := [3]int32{m.keyID, int32(len(m.ids)), initialValue}
+			if len(m.ids) > 0 {
+				version[2] = m.ids[len(m.ids)-1]
+			}
+			for _, r := range readers[version] {
+				if slices.Equal(g.transactions[r[0]].microOperations[r[1]].ids, m.ids) {
+					return g.lostUpdateOf(r[0], int32(number), m)
+				}
+			}
+			readers[version] = append(readers[version], [2]int32{int32(number), int32(position)})
+		}
+	}
+	return nil
+}
+
+// lostUpdateOf returns the lost update of the transactions of the numbers
+// earlier and later, whose reads returned what the read m returned.
+func (g *graph) lostUpdateOf(earlier, later int32, m *microOperation) *finding {
+	o := Observation{
+		Anomaly: LostUpdate, Register: g.registers, Calls: []int{g.call(earlier), g.call(later)}, Key: g.key[m.keyID],
+	}
+	switch {
+	case !g.registers:
+		o.Reads = [][]any{m.list}
+	case len(m.list) > 0:
+		o.Read = m.list[0]
+	}
+	return &finding{anomaly: LostUpdate, involved: []int32{earlier, later}, explanation: []Evidence{o}}
+}

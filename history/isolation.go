@@ -84,11 +84,14 @@ func (s kinds) has(a Anomaly) bool {
 // read observed after that order. Over a register history it orders the
 // initial value before each installed value, and a transaction's first read
 // of a register before its last write of it. Blind writes do not reveal an
-// order, so a register history shows fewer anomalies. The check derives the
-// write-write, write-read and read-write dependencies between committed
-// transactions, and searches them for cycles, in the order and by the
-// search that the definition fixes. The derivation and the searches for G0,
-// G1c and G2 take time linear in the transactions and their dependencies.
+// order, so a register history shows fewer anomalies. A [LostUpdate] needs no
+// order. The check finds it in the micro-operations alone: two transactions
+// that read one list or value of a key and both append or write to it. The
+// check derives the write-write, write-read and read-write dependencies
+// between committed transactions, and searches them for cycles, in the order
+// and by the search that the definition fixes. The derivation, the check of
+// a lost update and the searches for G0, G1c and G2 take time linear in the
+// transactions and their dependencies.
 // The searches for G-single and G-nonadjacent run a breadth-first search per
 // read-write dependency until one closes a cycle, which is quadratic in the
 // worst case.
@@ -120,7 +123,7 @@ func (s kinds) has(a Anomaly) bool {
 // A check allocates its transactions, the typed literal of each distinct key
 // and value, the dependencies with their evidence, and the marks of its
 // searches, each linear in the history. A passing check of three
-// transactions over one key allocates 89 times.
+// transactions over one key allocates 90 times.
 func Serializable(tb assert.TB, h *History, contract string) {
 	tb.Helper()
 	isolated(tb, h, contract, serializableID, serializableOp, everyKind)
@@ -195,6 +198,8 @@ func (g *graph) find(a Anomaly) *finding {
 		return g.abortedRead()
 	case IntermediateRead:
 		return g.intermediateRead()
+	case LostUpdate:
+		return g.lostUpdate()
 	case GNonadjacent:
 		return g.nonadjacent()
 	default:

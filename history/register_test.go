@@ -134,7 +134,7 @@ var registerCases = []registerCase{
 		wantSerializable: history.G2, wantSerializableKinds: []history.Anomaly{history.G2},
 	},
 	{
-		name: "fails a lost update only as serializable",
+		name: "reports a lost update at both levels",
 		give: func(h *history.History) {
 			transact(h, 0, history.OK, writeOf("x", 1))
 			first := []any{loadOf("x", 1), writeOf("x", 2)}
@@ -144,7 +144,8 @@ var registerCases = []registerCase{
 			a.OK(first)
 			b.OK(second)
 		},
-		wantSerializable: history.G2, wantSerializableKinds: []history.Anomaly{history.G2},
+		wantSerializable: history.LostUpdate, wantSerializableKinds: []history.Anomaly{history.LostUpdate, history.G2},
+		wantSI: history.LostUpdate, wantSIKinds: []history.Anomaly{history.LostUpdate},
 	},
 	{
 		name: "takes an observed write of unknown outcome as committed",

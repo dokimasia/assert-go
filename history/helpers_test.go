@@ -34,7 +34,7 @@ const (
 	invalidKind     history.Kind     = 5
 	invalidVerdict  history.Verdict  = 3
 	invalidLimit    history.Limit    = 4
-	invalidAnomaly  history.Anomaly  = 12
+	invalidAnomaly  history.Anomaly  = 13
 	invalidRelation history.Relation = 4
 )
 

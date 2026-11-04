@@ -151,6 +151,9 @@ func writeRegisterObservation(b *strings.Builder, o Observation) {
 	case AbortedRead:
 		text.Fprintf(b, "call %d read %#v from %#v, which call %d wrote and aborted",
 			o.Calls[0], o.Value, o.Key, o.Appender)
+	case LostUpdate:
+		fmt.Fprintf(b, "calls %d and %d read %s from %s, and both wrote to it",
+			o.Calls[0], o.Calls[1], registerText(o.Read), text.Sprintf("%#v", o.Key))
 	default:
 		text.Fprintf(b, "call %d read %#v from %#v, which call %d overwrote with %#v",
 			o.Calls[0], o.Value, o.Key, o.Appender, o.Next)
@@ -208,6 +211,9 @@ func writeObservation(b *strings.Builder, o Observation) {
 			o.Key,
 			o.Appender,
 		)
+	case LostUpdate:
+		text.Fprintf(b, "calls %d and %d read %s from %#v, and both appended to it",
+			o.Calls[0], o.Calls[1], listText(o.Reads[0]), o.Key)
 	default:
 		text.Fprintf(b, "call %d read %#v ending in %#v, which call %d followed with %#v",
 			o.Calls[0], o.Key, o.Value, o.Appender, o.Next)

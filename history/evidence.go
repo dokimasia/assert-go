@@ -109,6 +109,8 @@ func (Edge) evidence() {}
 //   - [AbortedRead]: Calls of the one read, Key, Value and Appender.
 //   - [IntermediateRead]: Calls of the one read, Key, Value, Appender and
 //     Next.
+//   - [LostUpdate]: Calls of the two transactions, Key, and Reads of the one
+//     list that both read.
 //
 // An observation of a register history sets Register, and states the value
 // that its read returned in Read rather than a list in Reads. Its internal
@@ -187,6 +189,13 @@ type dirtyJSON struct {
 	Next     json.RawMessage `json:"next,omitempty"`
 }
 
+// lostJSON is the observation of a lost update.
+type lostJSON struct {
+	Calls []int           `json:"calls"`
+	Key   json.RawMessage `json:"key"`
+	Read  json.RawMessage `json:"read"`
+}
+
 // MarshalJSON returns the observation as the explanation of a record states
 // it: the fields that its anomaly states, each value and each list as a
 // typed literal, in the order the definition lists them.
@@ -215,6 +224,14 @@ func (o Observation) MarshalJSON() ([]byte, error) {
 		out := dirtyJSON{Call: o.Calls[0], Key: key, Value: literal.Detail(o.Value), Appender: o.Appender}
 		if o.Anomaly == IntermediateRead {
 			out.Next = literal.Detail(o.Next)
+		}
+		return json.Marshal(out)
+	case LostUpdate:
+		out := lostJSON{Calls: o.Calls, Key: key}
+		if o.Register {
+			out.Read = orNull(o.Read)
+		} else {
+			out.Read = literal.Detail(o.Reads[0])
 		}
 		return json.Marshal(out)
 	default:

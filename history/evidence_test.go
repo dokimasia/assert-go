@@ -143,6 +143,27 @@ func TestEvidence(t *testing.T) {
 				want: `{"call":4,"key":` + keyX + `,"value":` + oneLiteral + `,"appender":2,"next":` + twoLiteral + `}`,
 			},
 			{
+				name: "states the two calls, the key and the list that both read of a lost update",
+				give: history.Observation{
+					Anomaly: history.LostUpdate, Calls: []int{2, 4}, Key: "x", Reads: [][]any{{1}},
+				},
+				want: `{"calls":[2,4],"key":` + keyX + `,"read":` + oneList + `}`,
+			},
+			{
+				name: "states the value that both reads of a lost update of a register returned",
+				give: history.Observation{
+					Anomaly: history.LostUpdate, Register: true, Calls: []int{2, 4}, Key: "x", Read: 1,
+				},
+				want: `{"calls":[2,4],"key":` + keyX + `,"read":` + oneLiteral + `}`,
+			},
+			{
+				name: "states null for the initial value that both reads of a lost update of a register returned",
+				give: history.Observation{
+					Anomaly: history.LostUpdate, Register: true, Calls: []int{2, 4}, Key: "x",
+				},
+				want: `{"calls":[2,4],"key":` + keyX + `,"read":null}`,
+			},
+			{
 				name: "states the value that a garbage read of a register returned",
 				give: history.Observation{
 					Anomaly: history.GarbageRead, Register: true, Calls: []int{4}, Key: "x", Read: 1, Value: 1,

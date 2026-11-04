@@ -14,16 +14,17 @@ func _() {
 	_ = x[IncompatibleOrder-4]
 	_ = x[AbortedRead-5]
 	_ = x[IntermediateRead-6]
-	_ = x[G0-7]
-	_ = x[G1c-8]
-	_ = x[GSingle-9]
-	_ = x[GNonadjacent-10]
-	_ = x[G2-11]
+	_ = x[LostUpdate-7]
+	_ = x[G0-8]
+	_ = x[G1c-9]
+	_ = x[GSingle-10]
+	_ = x[GNonadjacent-11]
+	_ = x[G2-12]
 }
 
-const _Anomaly_name = "garbage-readduplicate-appendinternal-inconsistencyincompatible-orderaborted-readintermediate-readG0G1cG-singleG-nonadjacentG2"
+const _Anomaly_name = "garbage-readduplicate-appendinternal-inconsistencyincompatible-orderaborted-readintermediate-readlost-updateG0G1cG-singleG-nonadjacentG2"
 
-var _Anomaly_index = [...]uint8{0, 12, 28, 50, 68, 80, 97, 99, 102, 110, 123, 125}
+var _Anomaly_index = [...]uint8{0, 12, 28, 50, 68, 80, 97, 108, 110, 113, 121, 134, 136}
 
 func (i Anomaly) String() string {
 	idx := int(i) - 1

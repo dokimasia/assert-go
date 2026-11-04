@@ -6,9 +6,10 @@ package history
 //go:generate go run golang.org/x/tools/cmd/stringer@v0.50.0 -type=Anomaly -linecomment -output=anomaly.string_gen.go
 
 // Anomaly is a kind of anomaly that [Serializable] and
-// [HasSnapshotIsolation] find in a history of list-append transactions, the
-// anomaly field of the record of a failing check. The kinds are in the order
-// in which a record reports them, and the zero Anomaly is no kind.
+// [HasSnapshotIsolation] find in a history of list-append or register
+// transactions, the anomaly field of the record of a failing check. The kinds
+// are in the order in which a record reports them, and the zero Anomaly is no
+// kind.
 type Anomaly uint8
 
 const (
@@ -32,21 +33,25 @@ const (
 	// that another transaction followed with an append of its own to the
 	// same key, Adya's G1b.
 	IntermediateRead Anomaly = 6 // intermediate-read
+	// LostUpdate is two transactions that completed as OK, each of which read
+	// a key by its first micro-operation on the key and appended or wrote to
+	// the key after that read, where both reads returned one list or value.
+	LostUpdate Anomaly = 7 // lost-update
 	// G0 is a cycle of write-write dependencies.
-	G0 Anomaly = 7 // G0
+	G0 Anomaly = 8 // G0
 	// G1c is a cycle of write-write and write-read dependencies with one
 	// write-read dependency or more.
-	G1c Anomaly = 8 // G1c
+	G1c Anomaly = 9 // G1c
 	// GSingle is a cycle with exactly one read-write dependency.
-	GSingle Anomaly = 9 // G-single
+	GSingle Anomaly = 10 // G-single
 	// GNonadjacent is a cycle with two read-write dependencies or more, no
 	// two of them adjacent.
-	GNonadjacent Anomaly = 10 // G-nonadjacent
+	GNonadjacent Anomaly = 11 // G-nonadjacent
 	// G2 is a cycle with one read-write dependency or more.
-	G2 Anomaly = 11 // G2
+	G2 Anomaly = 12 // G2
 )
 
-// Valid reports whether a is one of the eleven kinds. It allocates nothing.
+// Valid reports whether a is one of the twelve kinds. It allocates nothing.
 func (a Anomaly) Valid() bool {
 	return a >= GarbageRead && a <= G2
 }

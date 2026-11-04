@@ -183,6 +183,13 @@ func TestRender(t *testing.T) {
 				want: `call 2 read "x" ending in 1, which call 0 followed with 2`,
 			},
 			{
+				name: "writes the list that both transactions of a lost update read",
+				give: history.Observation{
+					Anomaly: history.LostUpdate, Calls: []int{2, 4}, Key: "x", Reads: [][]any{{1}},
+				},
+				want: `calls 2 and 4 read [1] from "x", and both appended to it`,
+			},
+			{
 				name: "writes the two values of a write-write edge of a register",
 				give: history.Edge{From: 0, To: 2, Relation: history.WW, Register: true, Key: "x", Value: 1, Next: 2},
 				want: `call 0 -ww-> call 2: call 2 wrote 2 to "x" after 1`,
@@ -259,6 +266,18 @@ func TestRender(t *testing.T) {
 					Anomaly: history.IntermediateRead, Register: true, Calls: []int{2}, Key: "x", Value: 1, Next: 2,
 				},
 				want: `call 2 read 1 from "x", which call 0 overwrote with 2`,
+			},
+			{
+				name: "writes the value that both transactions of a lost update of a register read",
+				give: history.Observation{
+					Anomaly: history.LostUpdate, Register: true, Calls: []int{2, 4}, Key: "x", Read: 1,
+				},
+				want: `calls 2 and 4 read 1 from "x", and both wrote to it`,
+			},
+			{
+				name: "writes the initial value that both transactions of a lost update of a register read",
+				give: history.Observation{Anomaly: history.LostUpdate, Register: true, Calls: []int{2, 4}, Key: "x"},
+				want: `calls 2 and 4 read the initial value from "x", and both wrote to it`,
 			},
 		}
 		for _, tt := range tests {

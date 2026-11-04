@@ -12,7 +12,7 @@ import (
 	"go.dokimi.dev/assert/internal/matchertest"
 )
 
-// TestDirect checks the six anomalies that a check finds in the
+// TestDirect checks the seven anomalies that a check finds in the
 // micro-operations of committed transactions, without the dependency graph.
 func TestDirect(t *testing.T) {
 	t.Parallel()
@@ -170,6 +170,94 @@ func TestDirect(t *testing.T) {
 				Anomaly: history.InternalInconsistency, Calls: []int{2}, Key: "x", Reads: [][]any{{1, 3}},
 				Expected: []any{1, 2, 3}, Whole: true,
 			}}), "the appends leave the first read's list as the read returned it")
+		})
+
+		t.Run("reports two transactions that append to the list that both read as a lost update",
+			func(t *testing.T) {
+				t.Parallel()
+				h := history.New()
+				transact(h, 0, history.OK, appendOf("x", 1))
+				transact(h, 1, history.OK, readOf("x", 1), appendOf("x", 2))
+				transact(h, 2, history.OK, readOf("x", 1), appendOf("x", 3))
+				assert.Equal(t, isolationOf(history.Serializable, h), map[string]any{
+					anomalyField: history.LostUpdate,
+					kindsField:   []history.Anomaly{history.LostUpdate, history.G2},
+					transactionsField: []history.Transaction{
+						committedAt(2, 1, readOf("x", 1), appendOf("x", 2)),
+						committedAt(4, 2, readOf("x", 1), appendOf("x", 3)),
+					},
+					cycleField: nil,
+					explanationField: []history.Evidence{history.Observation{
+						Anomaly: history.LostUpdate, Calls: []int{2, 4}, Key: "x", Reads: [][]any{{1}},
+					}},
+				}, "the detail of the two transactions, the earlier first")
+			})
+
+		t.Run("reports two transactions that overwrite the register value that both read as a lost update",
+			func(t *testing.T) {
+				t.Parallel()
+				h := history.New()
+				transact(h, 0, history.OK, writeOf("x", 1))
+				transact(h, 1, history.OK, loadOf("x", 1), writeOf("x", 2))
+				transact(h, 2, history.OK, loadOf("x", 1), writeOf("x", 3))
+				assert.Equal(t, isolationOf(history.Serializable, h)[explanationField], any([]history.Evidence{
+					history.Observation{
+						Anomaly:  history.LostUpdate,
+						Register: true,
+						Calls:    []int{2, 4},
+						Key:      "x",
+						Read:     1,
+					},
+				}), "the two transactions and the value that both read")
+			})
+
+		t.Run("reports a lost update of the initial value of a register with no read value", func(t *testing.T) {
+			t.Parallel()
+			h := history.New()
+			transact(h, 0, history.OK, loadOf("x", nil), writeOf("x", 1))
+			transact(h, 1, history.OK, loadOf("x", nil), writeOf("x", 2))
+			assert.Equal(t, isolationOf(history.Serializable, h)[explanationField], any([]history.Evidence{
+				history.Observation{Anomaly: history.LostUpdate, Register: true, Calls: []int{0, 2}, Key: "x"},
+			}), "the two transactions and the initial value")
+		})
+
+		t.Run("tells two reads apart that differ before their last value", func(t *testing.T) {
+			t.Parallel()
+			h := history.New()
+			for value := 1; value <= 3; value++ {
+				transact(h, 0, history.OK, appendOf("x", value))
+			}
+			transact(h, 1, history.OK, readOf("x", 1, 3), appendOf("x", 4))
+			transact(h, 2, history.OK, readOf("x", 2, 3), appendOf("x", 5))
+			assert.NotContains(t, isolationOf(history.Serializable, h)[kindsField], history.LostUpdate,
+				"the reads of [1 3] and [2 3] are two versions")
+			transact(h, 3, history.OK, readOf("x", 2, 3), appendOf("x", 6))
+			assert.Contains(t, isolationOf(history.Serializable, h)[kindsField], history.LostUpdate,
+				"a third read of [2 3] matches the second")
+		})
+
+		t.Run("accepts one list that two transactions read when only one of them appends", func(t *testing.T) {
+			t.Parallel()
+			h := history.New()
+			transact(h, 0, history.OK, appendOf("x", 1))
+			transact(h, 1, history.OK, readOf("x", 1), appendOf("x", 2))
+			transact(h, 2, history.OK, readOf("x", 1))
+			assert.Nil(t, isolationOf(history.Serializable, h), "the second reader writes nothing")
+		})
+	})
+
+	t.Run("HasSnapshotIsolation", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("reports a lost update that no cycle of the graph shows", func(t *testing.T) {
+			t.Parallel()
+			h := history.New()
+			transact(h, 0, history.OK, writeOf("x", 1))
+			transact(h, 1, history.OK, loadOf("x", 1), writeOf("x", 2))
+			transact(h, 2, history.OK, loadOf("x", 1), writeOf("x", 3))
+			got := isolationOf(history.HasSnapshotIsolation, h)
+			assert.Equal(t, []any{got[anomalyField], got[kindsField]},
+				[]any{history.LostUpdate, []history.Anomaly{history.LostUpdate}}, "the lost update alone")
 		})
 	})
 }

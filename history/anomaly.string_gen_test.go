@@ -29,13 +29,14 @@ func TestAnomalyString(t *testing.T) {
 				history.IncompatibleOrder:     "incompatible-order",
 				history.AbortedRead:           "aborted-read",
 				history.IntermediateRead:      "intermediate-read",
+				history.LostUpdate:            "lost-update",
 				history.G0:                    "G0",
 				history.G1c:                   "G1c",
 				history.GSingle:               "G-single",
 				history.GNonadjacent:          "G-nonadjacent",
 				history.G2:                    "G2",
 				0:                             "Anomaly(0)",
-				invalidAnomaly:                "Anomaly(12)",
+				invalidAnomaly:                "Anomaly(13)",
 			})
 		})
 	})
