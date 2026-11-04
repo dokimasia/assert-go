@@ -234,7 +234,9 @@ func listText(values []any) string {
 // outcome is unknown.
 func writeSpans(b *strings.Builder, label string, spans any) {
 	list, _ := spans.([]Span)
-	b.WriteString("\n    " + label + ": ")
+	b.WriteString("\n    ")
+	b.WriteString(label)
+	b.WriteString(": ")
 	if len(list) == 0 {
 		b.WriteString("none")
 	}
