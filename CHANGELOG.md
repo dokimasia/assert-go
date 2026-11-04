@@ -1,5 +1,12 @@
 # go.dokimi.dev/assert
 
+## 0.17.0
+
+### Minor Changes
+
+- 5c5b841: Implement definition 15.0.0 and write its version into every call record.
+- 5c5b841: **Breaking:** Report a lost update as `history.LostUpdate` in `history.Serializable` and `history.HasSnapshotIsolation`.
+
 ## 0.16.0
 
 ### Minor Changes
