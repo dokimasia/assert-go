@@ -1,5 +1,19 @@
 # go.dokimi.dev/assert
 
+## 0.18.0
+
+### Minor Changes
+
+- e150c65: Implement definition 16.0.0 and write its version into every call record.
+- 7b60cb1: Let `history.Resume` continue the search of each partition of a check without `history.Whole`.
+- e150c65: **Breaking:** Add `prop.Replays` and the fields `replays` and `reproduced` of the detail of a run, as `Result.Replays` and `Result.Reproduced`.
+- e150c65: **Breaking:** Fail a case whose `Scheduler.Run` or `Scheduler.Advance` releases `stateful.MaxReleases` tasks, 1,000,000 by default, while a task is still ready.
+- e150c65: Add `Scheduler.Wait`, `Scheduler.Clock` and `Scheduler.Advance` to `stateful` to park a task on a condition or on a deadline of the clock of its scheduler.
+
+### Patch Changes
+
+- 7b60cb1: Cut the allocations of a passing `history.Linearizable` of two calls on one worker from 40 to 38.
+
 ## 0.17.0
 
 ### Minor Changes
