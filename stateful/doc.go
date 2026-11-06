@@ -59,6 +59,17 @@
 // as tasks starts its goroutines through [Scheduler.Spawn] and calls
 // [Scheduler.Yield] where another task may run.
 //
+// # Waits and time
+//
+// A task parks until a condition is true with [Scheduler.Wait], and until a
+// deadline with the Sleep of [Scheduler.Clock]. A parked task is not ready,
+// so [Scheduler.Run] returns while it waits or sleeps. The clock of a
+// scheduler reads midnight UTC 2000-01-01 until [Scheduler.Advance] moves it
+// from deadline to deadline, and the tasks of each deadline run at the time
+// of that deadline. One Run or one Advance releases at most the tasks that
+// [MaxReleases] states, and fails the case at that limit while a task is
+// still ready.
+//
 // # Traces
 //
 // The case of [prop.Draws] follows a trace of draw entries and step
@@ -70,9 +81,11 @@
 // Steps panics for a machine that states no machine: an action with a
 // negative weight or without Run, and two actions with one name. An option
 // panics for a count below its minimum, [PCT] for a depth below 1, and
-// [Tasks] for a nil scheduler. A scheduler panics when a task calls Run of
-// its own scheduler. Each message starts with the package and names the
-// call.
+// [Tasks] for a nil scheduler. A scheduler panics when a task calls Run or
+// Advance of its own scheduler, when the body waits outside a task for a
+// condition that is false, and when the body sleeps on its clock outside a
+// task for a positive duration. Each message starts with the package and
+// names the call.
 //
 // # Concurrency
 //

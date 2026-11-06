@@ -165,8 +165,10 @@ type Error struct {
   negative weight or without `Run`, and two actions with one name. An
   option of `stateful` panics for a count below its minimum, `Tasks` for
   a nil scheduler, and `PCT` for a depth below 1. A scheduler panics when
-  a task calls `Run` of its own scheduler. Each message starts with the
-  package and names the call.
+  a task calls `Run` or `Advance` of its own scheduler. It also panics for
+  a `Wait` outside a task whose condition is false, and for a `Sleep` of
+  its clock outside a task with a positive duration. Each message starts
+  with the package and names the call.
 - A contract of `bench` panics when a caller breaks its contract:
   `Warmup` with a negative count or after the contract has run its body,
   `MaxLatency` and `MaxMean` after the contract has run its body,
@@ -210,9 +212,9 @@ type Error struct {
   assertion about panics, the end of a property's case, the goroutine of
   the wrapper of `Around`, whose panic the engine raises again, a body of
   `Concurrently`, a goroutine of `RunParallel`, a function of the spec in
-  `Linearizable`, a task of the task scheduler, whose panic `Run` raises
-  again, and a call of the history that the seam runner of `conformance`
-  makes to read the entry that a script refuses.
+  `Linearizable`, a task of the task scheduler, whose panic `Run` and
+  `Advance` raise again, and a call of the history that the seam runner
+  of `conformance` makes to read the entry that a script refuses.
 
 ## Writing
 

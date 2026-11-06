@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -162,6 +163,8 @@ func TestOption(t *testing.T) {
 				divergenceField:     nil,
 				coverageField:       nil,
 				reasonField:         nil,
+				replaysField:        nil,
+				reproducedField:     nil,
 			}
 			got := detailOf(failsAtLeast(9, 5, big), prop.Seed(7), prop.Replay("prop1:AAc"))
 			assert.Equal(t, got, want, "the record of the definition's vector")
@@ -820,6 +823,41 @@ func TestOption(t *testing.T) {
 		})
 	})
 
+	t.Run("Replays", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("replays a failing case three times before its shrink under Replays(3)", func(t *testing.T) {
+			t.Parallel()
+			calls := callsOf(t, func(c *prop.Case) {
+				assert.True(c, c.Draw(prop.Integer(0, 10000), drawn) <= 1000, "the value is at most 1,000")
+			}, prop.Seed(7), prop.Replays(3))
+			phases := make([]any, 0, len(calls)-1)
+			for _, call := range calls[1:] {
+				phases = append(phases, call["phase"])
+			}
+			first := slices.Index(phases, any("replay"))
+			assert.Equal(t, phases[first:first+4], []any{"replay", "replay", "replay", "shrink"},
+				"three replays, and then the shrink")
+		})
+
+		t.Run("replays a failing case once without the option", func(t *testing.T) {
+			t.Parallel()
+			got := detailOf(failsAtLeast(10000, 1001, big), prop.Seed(7))
+			assert.Equal(t, []any{got[replaysField], got[reproducedField]}, []any{1, 1}, "one replay")
+		})
+
+		t.Run("panics for n below 1", func(t *testing.T) {
+			t.Parallel()
+			got := assert.Panics(t, func() { prop.Replays(0) }, "no replay")
+			assert.Equal(t, got, any("prop: Replays(0) is below 1"), "the panic names the option")
+		})
+
+		t.Run("returns the option of one replay", func(t *testing.T) {
+			t.Parallel()
+			assert.NotPanics(t, func() { prop.Replays(1) }, "the default count")
+		})
+	})
+
 	t.Run("Option", func(t *testing.T) {
 		t.Parallel()
 
@@ -852,6 +890,7 @@ func TestOptionAllocs(t *testing.T) {
 	assert.MaxAllocs(t, func() { kept = prop.OnResult(func(prop.Result) {}) }, optionAllocs,
 		"OnResult allocates its setting")
 	assert.MaxAllocs(t, func() { kept = prop.Confirm(5) }, optionAllocs, "Confirm allocates its setting")
+	assert.MaxAllocs(t, func() { kept = prop.Replays(3) }, optionAllocs, "Replays allocates its setting")
 	assert.NotEqual(t, kept, prop.Option{}, "the kept option states a setting")
 	assert.MaxAllocs(t, func() { kept = prop.Hermetic() }, 0, "Hermetic's setting captures nothing")
 	assert.NotEqual(t, kept, prop.Option{}, "Hermetic states a setting")
@@ -883,6 +922,7 @@ func BenchmarkOption(b *testing.B) {
 			allocs: optionAllocs,
 		},
 		{name: "Confirm", option: func() prop.Option { return prop.Confirm(5) }, allocs: optionAllocs},
+		{name: "Replays", option: func() prop.Option { return prop.Replays(3) }, allocs: optionAllocs},
 		{name: "Hermetic", option: prop.Hermetic},
 	}
 	for _, tt := range tests {

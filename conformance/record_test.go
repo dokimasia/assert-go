@@ -85,7 +85,7 @@ func TestRecord(t *testing.T) {
 			{
 				name: "returns a fault at the reason for a failing run that the vector states with a reason",
 				give: behaving(bigBody, seven, strings.Replace(failedDetail(bigDraw, "big", "[]"),
-					`"coverage":null}`, `"coverage":null,"reason":"unsupported"}`, 1)),
+					`"coverage":null,`, `"coverage":null,"reason":"unsupported",`, 1)),
 				wantPath:   at(fault.Field("reason")),
 				wantReason: `the run states null, want "unsupported"`,
 			},

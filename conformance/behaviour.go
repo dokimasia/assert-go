@@ -44,6 +44,7 @@ type behaviourSettings struct {
 	Replay       *string              `json:"replay"`
 	Workers      *int                 `json:"workers"`
 	Confirm      *int                 `json:"confirm"`
+	Replays      *int                 `json:"replays"`
 }
 
 // checkBehaviour runs the body of a behaviour vector under its settings,
@@ -102,6 +103,9 @@ func (s behaviourSettings) resolve(dir string) ([]prop.Option, error) {
 	}
 	if s.Confirm != nil {
 		opts = append(opts, prop.Confirm(*s.Confirm))
+	}
+	if s.Replays != nil {
+		opts = append(opts, prop.Replays(*s.Replays))
 	}
 	for _, r := range s.Requirements {
 		opts = append(opts, prop.Require(r.Label, r.Share))

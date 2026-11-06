@@ -42,6 +42,8 @@ func TestDetail(t *testing.T) {
 				divergenceField:     nil,
 				coverageField:       nil,
 				reasonField:         nil,
+				replaysField:        nil,
+				reproducedField:     nil,
 			}
 			body := func(c *prop.Case) {
 				c.Draw(prop.Integer(0, 1000), drawn)
@@ -59,7 +61,8 @@ func TestDetail(t *testing.T) {
 			assert.Equal(t, detail, map[string]any{
 				outcomeField: "skipped", casesField: 0.0, rejectedField: 0.0, seedField: "7",
 				counterexampleField: nil, failureField: nil, choicesField: nil, othersField: nil,
-				divergenceField: nil, coverageField: nil, reasonField: "unsupported",
+				divergenceField: nil, coverageField: nil, reasonField: "unsupported", replaysField: nil,
+				reproducedField: nil,
 			}, "the detail of the definition's vector, with the reason")
 		})
 
@@ -139,11 +142,27 @@ func TestDetail(t *testing.T) {
 				divergenceField: &prop.Divergence{
 					What: prop.FingerprintDifference, Recorded: uint64(1), Replayed: uint64(2),
 				},
-				coverageField: nil,
-				reasonField:   nil,
+				coverageField:   nil,
+				reasonField:     nil,
+				replaysField:    nil,
+				reproducedField: nil,
 			}
 			got := detailOf(observesItsCalls(), prop.Seed(7), prop.Confirm(1))
 			assert.Equal(t, got, want, "the record of the definition's vector")
+		})
+
+		t.Run("records the replays of a failing case and the replays that reproduced it", func(t *testing.T) {
+			t.Parallel()
+			failed := false
+			body := func(c *prop.Case) {
+				if c.Draw(prop.Integer(0, 1000000000), drawn) > 1000 && !failed {
+					failed = true
+					fail(c, "once")
+				}
+			}
+			detail := recordedDetail(t, body, prop.Seed(7), prop.Replays(3))
+			assert.Equal(t, []any{detail[outcomeField], detail[replaysField], detail[reproducedField]},
+				[]any{"flaky", 3.0, 0.0}, "three replays, none of which reproduces the failure")
 		})
 
 		t.Run("records the requirement that a run missed", func(t *testing.T) {

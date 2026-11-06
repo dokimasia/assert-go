@@ -60,6 +60,8 @@ func TestForAll(t *testing.T) {
 				divergenceField: nil,
 				coverageField:   nil,
 				reasonField:     nil,
+				replaysField:    1,
+				reproducedField: 1,
 			}
 			got := detailOf(failsAtLeast(10000, 1001, big), prop.Seed(7))
 			assert.Equal(t, got, want, "the record of the definition's vector")
@@ -160,7 +162,7 @@ func TestForAll(t *testing.T) {
 			assert.Equal(t, run["detail"], any(map[string]any{
 				outcomeField: "passed", casesField: 10.0, rejectedField: 0.0, seedField: "7",
 				counterexampleField: nil, failureField: nil, choicesField: nil, othersField: nil,
-				divergenceField: nil, coverageField: nil, reasonField: nil,
+				divergenceField: nil, coverageField: nil, reasonField: nil, replaysField: nil, reproducedField: nil,
 			}), "the detail of the run, every field that a pass does not use null")
 			assert.Length(t, calls, 11, "the property and one call for each digit")
 			for i, call := range calls[1:] {

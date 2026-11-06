@@ -23,11 +23,11 @@ func Uniform() Strategy {
 
 // PCT returns the strategy of probabilistic concurrency testing of depth
 // depth. Each task receives a priority when it is spawned, a choice over
-// [0, 2^64 - 1] with target 0, and keeps it when it yields. The ready task
-// with the highest priority runs, the earliest ready among equals, and a
-// release makes no choice. Each [Scheduler.Run] starts with depth - 1
-// change points, each a presence choice with edge 1 and then a count of
-// releases. The task released at that count falls below every other task,
+// [0, 2^64 - 1] with target 0, and keeps it when it yields, waits or sleeps.
+// The ready task with the highest priority runs, the earliest ready among
+// equals, and a release makes no choice. Each [Scheduler.Run] and each
+// [Scheduler.Advance] starts with depth - 1 change points, each a presence
+// choice with edge 1 and then a count of releases. The task released at that count falls below every other task,
 // and a later change point puts its task lower still. It panics for a depth
 // below 1.
 func PCT(depth int) Strategy {

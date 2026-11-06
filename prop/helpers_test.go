@@ -55,6 +55,8 @@ const (
 	divergenceField     = "divergence"
 	coverageField       = "coverage"
 	reasonField         = "reason"
+	replaysField        = "replays"
+	reproducedField     = "reproduced"
 )
 
 // The labels of the coverage requirements of the definition's behaviour

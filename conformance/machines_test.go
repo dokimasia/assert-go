@@ -31,12 +31,13 @@ const (
 	everyOption = `{"mean":5,"max":3,"swarm":false,"clients":3,"concurrent":4,"strategy":"uniform"}`
 	// overflowStored is a vector of counter-overflows whose stored case of
 	// three increments fails before any case of seed 1, so its run counts no
-	// valid case. Without the stored case, the run counts one.
+	// valid case. Without the stored case, the run counts one. The one replay
+	// of the failing case reproduces it.
 	overflowStored = `{"subject":"counter-overflows","setup":{},` +
 		`"settings":{"seed":"1","stored":[[1,0,1,0,1,0,1,0]]},"detail":{"outcome":"counterexample",` +
 		`"cases":0,"rejected":0,"seed":"1","counterexample":[{"step":"increment"},{"step":"increment"},` +
 		`{"step":"increment"}],"failure":"linearizable","choices":"prop1:AAEAAAABAAAAAQAAAAEAAA",` +
-		`"others":[],"divergence":null,"coverage":null},"error":null}`
+		`"others":[],"divergence":null,"coverage":null,"replays":1,"reproduced":1},"error":null}`
 	// refusingRun is the vector of counter-refuses-every-third whose run is
 	// flaky at the index of its fifth sequential step: a case that repeats an
 	// earlier case's choices refuses an increment that the earlier case

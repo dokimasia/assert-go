@@ -596,6 +596,95 @@ func TestRunner(t *testing.T) {
 			assert.Equal(t, counts["shrink"]+counts["explain"], r.Runs, "a record for each run of the budget")
 			assert.True(t, counts["shrink"] > 0 && counts["explain"] > 0, "runs of both")
 			assert.Equal(t, phases[len(phases)-1], "explain", "the explanation last")
+			assert.Equal(t, []int{r.Replays, r.Reproduced}, []int{1, 1}, "one replay, which reproduces the failure")
+		})
+
+		t.Run("replays a failing case Replays times before its shrink, and counts the replays that reproduce it",
+			func(t *testing.T) {
+				t.Parallel()
+				s := settled()
+				s.Replays = 3
+				var r engine.Result
+				phases := phasesOf(recordedRun(t, s, func(s engine.Settings) {
+					r = engine.Run(ended(choiceOf(1001)), s)
+				}))
+				replay := slices.Index(phases, "replay")
+				assert.Equal(t, phases[replay:replay+4], []string{"replay", "replay", "replay", "shrink"},
+					"three replays, and then the shrink")
+				assert.Equal(t, []any{r.Outcome, r.Replays, r.Reproduced}, []any{engine.Counterexample, 3, 3},
+					"each replay reproduces the failure")
+			})
+
+		t.Run("returns Counterexample for a failing case that one replay of three reproduces", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Replays = 3
+			calls := 0
+			r := engine.Run(func(c *engine.Case) {
+				calls++
+				if engine.Draw(c, tenThousand, drawn) > 1000 && calls%2 == 0 {
+					c.Report(assert.Failure{Assertion: "even"}, false)
+				}
+			}, s)
+			assert.Equal(t, []any{r.Outcome, r.Replays, r.Reproduced}, []any{engine.Counterexample, 3, 1},
+				"the failing case is an even call, so its replays are an odd, an even and an odd call")
+			assert.Equal(t, r.Failing.Identity.Assertion, "even", "the failure of the minimal case")
+		})
+
+		t.Run("returns Flaky with the difference of the first replay when no replay reproduces the failure",
+			func(t *testing.T) {
+				t.Parallel()
+				s := settled()
+				s.Replays = 3
+				big := 0
+				var r engine.Result
+				phases := phasesOf(recordedRun(t, s, func(s engine.Settings) {
+					r = engine.Run(ended(func(c *engine.Case) {
+						if engine.Draw(c, tenThousand, drawn) <= 1000 {
+							return
+						}
+						big++
+						if big == 1 {
+							c.Report(assert.Failure{Assertion: "once"}, false)
+						}
+						if big > 2 {
+							c.Report(assert.Failure{Assertion: "later"}, false)
+						}
+					}), s)
+				}))
+				divergence := &engine.Divergence{
+					What: engine.VerdictDifference, Index: 1, Recorded: engine.Identity{Assertion: "once"},
+				}
+				assert.Equal(t, []any{r.Outcome, r.Divergence}, []any{engine.Flaky, divergence},
+					"the first replay passes where the case failed, and the later two fail otherwise")
+				assert.Equal(t, []int{r.Replays, r.Reproduced}, []int{3, 0}, "no replay of three reproduces it")
+				assert.False(t, slices.Contains(phases, "shrink"), "the run shrinks nothing")
+			})
+
+		t.Run("returns the fault of a later replay that ends with one", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Replays = 3
+			replays := 0
+			r := engine.Run(func(c *engine.Case) {
+				if engine.Draw(c, tenThousand, drawn) <= 1000 {
+					return
+				}
+				if replays++; replays == 3 {
+					c.ReportFault(errEnvironment, true)
+				}
+				c.Report(assert.Failure{Assertion: "big"}, false)
+			}, s)
+			assert.ErrorIs(t, r.Fault, errEnvironment, "the second replay ends the run with its fault")
+		})
+
+		t.Run("replays nothing under a shrink budget of 0", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Replays, s.Shrink = 3, 0
+			r := engine.Run(choiceOf(1001), s)
+			assert.Equal(t, []any{r.Outcome, r.Replays, r.Reproduced}, []any{engine.Counterexample, 0, 0},
+				"the failing case is reported as found")
 		})
 
 		t.Run("runs every run of the body inside Settings.Around", func(t *testing.T) {
@@ -953,6 +1042,15 @@ func TestRunner(t *testing.T) {
 				"a counterexample without a valid case")
 			assert.Equal(t, got.Explanation, want, "the minimal value with its nearest passing value")
 			assert.Equal(t, got.Token, "prop1:AOkH", "the minimal case's token")
+		})
+
+		t.Run("replays a failing case that the bridge decoded Replays times", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Replays = 2
+			got := engine.Conclude(choiceOf(1001), s, engine.Bridge(choiceOf(1001), largestBytes, engine.Settings{}))
+			assert.Equal(t, []any{got.Outcome, got.Replays, got.Reproduced}, []any{engine.Counterexample, 2, 2},
+				"two replays, each of which reproduces the failure")
 		})
 
 		t.Run("returns Flaky for a failing case whose replay passes", func(t *testing.T) {

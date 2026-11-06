@@ -57,7 +57,8 @@ const unlimited = time.Duration(math.MaxInt64)
 // [history.Concurrently], and the case then runs up to [Repeat] times,
 // because threads do not replay. Under [Tasks], they run as tasks of a
 // [Scheduler], one task per client that has a step, spawned in client
-// order.
+// order. The section ends once [Scheduler.Run] returns, so a client whose
+// task waits or sleeps then leaves its call open.
 //
 // The case of [prop.Draws] follows its trace: the swarm keeps the actions
 // that its step entries name, and each step entry becomes the choices of

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"maps"
 	"slices"
+	"time"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/history"
@@ -42,6 +43,16 @@ const (
 	// drawsOption is the option of prop at which the path of a refused
 	// trace's fault starts.
 	drawsOption = "Draws"
+	// maxReleasesIdentity is the name that the vectors give the failure of a
+	// run of a scheduler at its limit of releases, whose record states no
+	// assertion.
+	maxReleasesIdentity = "max-releases"
+	// tickPeriod is the sleep of the ticker of the ticker subjects before
+	// each of its ticks ticks.
+	tickPeriod = 4 * time.Millisecond
+	ticks      = 4
+	// advanceOp is the operation of the advance of the ticker subjects.
+	advanceOp = "advance"
 )
 
 // The members of a machines vector that the path of a fault names.
@@ -58,6 +69,9 @@ var (
 	queued = prop.Integer(0, 1000)
 	// storeKeys are the keys of the store's put.
 	storeKeys = prop.Integer(0, 3)
+	// milliseconds are the milliseconds of the advance of the ticker
+	// subjects.
+	milliseconds = prop.Integer(0, 10)
 )
 
 // errRefused is the error of an increment that counter-refuses-every-third
@@ -68,7 +82,7 @@ var errRefused = errors.New("conformance: refused")
 // options of a vector's setup.
 type machineSubject func(c *prop.Case, o machineOptions)
 
-// machineSubjects returns the seven machine subjects of the definition, by
+// machineSubjects returns the twelve machine subjects of the definition, by
 // name, for one run. A subject that counts over the cases of a run starts
 // at 0 in each map that it returns.
 func machineSubjects() map[string]machineSubject {
@@ -81,6 +95,13 @@ func machineSubjects() map[string]machineSubject {
 		"racy-counter":                func(c *prop.Case, o machineOptions) { sharedCounter(c, o, true) },
 		"correct-counter":             func(c *prop.Case, o machineOptions) { sharedCounter(c, o, false) },
 		"counter-refuses-every-third": func(c *prop.Case, o machineOptions) { refusingCounter(c, o, &increments) },
+		"register-flushes-in-two-parts": func(c *prop.Case, o machineOptions) {
+			flushedRegister(c, o, true)
+		},
+		"register-flushes":            func(c *prop.Case, o machineOptions) { flushedRegister(c, o, false) },
+		"ticker-skips-its-first-tick": func(c *prop.Case, o machineOptions) { ticker(c, o, true) },
+		"ticker":                      func(c *prop.Case, o machineOptions) { ticker(c, o, false) },
+		"spins-until-a-flag":          spinner,
 	}
 }
 
@@ -113,17 +134,21 @@ type machineSetup struct {
 	Clients        *int            `json:"clients"`
 	Concurrent     *int            `json:"concurrent"`
 	ConcurrentMean *int            `json:"concurrent-mean"`
+	MaxReleases    *int            `json:"max-releases"`
 	Strategy       json.RawMessage `json:"strategy"`
 }
 
 // machineOptions are the options of a subject's steps: those that every
-// subject takes, those of a concurrent section, and the strategy of the
-// scheduler that a subject with a section makes in each case.
+// subject takes, those of a concurrent section, and the strategy and the
+// options of the scheduler that a subject with a section or with tasks of
+// its own makes in each case.
 type machineOptions struct {
 	// steps are the options that every subject takes.
 	steps []stateful.Option
 	// section are the options of a concurrent section.
 	section []stateful.Option
+	// scheduler are the options of the scheduler.
+	scheduler []stateful.SchedulerOption
 	// strategy is the strategy of the scheduler.
 	strategy stateful.Strategy
 }
@@ -138,16 +163,20 @@ type traceRefusal struct {
 }
 
 // faulting is a recorder that keeps the fault that ends a call, as the
-// error that it is.
+// error that it is. A run notes a fault of its store without an end, such as
+// the refusal of an entry whose failure has no location, because every frame
+// of a subject is in this module. A machines vector states no such fault.
 type faulting struct {
 	*assert.Recorder
 	// fault is the fault that ended the call, and nil for none.
 	fault error
 }
 
-// ReportFault keeps err.
-func (f *faulting) ReportFault(err error, _ bool) {
-	f.fault = err
+// ReportFault keeps err when it ends the call.
+func (f *faulting) ReportFault(err error, ending bool) {
+	if ending {
+		f.fault = err
+	}
 }
 
 // checkMachines runs the subject of a machines vector under its setup and
@@ -208,6 +237,9 @@ func (s machineSetup) options() (machineOptions, error) {
 	}
 	if s.ConcurrentMean != nil {
 		o.section = append(o.section, stateful.ConcurrentMean(*s.ConcurrentMean))
+	}
+	if s.MaxReleases != nil {
+		o.scheduler = append(o.scheduler, stateful.MaxReleases(*s.MaxReleases))
 	}
 	var err error
 	o.strategy, err = strategyOf(s.Strategy)
@@ -473,7 +505,7 @@ func storeLosesOnCrash(c *prop.Case, o machineOptions) {
 // of the setup's strategy: increment, over the spec of a counter. The racy
 // increment yields between its read of the count and its write.
 func sharedCounter(c *prop.Case, o machineOptions, racy bool) {
-	s := stateful.NewScheduler(c, o.strategy)
+	s := stateful.NewScheduler(c, o.strategy, o.scheduler...)
 	count := 0
 	stateful.Steps(c, stateful.Machine[int]{
 		Spec: counterSpec,
@@ -490,4 +522,142 @@ func sharedCounter(c *prop.Case, o machineOptions, racy bool) {
 			},
 		}},
 	}, slices.Concat(o.steps, o.section, []stateful.Option{stateful.Tasks(s)})...)
+}
+
+// registerSpec is the spec of a register, initially nil: write leaves its
+// value, and read returns the value and leaves it. Each call of the register
+// subjects completes.
+var registerSpec = history.Spec[any]{
+	Initial: func() any { return nil },
+	Next: func(state any, op history.Operation) []any {
+		if op.Name == writeOp {
+			return []any{op.Args[0]}
+		}
+		if op.Returned(state) {
+			return []any{state}
+		}
+		return nil
+	},
+}
+
+// flushedRegister runs the register machine on clients, as tasks of a
+// scheduler of the setup's strategy: write into a buffer, and read of the
+// buffer when it is set and of the durable value otherwise, over the spec of
+// a register. A flusher task, which the subject spawns before the steps,
+// waits until the buffer is set and moves its value to the durable value.
+// The flusher in two parts takes the value, clears the buffer and yields
+// before it sets the durable value.
+func flushedRegister(c *prop.Case, o machineOptions, inTwoParts bool) {
+	s := stateful.NewScheduler(c, o.strategy, o.scheduler...)
+	var buffer, durable any
+	s.Spawn(func() {
+		for {
+			s.Wait(func() bool { return buffer != nil })
+			if !inTwoParts {
+				durable, buffer = buffer, nil
+				continue
+			}
+			taken := buffer
+			buffer = nil
+			s.Yield()
+			durable = taken
+		}
+	})
+	stateful.Steps(c, stateful.Machine[any]{
+		Spec: registerSpec,
+		Actions: []stateful.Action[any]{{
+			Name:  writeOp,
+			Input: func(c *prop.Case, _ any) any { return c.Draw(queued, "v") },
+			Run: func(c *prop.Case, client int, v any) {
+				call := c.History().Invoke(client, writeOp, []any{v})
+				buffer = v
+				call.OK(nil)
+			},
+		}, {
+			Name: readOp,
+			Run: func(c *prop.Case, client int, _ any) {
+				call := c.History().Invoke(client, readOp, nil)
+				if buffer != nil {
+					call.OK(buffer)
+					return
+				}
+				call.OK(durable)
+			},
+		}},
+	}, slices.Concat(o.steps, o.section, []stateful.Option{stateful.Tasks(s)})...)
+}
+
+// ticksSpec is the spec of the ticker subjects, whose state is the
+// milliseconds that the advances added: advance adds its milliseconds, and
+// read returns the milliseconds divided by those of tickPeriod, at most ticks.
+var ticksSpec = history.Spec[int]{
+	Initial: func() int { return 0 },
+	Next: func(state int, op history.Operation) []int {
+		if op.Name == advanceOp {
+			return []int{state + op.Args[0].(int)}
+		}
+		if op.Returned(min(ticks, state/int(tickPeriod/time.Millisecond))) {
+			return []int{state}
+		}
+		return nil
+	},
+}
+
+// ticker runs the ticker machine over a ticker task, which the subject spawns
+// on a scheduler of the setup's strategy before the steps, and which sleeps
+// tickPeriod on the clock of the scheduler and adds one to its count, ticks
+// times: advance of the scheduler by drawn milliseconds, and read of the
+// count, over the spec of the ticks. The ticker that skips its first tick
+// adds nothing at its first wake.
+func ticker(c *prop.Case, o machineOptions, skipsFirst bool) {
+	s := stateful.NewScheduler(c, o.strategy, o.scheduler...)
+	count := 0
+	s.Spawn(func() {
+		for tick := range ticks {
+			s.Clock().Sleep(tickPeriod)
+			//dokimi:mutate-skip lcr-right,ror-false: a read after the first tick fails the ticker that skips it, so no vector reads a later tick of that ticker
+			if tick > 0 || !skipsFirst {
+				count++
+			}
+		}
+	})
+	stateful.Steps(c, stateful.Machine[int]{
+		Spec: ticksSpec,
+		Actions: []stateful.Action[int]{{
+			Name:  advanceOp,
+			Input: func(c *prop.Case, _ int) any { return c.Draw(milliseconds, "ms") },
+			Run: func(c *prop.Case, client int, ms any) {
+				call := c.History().Invoke(client, advanceOp, []any{ms})
+				millis := ms.(int)
+				s.Advance(time.Duration(millis) * time.Millisecond)
+				call.OK(nil)
+			},
+		}, {
+			Name: readOp,
+			Run: func(c *prop.Case, client int, _ any) {
+				c.History().Invoke(client, readOp, nil).OK(count)
+			},
+		}},
+	}, o.steps...)
+}
+
+// spinner runs the machine whose one action, spin, spawns a task on a
+// scheduler of the setup's strategy that yields without an end, and runs the
+// scheduler, which fails the case at its limit of releases. The machine has
+// no spec.
+func spinner(c *prop.Case, o machineOptions) {
+	s := stateful.NewScheduler(c, o.strategy, o.scheduler...)
+	stateful.Steps(c, stateful.Machine[struct{}]{
+		Actions: []stateful.Action[struct{}]{{
+			Name: "spin",
+			Run: func(*prop.Case, int, any) {
+				s.Spawn(func() {
+					for {
+						s.Yield()
+					}
+				})
+				s.Run()
+			},
+		}},
+	}, o.steps...)
 }

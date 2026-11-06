@@ -36,9 +36,11 @@ func TestResult(t *testing.T) {
 				Counterexample: []prop.Entry{
 					prop.Drawn{Label: drawn, Value: 1001, Relevance: prop.ValueMatters, NearestPassing: 1000},
 				},
-				Failure: &assert.Failure{Assertion: big},
-				Choices: "prop1:AOkH",
-				Others:  []prop.Other{},
+				Failure:    &assert.Failure{Assertion: big},
+				Choices:    "prop1:AOkH",
+				Others:     []prop.Other{},
+				Replays:    1,
+				Reproduced: 1,
 			}
 			got := resultOf(t, failsAtLeast(10000, 1001, big), prop.Seed(7))
 			assert.Equal(t, got, want, "the result of the definition's vector")
@@ -63,7 +65,16 @@ func TestResult(t *testing.T) {
 				divergenceField:     nil,
 				coverageField:       nil,
 				reasonField:         nil,
+				replaysField:        got.Replays,
+				reproducedField:     got.Reproduced,
 			}, rec.Failures()[0].Detail, "the detail of the failure record")
+		})
+
+		t.Run("hands the replays of a failing case and the replays that reproduced it", func(t *testing.T) {
+			t.Parallel()
+			got := resultOf(t, once(func(c *prop.Case) { fail(c, "once") }), prop.Seed(7), prop.Replays(3))
+			assert.Equal(t, []any{got.Outcome, got.Replays, got.Reproduced}, []any{prop.Flaky, 3, 0},
+				"three replays, none of which reproduces the failure")
 		})
 
 		t.Run("hands the counts of a run that rejects every case", func(t *testing.T) {

@@ -32,6 +32,10 @@ const (
 	// identity once the first time it draws a value above 1,000. Every later
 	// call draws its value and then skips with the reason after.
 	failsThenSkips = "fails-then-skips"
+	// failsOnEvenCalls draws an integer in [0, 10^9], and fails with the
+	// identity even when the value is above 1,000 and the call is even,
+	// counting the calls of the body from 1.
+	failsOnEvenCalls = "fails-on-even-calls"
 )
 
 // The facts of the bodies that the corpus names.
@@ -39,10 +43,13 @@ const (
 	// onceIdentity is the identity of the failure of failsOnce and
 	// failsThenSkips.
 	onceIdentity = "once"
-	// onceAbove is the value above which failsOnce and failsThenSkips fail.
+	// evenIdentity is the identity of the failure of failsOnEvenCalls.
+	evenIdentity = "even"
+	// onceAbove is the value above which failsOnce, failsThenSkips and
+	// failsOnEvenCalls fail.
 	onceAbove = 1000
-	// onceMax is the upper bound of the integer of failsOnce and
-	// failsThenSkips.
+	// onceMax is the upper bound of the integer of failsOnce, failsThenSkips
+	// and failsOnEvenCalls.
 	onceMax = 1000000000
 	// afterReason is the reason of the skips of failsThenSkips.
 	afterReason = "after"
@@ -123,6 +130,8 @@ func bodyOf(raw json.RawMessage, end ender) (func(*prop.Case), error) {
 		return failingOnce(end), nil
 	case failsThenSkips:
 		return failingThenSkipping(end), nil
+	case failsOnEvenCalls:
+		return failingOnEvenCalls(end), nil
 	}
 	return nil, fault.At(fault.New("%q names no body", spec.Kind), fault.Field(kindMember))
 }
@@ -237,6 +246,25 @@ func failingThenSkipping(end ender) func(*prop.Case) {
 		failure := ""
 		if value > onceAbove {
 			failed, failure = true, onceIdentity
+		}
+		end(c, failure)
+	}
+}
+
+// failingOnEvenCalls returns the body of fails-on-even-calls, which end
+// ends. A call counts once its draw returns, as in the executable
+// reference.
+func failingOnEvenCalls(end ender) func(*prop.Case) {
+	wide := prop.Integer(0, onceMax)
+	// even reports whether the count of the calls is even, as it is before
+	// the first call.
+	even := true
+	return func(c *prop.Case) {
+		value := c.Draw(wide, drawnLabel)
+		even = !even
+		failure := ""
+		if value > onceAbove && even {
+			failure = evenIdentity
 		}
 		end(c, failure)
 	}

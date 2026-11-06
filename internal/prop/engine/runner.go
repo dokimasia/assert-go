@@ -135,6 +135,10 @@ type Settings struct {
 	// each valid case whose count is a multiple of Confirm right after the
 	// case, from its choices. 0 replays none.
 	Confirm int
+	// Replays is the number of replays of a failing case before the shrink,
+	// and 1 for 0. Every replay runs, and the case shrinks when one or more of
+	// them reproduce its failure.
+	Replays int
 	// Clock is the clock of the test, which every case reads, and the
 	// platform clock when nil.
 	Clock assert.Clock
@@ -205,6 +209,10 @@ type Result struct {
 	Token string
 	// Runs is the number of runs that shrinking and explaining spent.
 	Runs int
+	// Replays is the number of replays of the failing case before the
+	// shrink, and 0 for a run that replayed none. Reproduced is the number of
+	// those replays that reproduced the failure.
+	Replays, Reproduced int
 	// Stored are the runs of the stored cases, in order, up to the one that
 	// ended the run.
 	Stored []Execution
@@ -235,9 +243,11 @@ type Result struct {
 // While a coverage requirement is undecided at a check, more random cases
 // run up to the next check.
 //
-// A failing case is replayed, shrunk and explained. A failing example of
-// values has no choices, and the run reports it as found, without a replay
-// token. A run that found no failing case fails when it rejected more than
+// A failing case is replayed s.Replays times, then shrunk and explained when
+// one or more of the replays reproduce its failure. A run whose replays
+// reproduce nothing ends as [Flaky], with the difference of the first
+// replay. A failing example of values has no choices, and the run reports
+// it as found, without a replay token. A run that found no failing case fails when it rejected more than
 // ten cases for every valid one, when no case requested an input, or when it
 // refuted or left unmet a coverage requirement, checked in that order. A run
 // whose case of the Draws entries refuses an entry ends at once with
@@ -652,9 +662,11 @@ func withClocks(s Settings) Settings {
 }
 
 // conclude replays, shrinks and explains the failing case of a
-// counterexample. It reports an example of values as found, without a
-// token. A replay, a shrink candidate or a filling that ends with a fault
-// ends the run with that fault.
+// counterexample. It runs every replay of s.Replays, one after the other, and
+// shrinks the case when one or more of them reproduce its failure. It
+// reports an example of values as found, without a token. A replay, a
+// shrink candidate or a filling that ends with a fault ends the run with
+// that fault.
 func conclude(body Body, s Settings, r Result) Result {
 	if r.Outcome != Counterexample || r.Failing.Case.Valued() {
 		return r
@@ -663,12 +675,21 @@ func conclude(body Body, s Settings, r Result) Result {
 		r.Token = token.Encode(r.Failing.Case.Choices())
 		return r
 	}
-	replay, d := confirm(body, *r.Failing, s, record.Replay)
-	if replay.Status == CaseFaulted {
-		return Result{Fault: replay.Fault}
+	var difference *Divergence
+	r.Replays = max(s.Replays, 1)
+	for range r.Replays {
+		replay, d := confirm(body, *r.Failing, s, record.Replay)
+		if replay.Status == CaseFaulted {
+			return Result{Fault: replay.Fault}
+		}
+		if d == nil {
+			r.Reproduced++
+		} else if difference == nil {
+			difference = d
+		}
 	}
-	if d != nil {
-		r.Outcome, r.Divergence = Flaky, d
+	if r.Reproduced == 0 {
+		r.Outcome, r.Divergence = Flaky, difference
 		return r
 	}
 	sh := newShrinker(body, *r.Failing, s)

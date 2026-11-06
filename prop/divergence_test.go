@@ -73,8 +73,10 @@ func TestDivergence(t *testing.T) {
 					Replayed: "integer in [0, 1]",
 					Label:    new(drawn),
 				},
-				coverageField: nil,
-				reasonField:   nil,
+				coverageField:   nil,
+				reasonField:     nil,
+				replaysField:    nil,
+				reproducedField: nil,
 			}
 			got := detailOf(diverges(prop.Integer(0, 9), prop.Boolean()), prop.Seed(7))
 			assert.Equal(t, got, want, "the record of the definition's vector")
@@ -140,6 +142,8 @@ func TestDivergence(t *testing.T) {
 				divergenceField:     &prop.Divergence{What: prop.VerdictDifference, Index: 1, Recorded: "once"},
 				coverageField:       nil,
 				reasonField:         nil,
+				replaysField:        1,
+				reproducedField:     0,
 			}
 			assert.Equal(t, detailOf(body, prop.Seed(7)), want, "the record of the definition's vector")
 		})

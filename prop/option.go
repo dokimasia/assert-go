@@ -311,6 +311,24 @@ func Confirm(every int) Option {
 	}}
 }
 
+// Replays makes a run replay a failing case n times before it shrinks the
+// case, once by default, from its choices. A replay reproduces the failure
+// when it requests the same bounds, observes the same fingerprints and fails
+// with the same identity. The run shrinks the case when one or more replays
+// reproduce the failure, and ends as [Flaky] with the difference of the first
+// replay when none does. Every replay runs, and [Result] states how many
+// reproduced the failure. A run under Shrink(0), the case of [Replay] and a
+// failing example of values replay nothing. It panics for n below 1.
+func Replays(n int) Option {
+	if n < 1 {
+		panic(fmt.Sprintf("prop: Replays(%d) is below 1", n))
+	}
+	return Option{set: func(c config) config {
+		c.replays = n
+		return c
+	}}
+}
+
 // Bubble runs each run of the body in a testing/synctest bubble of its own,
 // as Around(synctest.Test) does.
 //
@@ -363,6 +381,9 @@ type config struct {
 	// confirm is the interval of the replays of valid cases that Confirm
 	// states, and 0 without one.
 	confirm int
+	// replays is the number of replays of a failing case that Replays
+	// states.
+	replays int
 	// using are the generators of types that Using states, in the order
 	// stated.
 	using []using
@@ -378,6 +399,7 @@ func configure(opts []Option) config {
 		maxChoices: engine.MaxChoices,
 		explain:    true,
 		workers:    1,
+		replays:    1,
 	}
 	for _, o := range opts {
 		if o.set != nil {

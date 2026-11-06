@@ -29,13 +29,15 @@ const (
 	divergenceField     = "divergence"
 	coverageField       = "coverage"
 	reasonField         = "reason"
+	replaysField        = "replays"
+	reproducedField     = "reproduced"
 )
 
 // detailFields are the names of the fields of a run's detail, in the order
 // that the definition states them.
 var detailFields = [...]string{
 	outcomeField, casesField, rejectedField, seedField, counterexampleField, failureField, choicesField,
-	othersField, divergenceField, coverageField, reasonField,
+	othersField, divergenceField, coverageField, reasonField, replaysField, reproducedField,
 }
 
 // The field names of a draw, a step, a divergence, the step of a
@@ -75,6 +77,8 @@ type runDetail struct {
 	Divergence     *divergenceSpec `json:"divergence"`
 	Coverage       *shortfallSpec  `json:"coverage"`
 	Reason         *string         `json:"reason"`
+	Replays        *int            `json:"replays"`
+	Reproduced     *int            `json:"reproduced"`
 }
 
 // entrySpec is one entry of a counterexample, as a vector states it: a step
@@ -201,6 +205,8 @@ func (d runDetail) normal() (map[string]any, error) {
 		divergenceField:     nil,
 		coverageField:       nil,
 		reasonField:         orNil(d.Reason),
+		replaysField:        orNil(d.Replays),
+		reproducedField:     orNil(d.Reproduced),
 	}
 	if d.Counterexample != nil {
 		entries, err := normalEntries(d.Counterexample, true)
@@ -382,18 +388,20 @@ func normalRecord(detail map[string]any) map[string]any {
 		divergenceField:     nil,
 		coverageField:       nil,
 		reasonField:         detail[reasonField],
+		replaysField:        detail[replaysField],
+		reproducedField:     detail[reproducedField],
 	}
 	if entries, ok := detail[counterexampleField].([]prop.Entry); ok {
 		out[counterexampleField] = normalRecorded(entries, true)
 	}
 	if f, ok := detail[failureField].(assert.Failure); ok {
-		out[failureField] = f.Assertion
+		out[failureField] = identityOf(f)
 	}
 	if others, ok := detail[othersField].([]prop.Other); ok {
 		normal := make([]any, len(others))
 		for i, o := range others {
 			normal[i] = map[string]any{
-				failureField:        o.Failure.Assertion,
+				failureField:        identityOf(o.Failure),
 				counterexampleField: normalRecorded(o.Counterexample, false),
 				choicesField:        o.Choices,
 			}
@@ -418,6 +426,17 @@ func normalRecord(detail map[string]any) map[string]any {
 		out[coverageField] = normalShortfall(s.Label, s.Share, s.Counted, s.Valid, s.Verdict.String())
 	}
 	return out
+}
+
+// identityOf returns the identity of a failure as the vectors name it: the
+// assertion of its record, and maxReleasesIdentity for a record without an
+// assertion. The limit of a scheduler is the only failure without an
+// assertion that a subject of the definition reports.
+func identityOf(f assert.Failure) string {
+	if f.Assertion == "" {
+		return maxReleasesIdentity
+	}
+	return f.Assertion
 }
 
 // normalRecorded returns the entries of a record's counterexample in normal

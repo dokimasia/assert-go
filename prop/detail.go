@@ -40,6 +40,11 @@ const (
 	coverageField = "coverage"
 	// reasonField is the reason of a skipped run, a string.
 	reasonField = "reason"
+	// replaysField is the number of replays of the failing case, an int.
+	replaysField = "replays"
+	// reproducedField is the number of the replays that reproduced the
+	// failure, an int.
+	reproducedField = "reproduced"
 )
 
 // The detail fields of the record of a case whose body panicked.
@@ -51,7 +56,7 @@ const (
 	stackField = "stack"
 )
 
-// runDetail is the detail of the record of a property's run: the eleven
+// runDetail is the detail of the record of a property's run: the thirteen
 // fields of the definition, which the run's [Result] contains, and the
 // engine's divergence of a flaky run.
 type runDetail struct {
@@ -84,6 +89,9 @@ func (d runDetail) MarshalJSON() ([]byte, error) {
 	if r.Outcome == Skipped {
 		out.Reason = &r.Reason
 	}
+	if r.Replays > 0 {
+		out.Replays, out.Reproduced = &r.Replays, &r.Reproduced
+	}
 	if v := d.divergence; v != nil {
 		out.Divergence = &divergenceJSON{
 			What: Difference(v.What), Index: v.Index, Recorded: sideOf(v.Recorded),
@@ -107,6 +115,8 @@ type detailJSON struct {
 	Divergence     *divergenceJSON `json:"divergence"`
 	Coverage       *Shortfall      `json:"coverage"`
 	Reason         *string         `json:"reason"`
+	Replays        *int            `json:"replays"`
+	Reproduced     *int            `json:"reproduced"`
 }
 
 // divergenceJSON is a divergence as the call record of a property states
@@ -140,6 +150,11 @@ func (d runDetail) fields() map[string]any {
 		divergenceField:     nil,
 		coverageField:       nil,
 		reasonField:         nil,
+		replaysField:        nil,
+		reproducedField:     nil,
+	}
+	if r.Replays > 0 {
+		detail[replaysField], detail[reproducedField] = r.Replays, r.Reproduced
 	}
 	if r.Counterexample != nil {
 		detail[counterexampleField] = r.Counterexample

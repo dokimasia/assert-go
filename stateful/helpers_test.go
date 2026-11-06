@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"time"
 
 	"go.dokimi.dev/assert/history"
 	"go.dokimi.dev/assert/internal/prop/choice"
@@ -24,6 +25,21 @@ const (
 
 // seed is the seed of the random cases of the tests.
 const seed = 7
+
+// epoch is the instant at which the clock of every scheduler starts, which
+// the definition fixes: midnight UTC 2000-01-01.
+var epoch = time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+// ticking returns a task named name that sleeps period on the clock of s
+// ticks times, and logs the time since epoch at each wake, as "name@time".
+func ticking(s *stateful.Scheduler, log *runLog, name string, period time.Duration, ticks int) func() {
+	return func() {
+		for range ticks {
+			s.Clock().Sleep(period)
+			log.add(fmt.Sprintf("%s@%v", name, s.Clock().Now().Sub(epoch)), 0)
+		}
+	}
+}
 
 // runLog is the log of the runs of a machine's actions, safe for the
 // clients of a concurrent section.

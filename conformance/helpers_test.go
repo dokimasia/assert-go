@@ -300,8 +300,10 @@ func stringOf(s string) string {
 
 // failedDetail returns the detail of the run of bigBody under seven, of the
 // minimal counterexample's one draw, the failure's identity, and the other
-// failures, each a JSON text.
+// failures, each a JSON text. The one replay of the failing case reproduces
+// it.
 func failedDetail(draw, failure, others string) string {
 	return fmt.Sprintf(`{"outcome":"counterexample","cases":1,"rejected":0,"seed":"7","counterexample":[%s],`+
-		`"failure":%q,"choices":"prop1:AOkH","others":%s,"divergence":null,"coverage":null}`, draw, failure, others)
+		`"failure":%q,"choices":"prop1:AOkH","others":%s,"divergence":null,"coverage":null,`+
+		`"replays":1,"reproduced":1}`, draw, failure, others)
 }

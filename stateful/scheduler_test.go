@@ -6,6 +6,8 @@ package stateful_test
 import (
 	"runtime"
 	"testing"
+	"time"
+	"weak"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/alloctest"
@@ -245,8 +247,314 @@ func TestScheduler(t *testing.T) {
 		})
 	})
 
+	t.Run("Wait", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("parks the running task until another task makes its condition true", func(t *testing.T) {
+			t.Parallel()
+			log := &runLog{}
+			scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				set := false
+				s.Spawn(waiting(s, log, "a", func() bool { return set }))
+				s.Spawn(func() {
+					log.add("b", 0)
+					set = true
+				})
+				s.Run()
+			})
+			assert.Equal(t, log.all(), suffixed("a1", "b", "a2"), "a runs again after the turn of b")
+		})
+
+		t.Run("returns at once for a condition that is true, without a release", func(t *testing.T) {
+			t.Parallel()
+			log := &runLog{}
+			e := scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				s.Spawn(waiting(s, log, "a", func() bool { return true }))
+				s.Run()
+			})
+			assert.Equal(t, log.all(), suffixed("a1", "a2"), "the task runs through its wait")
+			assert.Length(t, choicesOf(e), 1, "one release")
+		})
+
+		t.Run("lets Run return while a task waits, and wakes the task at the next Run", func(t *testing.T) {
+			t.Parallel()
+			log := &runLog{}
+			var first []string
+			scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				set := false
+				s.Spawn(waiting(s, log, "a", func() bool { return set }))
+				s.Run()
+				first = log.all()
+				set = true
+				s.Run()
+			})
+			assert.Equal(t, first, suffixed("a1"), "the first Run returns while a waits")
+			assert.Equal(t, log.all(), suffixed("a1", "a2"), "the second Run wakes a")
+		})
+
+		t.Run("makes the woken tasks ready after the ready tasks, in the order of their waits", func(t *testing.T) {
+			t.Parallel()
+			log := &runLog{}
+			scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				set := false
+				s.Spawn(waiting(s, log, "w", func() bool { return set }))
+				s.Spawn(waiting(s, log, "v", func() bool { return set }))
+				s.Spawn(func() {
+					log.add("s1", 0)
+					set = true
+					s.Yield()
+					log.add("s2", 0)
+				})
+				s.Run()
+			})
+			assert.Equal(t, log.all(), suffixed("w1", "v1", "s1", "s2", "w2", "v2"),
+				"s yields before the waits end, so it runs before w and v")
+		})
+
+		t.Run("keeps the priority of a task through its wait under PCT", func(t *testing.T) {
+			t.Parallel()
+			log := &runLog{}
+			scheduled(stateful.PCT(1), func(_ *prop.Case, s *stateful.Scheduler) {
+				set := false
+				s.Spawn(waiting(s, log, "a", func() bool { return set }))
+				s.Spawn(func() {
+					log.add("b1", 0)
+					set = true
+					s.Yield()
+					log.add("b2", 0)
+				})
+				s.Spawn(func() { log.add("c", 0) })
+				s.Run()
+			}, 9, 1, 1)
+			assert.Equal(t, log.all(), suffixed("a1", "b1", "a2", "c", "b2"),
+				"a of the highest priority runs once its wait ends, and c became ready before b yielded")
+		})
+
+		t.Run("clears the condition of a woken task, so its next sleep lasts until its deadline", func(t *testing.T) {
+			t.Parallel()
+			log := &runLog{}
+			var first []string
+			scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				set := false
+				s.Spawn(func() {
+					s.Wait(func() bool { return set })
+					s.Clock().Sleep(4 * time.Millisecond)
+					log.add("slept", 0)
+				})
+				s.Run()
+				set = true
+				s.Run()
+				first = log.all()
+				s.Advance(4 * time.Millisecond)
+			})
+			assert.Equal(t, first, []string(nil), "the second Run wakes the task, which then sleeps")
+			assert.Equal(t, log.all(), suffixed("slept"), "the advance ends the sleep")
+		})
+
+		t.Run("keeps no reference to a woken task once it has returned", func(t *testing.T) {
+			t.Parallel()
+			var collected bool
+			scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				set := false
+				s.Spawn(func() { s.Wait(func() bool { return false }) })
+				s.Run()
+				payload := holding(s, func() bool { return set })
+				s.Run()
+				set = true
+				s.Run()
+				runtime.GC()
+				collected = payload.Value() == nil
+			})
+			assert.True(t, collected, "the collector frees the value of the task that returned")
+		})
+
+		t.Run("returns at once outside a task for a condition that is true", func(t *testing.T) {
+			t.Parallel()
+			log := &runLog{}
+			scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				s.Wait(func() bool { return true })
+				log.add("after", 0)
+			})
+			assert.Equal(t, log.all(), suffixed("after"), "the body runs on")
+		})
+
+		t.Run("panics outside a task for a condition that is false", func(t *testing.T) {
+			t.Parallel()
+			e := scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				s.Wait(func() bool { return false })
+			})
+			assert.Equal(t, e.Panic, any("stateful: Wait outside a task waits for a condition that is false"),
+				"the panic fails the case")
+		})
+
+		t.Run("raises the panic of a condition that the scheduler calls between turns", func(t *testing.T) {
+			t.Parallel()
+			e := scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				calls := 0
+				s.Spawn(waiting(s, &runLog{}, "a", func() bool {
+					if calls++; calls == 2 {
+						panic("broken condition")
+					}
+					return false
+				}))
+				s.Spawn(func() {})
+				s.Run()
+			})
+			assert.Equal(t, e.Panic, any("broken condition"), "the panic fails the case")
+		})
+	})
+
+	t.Run("Advance", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("runs each sleeping task at its own deadline, up to the end time", func(t *testing.T) {
+			t.Parallel()
+			log := &runLog{}
+			var first []string
+			scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				s.Spawn(ticking(s, log, "t", 4*time.Millisecond, 3))
+				s.Advance(10 * time.Millisecond)
+				first = log.all()
+				s.Advance(2 * time.Millisecond)
+			})
+			assert.Equal(t, first, suffixed("t@4ms", "t@8ms"), "two ticks within 10 ms")
+			assert.Equal(t, log.all(), suffixed("t@4ms", "t@8ms", "t@12ms"), "the third tick within 2 ms more")
+		})
+
+		t.Run("makes ready at its start each waiting task whose condition returns true", func(t *testing.T) {
+			t.Parallel()
+			log := &runLog{}
+			scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				set := false
+				s.Spawn(waiting(s, log, "w", func() bool { return set }))
+				s.Run()
+				set = true
+				s.Spawn(func() {
+					log.add("r", 0)
+					set = false
+				})
+				s.Advance(0)
+			})
+			assert.Equal(t, log.all(), suffixed("w1", "r", "w2"),
+				"w became ready before r made its condition false again")
+		})
+
+		t.Run("ends a sleep whose deadline is the end time within the advance", func(t *testing.T) {
+			t.Parallel()
+			log := &runLog{}
+			scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				s.Spawn(ticking(s, log, "t", 4*time.Millisecond, 1))
+				s.Advance(4 * time.Millisecond)
+			})
+			assert.Equal(t, log.all(), suffixed("t@4ms"), "the tick at the end time")
+		})
+
+		t.Run("wakes the tasks of a deadline in the order of their sleeps, after an earlier deadline",
+			func(t *testing.T) {
+				t.Parallel()
+				log := &runLog{}
+				scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+					s.Spawn(ticking(s, log, "c", 6*time.Millisecond, 1))
+					s.Spawn(ticking(s, log, "a", 2*time.Millisecond, 1))
+					s.Spawn(ticking(s, log, "b", 6*time.Millisecond, 1))
+					s.Advance(6 * time.Millisecond)
+				})
+				assert.Equal(t, log.all(), suffixed("a@2ms", "c@6ms", "b@6ms"), "a first, then c and b in sleep order")
+			})
+
+		t.Run("releases the ready tasks as Run does for no time, and moves the clock by nothing", func(t *testing.T) {
+			t.Parallel()
+			log := &runLog{}
+			var now time.Time
+			scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				s.Spawn(yielding(s, log, "a"))
+				s.Advance(-time.Second)
+				now = s.Clock().Now()
+			}, 0, 0)
+			assert.Equal(t, log.all(), suffixed("a1", "a2"), "both turns of a")
+			assert.Equal(t, now, epoch, "the clock reads its start")
+		})
+
+		t.Run("makes the change points of one run under PCT, over every deadline", func(t *testing.T) {
+			t.Parallel()
+			log := &runLog{}
+			e := scheduled(stateful.PCT(2), func(_ *prop.Case, s *stateful.Scheduler) {
+				s.Spawn(ticking(s, log, "t", 4*time.Millisecond, 2))
+				s.Advance(10 * time.Millisecond)
+			}, 0, 0)
+			assert.Equal(t, log.all(), suffixed("t@4ms", "t@8ms"), "both ticks")
+			assert.Equal(t, choicesOf(e), []uint64{0, 0}, "the priority, and the presence of one change point")
+		})
+
+		t.Run("panics when a task calls Advance of its own scheduler", func(t *testing.T) {
+			t.Parallel()
+			e := scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				s.Spawn(func() { s.Advance(time.Second) })
+				s.Run()
+			})
+			assert.Equal(t, e.Panic, any("stateful: a task called Advance of its own scheduler"),
+				"the panic fails the case")
+		})
+
+		t.Run("fails the case once it has released the limit of tasks while a task is still ready",
+			func(t *testing.T) {
+				t.Parallel()
+				e := limited(2, func(_ *prop.Case, s *stateful.Scheduler) {
+					s.Spawn(ticking(s, &runLog{}, "t", time.Millisecond, 3))
+					s.Advance(5 * time.Millisecond)
+				})
+				assert.Equal(t, e.Case.Failures()[0].Contract,
+					"the task scheduler released 2 tasks in one run, and a task is still ready",
+					"the third tick passes the limit of two releases")
+			})
+	})
+
 	t.Run("NewScheduler", func(t *testing.T) {
 		t.Parallel()
+
+		t.Run("fails the case once a Run has released the limit of tasks while a task is still ready",
+			func(t *testing.T) {
+				t.Parallel()
+				log := &runLog{}
+				e := limited(5, func(_ *prop.Case, s *stateful.Scheduler) {
+					s.Spawn(spinning(s, log, "a"))
+					s.Run()
+					log.add("after", 0)
+				})
+				assert.Equal(t, e.Status, engine.CaseFailed, "the case fails")
+				assert.Equal(t, e.Case.Failures()[0], assert.Failure{
+					Contract: "the task scheduler released 5 tasks in one run, and a task is still ready",
+					Where:    e.Case.Failures()[0].Where,
+				}, "a record without an assertion")
+				assert.Equal(t, log.all(), suffixed("a ended"), "the spinning task ends, and Run returns no more")
+				assert.Length(t, choicesOf(e), 5, "five releases")
+			})
+
+		t.Run("ends every task before it fails the case at the limit", func(t *testing.T) {
+			t.Parallel()
+			log := &runLog{}
+			var atFailure []string
+			limited(2, func(c *prop.Case, s *stateful.Scheduler) {
+				s.Spawn(spinning(s, log, "a"))
+				c.Cleanup(func() { atFailure = log.all() })
+				s.Run()
+			})
+			assert.Equal(t, atFailure, suffixed("a ended"),
+				"the task has ended when the cleanups of the case start")
+		})
+
+		t.Run("counts the releases of each Run apart", func(t *testing.T) {
+			t.Parallel()
+			log := &runLog{}
+			e := limited(2, func(_ *prop.Case, s *stateful.Scheduler) {
+				s.Spawn(yielding(s, log, "a"))
+				s.Run()
+				s.Spawn(yielding(s, log, "b"))
+				s.Run()
+			}, 0, 0, 0, 0)
+			assert.Equal(t, e.Status, engine.CasePassed, "two Runs of two releases each")
+			assert.Equal(t, log.all(), suffixed("a1", "a2", "b1", "b2"), "every turn")
+		})
 
 		t.Run("raises the panic of a task that panics as the case ends it", func(t *testing.T) {
 			t.Parallel()
@@ -280,6 +588,18 @@ func TestSchedulerGoroutinesProcess(t *testing.T) {
 			})
 			check()
 		})
+
+		t.Run("ends the tasks that wait for a condition or sleep when the case ends", func(t *testing.T) {
+			check := assert.NoGoroutineLeaks(t, "every task has ended")
+			log := &runLog{}
+			scheduled(stateful.Uniform(), func(_ *prop.Case, s *stateful.Scheduler) {
+				s.Spawn(waiting(s, log, "w", func() bool { return false }))
+				s.Spawn(ticking(s, log, "t", time.Hour, 1))
+				s.Run()
+			})
+			check()
+			assert.Equal(t, log.all(), suffixed("w1"), "neither task returns from its wait or its sleep")
+		})
 	})
 }
 
@@ -289,6 +609,47 @@ func scheduled(strategy stateful.Strategy, body func(c *prop.Case, s *stateful.S
 	choices ...uint64,
 ) engine.Execution {
 	return replayed(func(c *prop.Case) { body(c, stateful.NewScheduler(c, strategy)) }, choices...)
+}
+
+// limited runs body with a uniform scheduler whose limit of releases is n, in
+// a case that replays the integer choices, and returns how the case ended.
+func limited(n int, body func(c *prop.Case, s *stateful.Scheduler), choices ...uint64) engine.Execution {
+	return replayed(func(c *prop.Case) {
+		body(c, stateful.NewScheduler(c, stateful.Uniform(), stateful.MaxReleases(n)))
+	}, choices...)
+}
+
+// waiting returns a task named name that logs name1, waits until cond
+// returns true, and logs name2.
+func waiting(s *stateful.Scheduler, log *runLog, name string, cond func() bool) func() {
+	return func() {
+		log.add(name+"1", 0)
+		s.Wait(cond)
+		log.add(name+"2", 0)
+	}
+}
+
+// holding spawns a task on s that waits until cond returns true and then
+// writes a value of its own, and returns a weak pointer to the value. Only
+// the task refers to the value.
+func holding(s *stateful.Scheduler, cond func() bool) weak.Pointer[[64]byte] {
+	value := new([64]byte)
+	s.Spawn(func() {
+		s.Wait(cond)
+		value[0] = 1
+	})
+	return weak.Make(value)
+}
+
+// spinning returns a task named name that yields without an end, and logs
+// "name ended" when the scheduler ends it.
+func spinning(s *stateful.Scheduler, log *runLog, name string) func() {
+	return func() {
+		defer log.add(name+" ended", 0)
+		for {
+			s.Yield()
+		}
+	}
 }
 
 // yielding returns a task named name that logs name1, yields, and logs
@@ -331,6 +692,12 @@ var (
 	})
 	// yieldingOutside yields outside a task.
 	yieldingOutside = bodyOf(func(c *prop.Case) { stateful.NewScheduler(c, stateful.Uniform()).Yield() })
+	// waitingOutside waits outside a task for a condition that is true.
+	waitingOutside = bodyOf(func(c *prop.Case) {
+		stateful.NewScheduler(c, stateful.Uniform()).Wait(func() bool { return true })
+	})
+	// advancing advances the clock of a scheduler without a task.
+	advancing = bodyOf(func(c *prop.Case) { stateful.NewScheduler(c, stateful.Uniform()).Advance(time.Second) })
 )
 
 // schedulerAllocs are the cases of the allocation ceilings of the
@@ -340,6 +707,8 @@ var schedulerAllocs = []alloctest.Case{
 	{Name: "Spawn", Call: func(assert.TB) { engine.Replay(spawning, nil, nil) }, Allocs: spawnCaseAllocs},
 	{Name: "Run", Call: func(assert.TB) { engine.Replay(running, nil, nil) }, Allocs: runCaseAllocs},
 	{Name: "Yield", Call: func(assert.TB) { engine.Replay(yieldingOutside, nil, nil) }, Allocs: schedulerCaseAllocs},
+	{Name: "Wait", Call: func(assert.TB) { engine.Replay(waitingOutside, nil, nil) }, Allocs: schedulerCaseAllocs},
+	{Name: "Advance", Call: func(assert.TB) { engine.Replay(advancing, nil, nil) }, Allocs: schedulerCaseAllocs},
 }
 
 // nothing is a task that does nothing.

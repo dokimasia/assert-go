@@ -200,10 +200,11 @@ func forms(form, subjects, args, shape, detail string) string {
 
 // nilFails returns the detail of the run of nil over identity on the
 // integers from -1000 to 1000 of the seed 7, which fails at its first case
-// of 0, with the cases and the failure's detail that the detail states.
+// of 0, with the cases and the failure's detail that the detail states. The
+// one replay of the failing case reproduces it.
 func nilFails(cases int, failure string) string {
 	return `{"outcome":"counterexample","cases":` + strconv.Itoa(cases) + `,"rejected":0,"seed":"7",` +
 		`"counterexample":[{"label":"input","value":{"type":"int","value":0},"any-value-fails":true,` +
 		`"nearest-passing":null}],"failure":{"assertion":"nil","detail":` + failure + `},` +
-		`"choices":"prop1:AAA","others":[],"divergence":null,"coverage":null}`
+		`"choices":"prop1:AAA","others":[],"divergence":null,"coverage":null,"replays":1,"reproduced":1}`
 }

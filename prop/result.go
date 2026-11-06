@@ -8,13 +8,14 @@ import (
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
 
-// Result is the result of one run of a property: the eleven fields of the
+// Result is the result of one run of a property: the thirteen fields of the
 // detail of the run, as Go values. [OnResult] hands it to a function when the
 // run ends. The record of the run contains the same values, with the seed as
 // decimal text.
 //
-// A field that the outcome does not use is nil, and a text that the outcome
-// does not use is empty:
+// A field that the outcome does not use is nil, a text that the outcome does
+// not use is empty, and a count of replays that the outcome does not use is
+// 0:
 //
 //   - Counterexample is set for a counterexample and for a flaky run whose
 //     replay differed, and Failure for such a run whose replayed case failed.
@@ -24,6 +25,10 @@ import (
 //   - Divergence is set for a flaky run, and Coverage for a run that missed a
 //     coverage requirement.
 //   - Reason is set for a skipped run.
+//   - Replays and Reproduced are set for a run that replayed a failing case
+//     before the shrink: a counterexample, and a flaky run whose replays
+//     reproduced nothing. Such a run replays at least once, so a Replays of 0
+//     is a run that replayed no failing case.
 type Result struct {
 	// Outcome is how the run ended.
 	Outcome Outcome
@@ -49,12 +54,18 @@ type Result struct {
 	Coverage *Shortfall
 	// Reason is the reason of a skipped run.
 	Reason string
+	// Replays is the number of replays of the failing case before the
+	// shrink, which [Replays] sets.
+	Replays int
+	// Reproduced is the number of those replays that reproduced the failure.
+	Reproduced int
 }
 
 // resultOf returns the result of the engine's run r.
 func resultOf(r engine.Result) Result {
 	result := Result{
 		Outcome: Outcome(r.Outcome), Cases: r.Cases, Rejected: r.Rejected, Seed: r.Seed, Reason: r.Reason,
+		Replays: r.Replays, Reproduced: r.Reproduced,
 	}
 	if r.Failing != nil {
 		result.Counterexample = counterexampleOf(*r.Failing, r.Explanation)
