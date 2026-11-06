@@ -23,7 +23,7 @@ they record why not.
 | [0010](0010-the-isolation-checks-in-go.md) | The isolation checks in Go | Accepted |
 | [0011](0011-machines-the-task-scheduler-and-campaigns-in-go.md) | Machines, the task scheduler and campaigns in Go | Accepted |
 | [0012](0012-definition-6-in-go.md) | Definition 6.0.0 in Go | Accepted |
-| [0013](0013-resuming-the-check-of-a-growing-history.md) | Resuming the check of a growing history | Accepted |
+| [0013](0013-resuming-the-check-of-a-growing-history.md) | Resuming the check of a growing history | Accepted, superseded in part by [RFC-0025](0025-resuming-each-partition-of-a-growing-history.md) |
 | [0014](0014-an-analyzer-of-hand-written-checks.md) | An analyzer of hand-written checks | Accepted |
 | [0015](0015-definition-7-in-go.md) | Definition 7.0.0 in Go | Accepted |
 | [0016](0016-definition-7-2-in-go.md) | Definition 7.2.0 in Go | Accepted |
@@ -35,3 +35,5 @@ they record why not.
 | [0022](0022-definition-10-in-go.md) | Definition 10.0.0 in Go | Accepted |
 | [0023](0023-definition-13-in-go.md) | Definition 13.0.0 in Go, and the test of Around on every seat | Accepted |
 | [0024](0024-the-notes-of-a-recorder.md) | The notes of a recorder | Accepted |
+| [0025](0025-resuming-each-partition-of-a-growing-history.md) | Resuming each partition of a growing history | Accepted |
+| [0026](0026-definition-16-in-go.md) | Definition 16.0.0 in Go | Accepted |
