@@ -1,5 +1,12 @@
 # go.dokimi.dev/assert
 
+## 0.19.0
+
+### Minor Changes
+
+- cf75e7d: Implement definition 16.1.0 and write its version into every call record.
+- cf75e7d: Add `assert.Skipf` and `expect.Skipf` to skip the test of any seat that has `Skipf`.
+
 ## 0.18.0
 
 ### Minor Changes
