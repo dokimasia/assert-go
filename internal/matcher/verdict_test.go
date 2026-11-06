@@ -27,7 +27,7 @@ type textSeat struct {
 	errs   []string
 }
 
-// Helper marks nothing: the seat states no location.
+// Helper does not mark a frame, because the seat has no location.
 func (*textSeat) Helper() {}
 
 // Fatalf keeps the message of an aborting failure, and returns.
@@ -59,22 +59,6 @@ type runSeat struct {
 	calls
 }
 
-// skippingSeat is a seat that keeps the reason of each skip, as a test of
-// the package testing logs it, and records what was reported.
-type skippingSeat struct {
-	matchertest.Seat
-
-	mu    sync.Mutex
-	skips []string
-}
-
-// Skipf keeps the formatted reason, and returns.
-func (s *skippingSeat) Skipf(format string, args ...any) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.skips = append(s.skips, fmt.Sprintf(format, args...))
-}
-
 // keptSkip is a seat that keeps the call record of each call, and counts
 // the call records that it keeps when its test skips.
 type keptSkip struct {
@@ -97,7 +81,7 @@ func TestVerdict(t *testing.T) {
 	t.Run("Pass", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("reports nothing to a seat whose calls are not recorded", func(t *testing.T) {
+		t.Run("does not report to a seat whose calls are not recorded", func(t *testing.T) {
 			t.Parallel()
 
 			seat := &matchertest.Seat{}
@@ -106,7 +90,7 @@ func TestVerdict(t *testing.T) {
 				t.Fatalf("reported %q and %v, want nothing", seat.First(), seat.Records())
 			}
 		})
-		t.Run("marks no frame as a helper of the seat", func(t *testing.T) {
+		t.Run("does not mark a frame as a helper of the seat", func(t *testing.T) {
 			t.Parallel()
 
 			seat := &matchertest.Seat{}
@@ -564,7 +548,7 @@ func TestVerdict(t *testing.T) {
 				t.Fatalf("the wrapped seat received the skips %q, want [unsupported]", inner.skips)
 			}
 		})
-		t.Run("reports nothing to a chain without Skipf", func(t *testing.T) {
+		t.Run("does not report to a chain without Skipf", func(t *testing.T) {
 			t.Parallel()
 
 			seat := &matchertest.Seat{}
@@ -704,8 +688,8 @@ func BenchmarkVerdict(b *testing.B) {
 }
 
 // verdictCases returns a call of each function and method of verdict.go on
-// a seat whose calls are not recorded, with its allocation ceiling. A
-// failure states no detail, and a fault no path.
+// a seat whose calls are not recorded, with its allocation ceiling. The
+// failure has no detail, and the fault has no path.
 func verdictCases() []allocCase {
 	err := fault.New("the seed is no number")
 	var run json.Marshaler = json.RawMessage(`{}`)

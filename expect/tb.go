@@ -9,14 +9,13 @@ import (
 	"go.dokimi.dev/assert"
 )
 
-// TB is the seat that an assertion reports through, the seat of
-// [go.dokimi.dev/assert]. [testing.T], [testing.B] and [Recorder] satisfy
-// it.
+// TB is the seat of [go.dokimi.dev/assert]. An assertion reports through it.
+// [testing.T], [testing.B] and [Recorder] satisfy it.
 type TB = assert.TB
 
-// Context returns the context of tb, as [go.dokimi.dev/assert.Context]
-// does: the one that its method Context returns, and context.Background()
-// for a seat without that method.
+// Context returns the same context as [go.dokimi.dev/assert.Context]. That is
+// the context of the first seat of the chain of tb with the method Context.
+// For a chain without the method, Context returns context.Background().
 //
 // # Allocation contract
 //
@@ -26,10 +25,10 @@ func Context(tb TB) context.Context {
 	return assert.Context(tb)
 }
 
-// Cleanup registers f to run when the test of tb ends, as
-// [go.dokimi.dev/assert.Cleanup] does: through the method Cleanup of tb, or of
-// the first seat that it wraps with the method. A chain without the method
-// ends the call with a fault, and f does not run.
+// Cleanup registers f in the same way as [go.dokimi.dev/assert.Cleanup]. f
+// runs when the test of tb ends. Cleanup calls the method Cleanup of tb, or of
+// the first seat that tb wraps with the method. On a chain without the method,
+// Cleanup ends the call with a fault. f does not run then.
 //
 // # Allocation contract
 //
@@ -40,10 +39,23 @@ func Cleanup(tb TB, f func()) {
 	assert.Cleanup(tb, f)
 }
 
-// WriteRecord writes record into the output of the test of tb, as
-// [go.dokimi.dev/assert.WriteRecord] does. record is the JSON text of one
-// record of kind. For a refused kind or record, WriteRecord ends the call with
-// a fault and does not write the record.
+// Skipf skips the test of tb in the same way as [go.dokimi.dev/assert.Skipf].
+// The reason is the text that fmt.Sprintf formats from format and args. On a
+// chain without the method Skipf, Skipf ends the call with a fault. The test
+// does not skip then.
+//
+// # Allocation contract
+//
+// Skipf allocates nothing besides what the method Skipf of tb allocates.
+func Skipf(tb TB, format string, args ...any) {
+	tb.Helper()
+	assert.Skipf(tb, format, args...)
+}
+
+// WriteRecord writes record into the output of the test of tb in the same way
+// as [go.dokimi.dev/assert.WriteRecord]. record is the JSON text of one record
+// of kind. For a refused kind or record, WriteRecord ends the call with a
+// fault and does not write the record.
 //
 // # Allocation contract
 //

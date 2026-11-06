@@ -163,6 +163,26 @@ func witness(tb assert.TB) *httptest.Server {
 }
 ```
 
+`assert.Skipf(tb, format, args...)` skips the test where the environment
+lacks what a helper needs. It calls `Skipf` of the first seat of the chain
+that has the method. A `*testing.T` ends the test as skipped. A case of a
+property ends its run as skipped. The check of `Rejects` ends, and `Rejects`
+ends its call as skipped. On a chain without `Skipf`, the helper ends the
+call with a fault. A recorder does not have `Skipf`, so a test of a helper
+calls the helper in the check of `Rejects` on a recorder. The call record of
+`Rejects` then states the skip and its reason:
+
+```go
+func stream(tb assert.TB) string {
+    tb.Helper()
+    addr := os.Getenv("NATS_ADDR")
+    if addr == "" {
+        assert.Skipf(tb, "NATS_ADDR is unset: start the local stack first")
+    }
+    return addr
+}
+```
+
 A helper that refuses its arguments ends its call with `assert.Fault`. The
 faults of this module end their calls the same way. The first seat of the
 chain that is an `assert.FaultReporter` receives the fault as the error it

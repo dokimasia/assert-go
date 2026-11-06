@@ -13,7 +13,8 @@ import (
 	"go.dokimi.dev/assert/internal/alloctest"
 )
 
-// Compile-time proof that both seats of a test and the recorder satisfy TB.
+// The compiler checks that the two seats of a test and the recorder satisfy
+// TB.
 var (
 	_ expect.TB = (*testing.T)(nil)
 	_ expect.TB = (*testing.B)(nil)
@@ -22,6 +23,16 @@ var (
 
 // tbContext keeps the context that a call of Context returns.
 var tbContext any
+
+// skippingSeat is a seat whose Skipf does nothing.
+type skippingSeat struct{}
+
+func (skippingSeat) Helper()               {}
+func (skippingSeat) Fatalf(string, ...any) {}
+func (skippingSeat) Errorf(string, ...any) {}
+
+// Skipf drops the reason.
+func (skippingSeat) Skipf(string, ...any) {}
 
 func TestTB(t *testing.T) {
 	t.Parallel()
@@ -58,6 +69,19 @@ func TestTB(t *testing.T) {
 		})
 	})
 
+	t.Run("Skipf", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("ends the call with a fault on a recorder, as the aborting surface does", func(t *testing.T) {
+			t.Parallel()
+
+			r := expect.NewRecorder()
+			expect.Skipf(r, "the stack does not run")
+			expect.Length(t, r.Faults(), 1, "one fault")
+			expect.Equal(t, r.Message(), "assert.Skipf: the seat has no Skipf", "the fault of the aborting surface")
+		})
+	})
+
 	t.Run("WriteRecord", func(t *testing.T) {
 		t.Parallel()
 
@@ -73,13 +97,13 @@ func TestTB(t *testing.T) {
 	})
 }
 
-// TestTBAllocs checks the allocation ceilings of Context, Cleanup and
+// TestTBAllocs checks the allocation ceilings of Context, Cleanup, Skipf and
 // WriteRecord.
 func TestTBAllocs(t *testing.T) {
 	alloctest.Check(t, tbCases())
 }
 
-// BenchmarkTB measures Context, Cleanup and WriteRecord.
+// BenchmarkTB measures Context, Cleanup, Skipf and WriteRecord.
 func BenchmarkTB(b *testing.B) {
 	for _, c := range tbCases() {
 		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
@@ -89,11 +113,12 @@ func BenchmarkTB(b *testing.B) {
 // noCleanup is a function that the allocation case of Cleanup registers.
 func noCleanup() {}
 
-// tbCases returns a call of Context on a recorder that states a context, a
-// call of Cleanup on a recorder that runs the function, and a call of
-// WriteRecord on a recorder, which writes nothing, each with its allocation
-// ceiling. The recorder keeps the capacity of its list of cleanups, so a
-// registration that a run follows allocates nothing after the first call.
+// tbCases returns the allocation cases of Context, Cleanup, Skipf and
+// WriteRecord, each with its ceiling. Context reads the context of a recorder.
+// Cleanup registers a function with a recorder, which then runs it. The
+// recorder keeps the capacity of its list of cleanups, so the registration
+// allocates nothing after the first call. Skipf runs on a seat whose Skipf
+// does nothing. WriteRecord runs on a recorder, which writes nothing.
 func tbCases() []alloctest.Case {
 	seat := expect.NewRecorder().WithContext(context.Background())
 	cleaning := expect.NewRecorder()
@@ -103,6 +128,7 @@ func tbCases() []alloctest.Case {
 			expect.Cleanup(cleaning, noCleanup)
 			cleaning.RunCleanups()
 		}},
+		{Name: "Skipf", Call: func(assert.TB) { expect.Skipf(skippingSeat{}, "the stack does not run") }},
 		{Name: "WriteRecord", Allocs: 2, Call: func(assert.TB) {
 			expect.WriteRecord(seat, "dokimi.suite", `{"seed":"7"}`)
 		}},

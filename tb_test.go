@@ -6,6 +6,7 @@ package assert_test
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -16,8 +17,8 @@ import (
 	"go.dokimi.dev/assert/internal/record"
 )
 
-// Compile-time proof that both seats satisfy TB. A runtime nil check
-// cannot state this: the compiler already knows the value is non-nil.
+// The compiler checks that the two seats of a test and the recorder satisfy
+// TB.
 var (
 	_ assert.TB = (*testing.T)(nil)
 	_ assert.TB = (*testing.B)(nil)
@@ -44,8 +45,8 @@ type wrapped struct {
 // Unwrap returns the wrapped seat.
 func (w wrapped) Unwrap() assert.TB { return w.TB }
 
-// faultSeat is a seat that keeps each fault that it receives, and has no
-// Cleanup.
+// faultSeat is a seat that keeps each fault that it receives. It does not
+// have Cleanup.
 type faultSeat struct {
 	bareSeat
 
@@ -63,13 +64,21 @@ type cleaningSeat struct {
 // Cleanup drops f.
 func (cleaningSeat) Cleanup(func()) {}
 
+// skippingSeat is a seat whose Skipf does nothing.
+type skippingSeat struct {
+	bareSeat
+}
+
+// Skipf drops the reason.
+func (skippingSeat) Skipf(string, ...any) {}
+
 func TestTB(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Helper", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("reaches the seat through the interface", func(t *testing.T) {
+		t.Run("calls Helper of the seat through the interface", func(t *testing.T) {
 			t.Parallel()
 
 			r := assert.NewRecorder()
@@ -85,7 +94,7 @@ func TestTB(t *testing.T) {
 	t.Run("Fatalf", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("reaches the seat through the interface", func(t *testing.T) {
+		t.Run("calls Fatalf of the seat through the interface", func(t *testing.T) {
 			t.Parallel()
 
 			r := assert.NewRecorder()
@@ -101,7 +110,7 @@ func TestTB(t *testing.T) {
 	t.Run("Errorf", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("reaches the seat through the interface", func(t *testing.T) {
+		t.Run("calls Errorf of the seat through the interface", func(t *testing.T) {
 			t.Parallel()
 
 			r := assert.NewRecorder()
@@ -125,7 +134,7 @@ func TestTB(t *testing.T) {
 			}
 		})
 
-		t.Run("returns the context that a recorder states", func(t *testing.T) {
+		t.Run("returns the context of a recorder", func(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.WithValue(t.Context(), ledgerKey{}, "ledger")
@@ -216,6 +225,57 @@ func TestTB(t *testing.T) {
 
 				t.Fatalf("Cleanup reported %v and ran f: %v, want the fault of assert.Cleanup and no run",
 					seat.faults, ran)
+			}
+		})
+	})
+
+	t.Run("Skipf", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("skips the test of a *testing.T with the reason at the line of the call", func(t *testing.T) {
+			t.Parallel()
+			if childtest.InChild(t) {
+				assert.Skipf(t, "the stack at %s does not run", "nats")
+				t.Error("Skipf returned on a *testing.T")
+				return
+			}
+			out, err := childtest.Run(t, t.Name())
+			if err != nil || !strings.Contains(out, "--- SKIP: "+t.Name()+" ") {
+				t.Fatalf("the child exits with %v, want a skip:\n%s", err, out)
+			}
+			if !regexp.MustCompile(`tb_test\.go:\d+: the stack at nats does not run`).MatchString(out) {
+				t.Fatalf("the child logged no reason at the line of the call:\n%s", out)
+			}
+		})
+
+		t.Run("ends the check of Rejects on a wrapper, and Rejects ends its call as skipped", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			failures := assert.Rejects(r, "the check needs the stack", func(tb assert.TB) {
+				assert.Skipf(wrapped{tb}, "the stack does not run")
+			})
+			got := decoded(t, r.Records())
+			if len(failures) != 0 || len(got) != 1 || got[0]["assertion"] != "rejects" ||
+				got[0]["verdict"] != "skip" || got[0]["reason"] != "the stack does not run" || r.Failed() {
+
+				t.Fatalf("Rejects returned %v and recorded %v, want no record and the skip of rejects",
+					failures, got)
+			}
+		})
+
+		t.Run("ends the call with a fault on a recorder", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			assert.Skipf(r, "the stack does not run")
+			faults := r.Faults()
+			var got *fault.Error
+			if len(faults) != 1 || !errors.As(faults[0], &got) || got.Op != "assert.Skipf" ||
+				got.Reason != "the seat has no Skipf" || !r.Failed() {
+
+				t.Fatalf("the recorder kept the faults %v and failed: %v, want the fault of assert.Skipf",
+					faults, r.Failed())
 			}
 		})
 	})
@@ -330,28 +390,29 @@ func TestTB(t *testing.T) {
 	})
 }
 
-// TestTBAllocs checks the allocation ceilings of Context, Cleanup and
+// TestTBAllocs checks the allocation ceilings of Context, Cleanup, Skipf and
 // WriteRecord.
 func TestTBAllocs(t *testing.T) {
 	alloctest.Check(t, tbCases())
 }
 
-// BenchmarkTB measures Context, Cleanup and WriteRecord.
+// BenchmarkTB measures Context, Cleanup, Skipf and WriteRecord.
 func BenchmarkTB(b *testing.B) {
 	for _, c := range tbCases() {
 		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
 	}
 }
 
-// tbCases returns a call of Context on a recorder that states a context, a
-// call of Cleanup on a seat whose Cleanup does nothing, and a call of
-// WriteRecord on a recorder, which writes nothing, each with its allocation
-// ceiling.
+// tbCases returns the allocation cases of Context, Cleanup, Skipf and
+// WriteRecord, each with its ceiling. Context reads the context of a recorder.
+// Cleanup and Skipf run on seats whose methods do nothing. WriteRecord runs on
+// a recorder, which writes nothing.
 func tbCases() []alloctest.Case {
 	seat := assert.NewRecorder().WithContext(context.Background())
 	return []alloctest.Case{
 		{Name: "Context", Call: func(assert.TB) { tbContext = assert.Context(seat) }},
 		{Name: "Cleanup", Call: func(assert.TB) { assert.Cleanup(cleaningSeat{}, noCleanup) }},
+		{Name: "Skipf", Call: func(assert.TB) { assert.Skipf(skippingSeat{}, "the stack does not run") }},
 		{Name: "WriteRecord", Allocs: 2, Call: func(assert.TB) {
 			assert.WriteRecord(seat, "dokimi.suite", `{"seed":"7"}`)
 		}},

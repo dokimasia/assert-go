@@ -170,6 +170,22 @@ func (s *fatalWrapper) Fatalf(format string, args ...any) {
 	s.fatals = append(s.fatals, fmt.Sprintf(format, args...))
 }
 
+// skippingSeat is a seat that keeps the reason of each skip, as a test of
+// the package testing logs it, and records what was reported.
+type skippingSeat struct {
+	matchertest.Seat
+
+	mu    sync.Mutex
+	skips []string
+}
+
+// Skipf keeps the formatted reason, and returns.
+func (s *skippingSeat) Skipf(format string, args ...any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.skips = append(s.skips, fmt.Sprintf(format, args...))
+}
+
 // clockedSeat is a seat with a clock, which records what was reported.
 type clockedSeat struct {
 	matchertest.Seat

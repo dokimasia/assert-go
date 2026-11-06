@@ -37,11 +37,11 @@ import (
 // it should find.
 
 // TestSurface is the completeness gate. Every assertion of the definition
-// is present under the name that the naming table gives Go, with the
-// definition's arity, or the overlay declares it absent. Every member of
+// is present under the name that the naming table gives Go, with the arity
+// of the definition, unless the overlay declares it absent. Every member of
 // the aborting surface has a twin of the same name in the recording
-// surface, and the recording surface declares no member that the aborting
-// one lacks, so the two surfaces declare the same members.
+// surface. Every member of the recording surface has a twin in the aborting
+// surface. The two surfaces then declare the same members.
 func TestSurface(t *testing.T) {
 	t.Parallel()
 
@@ -109,7 +109,7 @@ func TestSurface(t *testing.T) {
 			}
 		})
 
-		t.Run("returns no recording member without an aborting twin", func(t *testing.T) {
+		t.Run("returns an aborting twin for every recording member", func(t *testing.T) {
 			t.Parallel()
 
 			for _, name := range recording {
@@ -128,7 +128,7 @@ func TestSurface(t *testing.T) {
 			assert.ErrorIs(t, err, fs.ErrNotExist, "the cause is the error of the file system")
 		})
 
-		t.Run("returns a fault at the file of a surface of a file that does not parse", func(t *testing.T) {
+		t.Run("returns a fault at a file of the surface that does not parse", func(t *testing.T) {
 			t.Parallel()
 
 			dir := t.TempDir()
@@ -228,8 +228,8 @@ func TestSurface(t *testing.T) {
 	})
 }
 
-// arityExcused names each assertion whose arity in Go differs from the
-// definition's, with the arity that Go declares and the reason.
+// arityExcused lists each assertion whose arity in Go differs from the arity
+// of the definition, with the arity that Go declares and the reason.
 var arityExcused = map[conformance.ID]struct {
 	arity int
 	why   string
@@ -262,8 +262,8 @@ func resolve(declared, qualified string) (conformance.Surface, bool) {
 	return conformance.Subpackage(declared)
 }
 
-// declares reports whether members contains name, or for a method the type
-// that the method belongs to.
+// declares reports whether members contains name. For a method, it reports
+// whether members contains the type of the method.
 func declares(members []string, name string) bool {
 	owner, _, isMethod := strings.Cut(name, ".")
 	if isMethod {
@@ -272,9 +272,9 @@ func declares(members []string, name string) bool {
 	return slices.Contains(members, name)
 }
 
-// arityProbe is a surface whose functions and methods state each case of
-// the arity rule. It is parsed and never compiled, so it also states a
-// receiver that names no type, which the compiler refuses.
+// arityProbe is a surface with a function or a method for each case of the
+// arity rule. The test parses it and never compiles it, so it can have a
+// receiver without a named type. The compiler refuses such a receiver.
 const arityProbe = `package probe
 
 type TB interface{ Helper() }
@@ -311,13 +311,13 @@ func unexported(tb TB) {}
 `
 
 // pinned maps each surface id that the table gives Go to a value whose
-// type the compiler checks. Go looks nothing up by name at run time, so
-// the compiler proves that each name exists, and TestSurfaceTable checks
-// that the map lists every id of the table.
+// type the compiler checks. Go does not look a name up at run time, so the
+// compiler proves that each name exists. TestSurfaceTable checks that the
+// map lists every id of the table.
 //
-// The collector seat is testing.T: Fatalf stops the test, and Errorf
-// records the failure and returns, which is the seat's contract. The
-// conversion to assert.TB proves it at compile time.
+// The collector seat is testing.T. Its Fatalf stops the test, and its Errorf
+// records the failure and returns. That is the contract of the seat. The
+// compiler checks the conversion to assert.TB.
 var pinned = map[conformance.ID]any{
 	"seat":             (*assert.TB)(nil),
 	"recorder-seat":    (*assert.Recorder)(nil),
@@ -365,6 +365,7 @@ var pinned = map[conformance.ID]any{
 	"seat.cleanup":      testing.TB.Cleanup,
 	"cancellation-of":   assert.Context,
 	"cleanup":           assert.Cleanup,
+	"skip":              assert.Skipf,
 	"fault":             assert.Fault,
 	"write-record":      assert.WriteRecord,
 	"allocs-checked":    assert.AllocsChecked,
@@ -540,11 +541,11 @@ var pinned = map[conformance.ID]any{
 	"entry.with-mode":  files.Entry.WithMode,
 }
 
-// TestSurfaceTable compares the pin map with the naming table: the map
-// pins every id that the table names for Go and no id that the table does
-// not state, and the overlay declines every id that the table does not
-// name, with a reason. It is written with testing and not with the
-// library, because a verdict is not written with the subject.
+// TestSurfaceTable compares the pin map with the naming table. The map pins
+// every id that the table names for Go, and it pins only ids that the table
+// states. The overlay declines with a reason every id that the table does
+// not name. The test uses the package testing and not the library, because
+// a verdict does not use its subject.
 func TestSurfaceTable(t *testing.T) {
 	t.Parallel()
 
@@ -570,12 +571,12 @@ func TestSurfaceTable(t *testing.T) {
 		declined := overlay.DeclinesSurface(id)
 		_, isPinned := pinned[id]
 
-		// The map is keyed by id, so it cannot notice the table
-		// spelling something differently from what is pinned. The
-		// spelling check is against this file's own text, on word
-		// boundaries so a prefix of a longer name does not pass.
-		// Nothing in a comment here may repeat a retired spelling,
-		// because a comment is part of the text being searched.
+		// The map is keyed by id, so it cannot detect a spelling in the
+		// table that differs from the pinned name. The test searches the
+		// text of this file for the spelling, on word boundaries, so a
+		// prefix of a longer name does not pass. A comment here must not
+		// repeat a retired spelling, because the search reads the
+		// comments too.
 		spelled := true
 		if name != "" {
 			leaf := name[strings.LastIndex(name, ".")+1:]
@@ -602,9 +603,10 @@ func TestSurfaceTable(t *testing.T) {
 // rejected is the message every driven call passes.
 const rejected = "the input is one the member rejects"
 
-// silent names the functions of both surfaces that report nothing, so no
-// input drives one to fail, with the reason. A type of the naming table's
-// surface section reports nothing either, and needs no entry.
+// silent lists the functions of both surfaces that do not report, with the
+// reason for each. No input makes such a function fail. A type of the
+// surface section of the naming table does not report either, so it needs
+// no entry.
 var silent = map[string]string{
 	"Assertion":     "is the chain type, and the method drivers call its methods",
 	"That":          "starts a chain",
@@ -618,12 +620,12 @@ var silent = map[string]string{
 	"Context":       "returns the context of a seat",
 }
 
-// escaped is the slice that the MaxAllocs driver allocates, which escape
-// analysis then keeps on the heap.
+// escaped keeps the slice that the MaxAllocs driver allocates, so escape
+// analysis puts the slice on the heap.
 var escaped []byte
 
-// recordingFunctions calls each reporting function of the recording
-// surface, keyed by its name, with an input the function rejects.
+// recordingFunctions maps the name of each reporting function of the
+// recording surface to a call of the function with an input that it rejects.
 var recordingFunctions = map[string]func(tb assert.TB){
 	"Accumulates": func(tb assert.TB) {
 		expect.Accumulates(tb, func(int) error { return nil }, 0, func() int { return 0 }, rejected)
@@ -737,8 +739,8 @@ var recordingFunctions = map[string]func(tb assert.TB){
 	"True":  func(tb assert.TB) { expect.True(tb, false, rejected) },
 }
 
-// recordingMethods calls each method of the recording chain, keyed by
-// its name, on a value the method rejects.
+// recordingMethods maps the name of each method of the recording chain to a
+// call of the method on a value that it rejects.
 var recordingMethods = map[string]func(tb assert.TB){
 	"CloseTo":         func(tb assert.TB) { expect.That(tb, 1.0).CloseTo(2, 0.1, rejected) },
 	"Contains":        func(tb assert.TB) { expect.That(tb, "abc").Contains("x", rejected) },
@@ -762,13 +764,14 @@ var recordingMethods = map[string]func(tb assert.TB){
 }
 
 // TestSurfaceRecordingAllocs drives every reporting member of the recording
-// surface with an input it rejects. Each member must report through
-// Errorf and never through Fatalf, and its record must name the member
-// the driver is keyed by. The shared suites accept a failure from
-// either path, so this is the only test that tells the two modes apart.
+// surface with an input that it rejects. Each member must report through
+// Errorf and never through Fatalf. The assertion of its record must be the
+// one that the naming table names in Go under the key of the driver. The
+// shared suites accept a failure from either path, so this is the only test
+// that tells the two modes apart.
 //
-// The member list comes from the surface's source and the chain's
-// method set, so a member added without a driver fails here.
+// The test reads the members from the source of the surface and from the
+// method set of the chain, so a member without a driver fails here.
 //
 // It does not run in parallel, because the MaxAllocs and MaxAllocsWithSetup
 // drivers count the allocations of the whole process.
@@ -803,8 +806,8 @@ func TestSurfaceRecordingAllocs(t *testing.T) {
 	t.Run("Methods", func(t *testing.T) { drive(t, recordingMethods, names, false) })
 }
 
-// abortingFunctions calls each reporting function of the aborting surface,
-// keyed by its name, with an input the function rejects.
+// abortingFunctions maps the name of each reporting function of the aborting
+// surface to a call of the function with an input that it rejects.
 var abortingFunctions = map[string]func(tb assert.TB){
 	"Accumulates": func(tb assert.TB) {
 		assert.Accumulates(tb, func(int) error { return nil }, 0, func() int { return 0 }, rejected)
@@ -918,8 +921,8 @@ var abortingFunctions = map[string]func(tb assert.TB){
 	"True":  func(tb assert.TB) { assert.True(tb, false, rejected) },
 }
 
-// abortingMethods calls each method of the aborting chain, keyed by its
-// name, on a value the method rejects.
+// abortingMethods maps the name of each method of the aborting chain to a
+// call of the method on a value that it rejects.
 var abortingMethods = map[string]func(tb assert.TB){
 	"CloseTo":         func(tb assert.TB) { assert.That(tb, 1.0).CloseTo(2, 0.1, rejected) },
 	"Contains":        func(tb assert.TB) { assert.That(tb, "abc").Contains("x", rejected) },
@@ -942,16 +945,17 @@ var abortingMethods = map[string]func(tb assert.TB){
 	"NotNil":          func(tb assert.TB) { assert.That[any](tb, nil).NotNil(rejected) },
 }
 
-// TestSurfaceAbortingAllocs drives every reporting member of the aborting surface
-// with an input it rejects. Each member must report through Fatalf and
-// never through Errorf, and its record must name the member the driver is
-// keyed by. It is the twin of TestSurfaceRecordingAllocs, and it does not run in
-// parallel for the same reasons.
+// TestSurfaceAbortingAllocs drives every reporting member of the aborting
+// surface with an input that it rejects. Each member must report through
+// Fatalf and never through Errorf. The assertion of its record must be the
+// one that the naming table names in Go under the key of the driver. It is
+// the twin of TestSurfaceRecordingAllocs. It does not run in parallel, for
+// the same reason.
 //
-// The member list comes from the surface's source and the chain's method
-// set, so a member added without a driver fails here. A member that
-// reports nothing is excused by silent, or by a type of the naming table's
-// surface section.
+// The test reads the members from the source of the surface and from the
+// method set of the chain, so a member without a driver fails here. silent
+// excuses a member that does not report, and so does a name of the surface
+// section of the naming table.
 func TestSurfaceAbortingAllocs(t *testing.T) {
 	members, err := conformance.Members(conformance.Aborting)
 	if err != nil {
@@ -983,9 +987,9 @@ func TestSurfaceAbortingAllocs(t *testing.T) {
 	t.Run("Methods", func(t *testing.T) { drive(t, abortingMethods, names, true) })
 }
 
-// checkNamed requires that the members of a surface are exactly the
-// functions that drivers keys, the members that silent excuses, and the
-// types of the naming table's surface section that the surface declares.
+// checkNamed requires that the members of a surface are exactly the keys of
+// drivers, the members that silent lists, and the names of the surface
+// section of the naming table that the surface declares.
 func checkNamed(t *testing.T, members []string, drivers map[string]func(tb assert.TB), typed []string) {
 	t.Helper()
 
@@ -1001,10 +1005,10 @@ func checkNamed(t *testing.T, members []string, drivers map[string]func(tb asser
 	}
 }
 
-// drive calls each driver with a fresh seat. It requires a failure through
-// Fatalf and none through Errorf when aborting is set, the reverse when it
-// is not, and a record whose assertion the naming table gives Go under the
-// driver's key.
+// drive calls each driver with a fresh seat. When aborting is set, it
+// requires a failure through Fatalf and none through Errorf. When aborting
+// is not set, it requires the reverse. It also requires a record whose
+// assertion the naming table names in Go under the key of the driver.
 func drive(t *testing.T, drivers map[string]func(tb assert.TB), names map[conformance.ID]string, aborting bool) {
 	t.Helper()
 
