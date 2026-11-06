@@ -14,6 +14,7 @@ import (
 	"go.dokimi.dev/assert/history"
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/matchertest"
+	"go.dokimi.dev/assert/prop"
 )
 
 // contract is the contract of every check that the tests run.
@@ -149,6 +150,97 @@ func detailOf[S any](h *history.History, m history.Spec[S], opts ...history.Opti
 		return nil
 	}
 	return failures[0].Detail
+}
+
+// resumedDetail checks h against m under Resume of cp and opts on a
+// recorder, and returns the detail of the record of the check, or nil for a
+// check that passed.
+func resumedDetail(h *history.History, m history.Spec[int], cp *history.Checkpoint[int],
+	opts ...history.Option,
+) map[string]any {
+	return detailOf(h, m, append([]history.Option{history.Resume(cp)}, opts...)...)
+}
+
+// outcomeOf checks h against m under Final and opts on a recorder, and
+// returns the detail of each record of the check and the states that it
+// stored.
+func outcomeOf(h *history.History, m history.Spec[int], opts ...history.Option) ([]map[string]any, []int) {
+	var final []int
+	rec := assert.NewRecorder()
+	history.Linearizable(rec, h, m, contract, append([]history.Option{history.Final(&final)}, opts...)...)
+	failures := rec.Failures()
+	details := make([]map[string]any, 0, len(failures))
+	for _, f := range failures {
+		details = append(details, f.Detail)
+	}
+	return details, final
+}
+
+// initialOf returns the register's Initial, which adds one to initials for
+// each call.
+func initialOf(initials *int) func() int {
+	return func() int {
+		*initials++
+		return 0
+	}
+}
+
+// counted returns the register, whose Next adds one to steps for each step.
+func counted(steps *int) history.Spec[int] {
+	return history.Spec[int]{Initial: register.Initial, Next: func(s int, op history.Operation) []int {
+		*steps++
+		return register.Next(s, op)
+	}}
+}
+
+// writes returns a history of n sequential writes of client 0, of the values
+// 1 to n.
+func writes(n int) *history.History {
+	h := history.New()
+	for v := range n {
+		recordOK(h, 0, write, []any{v + 1}, nil)
+	}
+	return h
+}
+
+// lossy is the register whose write may be lost: it leaves the written value
+// and the value before it. A read is the register's read.
+var lossy = history.Spec[int]{
+	Initial: register.Initial,
+	Next: func(s int, op history.Operation) []int {
+		if op.Name == write {
+			return []int{op.Args[0].(int), s}
+		}
+		return register.Next(s, op)
+	},
+}
+
+// invoke records an invocation of client by the case's choices: a write of 1
+// or 2 or a read, on no key or on one to three of the keys a, b and c, which
+// may repeat.
+func invoke(c *prop.Case, h *history.History, client int) history.Call {
+	key := prop.SampledFrom[any]("a", "b", "c")
+	keys := make([]any, c.Draw(prop.SampledFrom(0, 1, 1, 1, 1, 1, 1, 2, 2, 3), "keys"))
+	for i := range keys {
+		keys[i] = c.Draw(key, "key")
+	}
+	if c.Draw(prop.Boolean(), "writes") {
+		return h.Invoke(client, write, []any{c.Draw(prop.Integer(1, 2), "value")}, keys...)
+	}
+	return h.Invoke(client, read, nil, keys...)
+}
+
+// complete completes call by the case's choices: as Fail or Unknown, or as
+// OK with an output from 0 to 2, which a read reports and a write ignores.
+func complete(c *prop.Case, call history.Call) {
+	switch c.Draw(prop.Integer(0, 9), "outcome") {
+	case 0:
+		call.Fail(errRefused)
+	case 1:
+		call.Unknown(errRefused)
+	default:
+		call.OK(c.Draw(prop.Integer(0, 2), "output"))
+	}
 }
 
 // faultOf checks h against m on a seat of internal/matchertest under opts,

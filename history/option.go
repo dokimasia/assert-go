@@ -118,24 +118,27 @@ func Final[S any](states *[]S) Option {
 	}}
 }
 
-// Resume makes the check continue the search that cp keeps, and keep its own
-// search in cp when it passes. A check continues the kept search when cp
-// keeps the search of a check of the same history that passed under the
-// same budget and memo limit, and the history has recorded events since
-// without completing a call that the kept search read as pending. The
-// continued search takes the steps that a search of every call takes after
-// the order that the kept search found, so the check reports what a search
-// of the whole history reports: its verdict, its steps, its frontier and
-// its final states. In any other case the check searches every call. A
-// check that does not pass keeps no search in cp. A nil cp changes nothing.
+// Resume makes the check continue the searches that cp keeps, and keep its
+// own searches in cp when it passes. A check with [Whole] keeps one search
+// of the whole history, and a check without Whole keeps one search for each
+// partition. The check continues the kept search of a partition when cp
+// keeps the searches of a passing check of the same history under the same
+// budget, memo limit and Whole. The events since that check must not
+// complete a call that the search read as pending, and must not join the
+// partition to another. The continued search takes the steps that a search
+// of every call of the partition takes after the order that the kept search
+// found, so the check reports what a check of every call reports: its
+// verdict, its steps, the partition that it reports, its frontier and its
+// final states. Every other partition searches from its first call. After a
+// check that does not pass, cp does not keep a search. A nil cp changes
+// nothing.
 //
-// Pass the same spec to every check that passes cp. The kept search
-// contains the states that the spec of the earlier checks left.
+// Pass the same spec to every check that passes cp. The kept searches
+// contain the states that the spec of the earlier checks left.
 //
-// A check with Resume searches the whole history as one partition, and
-// states [Whole]. A check without Whole ends the call with a fault, and so
-// does a check whose spec has states of another type than S. A check with
-// Resume calls the spec's Initial for a history without calls too.
+// A check whose spec has states of another type than S ends the call with a
+// fault. A check with Resume and Whole calls the spec's Initial for a
+// history without calls too.
 func Resume[S any](cp *Checkpoint[S]) Option {
 	if cp == nil {
 		return Option{}

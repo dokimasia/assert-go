@@ -49,8 +49,8 @@ const hashlessNote = linearizableOp + ": the spec states Equal and no Hash, so t
 // fixes. It reports the first violated partition, and otherwise the first
 // undecided one. The options state its limits and its workers, and [Whole]
 // and [Final] search every call as one partition and store the states that
-// a linearization leaves. [Resume] continues the search of an earlier check
-// of the same history.
+// a linearization leaves. [Resume] continues the searches of an earlier
+// check of the same history.
 //
 // The record's detail states the ten fields of the definition:
 //
@@ -77,20 +77,23 @@ const hashlessNote = linearizableOp + ": the spec states Equal and no Hash, so t
 // # Errors
 //
 // The check ends the call with a fault for a nil history, for a spec without
-// Initial or without Next, for [Final] and [Resume] of states of another
-// type than the spec's, and for Resume without [Whole]. It ends the call
-// with a fault of the kind [ErrSpec] when a function of the spec panics or
-// ends the goroutine, and the fault names the call that the search stepped.
-// A panic in a partition that one worker would not search ends nothing.
+// Initial or without Next, and for [Final] and [Resume] of states of another
+// type than the spec's. It ends the call with a fault of the kind [ErrSpec]
+// when a function of the spec panics or ends the goroutine, and the fault
+// names the call that the search stepped. A panic in a partition that one
+// worker would not search ends nothing.
 //
 // # Allocation contract
 //
 // A check allocates its calls, its partitions and the memo of each search,
 // the goroutine of each search, and the states that the spec returns. A
-// passing check of a register over two sequential calls allocates 39 times.
-// A check that continues the search of the check before it allocates for the
-// calls since that check alone: a write of the register that a history
-// records and the check after it allocate 11 times together.
+// passing check of a register over two sequential calls allocates 38 times.
+// A check that continues the searches of the check before it allocates for
+// the events since that check, for the searches that it grows and for the
+// partitions that search from their first call. A write of the register that
+// a history records and the check after it allocate 10 times together. A
+// write of one of eight keys, whose history allocates for the key, and a
+// check without Whole allocate 19 times together.
 func Linearizable[S any](tb assert.TB, h *History, s Spec[S], contract string, opts ...Option) {
 	tb.Helper()
 	run := matcher.Begin(tb)
@@ -113,11 +116,6 @@ func Linearizable[S any](tb assert.TB, h *History, s Spec[S], contract string, o
 	if _, resumable := c.resume.(*Checkpoint[S]); c.resume != nil && !resumable {
 		run.Fault(matcher.Fatal, linearizableID, contract, fault.In(linearizableOp,
 			fault.New("Resume states %T for a spec whose states are of type %v", c.resume, reflect.TypeFor[S]())))
-		return
-	}
-	if c.resume != nil && !c.whole {
-		run.Fault(matcher.Fatal, linearizableID, contract, fault.In(linearizableOp,
-			fault.New("Resume continues the search of one partition, and the check states no Whole")))
 		return
 	}
 	if s.Equal != nil && s.Hash == nil && h.noteHashless() {
@@ -154,30 +152,53 @@ func (h *History) noteHashless() bool {
 }
 
 // check returns the detail of the check of h through the spec's functions
-// ops under c: the first violated partition, else the first undecided one,
-// else a pass. A pass states its final states when c asks for them and the
-// check searched one partition or none. It returns the fault of a spec's
-// function that panicked in a partition that one worker would search.
+// ops under c. A check with Resume continues the searches that its
+// checkpoint keeps, and keeps its own searches there when it passes.
 func check[S any](h *History, ops operations[S], c config) (detail[S], error) {
 	d := &deadline{}
 	if c.timeLimit > 0 {
 		d.end = realtime.Clock{}.Now().Add(c.timeLimit)
 	}
-	if cp, resumable := c.resume.(*Checkpoint[S]); resumable {
-		return resumed(h, ops, c, d, cp)
+	cp, resumable := c.resume.(*Checkpoint[S])
+	if !resumable {
+		events, ids := h.recordedFrom(0)
+		calls, _ := callsOf(events, ids, 0)
+		parts := partitionsOf(calls)
+		if c.whole && len(calls) > 0 {
+			parts = []partition{{keys: []any{}, calls: calls}}
+		}
+		return checkPartitions(ops, parts, nil, c, d)
 	}
-	events, ids := h.recordedFrom(0)
-	calls, _ := callsOf(events, ids, 0)
-	parts := partitionsOf(calls)
-	if c.whole && len(calls) > 0 {
-		parts = []partition{{keys: []any{}, calls: calls}}
+	parts, kept := cp.resume(h, ops, c, d)
+	got, err := checkPartitions(ops, parts, kept, c, d)
+	if err != nil || got.outcome != Passed {
+		*cp = Checkpoint[S]{}
 	}
+	return got, err
+}
+
+// checkPartitions returns the detail of the check of parts through the
+// spec's functions ops under c and the deadline d: the first violated
+// partition, else the first undecided one, else a pass. kept are the
+// searches of parts, and nil for a check that searches each partition from
+// its first call. A pass states its final states when c asks for them and
+// the check searched one partition or none. It returns the fault of a spec's
+// function that panicked in a partition that one worker would search.
+func checkPartitions[S any](ops operations[S], parts []partition, kept []*search[S], c config, d *deadline) (
+	detail[S], error,
+) {
 	if c.final != nil && len(parts) == 0 {
 		e := newSearch(ops, partition{}, c, d).runApart()
 		return detail[S]{outcome: Passed, final: e.states}, e.err
 	}
-	endingOf, stop := searches(ops, parts, c, d)
-	defer stop()
+	endingOf := func(i int) ending[S] {
+		return partitionSearch(ops, parts, kept, i, c, d).runApart()
+	}
+	if c.workers > 1 {
+		var stop func()
+		endingOf, stop = searches(ops, parts, kept, c, d)
+		defer stop()
+	}
 	steps := 0
 	var undecided *detail[S]
 	var final []S
@@ -207,18 +228,15 @@ func check[S any](h *History, ops operations[S], c config) (detail[S], error) {
 	return detail[S]{outcome: Passed, partitions: len(parts), steps: steps, final: final}, nil
 }
 
-// searches starts the searches of parts on c.workers goroutines, in
-// partition order, and returns endingOf, which returns how the search of the
-// partition i ended once it has, and stop, which cancels the searches still
-// running, takes the partitions that no worker started, and waits for the
-// workers. On one worker, endingOf runs the search on a goroutine of its own
-// and waits for it.
-func searches[S any](ops operations[S], parts []partition, c config, d *deadline) (func(int) ending[S], func()) {
-	if c.workers == 1 {
-		return func(i int) ending[S] {
-			return newSearch(ops, parts[i], c, d).runApart()
-		}, func() {}
-	}
+// searches starts the searches of parts on the c.workers goroutines of a
+// check on more than one worker, in partition order, and returns endingOf,
+// which returns how the search of the partition i ended once it has, and
+// stop, which cancels the searches still running, takes the partitions that
+// no worker started, and waits for the workers. kept are the searches of
+// parts, and nil for new searches.
+func searches[S any](ops operations[S], parts []partition, kept []*search[S], c config, d *deadline) (
+	func(int) ending[S], func(),
+) {
 	type finished struct {
 		// i is the index of the partition.
 		i int
@@ -235,7 +253,7 @@ func searches[S any](ops operations[S], parts []partition, c config, d *deadline
 	for range min(c.workers, len(parts)) {
 		workers.Go(func() {
 			for i := range work {
-				newSearch(ops, parts[i], c, d).run(func(e ending[S]) { done <- finished{i: i, e: e} })
+				partitionSearch(ops, parts, kept, i, c, d).run(func(e ending[S]) { done <- finished{i: i, e: e} })
 			}
 		})
 	}
@@ -255,4 +273,16 @@ func searches[S any](ops operations[S], parts []partition, c config, d *deadline
 		workers.Wait()
 	}
 	return endingOf, stop
+}
+
+// partitionSearch returns the search of the partition i of parts: the search
+// that kept states for it, and a new search through ops under c and the
+// deadline d for a nil kept.
+func partitionSearch[S any](ops operations[S], parts []partition, kept []*search[S], i int, c config,
+	d *deadline,
+) *search[S] {
+	if kept != nil {
+		return kept[i]
+	}
+	return newSearch(ops, parts[i], c, d)
 }

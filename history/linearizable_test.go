@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
@@ -33,6 +34,16 @@ const (
 	resumedAllocs = 14
 	resumedWrites = 1000
 )
+
+// partitionedAllocs is the allocation ceiling of a write of one of eight
+// keys that a history records and of the check without Whole that continues
+// the search of each partition of the check before it, the goroutine that
+// runs the search of the key included.
+const partitionedAllocs = 24
+
+// allocationKeys are the keys that the writes of the allocation ceiling of a
+// check of each partition take in turn.
+var allocationKeys = []any{"a", "b", "c", "d", "e", "f", "g", "h"}
 
 // The size of the search that the checker cancels.
 const (
@@ -209,15 +220,6 @@ func TestLinearizable(t *testing.T) {
 				Reason: "Resume states *history.Checkpoint[string] for a spec whose states are of type int",
 			})
 		})
-
-		t.Run("returns a fault for Resume without Whole", func(t *testing.T) {
-			t.Parallel()
-			got := faultOf(t, violatedRead(), register, history.Resume(new(history.Checkpoint[int])))
-			expectFault(t, got, fault.Error{
-				Op:     linearizableOp,
-				Reason: "Resume continues the search of one partition, and the check states no Whole",
-			})
-		})
 	})
 
 	t.Run("Workers", func(t *testing.T) {
@@ -280,6 +282,34 @@ func TestLinearizable(t *testing.T) {
 			assert.Equal(t, []any{got[outcomeField], got[partitionField]}, []any{history.Violated, []any{"a"}},
 				"the violated partition of a, whose search waits for the first step of b")
 			assert.InRange(t, puts.Load(), 1, cancelledSteps, "the search of b stopped long before its budget")
+		})
+
+		t.Run("ends the search of every partition before it returns", func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				started := make(chan struct{})
+				var once sync.Once
+				var returned atomic.Bool
+				var late atomic.Int64
+				m := history.Spec[int]{
+					Initial: register.Initial,
+					Next: func(s int, op history.Operation) []int {
+						if returned.Load() {
+							late.Add(1)
+						}
+						if op.Name == put {
+							once.Do(func() { close(started) })
+							return []int{op.Args[0].(int)}
+						}
+						<-started
+						return register.Next(s, op)
+					},
+				}
+				detailOf(cancelledHistory(), m, history.Budget(cancelledBudget), history.Workers(2))
+				returned.Store(true)
+				synctest.Wait()
+				assert.Equal(t, late.Load(), int64(0), "no function of the spec runs after the check returns")
+			})
 		})
 	})
 }
@@ -460,14 +490,37 @@ func resumedCheck() alloctest.Case {
 	}
 }
 
-// TestLinearizableAllocs checks the allocation ceilings of a passing check,
-// and of a write and the check that continues the search before it.
-func TestLinearizableAllocs(t *testing.T) {
-	alloctest.Check(t, []alloctest.Case{passingCheck, resumedCheck()})
+// partitionedCheck returns the case of the allocation ceiling of a write of
+// one of eight keys that a history of the case records, and of the check
+// without Whole that continues the search of each partition of the check
+// before it.
+func partitionedCheck() alloctest.Case {
+	h := history.New()
+	var cp history.Checkpoint[int]
+	writes := 0
+	return alloctest.Case{
+		Name: "Linearizable/Resume/partitions",
+		Call: func(tb assert.TB) {
+			if writes == resumedWrites {
+				h, cp, writes = history.New(), history.Checkpoint[int]{}, 0
+			}
+			writes++
+			recordOK(h, 0, write, writeOne, nil, allocationKeys[writes%len(allocationKeys)])
+			history.Linearizable(tb, h, register, contract, history.Resume(&cp))
+		},
+		Allocs: partitionedAllocs,
+	}
 }
 
-// BenchmarkLinearizable measures a passing check under its ceiling, and the
-// time of two checks that spend a budget: the register over budgetHistory and
+// TestLinearizableAllocs checks the allocation ceilings of a passing check,
+// and of a write and the check that continues the searches before it.
+func TestLinearizableAllocs(t *testing.T) {
+	alloctest.Check(t, []alloctest.Case{passingCheck, resumedCheck(), partitionedCheck()})
+}
+
+// BenchmarkLinearizable measures a passing check and the two checks that
+// continue the searches of the check before them under their ceilings, and
+// the time of two checks that spend a budget: the register over budgetHistory and
 // the default budget, and the queue over queueHistory. The allocations of a
 // check that fails count the setup of the module's first failure in a run of
 // one iteration, so those two state no ceiling.
@@ -475,6 +528,7 @@ func BenchmarkLinearizable(b *testing.B) {
 	b.Run("Linearizable", func(b *testing.B) {
 		b.Run("pass", func(b *testing.B) { alloctest.Measure(b, passingCheck) })
 		b.Run("resume", func(b *testing.B) { alloctest.Measure(b, resumedCheck()) })
+		b.Run("resume-partitions", func(b *testing.B) { alloctest.Measure(b, partitionedCheck()) })
 		b.Run("register", func(b *testing.B) {
 			spend(b, budgetHistory(), register)
 		})

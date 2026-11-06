@@ -192,18 +192,14 @@ func TestSearch(t *testing.T) {
 				open := map[int]history.Call{}
 				for range c.Draw(prop.Integer(1, 30), "events") {
 					client := c.Draw(prop.Integer(0, 2), "client")
-					call, busy := open[client]
-					switch {
-					case busy:
+					if call, busy := open[client]; busy {
 						delete(open, client)
 						complete(c, call)
-					case c.Draw(prop.Boolean(), "writes"):
-						open[client] = h.Invoke(client, write, []any{c.Draw(prop.Integer(1, 2), "value")})
-					default:
-						open[client] = h.Invoke(client, read, nil)
+					} else {
+						open[client] = invoke(c, h, client)
 					}
-					whole, wholeFinal := outcomeOf(h, m)
-					grown, grownFinal := outcomeOf(h, m, history.Resume(&cp))
+					whole, wholeFinal := outcomeOf(h, m, history.Whole())
+					grown, grownFinal := outcomeOf(h, m, history.Whole(), history.Resume(&cp))
 					assert.Equal(c, grown, whole, "the grown search reports the record of the search of every call")
 					assert.Equal(c, grownFinal, wholeFinal, "the grown search leaves the same states")
 				}
@@ -219,14 +215,14 @@ func TestSearch(t *testing.T) {
 				one.OK(nil)
 				two.OK(nil)
 				var cp history.Checkpoint[int]
-				_, final := outcomeOf(h, register, history.Resume(&cp))
+				_, final := outcomeOf(h, register, history.Whole(), history.Resume(&cp))
 				assert.Equal(t, final, []int{2}, "the first order writes 1 and then 2")
 				recordOK(h, 0, read, nil, 1)
-				_, final = outcomeOf(h, register, history.Resume(&cp))
+				_, final = outcomeOf(h, register, history.Whole(), history.Resume(&cp))
 				assert.Equal(t, final, []int{1}, "the read of 1 takes the order that writes 2 and then 1")
 				recordOK(h, 0, read, nil, 3)
-				got, _ := outcomeOf(h, register, history.Resume(&cp))
-				want, _ := outcomeOf(h, register)
+				got, _ := outcomeOf(h, register, history.Whole(), history.Resume(&cp))
+				want, _ := outcomeOf(h, register, history.Whole())
 				assert.Equal(t, got, want, "the violation of the read of 3, with the steps of the search of every call")
 			})
 
@@ -239,9 +235,9 @@ func TestSearch(t *testing.T) {
 				one.OK(nil)
 				two.OK(nil)
 				var cp history.Checkpoint[int]
-				assert.Nil(t, resumedDetail(h, register, &cp), "64 writes pass")
+				assert.Nil(t, resumedDetail(h, register, &cp, history.Whole()), "64 writes pass")
 				recordOK(h, 0, read, nil, 9)
-				got := resumedDetail(h, register, &cp)
+				got := resumedDetail(h, register, &cp, history.Whole())
 				assert.Equal(t, got, detailOf(h, register, history.Whole()),
 					"the memo finds the two writes of 7 in their second order, as the search of every call does")
 				assert.Equal(t, []any{got[callsField], got[stepsField]}, []any{65, 67},
@@ -250,6 +246,19 @@ func TestSearch(t *testing.T) {
 
 		atRead := fault.Path{fault.Field(callsField), fault.Index(2)}
 		atWrite := fault.Path{fault.Field(callsField), fault.Index(0)}
+
+		t.Run("returns the fault of a Next that panics in a search that grew, at the call that it steps",
+			func(t *testing.T) {
+				t.Parallel()
+				m := history.Spec[int]{Initial: register.Initial, Next: panicsOnRead}
+				h := writes(1)
+				var cp history.Checkpoint[int]
+				assert.Nil(t, resumedDetail(h, m, &cp, history.Whole()), "the write passes")
+				recordOK(h, 0, read, nil, 1)
+				expectFault(t, faultOf(t, h, m, history.Whole(), history.Resume(&cp)),
+					specFault(atRead, `the spec's Next panics on "read" with boom`))
+			})
+
 		tests := []struct {
 			name string
 			spec history.Spec[int]
@@ -332,47 +341,6 @@ var waiting = history.Spec[int]{
 		}
 		return nil
 	},
-}
-
-// lossy is the register whose write may be lost: it leaves the written value
-// and the value before it. A read is the register's read.
-var lossy = history.Spec[int]{
-	Initial: register.Initial,
-	Next: func(s int, op history.Operation) []int {
-		if op.Name == write {
-			return []int{op.Args[0].(int), s}
-		}
-		return register.Next(s, op)
-	},
-}
-
-// complete completes call by the case's choices: as Fail or Unknown, or as
-// OK with an output from 0 to 2, which a read reports and a write ignores.
-func complete(c *prop.Case, call history.Call) {
-	switch c.Draw(prop.Integer(0, 9), "outcome") {
-	case 0:
-		call.Fail(errRefused)
-	case 1:
-		call.Unknown(errRefused)
-	default:
-		call.OK(c.Draw(prop.Integer(0, 2), "output"))
-	}
-}
-
-// outcomeOf checks h against m under Whole, Final and opts on a recorder, and
-// returns the detail of each record of the check and the states that it
-// stored.
-func outcomeOf(h *history.History, m history.Spec[int], opts ...history.Option) ([]map[string]any, []int) {
-	var final []int
-	rec := assert.NewRecorder()
-	all := append([]history.Option{history.Whole(), history.Final(&final)}, opts...)
-	history.Linearizable(rec, h, m, contract, all...)
-	failures := rec.Failures()
-	details := make([]map[string]any, 0, len(failures))
-	for _, f := range failures {
-		details = append(details, f.Detail)
-	}
-	return details, final
 }
 
 // sameInt reports whether a equals b, as a stated Equal beside which the

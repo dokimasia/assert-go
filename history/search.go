@@ -258,14 +258,15 @@ func (s *search[S]) fits(more int, limits config) bool {
 		int64(len(s.configurations)) <= capacity
 }
 
-// grow adds more to a search that passed: calls that its history recorded
-// after every event that the search read. The search then reads the spec's
-// functions ops and the deadline d, the deadline before its next step.
-func (s *search[S]) grow(ops operations[S], more []call, limits config, d *deadline) {
+// grow adds to a search that passed the calls of calls after its own, which
+// calls starts with: calls that its history recorded after every event that
+// the search read. The search then reads the spec's functions ops and the
+// deadline d, the deadline before its next step.
+func (s *search[S]) grow(ops operations[S], calls []call, limits config, d *deadline) {
 	s.ops, s.deadline, s.final = ops, d, limits.final != nil
 	s.clockAt = s.steps
 	first := len(s.calls)
-	s.calls = append(s.calls, more...)
+	s.calls = calls
 	s.add(first)
 }
 
@@ -385,12 +386,23 @@ func (s *search[S]) run(deliver func(ending[S])) {
 // runApart runs the search, as run does, on a goroutine of its own, and
 // returns how it ended. A function of the spec that ends its goroutine, as
 // t.FailNow does, ends that goroutine and not the caller's, which receives
-// the fault of the kind ErrSpec.
+// the fault of the kind ErrSpec. A settled search passes on the caller's
+// goroutine.
 func (s *search[S]) runApart() ending[S] {
+	if s.settled() {
+		return s.scan()
+	}
 	s.apart.Add(1)
 	go s.runAndRelease()
 	s.apart.Wait()
 	return s.result
+}
+
+// settled reports whether the search passes without a step: it has called
+// the spec's Initial and has linearized every known call, so its scan calls
+// no function of the spec.
+func (s *search[S]) settled() bool {
+	return s.open == 0 && len(s.store) > 0
 }
 
 // runAndRelease runs the search, as run does, keeps how it ended in result,

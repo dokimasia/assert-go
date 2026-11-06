@@ -68,8 +68,9 @@
 // up either is [Undecided], which fails the test as [Violated] does.
 // [Budget], [MemoLimit], [TimeLimit] and [Workers] change the limits and the
 // number of partitions searched at once. [Whole] searches every call as one
-// partition, and [Resume] continues the search of the last passing check of
-// a history that has grown since, with the result of a search of every call.
+// partition, and [Resume] continues the searches of the last passing check
+// of a history that has grown since, with the result of a check of every
+// call.
 //
 // [Serializable] and [HasSnapshotIsolation] read each call of the operation
 // "txn" as a transaction of list appends and list reads. They derive the

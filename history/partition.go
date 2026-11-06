@@ -19,6 +19,12 @@ type call struct {
 	ids []string
 }
 
+// pending reports whether the call has not completed.
+func (c call) pending() bool {
+	//dokimi:mutate-skip ror-boundary: a completion follows its invocation, so no completion has the index 0
+	return c.span.Completion < 0
+}
+
 // partition is a set of calls that share keys, which the checker searches
 // on its own.
 type partition struct {
@@ -31,18 +37,20 @@ type partition struct {
 }
 
 // callsOf returns the calls that events invoke, in event order, without the
-// calls that failed. events are the events of a history from the index from
-// on, and ids are the identities of each event's keys. A call is known when
-// it completed as OK, and its completion is -1 when it is pending. It
-// reports false when one of events completes a call invoked before from.
-func callsOf(events []Event, ids [][]string, from int) ([]call, bool) {
+// calls that failed, and the events that complete a call invoked before
+// from. events are the events of a history from the index from on, and ids
+// are the identities of each event's keys. A call is known when it
+// completed as OK, and its completion is -1 when it is pending.
+func callsOf(events []Event, ids [][]string, from int) ([]call, []Event) {
 	completion := make([]int, len(events))
+	var earlier []Event
 	for i, e := range events {
 		completion[i] = -1
-		if e.Kind != Invoke {
-			if e.Call < from {
-				return nil, false
-			}
+		switch {
+		case e.Kind == Invoke:
+		case e.Call < from:
+			earlier = append(earlier, e)
+		default:
 			completion[e.Call-from] = i
 		}
 	}
@@ -62,7 +70,7 @@ func callsOf(events []Event, ids [][]string, from int) ([]call, bool) {
 		}
 		calls = append(calls, call{span: span, keys: e.Keys, ids: ids[i]})
 	}
-	return calls, true
+	return calls, earlier
 }
 
 // partitionsOf returns the partitions of calls, in the order of their first

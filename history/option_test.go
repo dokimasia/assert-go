@@ -101,6 +101,14 @@ func TestOption(t *testing.T) {
 				[]any{history.Violated, 1, []any{}},
 				"the read of 0 follows the write of 1 in one partition of every key")
 		})
+
+		t.Run("calls no function of the spec for a history without calls", func(t *testing.T) {
+			t.Parallel()
+			initials := 0
+			m := history.Spec[int]{Initial: initialOf(&initials), Next: register.Next}
+			assert.Nil(t, detailOf(history.New(), m, history.Whole()), "a history without calls passes")
+			assert.Equal(t, initials, 0, "no partition calls Initial")
+		})
 	})
 
 	t.Run("Final", func(t *testing.T) {
@@ -157,16 +165,16 @@ func TestOption(t *testing.T) {
 				m := counted(&steps)
 				h := writes(5)
 				var cp history.Checkpoint[int]
-				assert.Nil(t, resumedDetail(h, m, &cp), "five writes pass")
+				assert.Nil(t, resumedDetail(h, m, &cp, history.Whole()), "five writes pass")
 				recordOK(h, 0, read, nil, 5)
-				assert.Nil(t, resumedDetail(h, m, &cp), "the read of the last value passes")
+				assert.Nil(t, resumedDetail(h, m, &cp, history.Whole()), "the read of the last value passes")
 				assert.Equal(t, steps, 6, "five steps of the writes, and the step of the read")
 			})
 
 		t.Run("changes nothing for a nil checkpoint", func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, detailOf(violatedRead(), register, history.Resume[int](nil)),
-				detailOf(violatedRead(), register), "the record of the defaults, with no Whole required")
+				detailOf(violatedRead(), register), "the record of the defaults")
 		})
 	})
 
