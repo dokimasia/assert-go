@@ -1,5 +1,12 @@
 # go.dokimi.dev/assert
 
+## 0.20.0
+
+### Minor Changes
+
+- c959faa: Implement definition 16.2.0 and write its version into every call record.
+- c959faa: Add `stateful.Action.Keep` to keep an action in every case without a swarm choice.
+
 ## 0.19.0
 
 ### Minor Changes
