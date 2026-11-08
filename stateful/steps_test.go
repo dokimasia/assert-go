@@ -55,6 +55,33 @@ func TestSteps(t *testing.T) {
 			assert.Equal(t, stepsOf(e), []engine.MachineStep{sequential(get)}, "the step of get")
 		})
 
+		t.Run("keeps an action with Keep without a swarm choice", func(t *testing.T) {
+			t.Parallel()
+			m := machineOf(&runLog{}, put, get)
+			m.Actions[0].Keep = true
+			e := replayed(func(c *prop.Case) { stateful.Steps(c, m) }, 0, 1, 0, 0)
+			assert.Equal(t, choicesOf(e), []uint64{0, 1, 0, 0}, "the swarm choice of get, a flag, an index, a flag")
+			assert.Equal(t, stepsOf(e), []engine.MachineStep{sequential(put)}, "the step of put, which each case keeps")
+		})
+
+		t.Run("counts an action with Keep as kept before the choice of the last other action", func(t *testing.T) {
+			t.Parallel()
+			m := machineOf(&runLog{}, put, get)
+			m.Actions[1].Keep = true
+			e := replayed(func(c *prop.Case) { stateful.Steps(c, m) }, 0, 1, 0, 0)
+			assert.Equal(t, choicesOf(e), []uint64{0, 1, 0, 0}, "the swarm choice of put recorded as 0")
+			assert.Equal(t, stepsOf(e), []engine.MachineStep{sequential(get)}, "the step of get")
+		})
+
+		t.Run("makes no swarm choice for a machine whose actions all have Keep", func(t *testing.T) {
+			t.Parallel()
+			m := machineOf(&runLog{}, put, get)
+			m.Actions[0].Keep, m.Actions[1].Keep = true, true
+			e := replayed(func(c *prop.Case) { stateful.Steps(c, m) }, 1, 1, 0)
+			assert.Equal(t, choicesOf(e), []uint64{1, 1, 0}, "a flag, an index and a flag")
+			assert.Equal(t, stepsOf(e), []engine.MachineStep{sequential(get)}, "the step of get")
+		})
+
 		t.Run("makes no choice for a machine without actions", func(t *testing.T) {
 			t.Parallel()
 			e := replayed(func(c *prop.Case) { stateful.Steps(c, stateful.Machine[int]{}) }, 1, 1)

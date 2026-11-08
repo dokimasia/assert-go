@@ -126,7 +126,8 @@ type machinesVector struct {
 }
 
 // machineSetup is the setup of a machines vector. A nil field states the
-// default of the definition.
+// default of the definition. Keep names the actions of the subject that every
+// case keeps.
 type machineSetup struct {
 	Mean           *int            `json:"mean"`
 	Max            *int            `json:"max"`
@@ -136,12 +137,13 @@ type machineSetup struct {
 	ConcurrentMean *int            `json:"concurrent-mean"`
 	MaxReleases    *int            `json:"max-releases"`
 	Strategy       json.RawMessage `json:"strategy"`
+	Keep           []string        `json:"keep"`
 }
 
 // machineOptions are the options of a subject's steps: those that every
-// subject takes, those of a concurrent section, and the strategy and the
-// options of the scheduler that a subject with a section or with tasks of
-// its own makes in each case.
+// subject takes, those of a concurrent section, the strategy and the options
+// of the scheduler that a subject with a section or with tasks of its own
+// makes in each case, and the names of the actions that every case keeps.
 type machineOptions struct {
 	// steps are the options that every subject takes.
 	steps []stateful.Option
@@ -151,6 +153,16 @@ type machineOptions struct {
 	scheduler []stateful.SchedulerOption
 	// strategy is the strategy of the scheduler.
 	strategy stateful.Strategy
+	// keep names the actions that set Keep.
+	keep []string
+}
+
+// marked returns m with Keep set on each action that o names.
+func marked[S any](o machineOptions, m stateful.Machine[S]) stateful.Machine[S] {
+	for i := range m.Actions {
+		m.Actions[i].Keep = slices.Contains(o.keep, m.Actions[i].Name)
+	}
+	return m
 }
 
 // traceRefusal is the refusal of a trace, as a machines vector states it:
@@ -218,7 +230,7 @@ func checkMachines(raw json.RawMessage, dir string) error {
 // options returns the options that s states, with the clients of the
 // definition's setup for a setup that states none.
 func (s machineSetup) options() (machineOptions, error) {
-	var o machineOptions
+	o := machineOptions{keep: s.Keep}
 	if s.Mean != nil {
 		o.steps = append(o.steps, stateful.Mean(*s.Mean))
 	}
@@ -322,7 +334,7 @@ func (r *ring) get() any {
 func queueSubject(c *prop.Case, o machineOptions, losesOnWrap bool) {
 	capacity := c.Draw(capacities, "capacity")
 	q := &ring{slots: make([]int, capacity), losesOnWrap: losesOnWrap}
-	stateful.Steps(c, stateful.Machine[[]int]{
+	stateful.Steps(c, marked(o, stateful.Machine[[]int]{
 		Spec: boundedQueue(capacity),
 		Actions: []stateful.Action[[]int]{{
 			Name:  putOp,
@@ -338,7 +350,7 @@ func queueSubject(c *prop.Case, o machineOptions, losesOnWrap bool) {
 				call.OK(q.get())
 			},
 		}},
-	}, o.steps...)
+	}), o.steps...)
 }
 
 // boundedQueue returns the spec of a queue of at most capacity values: put
@@ -393,7 +405,7 @@ var counterSpec = history.Spec[int]{
 // counter.
 func counterOverflows(c *prop.Case, o machineOptions) {
 	count := 0
-	stateful.Steps(c, stateful.Machine[int]{
+	stateful.Steps(c, marked(o, stateful.Machine[int]{
 		Spec: counterSpec,
 		Actions: []stateful.Action[int]{{
 			Name: incrementOp,
@@ -410,7 +422,7 @@ func counterOverflows(c *prop.Case, o machineOptions) {
 				call.OK(nil)
 			},
 		}},
-	}, o.steps...)
+	}), o.steps...)
 }
 
 // refusingCounter runs the counter machine over a counter that refuses
@@ -421,7 +433,7 @@ func counterOverflows(c *prop.Case, o machineOptions) {
 // to 0.
 func refusingCounter(c *prop.Case, o machineOptions, increments *int) {
 	count := 0
-	stateful.Steps(c, stateful.Machine[int]{
+	stateful.Steps(c, marked(o, stateful.Machine[int]{
 		Spec: counterSpec,
 		Actions: []stateful.Action[int]{{
 			Name:    incrementOp,
@@ -443,7 +455,7 @@ func refusingCounter(c *prop.Case, o machineOptions, increments *int) {
 				c.History().Invoke(client, readOp, nil).OK(count)
 			},
 		}},
-	}, o.steps...)
+	}), o.steps...)
 }
 
 // storedPut is the input of the store's put: a drawn key, and a value that
@@ -461,7 +473,7 @@ type storedPut struct {
 func storeLosesOnCrash(c *prop.Case, o machineOptions) {
 	durable, buffer, acknowledged := map[int]int{}, map[int]int{}, map[int]int{}
 	written := 0
-	stateful.Steps(c, stateful.Machine[struct{}]{
+	stateful.Steps(c, marked(o, stateful.Machine[struct{}]{
 		Actions: []stateful.Action[struct{}]{{
 			Name: putOp,
 			Input: func(c *prop.Case, _ struct{}) any {
@@ -498,7 +510,7 @@ func storeLosesOnCrash(c *prop.Case, o machineOptions) {
 				}
 			}
 		},
-	}, o.steps...)
+	}), o.steps...)
 }
 
 // sharedCounter runs the counter machine on clients, as tasks of a scheduler
@@ -507,7 +519,7 @@ func storeLosesOnCrash(c *prop.Case, o machineOptions) {
 func sharedCounter(c *prop.Case, o machineOptions, racy bool) {
 	s := stateful.NewScheduler(c, o.strategy, o.scheduler...)
 	count := 0
-	stateful.Steps(c, stateful.Machine[int]{
+	stateful.Steps(c, marked(o, stateful.Machine[int]{
 		Spec: counterSpec,
 		Actions: []stateful.Action[int]{{
 			Name: incrementOp,
@@ -521,7 +533,7 @@ func sharedCounter(c *prop.Case, o machineOptions, racy bool) {
 				call.OK(count)
 			},
 		}},
-	}, slices.Concat(o.steps, o.section, []stateful.Option{stateful.Tasks(s)})...)
+	}), slices.Concat(o.steps, o.section, []stateful.Option{stateful.Tasks(s)})...)
 }
 
 // registerSpec is the spec of a register, initially nil: write leaves its
@@ -563,7 +575,7 @@ func flushedRegister(c *prop.Case, o machineOptions, inTwoParts bool) {
 			durable = taken
 		}
 	})
-	stateful.Steps(c, stateful.Machine[any]{
+	stateful.Steps(c, marked(o, stateful.Machine[any]{
 		Spec: registerSpec,
 		Actions: []stateful.Action[any]{{
 			Name:  writeOp,
@@ -584,7 +596,7 @@ func flushedRegister(c *prop.Case, o machineOptions, inTwoParts bool) {
 				call.OK(durable)
 			},
 		}},
-	}, slices.Concat(o.steps, o.section, []stateful.Option{stateful.Tasks(s)})...)
+	}), slices.Concat(o.steps, o.section, []stateful.Option{stateful.Tasks(s)})...)
 }
 
 // ticksSpec is the spec of the ticker subjects, whose state is the
@@ -621,7 +633,7 @@ func ticker(c *prop.Case, o machineOptions, skipsFirst bool) {
 			}
 		}
 	})
-	stateful.Steps(c, stateful.Machine[int]{
+	stateful.Steps(c, marked(o, stateful.Machine[int]{
 		Spec: ticksSpec,
 		Actions: []stateful.Action[int]{{
 			Name:  advanceOp,
@@ -638,7 +650,7 @@ func ticker(c *prop.Case, o machineOptions, skipsFirst bool) {
 				c.History().Invoke(client, readOp, nil).OK(count)
 			},
 		}},
-	}, o.steps...)
+	}), o.steps...)
 }
 
 // spinner runs the machine whose one action, spin, spawns a task on a
@@ -647,7 +659,7 @@ func ticker(c *prop.Case, o machineOptions, skipsFirst bool) {
 // no spec.
 func spinner(c *prop.Case, o machineOptions) {
 	s := stateful.NewScheduler(c, o.strategy, o.scheduler...)
-	stateful.Steps(c, stateful.Machine[struct{}]{
+	stateful.Steps(c, marked(o, stateful.Machine[struct{}]{
 		Actions: []stateful.Action[struct{}]{{
 			Name: "spin",
 			Run: func(*prop.Case, int, any) {
@@ -659,5 +671,5 @@ func spinner(c *prop.Case, o machineOptions) {
 				s.Run()
 			},
 		}},
-	}, o.steps...)
+	}), o.steps...)
 }

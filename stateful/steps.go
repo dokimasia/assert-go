@@ -21,9 +21,11 @@ const unlimited = time.Duration(math.MaxInt64)
 // Steps runs the steps of the machine m in the case c, in six parts, and
 // records every decision as a choice of the case:
 //
-//  1. Swarm: one choice per action, in order, whether the case keeps it,
-//     with odds of 1 in 2 conditioned on keeping one. A case keeps every
-//     action under Swarm(false).
+//  1. Swarm: one choice per action without Keep, in order, whether the case
+//     keeps it, with odds of 1 in 2 conditioned on keeping one. A case keeps
+//     each action with Keep set without a choice, and such an action counts
+//     as kept before the first choice. A case keeps every action under
+//     Swarm(false).
 //  2. Setup: the check of the history, and the invariant.
 //  3. Sequential steps on client 0. Before each step, the kept actions that
 //     are enabled in every state that the last check left. With none, the
@@ -61,8 +63,8 @@ const unlimited = time.Duration(math.MaxInt64)
 // task waits or sleeps then leaves its call open.
 //
 // The case of [prop.Draws] follows its trace: the swarm keeps the actions
-// that its step entries name, and each step entry becomes the choices of
-// one step. Steps refuses a step entry that it cannot take at its position,
+// that its step entries name and every action with Keep set, and each step
+// entry becomes the choices of one step. Steps refuses a step entry that it cannot take at its position,
 // which ends the run with a fault at the entry's step before any other case:
 // an action that the step's list lacks, a step past its part's most steps,
 // a client outside the clients, a concurrent step of a machine with one
@@ -159,14 +161,28 @@ func (r *run[S]) acting(part engine.Part, position int, a Action[S]) {
 }
 
 // swarm returns the actions that the case keeps, in order. A case that
-// follows a trace keeps the actions that its step entries name.
+// follows a trace keeps the actions that its step entries name. An action with
+// Keep set is kept without a choice and counts as kept before the first
+// choice, so remaining counts the actions without Keep alone.
 func (r *run[S]) swarm() []Action[S] {
 	actions := r.m.Actions
 	if !r.cfg.swarm {
 		return actions
 	}
+	marked, remaining := false, 0
+	for _, a := range actions {
+		if a.Keep {
+			marked = true
+		} else {
+			remaining++
+		}
+	}
 	var kept []Action[S]
 	for i, a := range actions {
+		if a.Keep {
+			kept = append(kept, a)
+			continue
+		}
 		r.acting(engine.SwarmPart, i, a)
 		if r.traced {
 			named := uint64(0)
@@ -175,9 +191,10 @@ func (r *run[S]) swarm() []Action[S] {
 			}
 			r.trace.Prepare(named)
 		}
-		if r.e.Keep(len(kept) > 0, len(actions)-i) {
+		if r.e.Keep(marked || len(kept) > 0, remaining) {
 			kept = append(kept, a)
 		}
+		remaining--
 	}
 	return kept
 }

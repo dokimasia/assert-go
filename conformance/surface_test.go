@@ -505,6 +505,7 @@ var pinned = map[conformance.ID]any{
 	"action.weight":          stateful.Action[int]{}.Weight,
 	"action.enabled":         stateful.Action[int]{}.Enabled,
 	"action.drain":           stateful.Action[int]{}.Drain,
+	"action.keep":            stateful.Action[int]{}.Keep,
 	"action.input":           stateful.Action[int]{}.Input,
 	"action.run":             stateful.Action[int]{}.Run,
 	"stateful.steps":         stateful.Steps[int],

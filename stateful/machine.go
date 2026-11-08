@@ -60,6 +60,10 @@ type Action[S any] struct {
 	// Drain marks an action that takes the steps of the drain, whether the
 	// swarm kept it or not.
 	Drain bool
+	// Keep marks an action that every case keeps. The swarm does not choose
+	// whether to keep it, and it counts as kept before the first choice of the
+	// swarm.
+	Keep bool
 	// Input requests the input of a step from the case, such as a draw. A nil
 	// Input gives every step the input nil. The bounds of its requests must
 	// not depend on results that the subject can return differently on a
