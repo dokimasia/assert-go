@@ -351,9 +351,12 @@ func Just[T any](value T) Generator[T] {
 
 // Draw returns a value of g and records it under label. The draw's span is
 // the first span g opens. Two draws may share a label. Every request of the
-// draw is made under its label. In the case of [Settings.Draws], the draw
-// first takes the next entry, and its choices are the ones that decode to
-// the entry's value. In an example of values, the draw takes the next value
+// draw is made under its label. In a case that follows a trace, such as the
+// case of [Settings.Draws], the draw first takes the next entry, and its
+// choices are the ones that decode to the entry's value. A draw of a
+// [Composite] takes no entry when it starts. Its draws take theirs, and it
+// takes the next entry by its label alone once it decodes, as a case records
+// a composite after its draws. In an example of values, the draw takes the next value
 // while one is left, and makes no choice and opens no span. A draw of a
 // generator of [Picking] draws from the generator that its pick returns,
 // where it returns one. The draw keeps what the run states for the
@@ -375,13 +378,17 @@ func Draw[T any](c *Case, g Generator[T], label string) T {
 			return t
 		}
 	}
-	if c.inverting != nil {
+	composite := g.id == compositeID
+	if c.inverting != nil && !composite {
 		in := Inversion{using: c.currentUsing()}
 		c.enterDraw(label, func(v any) ([]choice.Choice, error) { return invert(in, g, v) })
 	}
 	span := c.nextSpan()
 	defer c.closeDraw(c.openDraw(label))
 	v := g.decode(c)
+	if c.inverting != nil && composite {
+		c.leaveComposite(label)
+	}
 	c.draw(label, v, span, g.erased)
 	return v
 }

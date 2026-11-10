@@ -58,7 +58,8 @@
 // [Generator.Bind] and [Composite] apply functions without an inverse, so
 // an example of such an input states its values, and its draws take them
 // without a choice. The case of [Settings.Draws] runs each draw's generator
-// backwards from the draw's entry.
+// backwards from the draw's entry. A trace replays the draws of a composite
+// in place of the composite, which takes its own entry after theirs.
 //
 // # Generators outside this package
 //

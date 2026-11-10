@@ -185,23 +185,24 @@ func matches(e store.Entry, c *engine.Case) bool {
 
 // traceOf returns the counterexample of e as the entries of a trace, in
 // request order, with the value that the typed literal of each draw decodes
-// to. It returns no trace and a fault at the first draw without a value or
-// with a value that is no typed literal.
+// to. A draw without a value is an entry without a value, which a composite
+// takes by its label and every other draw refuses. traceOf returns no trace
+// and a fault at the first draw whose value is no typed literal.
 func traceOf(e store.Entry) ([]engine.Entry, error) {
 	trace := make([]engine.Entry, 0, len(e.Counterexample)+len(e.Steps))
 	for d, s := range e.Entries() {
-		at := fault.Index(len(trace))
 		if s != nil {
 			step := engine.MachineStep{Action: s.Action, Client: s.Client, Drain: s.Drain}
 			trace = append(trace, engine.Entry{Step: &step})
 			continue
 		}
 		if d.Value == nil {
-			return nil, fault.At(fault.New("the draw does not record a value"), at)
+			trace = append(trace, engine.Entry{Label: d.Label, Unstated: true})
+			continue
 		}
 		value, err := literal.Decode(d.Value)
 		if err != nil {
-			return nil, fault.At(err, at, fault.Field(valueMember))
+			return nil, fault.At(err, fault.Index(len(trace)), fault.Field(valueMember))
 		}
 		trace = append(trace, engine.Entry{Label: d.Label, Value: value})
 	}

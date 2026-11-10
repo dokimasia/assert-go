@@ -53,6 +53,8 @@ const (
 	ticks      = 4
 	// advanceOp is the operation of the advance of the ticker subjects.
 	advanceOp = "advance"
+	// pairIdentity is the assertion of the failure of pair-fails-at-7-and-3.
+	pairIdentity = "pair"
 )
 
 // The members of a machines vector that the path of a fault names.
@@ -72,7 +74,18 @@ var (
 	// milliseconds are the milliseconds of the advance of the ticker
 	// subjects.
 	milliseconds = prop.Integer(0, 10)
+	// digits are the two parts of the pair of pair-fails-at-7-and-3.
+	digits = prop.Integer(0, 9)
+	// pairs are the inputs of the put of pair-fails-at-7-and-3: a composite
+	// that draws a digit under "a" and then one under "b", and returns the
+	// two as a list.
+	pairs = prop.Composite(func(c *prop.Case) []int {
+		return []int{c.Draw(digits, "a"), c.Draw(digits, "b")}
+	})
 )
+
+// failingPair is the pair whose put fails in pair-fails-at-7-and-3.
+var failingPair = []int{7, 3}
 
 // errRefused is the error of an increment that counter-refuses-every-third
 // refuses.
@@ -82,7 +95,7 @@ var errRefused = errors.New("conformance: refused")
 // options of a vector's setup.
 type machineSubject func(c *prop.Case, o machineOptions)
 
-// machineSubjects returns the twelve machine subjects of the definition, by
+// machineSubjects returns the thirteen machine subjects of the definition, by
 // name, for one run. A subject that counts over the cases of a run starts
 // at 0 in each map that it returns.
 func machineSubjects() map[string]machineSubject {
@@ -102,7 +115,28 @@ func machineSubjects() map[string]machineSubject {
 		"ticker-skips-its-first-tick": func(c *prop.Case, o machineOptions) { ticker(c, o, true) },
 		"ticker":                      func(c *prop.Case, o machineOptions) { ticker(c, o, false) },
 		"spins-until-a-flag":          spinner,
+		"pair-fails-at-7-and-3":       pairFails,
 	}
+}
+
+// pairFails runs the machine without a spec whose actions are noop, which
+// does nothing, and put, whose input is a pair of digits that a composite
+// draws. put fails with the identity pair for the pair 7 and 3.
+func pairFails(c *prop.Case, o machineOptions) {
+	stateful.Steps(c, marked(o, stateful.Machine[struct{}]{
+		Actions: []stateful.Action[struct{}]{{
+			Name: "noop",
+			Run:  func(*prop.Case, int, any) {},
+		}, {
+			Name:  putOp,
+			Input: func(c *prop.Case, _ struct{}) any { return c.Draw(pairs, "pair") },
+			Run: func(c *prop.Case, _ int, input any) {
+				if pair, _ := input.([]int); slices.Equal(pair, failingPair) {
+					c.Report(assert.Failure{Assertion: pairIdentity}, true)
+				}
+			},
+		}},
+	}), o.steps...)
 }
 
 // machinesVector is a machines vector: a subject, the options of its steps,

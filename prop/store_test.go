@@ -309,7 +309,7 @@ func TestStore(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
 			e := entry(950)
-			e.Counterexample = []store.Draw{{Label: "other"}}
+			e.Counterexample = []store.Draw{{Label: "other", Value: json.RawMessage(`{"type":"int","value":"950"}`)}}
 			save(t, dir, e)
 			rec := assert.NewRecorder()
 			prop.ForAll(rec, contract, func(c *prop.Case) {
@@ -358,12 +358,12 @@ func TestStore(t *testing.T) {
 				name: "notes the refusal of a counterexample of a draw without a value",
 				changed: func(e *store.Entry) {
 					e.Choices = []choice.Choice{integer(3)}
-					e.Counterexample = []store.Draw{{Label: "other"}}
+					e.Counterexample = []store.Draw{{Label: drawn}, {Label: "extra"}}
 				},
 				body: draws(prop.Integer(0, 9)),
 				wantCause: fault.Error{
-					Path:   fault.Path{fault.Field("counterexample"), fault.Index(0)},
-					Reason: "the draw does not record a value",
+					Path:   fault.Path{fault.Field("counterexample"), fault.Index(0), fault.Field("value")},
+					Reason: "the entry records no value",
 				},
 			},
 			{

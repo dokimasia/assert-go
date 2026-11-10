@@ -30,6 +30,10 @@ type Entry struct {
 	// Value is a value of the draw's generator, or the value that the
 	// typed literal of one decodes to.
 	Value any
+	// Unstated reports a draw entry without a value, as a stored entry
+	// records a value that no typed literal states. A draw refuses such an
+	// entry, and a composite takes it by its label alone.
+	Unstated bool
 	// Step is the step of a step entry, which states no label and no value,
 	// and nil for a draw entry.
 	Step *MachineStep
@@ -64,10 +68,12 @@ func (d *inverting) value(r request, _ int) choice.Choice {
 
 // next takes the entry of a draw labelled label, and returns the choices
 // that inverse returns for the entry's value, or the refusal of the entry.
-// The refusal of a step entry and of an entry of another label is a fault at
-// the entry's label, and the refusal of a value is the fault of inverse at
-// the entry's value. The path of a refusal starts at the entry's index. A
-// draw past the last entry takes no choice.
+// A composite passes a nil inverse once its draws have taken their entries,
+// and takes its entry by its label alone. The refusal of a step entry and of
+// an entry of another label is a fault at the entry's label. The refusal of
+// an entry without a value is a fault at the entry's value, and so is the
+// fault of inverse for a value. The path of a refusal starts at the entry's
+// index. A draw past the last entry takes no choice.
 func (d *inverting) next(label string, inverse func(any) ([]choice.Choice, error)) ([]choice.Choice, error) {
 	if d.taken == len(d.entries) {
 		return nil, nil
@@ -82,6 +88,12 @@ func (d *inverting) next(label string, inverse func(any) ([]choice.Choice, error
 	if entry.Label != label {
 		refusal := fault.New("the draw labelled %q takes the entry labelled %q", label, entry.Label)
 		return nil, fault.At(refusal, at, fault.Field(labelMember))
+	}
+	if inverse == nil {
+		return nil, nil
+	}
+	if entry.Unstated {
+		return nil, fault.At(fault.New("the entry records no value"), at, fault.Field(valueMember))
 	}
 	choices, err := inverse(entry.Value)
 	if err != nil {
@@ -103,6 +115,20 @@ func (c *Case) enterDraw(label string, inverse func(any) ([]choice.Choice, error
 		c.halt(refused)
 	}
 	c.inverting.queue = choices
+}
+
+// leaveComposite takes the entry of a composite labelled label in a case
+// that follows a trace, once the draws of the composite have taken theirs.
+// A refused entry ends the case and the calling goroutine.
+func (c *Case) leaveComposite(label string) {
+	_, refusal := c.inverting.next(label, nil)
+	if refusal == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.refusal = refusal
+	c.halt(refused)
 }
 
 // executeTrace calls body once on a case that follows entries, outside the

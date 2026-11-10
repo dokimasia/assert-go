@@ -170,7 +170,10 @@ func Explain(enabled bool) Option {
 // to the entry's value under the draw's generator, so a value written by
 // hand runs, and shrinks when it fails, as a generated one does. A machine
 // of package stateful turns each step entry into the choices of one step. A
-// draw past the last entry takes its target. A draw whose label differs from
+// draw of a [Composite] takes no entry when it starts. Its draws take
+// theirs, and it then takes its own entry by its label, as a store entry
+// records a composite after its draws. A draw past the last entry takes
+// its target. A draw whose label differs from
 // its entry's, a draw whose generator does not produce the entry's value,
 // and a step entry that the machine cannot take at its position fail the
 // test before any other case runs, and the failure names the entry. Entries
