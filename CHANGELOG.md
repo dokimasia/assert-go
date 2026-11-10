@@ -1,5 +1,12 @@
 # go.dokimi.dev/assert
 
+## 0.22.0
+
+### Minor Changes
+
+- b24821a: Replay a `prop.Composite` in a trace after the entries of its draws, so a stored case of a composite replays its counterexample.
+- b24821a: Implement definition 16.4.0 and its machine subject pair-fails-at-7-and-3.
+
 ## 0.21.0
 
 ### Minor Changes
