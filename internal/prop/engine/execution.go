@@ -34,8 +34,8 @@ const (
 	// CaseDiverged is a case whose body made other requests after the same
 	// values than an earlier case made.
 	CaseDiverged Status = 4 // diverged
-	// CaseRefused is a case of [Settings.Draws] that refused the entry of a
-	// draw.
+	// CaseRefused is a case that follows a trace and refused one of its
+	// entries.
 	CaseRefused Status = 5 // refused
 	// CaseSkipped is a case that skipped the run of its property.
 	CaseSkipped Status = 6 // skipped
@@ -65,8 +65,8 @@ type Execution struct {
 	// Stack is the stack of the body's goroutine where it panicked, as
 	// runtime/debug.Stack formats it, and nil when Panic is nil.
 	Stack []byte
-	// Refusal is the refusal of a refused case, a fault at the entry of
-	// Settings.Draws that the case refused, and nil for any other.
+	// Refusal is the refusal of a refused case, a fault at the entry of its
+	// trace that the case refused, and nil for any other.
 	Refusal error
 	// Reason is the reason of a skipped case, and empty for any other.
 	Reason string

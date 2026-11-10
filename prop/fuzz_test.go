@@ -232,13 +232,13 @@ func TestFuzzProcess(t *testing.T) {
 			}
 			save(t, dir, moved)
 			out, err := child(t, storedMode, dir)
-			assert.NoError(t, err, "the child passes")
-			decoded := &fault.Error{
+			assert.NoError(t, err, "the child passes the case of the recorded byte 8")
+			replayed := &fault.Error{
 				Op:     fuzzOp,
 				Path:   fault.Path{fault.Field(dir), fault.Field(moved.Name())},
-				Reason: decodedReason,
+				Reason: replayedReason,
 			}
-			assert.Contains(t, out, matcher.RenderFault(decoded), "the fault at the entry's file")
+			assert.Contains(t, out, matcher.RenderFault(replayed), "the fault at the entry's file")
 		})
 
 		t.Run("fails at once for a damaged file in the store", func(t *testing.T) {
@@ -251,10 +251,10 @@ func TestFuzzProcess(t *testing.T) {
 
 		t.Run("logs the fault of a file of a later format", func(t *testing.T) {
 			dir := t.TempDir()
-			write(t, filepath.Join(dir, "later.json"), `{"store": 2}`)
+			write(t, filepath.Join(dir, "later.json"), `{"store": 3}`)
 			out, err := child(t, passingMode, dir)
 			assert.NoError(t, err, "the child passes")
-			later := laterFault(fuzzOp, dir, "later.json", "2")
+			later := laterFault(fuzzOp, dir, "later.json", "3")
 			assert.Contains(t, out, matcher.RenderFault(&later), "the fault at the file")
 		})
 

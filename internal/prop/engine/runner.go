@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"go.dokimi.dev/assert"
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/coverage"
@@ -116,8 +117,8 @@ type Settings struct {
 	// Examples are the cases whose values the caller states, which the run
 	// tries after the case of Draws and before the stored cases, in order.
 	Examples []Example
-	// Stored are the choice sequences of stored cases, oldest first.
-	Stored [][]choice.Choice
+	// Stored are the stored cases, oldest first.
+	Stored []Stored
 	// Shrink is the budget of runs that shrinking and explaining every
 	// failure may spend. A budget of 0 turns both off.
 	Shrink int
@@ -215,7 +216,7 @@ type Result struct {
 	Replays, Reproduced int
 	// Stored are the runs of the stored cases, in order, up to the one that
 	// ended the run.
-	Stored []Execution
+	Stored []StoredRun
 	// Refused is the refusal of the case of Settings.Draws, which ended the
 	// run before any other case, and nil for any other run. It is a fault
 	// whose path starts at the index of the refused entry and leads through
@@ -231,12 +232,49 @@ type Result struct {
 	Fault error
 }
 
+// Stored is a stored case: the choices of an entry of the store, with the
+// counterexample that the entry records.
+//
+// The run replays Choices first. The case of the choices counts when it
+// fails, when it ends with a fault, and when Matches reports true for it.
+// After any other case of the choices, the run follows Trace as it follows
+// the entries of [Settings.Draws]. The case of the trace counts when it
+// fails, when it ends with a fault, and when it takes every entry. The case
+// of the choices counts when the case of the trace refuses an entry or
+// leaves one untaken.
+type Stored struct {
+	// Choices are the choices of the entry.
+	Choices []choice.Choice
+	// Matches reports whether a case decodes to the counterexample that the
+	// entry records. It is nil for an entry without a counterexample, and
+	// every case matches such an entry.
+	Matches func(*Case) bool
+	// Trace are the entries of the counterexample, in request order. It is
+	// nil for a counterexample that the run cannot follow, such as one with a
+	// draw without a value. The case of the choices then counts.
+	Trace []Entry
+}
+
+// StoredRun is the run of a stored case: the case that counts for it.
+type StoredRun struct {
+	// Execution is the case that counts: the case of the trace when Traced
+	// reports true, and the case of the choices otherwise.
+	Execution
+	// Traced reports whether the case of the trace counts.
+	Traced bool
+	// Refusal is why the case of the trace does not count: the refusal of an
+	// entry, or a fault at the first entry that the case left untaken. It is
+	// nil for a run whose trace counts or did not run.
+	Refusal error
+}
+
 // Run runs the phases of a property and returns how the run ended.
 //
 // The runner calls body once per case, and stops at the first failing
 // case. The case of the Draws entries runs first, then the examples and the
 // stored cases, all outside the case tree, then the case whose every choice
-// is its target. Then random case i of the seed runs,
+// is its target. A stored case can follow the trace of its entry in place
+// of its choices, as [Stored] states. Then random case i of the seed runs,
 // for i = 0, 1, 2 and on, until Cases valid cases have run, the domain is
 // exhausted, or ten times Cases random cases have run, repeats included.
 // Each random case is followed by its prefix case and the next edge case.
@@ -543,11 +581,11 @@ func explore(body Body, s Settings) Result {
 // false. Either states the runs of the stored cases, up to the one that
 // ended the run.
 func stored(body Body, s Settings, t *tally) (Result, bool) {
-	runs := make([]Execution, 0, len(s.Stored))
-	for _, choices := range s.Stored {
-		e := execute(body, replaying{choices: choices}, s)
-		runs = append(runs, e)
-		if r, ended := t.take(e, record.Stored); ended {
+	runs := make([]StoredRun, 0, len(s.Stored))
+	for _, st := range s.Stored {
+		run := replayStored(body, s, st)
+		runs = append(runs, run)
+		if r, ended := t.take(run.Execution, record.Stored); ended {
 			r.Stored = runs
 			return r, true
 		}
@@ -555,12 +593,40 @@ func stored(body Body, s Settings, t *tally) (Result, bool) {
 	return Result{Stored: runs}, false
 }
 
+// replayStored runs the stored case st, as [Stored] states, and returns its
+// run. A caller takes the calls of the case that counts and counts it. When
+// the case of the trace counts, replayStored hands the calls of the case of
+// the choices to the slot of s first, under the phase stored.
+func replayStored(body Body, s Settings, st Stored) StoredRun {
+	e := execute(body, replaying{choices: st.Choices}, s)
+	if failedOrFaulted(e) || st.Matches == nil || st.Matches(e.Case) || st.Trace == nil {
+		return StoredRun{Execution: e}
+	}
+	traced, taken := executeTrace(body, s, st.Trace)
+	if traced.Status == CaseRefused {
+		return StoredRun{Execution: e, Refusal: traced.Refusal}
+	}
+	if !failedOrFaulted(traced) && taken < len(st.Trace) {
+		untaken := fault.At(fault.New("the case leaves the entry untaken"), fault.Index(taken))
+		return StoredRun{Execution: e, Refusal: untaken}
+	}
+	e.take(s.Slot, record.Stored)
+	return StoredRun{Execution: traced, Traced: true}
+}
+
+// failedOrFaulted reports whether e failed or ended with a fault. Such a
+// case of a stored case counts whatever it decodes to.
+func failedOrFaulted(e Execution) bool {
+	return e.Status == CaseFailed || e.Status == CaseFaulted
+}
+
 // known runs the cases whose values the caller states, outside the case
 // tree: the case of the Draws entries, when there are entries, and then
 // the examples. It returns the result that ends the run.
 func known(body Body, s Settings, t *tally) (Result, bool) {
 	if len(s.Draws) > 0 {
-		if r, ended := t.take(executeDraws(body, s), record.Example); ended {
+		e, _ := executeTrace(body, s, s.Draws)
+		if r, ended := t.take(e, record.Example); ended {
 			return r, true
 		}
 	}

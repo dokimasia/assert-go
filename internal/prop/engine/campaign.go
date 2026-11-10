@@ -45,7 +45,8 @@ const campaignStream = math.MaxUint64
 
 // Campaign runs a campaign of body under s: the case of s.Draws, the
 // examples and the stored cases, in that order, and then cases until
-// s.Budget has passed on s.BudgetClock, one at a time.
+// s.Budget has passed on s.BudgetClock, one at a time. A stored case can
+// follow the trace of its entry in place of its choices, as [Stored] states.
 //
 // A valid case joins the campaign's pool when it counts a label that no
 // earlier case counted, records a fingerprint that no earlier case
@@ -129,7 +130,7 @@ type campaign struct {
 	// one among its others, and nil before the first.
 	found *Result
 	// stored are the runs of the stored cases.
-	stored []Execution
+	stored []StoredRun
 }
 
 // member is a case of the pool: its choices with the bounds of each, and
@@ -147,7 +148,8 @@ type member struct {
 // cases, and returns the result that ends the campaign.
 func (c *campaign) known() (Result, bool) {
 	if len(c.s.Draws) > 0 {
-		if r, ended := c.take(executeDraws(c.body, c.s), record.Example); ended {
+		e, _ := executeTrace(c.body, c.s, c.s.Draws)
+		if r, ended := c.take(e, record.Example); ended {
 			return r, true
 		}
 	}
@@ -156,10 +158,10 @@ func (c *campaign) known() (Result, bool) {
 			return r, true
 		}
 	}
-	for _, choices := range c.s.Stored {
-		e := execute(c.body, replaying{choices: choices}, c.s)
-		c.stored = append(c.stored, e)
-		if r, ended := c.take(e, record.Stored); ended {
+	for _, st := range c.s.Stored {
+		run := replayStored(c.body, c.s, st)
+		c.stored = append(c.stored, run)
+		if r, ended := c.take(run.Execution, record.Stored); ended {
 			return r, true
 		}
 	}

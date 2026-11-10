@@ -235,6 +235,27 @@ func TestDraws(t *testing.T) {
 			assert.Equal(t, []any{followed[0], slices.Index(followed[1:], true)}, []any{true, -1},
 				"the case of the entries follows a trace, and no later case does")
 		})
+
+		t.Run("returns the trace of a stored case whose choices decode to other values", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Cases = 1
+			s.Stored = []engine.Stored{{
+				Choices: integers(3),
+				Matches: func(*engine.Case) bool { return false },
+				Trace:   []engine.Entry{{Label: "count", Value: 4}},
+			}}
+			var mu sync.Mutex
+			var followed []bool
+			engine.Run(func(c *engine.Case) {
+				_, ok := c.Trace()
+				mu.Lock()
+				followed = append(followed, ok)
+				mu.Unlock()
+				engine.Draw(c, count, "count")
+			}, s)
+			assert.Equal(t, followed[:2], []bool{false, true}, "the case of the choices, then the case of the trace")
+		})
 	})
 
 	t.Run("Names", func(t *testing.T) {

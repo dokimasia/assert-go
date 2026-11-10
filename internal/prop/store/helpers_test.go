@@ -31,6 +31,22 @@ const (
 		`"found":"2026-10-01"}`
 )
 
+// The pins of the entry of format 2 that the definition's executable
+// reference writes for the store vector of a counterexample with steps.
+const (
+	// steppedName is the name of the entry's file.
+	steppedName = "dc15405e885b072e.json"
+	// steppedJSON is the entry as compact JSON, with its steps among its
+	// draws in request order.
+	steppedJSON = `{"store":2,"definition":"16.3.0","property":"the queue behaves like a slice",` +
+		`"identity":{"assertion":"linearizable","file":"queue_test.go","line":31},` +
+		`"choices":"prop1:AAIAAQABAAEAAQAAAAEAAQABAAEAAA",` +
+		`"counterexample":[{"label":"capacity","value":{"type":"int","value":2}},{"step":"put"},` +
+		`{"label":"v","value":{"type":"int","value":0}},{"step":"put","client":1},` +
+		`{"label":"v","value":{"type":"int","value":1}},{"step":"get","drain":true}],` +
+		`"found":"2026-11-10"}`
+)
+
 // invalidVerdict is the first value past the four verdicts.
 const invalidVerdict store.Verdict = 4
 
@@ -58,6 +74,29 @@ func pinned() store.Entry {
 			{Label: "values", Value: json.RawMessage(`{"type": "list", "of": "int", "value": [0, -1]}`)},
 		},
 		Found: time.Date(2026, time.October, 1, 9, 30, 0, 0, time.UTC),
+	}
+}
+
+// stepped returns the entry of the store vector of format 2, found at noon
+// on 10 November 2026: a queue of capacity 2 that loses a value on wrap
+// after a put, a put of client 1 and a get of the drain.
+func stepped() store.Entry {
+	return store.Entry{
+		Definition: "16.3.0",
+		Property:   "the queue behaves like a slice",
+		Identity:   store.Identity{Assertion: "linearizable", File: "queue_test.go", Line: 31},
+		Choices:    integers(2, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0),
+		Counterexample: []store.Draw{
+			{Label: "capacity", Value: json.RawMessage(`{"type": "int", "value": 2}`)},
+			{Label: "v", Value: json.RawMessage(`{"type": "int", "value": 0}`)},
+			{Label: "v", Value: json.RawMessage(`{"type": "int", "value": 1}`)},
+		},
+		Steps: []store.Step{
+			{Action: "put", Client: -1, Draws: 1},
+			{Action: "put", Client: 1, Draws: 2},
+			{Action: "get", Client: -1, Drain: true, Draws: 3},
+		},
+		Found: time.Date(2026, time.November, 10, 12, 0, 0, 0, time.UTC),
 	}
 }
 

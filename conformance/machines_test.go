@@ -34,7 +34,8 @@ const (
 	// valid case. Without the stored case, the run counts one. The one replay
 	// of the failing case reproduces it.
 	overflowStored = `{"subject":"counter-overflows","setup":{},` +
-		`"settings":{"seed":"1","stored":[[1,0,1,0,1,0,1,0]]},"detail":{"outcome":"counterexample",` +
+		`"settings":{"seed":"1","stored":[{"choices":[1,0,1,0,1,0,1,0],"counterexample":` +
+		`[{"step":"increment"},{"step":"increment"},{"step":"increment"}]}]},"detail":{"outcome":"counterexample",` +
 		`"cases":0,"rejected":0,"seed":"1","counterexample":[{"step":"increment"},{"step":"increment"},` +
 		`{"step":"increment"}],"failure":"linearizable","choices":"prop1:AAEAAAABAAAAAQAAAAEAAA",` +
 		`"others":[],"divergence":null,"coverage":null,"replays":1,"reproduced":1},"error":null}`

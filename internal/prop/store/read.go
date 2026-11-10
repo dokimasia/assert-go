@@ -38,13 +38,15 @@ const (
 	fieldIdentity = "identity"
 	// fieldChoices is the replay token of the case.
 	fieldChoices = "choices"
-	// fieldCounterexample is the list of drawn values.
-	fieldCounterexample = "counterexample"
+	// FieldCounterexample is the list of the draw entries and the step
+	// entries of the case, at which the path of a fault in the counterexample
+	// starts.
+	FieldCounterexample = "counterexample"
 	// fieldFound is the date on which the run wrote the entry.
 	fieldFound = "found"
 )
 
-// The names of the keys of an identity and of a draw.
+// The names of the keys of an identity, of a draw and of a step.
 const (
 	// keyAssertion is an identity's assertion.
 	keyAssertion = "assertion"
@@ -60,7 +62,16 @@ const (
 	keyLabel = "label"
 	// keyValue is a draw's value.
 	keyValue = "value"
+	// keyStep is a step's action.
+	keyStep = "step"
+	// keyClient is the client of a step of a concurrent section.
+	keyClient = "client"
+	// keyDrain is the mark of a step of the drain.
+	keyDrain = "drain"
 )
+
+// drainMark is the one value of a step's drain mark.
+const drainMark = "true"
 
 // The delimiters of JSON objects and arrays.
 const (
@@ -75,10 +86,10 @@ const (
 // currentToken is the version of the tokens that package token reads.
 const currentToken = "1"
 
-// fields are the fields of an entry of Format, in the order that the
+// fields are the fields of an entry of either format, in the order that the
 // definition lists them.
 var fields = []string{
-	fieldStore, fieldDefinition, fieldProperty, fieldIdentity, fieldChoices, fieldCounterexample, fieldFound,
+	fieldStore, fieldDefinition, fieldProperty, fieldIdentity, fieldChoices, FieldCounterexample, fieldFound,
 }
 
 // The forms of an entry's texts.
@@ -128,7 +139,7 @@ func Read(data []byte, contract string) (Entry, Verdict, error) {
 
 // decode returns the entry that data states. It returns a fault of the
 // kind ErrLater for an entry of a later format or token version, and one of
-// the kind ErrDamaged when data is no entry of Format.
+// the kind ErrDamaged when data is no entry of Format or StepsFormat.
 func decode(data []byte) (Entry, error) {
 	if err := wellFormed(data); err != nil {
 		return Entry{}, err
@@ -137,14 +148,17 @@ func decode(data []byte) (Entry, error) {
 	if !ok {
 		return Entry{}, damaged("the file is not one JSON object")
 	}
-	format := root[fieldStore]
-	if !positive.Match(format) {
+	raw := root[fieldStore]
+	if !positive.Match(raw) {
 		return Entry{}, fault.At(damaged("the entry states no format"), fault.Field(fieldStore))
 	}
-	if string(format) != strconv.Itoa(Format) {
-		return Entry{}, fault.At(fault.Of(ErrLater, "the entry is of format %s", format), fault.Field(fieldStore))
+	// The form of a positive integer leaves Atoi one error, for a format
+	// beyond 64 bits, and Atoi then returns the largest int.
+	format, _ := strconv.Atoi(string(raw))
+	if format > StepsFormat {
+		return Entry{}, fault.At(fault.Of(ErrLater, "the entry is of format %s", raw), fault.Field(fieldStore))
 	}
-	e, tok, err := entryOf(root)
+	e, tok, err := entryOf(root, format)
 	if err != nil {
 		return Entry{}, err
 	}
@@ -243,11 +257,11 @@ func ended(open []*container) []*container {
 	return open
 }
 
-// entryOf returns the entry that the fields of an entry of Format state,
+// entryOf returns the entry that the fields of an entry of format state,
 // without its choices, and its token. It returns a fault of the kind
 // ErrDamaged at the first field that is missing or out of its form, and
 // one for an entry of a field too many.
-func entryOf(root map[string]json.RawMessage) (Entry, string, error) {
+func entryOf(root map[string]json.RawMessage, format int) (Entry, string, error) {
 	for _, field := range fields {
 		if _, ok := root[field]; !ok {
 			return Entry{}, "", fault.At(damaged("the entry lacks the field"), fault.Field(field))
@@ -255,7 +269,7 @@ func entryOf(root map[string]json.RawMessage) (Entry, string, error) {
 	}
 	if len(root) != len(fields) {
 		return Entry{}, "", damaged("the entry states %d fields, not the %d of format %d",
-			len(root), len(fields), Format)
+			len(root), len(fields), format)
 	}
 	var e Entry
 	var ok bool
@@ -276,8 +290,8 @@ func entryOf(root map[string]json.RawMessage) (Entry, string, error) {
 		return Entry{}, "", fault.At(damaged("%s is no string", stated(root[fieldChoices])),
 			fault.Field(fieldChoices))
 	}
-	if e.Counterexample, err = counterexampleOf(root[fieldCounterexample]); err != nil {
-		return Entry{}, "", fault.At(err, fault.Field(fieldCounterexample))
+	if e.Counterexample, e.Steps, err = counterexampleOf(root[FieldCounterexample], format); err != nil {
+		return Entry{}, "", fault.At(err, fault.Field(FieldCounterexample))
 	}
 	if e.Found, err = dateOf(root[fieldFound]); err != nil {
 		return Entry{}, "", fault.At(err, fault.Field(fieldFound))
@@ -323,32 +337,82 @@ func identityOf(raw json.RawMessage) (Identity, error) {
 	return id, nil
 }
 
-// counterexampleOf returns the draws that raw states: an array of objects,
-// each with a string label and, when it has one, a value.
-func counterexampleOf(raw json.RawMessage) ([]Draw, error) {
+// counterexampleOf returns the draws and the steps that raw states in an
+// entry of format: an array of objects. A draw entry has a string label and,
+// when it has one, a value. An entry of StepsFormat also has step entries,
+// which state an action under "step".
+func counterexampleOf(raw json.RawMessage, format int) ([]Draw, []Step, error) {
 	items, ok := elements(raw)
 	if !ok {
-		return nil, damaged("%s is no array", stated(raw))
+		return nil, nil, damaged("%s is no array", stated(raw))
 	}
 	draws := make([]Draw, 0, len(items))
+	var steps []Step
 	for i, item := range items {
 		keys, ok := members(item)
 		if !ok {
-			return nil, fault.At(damaged("%s is no object", stated(item)), fault.Index(i))
+			return nil, nil, fault.At(damaged("%s is no object", stated(item)), fault.Index(i))
+		}
+		if _, step := keys[keyStep]; step {
+			if format != StepsFormat {
+				return nil, nil, fault.At(damaged("a step entry needs format %d", StepsFormat), fault.Index(i))
+			}
+			s, err := stepOf(keys)
+			if err != nil {
+				return nil, nil, fault.At(err, fault.Index(i))
+			}
+			s.Draws = len(draws)
+			steps = append(steps, s)
+			continue
 		}
 		label, ok := text(keys[keyLabel])
 		if !ok {
-			return nil, fault.At(damaged("the draw states no string label"), fault.Index(i))
+			return nil, nil, fault.At(damaged("the draw states no string label"), fault.Index(i))
 		}
 		value := keys[keyValue]
 		delete(keys, keyLabel)
 		delete(keys, keyValue)
 		if len(keys) > 0 {
-			return nil, fault.At(damaged("the draw states a key other than label and value"), fault.Index(i))
+			return nil, nil, fault.At(damaged("the draw states a key other than label and value"), fault.Index(i))
 		}
 		draws = append(draws, Draw{Label: label, Value: value})
 	}
-	return draws, nil
+	return draws, steps, nil
+}
+
+// stepOf returns the step that the keys of a step entry state: a string
+// action, with a client from 0 to 2^31 - 1 or with the drain mark true. A
+// step entry has no other key, and never both a client and the drain mark.
+func stepOf(keys map[string]json.RawMessage) (Step, error) {
+	action, ok := text(keys[keyStep])
+	if !ok {
+		return Step{}, fault.At(damaged("%s is no string", stated(keys[keyStep])), fault.Field(keyStep))
+	}
+	s := Step{Action: action, Client: -1}
+	client, hasClient := keys[keyClient]
+	drain, hasDrain := keys[keyDrain]
+	if hasClient && hasDrain {
+		return Step{}, damaged("the step entry has both a client and a drain mark")
+	}
+	want := 1
+	if hasClient || hasDrain {
+		want = 2
+	}
+	if len(keys) != want {
+		return Step{}, damaged("the step entry has a key other than step, client and drain")
+	}
+	if hasClient {
+		n, err := strconv.Atoi(string(client))
+		if err != nil || n < 0 || n > maxClient {
+			return Step{}, fault.At(damaged("%s is no client", stated(client)), fault.Field(keyClient))
+		}
+		s.Client = n
+	}
+	if hasDrain && string(drain) != drainMark {
+		return Step{}, fault.At(damaged("%s is no drain mark", stated(drain)), fault.Field(keyDrain))
+	}
+	s.Drain = hasDrain
+	return s, nil
 }
 
 // dateOf returns the date that raw states as YYYY-MM-DD, a day of the

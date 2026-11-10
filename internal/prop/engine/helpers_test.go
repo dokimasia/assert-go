@@ -378,7 +378,7 @@ func settled(choices ...choice.Choice) engine.Settings {
 		Explain:    true,
 	}
 	if len(choices) > 0 {
-		s.Stored = [][]choice.Choice{choices}
+		s.Stored = []engine.Stored{{Choices: choices}}
 	}
 	return s
 }

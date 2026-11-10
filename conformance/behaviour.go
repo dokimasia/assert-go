@@ -39,12 +39,21 @@ type behaviourSettings struct {
 	Cases        *int                 `json:"cases"`
 	MaxChoices   *int                 `json:"max-choices"`
 	Requirements []engine.Requirement `json:"requirements"`
-	Stored       [][]json.RawMessage  `json:"stored"`
+	Stored       []storedCase         `json:"stored"`
 	Shrink       *int                 `json:"shrink"`
 	Replay       *string              `json:"replay"`
 	Workers      *int                 `json:"workers"`
 	Confirm      *int                 `json:"confirm"`
 	Replays      *int                 `json:"replays"`
+}
+
+// storedCase is a stored case of a vector: the choices of its entry, and the
+// counterexample that the entry records.
+type storedCase struct {
+	// Choices are the choices of the entry, in corpus form.
+	Choices []json.RawMessage `json:"choices"`
+	// Counterexample is the counterexample of the entry.
+	Counterexample recordedCounterexample `json:"counterexample"`
 }
 
 // checkBehaviour runs the body of a behaviour vector under its settings,
@@ -123,19 +132,22 @@ func (s behaviourSettings) resolve(dir string) ([]prop.Option, error) {
 }
 
 // store writes each stored case of s to the store dir as an entry of the
-// vector's property. It returns the fault of a stored case at its index.
+// vector's property, with the counterexample that the case states. It
+// returns the fault of a stored case at its index.
 func (s behaviourSettings) store(dir string) error {
-	for i, forms := range s.Stored {
-		choices, err := parseChoices(forms)
+	for i, stored := range s.Stored {
+		choices, err := parseChoices(stored.Choices)
 		if err != nil {
-			return fault.At(err, fault.Field(storedMember), fault.Index(i))
+			return fault.At(err, fault.Field(storedMember), fault.Index(i), fault.Field(choicesMember))
 		}
 		entry := store.Entry{
-			Definition: Version(),
-			Property:   behaviourContract,
-			Identity:   store.Identity{Assertion: storedAssertion, Contract: storedContract},
-			Choices:    choices,
-			Found:      firstStored.AddDate(0, 0, i),
+			Definition:     Version(),
+			Property:       behaviourContract,
+			Identity:       store.Identity{Assertion: storedAssertion, Contract: storedContract},
+			Choices:        choices,
+			Counterexample: stored.Counterexample.draws,
+			Steps:          stored.Counterexample.steps,
+			Found:          firstStored.AddDate(0, 0, i),
 		}
 		if _, err := store.Save(dir, entry); err != nil {
 			return fault.At(err, fault.Field(storedMember), fault.Index(i))

@@ -7,18 +7,20 @@
 //
 // An [Entry] is the case with what a reviewer needs to read it: the
 // property's contract, the failure's [Identity], the replay token of the
-// case's choices, and each drawn value as a typed literal. [Entry.Name]
-// derives the file's name from the contract and the token, so the same
-// failure, shrunk to the same choices, has the same name in every
-// language, and two branches that each find a failure add two files.
+// case's choices, each drawn value as a typed literal, and the steps of a
+// machine. [Entry.Name] derives the file's name from the contract and the
+// token. A failure that shrinks to the same choices has the same name in
+// every language, and two branches that each find a failure add two files.
+// An entry with steps is of [StepsFormat], and every other entry is of
+// [Format].
 //
 // # Reading
 //
 // [Read] gives the content of one file a [Verdict] for one property:
 //
-//   - [Replay]: an entry of [Format] for the property, whose choices the
-//     run tries first.
-//   - [Other]: an entry of [Format] for another property of the test.
+//   - [Replay]: an entry of [Format] or [StepsFormat] for the property,
+//     whose choices the run tries first.
+//   - [Other]: an entry of either format for another property of the test.
 //   - [Skip]: an entry of a later format, or whose token is of a later
 //     version. The run notes it and goes on.
 //   - [Damaged]: any other file. The test fails, as it fails on a damaged
@@ -28,8 +30,9 @@
 // A file is damaged when it is not one JSON object in UTF-8, repeats a
 // name within an object, nests objects and arrays more than 64 levels
 // deep, lacks a field of its format, states another field, or states a
-// field out of its form. A draw's value is left unread, because only the
-// choices replay. [Load] reads a whole directory.
+// field out of its form. An entry of [Format] with a step entry is damaged
+// too. The reader leaves a draw's value unread, and a run decodes it when
+// it replays the counterexample. [Load] reads a whole directory.
 //
 // # Writing
 //
@@ -51,8 +54,9 @@
 //
 // # Allocation contract
 //
-// [Verdict.Valid], [Verdict.String] and [Identity.Valid] allocate
-// nothing. Every other function allocates the JSON it reads or writes.
+// [Verdict.Valid], [Verdict.String], [Identity.Valid] and [Entry.Entries]
+// allocate nothing. Every other function allocates the JSON it reads or
+// writes.
 //
 // # Dependency position
 //

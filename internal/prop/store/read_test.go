@@ -21,6 +21,16 @@ import (
 // readAllocs is the ceiling of the allocations of Read on the pinned entry.
 const readAllocs = 170
 
+// steps are the entries of the counterexample of the store vector of format 2
+// that the corpus replays: a put, a draw without a value, a get of client 1
+// and a deliver of the drain.
+var steps = []any{
+	map[string]any{"step": "put"},
+	map[string]any{"label": "v"},
+	map[string]any{"step": "get", "client": 1},
+	map[string]any{"step": "deliver", "drain": true},
+}
+
 // FuzzRead checks that Read returns one of its four verdicts for any
 // bytes, and does not panic. The error wraps ErrLater for Skip and
 // ErrDamaged for Damaged and is nil otherwise, and only Replay returns
@@ -31,7 +41,8 @@ func FuzzRead(f *testing.F) {
 		f.Fatalf("the pinned entry encodes: %v", err)
 	}
 	f.Add(pinned)
-	f.Add([]byte(`{"store": 2}`))
+	f.Add([]byte(entryText(f, map[string]any{"store": 2, "counterexample": steps})))
+	f.Add([]byte(`{"store": 3}`))
 	f.Add([]byte(`{`))
 	f.Add([]byte(`{"store": 1, "store": 1}`))
 	f.Add([]byte("{\"store\": \"\xff\"}"))
@@ -121,6 +132,21 @@ func TestRead(t *testing.T) {
 				give: entryText(t, map[string]any{"found": "0001-01-01"}),
 				want: store.Replay,
 			},
+			{
+				name: "returns Replay for an entry of format 2",
+				give: entryText(t, map[string]any{"store": 2, "counterexample": steps}),
+				want: store.Replay,
+			},
+			{
+				name: "returns Replay for an entry of format 2 without a step",
+				give: entryText(t, map[string]any{"store": 2}),
+				want: store.Replay,
+			},
+			{
+				name: "returns Other for an entry of format 2 of another property",
+				give: entryText(t, map[string]any{"store": 2, "property": "encoding is deterministic"}),
+				want: store.Other,
+			},
 		}
 		for _, tt := range replayed {
 			t.Run(tt.name, func(t *testing.T) {
@@ -149,6 +175,41 @@ func TestRead(t *testing.T) {
 			assert.Equal(t, e.Found.Format(time.DateOnly), "2026-10-01", "the date")
 		})
 
+		t.Run("returns each step with the number of draws before it", func(t *testing.T) {
+			t.Parallel()
+			text := entryText(t, map[string]any{"store": 2, "counterexample": steps})
+			e, verdict, err := store.Read([]byte(text), contract)
+			assert.NoError(t, err, "the file is an entry of format 2")
+			assert.Equal(t, verdict, store.Replay, "an entry of the property")
+			assert.Equal(t, e.Counterexample, []store.Draw{{Label: "v"}}, "the draw without a value")
+			want := []store.Step{
+				{Action: "put", Client: -1},
+				{Action: "get", Client: 1, Draws: 1},
+				{Action: "deliver", Client: -1, Drain: true, Draws: 1},
+			}
+			assert.Equal(t, e.Steps, want, "the steps in request order")
+		})
+
+		t.Run("returns the clients 0 and 2^31 - 1 of the steps that state them", func(t *testing.T) {
+			t.Parallel()
+			text := entryText(t, map[string]any{"store": 2, "counterexample": []any{
+				map[string]any{"step": "put", "client": json.RawMessage("-0")},
+				map[string]any{"step": "put", "client": 2147483647},
+			}})
+			e, verdict, err := store.Read([]byte(text), contract)
+			assert.NoError(t, err, "-0 is the JSON integer 0")
+			assert.Equal(t, verdict, store.Replay, "an entry of the property")
+			want := []store.Step{{Action: "put", Client: 0}, {Action: "put", Client: 2147483647}}
+			assert.Equal(t, e.Steps, want, "the smallest and the largest client")
+		})
+
+		t.Run("returns no steps for an entry of format 1", func(t *testing.T) {
+			t.Parallel()
+			e, _, err := store.Read([]byte(entryText(t, nil)), contract)
+			assert.NoError(t, err, "the file is an entry")
+			assert.Empty(t, e.Steps, "an entry of format 1 has no steps")
+		})
+
 		t.Run("returns the saturated choices of a token whose element is 2^32 or more", func(t *testing.T) {
 			t.Parallel()
 			text := entryText(t, map[string]any{"choices": "prop1:AwGAgICAEA"})
@@ -169,9 +230,9 @@ func TestRead(t *testing.T) {
 		}{
 			{
 				name:       "returns Skip for an entry of a later format",
-				give:       `{"store": 2, "layout": "unknown"}`,
+				give:       `{"store": 3, "layout": "unknown"}`,
 				wantPath:   atStore,
-				wantReason: "the entry is of format 2",
+				wantReason: "the entry is of format 3",
 			},
 			{
 				name:       "returns Skip for a format beyond 64 bits",
@@ -207,6 +268,8 @@ func TestRead(t *testing.T) {
 		atFile := fault.Path{fault.Field("identity"), fault.Field("file")}
 		atCounterexample := fault.Path{fault.Field("counterexample")}
 		atFirstDraw := fault.Path{fault.Field("counterexample"), fault.Index(0)}
+		atClient := fault.Path{fault.Field("counterexample"), fault.Index(0), fault.Field("client")}
+		atDrain := fault.Path{fault.Field("counterexample"), fault.Index(0), fault.Field("drain")}
 		atFound := fault.Path{fault.Field("found")}
 		const (
 			noShape  = "the keys form none of the four shapes of an identity"
@@ -473,6 +536,71 @@ func TestRead(t *testing.T) {
 				wantReason: "the value is no object",
 			},
 			{
+				name:       "returns Damaged for a step entry of format 1",
+				give:       withDraws(t, map[string]any{"step": "put"}),
+				wantPath:   atFirstDraw,
+				wantReason: "a step entry needs format 2",
+			},
+			{
+				name:       "returns Damaged for an action that is no string",
+				give:       withSteps(t, map[string]any{"step": 5}),
+				wantPath:   fault.Path{fault.Field("counterexample"), fault.Index(0), fault.Field("step")},
+				wantReason: "5 is no string",
+			},
+			{
+				name:       "returns Damaged for a step entry of a client and the drain",
+				give:       withSteps(t, map[string]any{"step": "put", "client": 1, "drain": true}),
+				wantPath:   atFirstDraw,
+				wantReason: "the step entry has both a client and a drain mark",
+			},
+			{
+				name:       "returns Damaged for a step entry with a label",
+				give:       withSteps(t, map[string]any{"step": "put", "label": "x"}),
+				wantPath:   atFirstDraw,
+				wantReason: "the step entry has a key other than step, client and drain",
+			},
+			{
+				name:       "returns Damaged for a client below 0",
+				give:       withSteps(t, map[string]any{"step": "put", "client": -1}),
+				wantPath:   atClient,
+				wantReason: "-1 is no client",
+			},
+			{
+				name:       "returns Damaged for a client past 2^31 - 1",
+				give:       withSteps(t, map[string]any{"step": "put", "client": 2147483648}),
+				wantPath:   atClient,
+				wantReason: "2147483648 is no client",
+			},
+			{
+				name:       "returns Damaged for a client with a fraction",
+				give:       withSteps(t, map[string]any{"step": "put", "client": json.RawMessage("1.0")}),
+				wantPath:   atClient,
+				wantReason: "1.0 is no client",
+			},
+			{
+				name:       "returns Damaged for a client that is a string",
+				give:       withSteps(t, map[string]any{"step": "put", "client": "1"}),
+				wantPath:   atClient,
+				wantReason: `"1" is no client`,
+			},
+			{
+				name:       "returns Damaged for a drain mark that is not true",
+				give:       withSteps(t, map[string]any{"step": "put", "drain": false}),
+				wantPath:   atDrain,
+				wantReason: "false is no drain mark",
+			},
+			{
+				name:       "returns Damaged for a drain mark that is a string",
+				give:       withSteps(t, map[string]any{"step": "put", "drain": "true"}),
+				wantPath:   atDrain,
+				wantReason: `"true" is no drain mark`,
+			},
+			{
+				name:       "returns Damaged for a field that format 2 does not have",
+				give:       entryText(t, map[string]any{"store": 2, "comment": "found in review"}),
+				wantReason: "the entry states 8 fields, not the 7 of format 2",
+			},
+			{
 				name:       "returns Damaged for a day the calendar does not have",
 				give:       entryText(t, map[string]any{"found": "2026-02-30"}),
 				wantPath:   atFound,
@@ -557,6 +685,13 @@ func withIdentity(tb testing.TB, identity map[string]any) string {
 func withDraws(tb testing.TB, draws ...any) string {
 	tb.Helper()
 	return entryText(tb, map[string]any{"counterexample": draws})
+}
+
+// withSteps returns the JSON of base as an entry of format 2 with entries as
+// its counterexample.
+func withSteps(tb testing.TB, entries ...any) string {
+	tb.Helper()
+	return entryText(tb, map[string]any{"store": 2, "counterexample": entries})
 }
 
 // nested returns a list that nests levels arrays deep, the outer one

@@ -439,7 +439,10 @@ A failure states the counterexample, the seed and a replay token.
 `prop.Replay` and `DOKIMI_ASSERT_PROP_REPLAY` run the token's case again.
 The run also writes the smallest failing case of each failure to
 `testdata/prop/<test name>/` beside `testdata/golden`. The next run tries
-that case first. Review the store as you review golden files. `prop.Fuzz`
+that case first. When a change of a generator or of a machine's actions
+makes the stored choices decode to other values, the run replays the values
+and the steps that the file records. Review the store as you review golden
+files. `prop.Fuzz`
 runs the same body as a fuzz target under `go test -fuzz`. Without
 `-fuzz`, it replays its stored cases and runs the seed corpus, and
 generates no case, so a property that `go test` checks runs through

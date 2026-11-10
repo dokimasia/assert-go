@@ -194,8 +194,13 @@
 //
 // A test's store keeps the smallest failing case of each failure as one
 // JSON file, so the next run tries it first. The file states each drawn
-// value as a typed literal. A value that Of or OfShape derives is the typed
-// literal of its shape. The store is the directory
+// value as a typed literal, and the steps of a machine among the draws. A
+// value that Of or OfShape derives is the typed literal of its shape. When
+// the choices of a file decode to other values than the file records, the
+// run replays the recorded values and steps as it replays the entries of
+// [Draws], and notes the replay. When the body cannot follow the recorded
+// case, the case of the choices counts, and the note states why. The store
+// is the directory
 // testdata/prop/<test name> beside testdata/golden, for a seat with a Name
 // method, or the directory that [Store] states. A run never overwrites or
 // removes an entry: deleting one is a person's decision, as updating a

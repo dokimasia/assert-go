@@ -12,7 +12,6 @@ import (
 	"testing/synctest"
 
 	"go.dokimi.dev/assert"
-	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/engine"
 )
 
@@ -142,9 +141,11 @@ func TestAhead(t *testing.T) {
 				},
 			},
 			{
-				name:   "reports a failure of a later stored case",
-				body:   atLeast(small, 900),
-				adjust: func(s *engine.Settings) { s.Stored = [][]choice.Choice{integers(100), integers(950)} },
+				name: "reports a failure of a later stored case",
+				body: atLeast(small, 900),
+				adjust: func(s *engine.Settings) {
+					s.Stored = []engine.Stored{{Choices: integers(100)}, {Choices: integers(950)}}
+				},
 			},
 			{
 				name:   "reports the first failing case when shrinking is off",

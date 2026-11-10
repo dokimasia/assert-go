@@ -13,7 +13,6 @@ import (
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/literal"
-	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/internal/prop/store"
 	"go.dokimi.dev/assert/internal/record"
@@ -23,6 +22,17 @@ import (
 // storeRoot is the directory of the stores of a package's tests, relative
 // to the package's directory, beside testdata/golden.
 const storeRoot = "testdata/prop"
+
+// The reasons of the note on a stored case that decodes to other values
+// than its entry records.
+const (
+	// replayedReason is the reason of a stored case whose run replayed the
+	// counterexample of its entry.
+	replayedReason = "the stored case decodes to other values than it records, and the run replayed its counterexample"
+	// testedReason is the reason of a stored case whose run tested the values
+	// that its choices decode to.
+	testedReason = "the stored case decodes to other values than it records, and the run tested those"
+)
 
 // named is a seat whose test has a name, as testing.TB has.
 type named interface {
@@ -105,8 +115,19 @@ func entryOf(contract string, e engine.Execution, found time.Time) store.Entry {
 		Identity:       identityOf(e.Identity),
 		Choices:        e.Case.Choices(),
 		Counterexample: drawsOf(e.Case.Draws()),
+		Steps:          stepsOf(e.Case.Steps()),
 		Found:          found,
 	}
+}
+
+// stepsOf returns the steps of a case in the form of an entry, each with
+// the number of draws before it.
+func stepsOf(steps []engine.RecordedStep) []store.Step {
+	out := make([]store.Step, len(steps))
+	for i, s := range steps {
+		out[i] = store.Step{Action: s.Action, Client: s.Client, Drain: s.Drain, Draws: s.Draws}
+	}
+	return out
 }
 
 // identityOf returns a failure identity in the form of an entry: the base
@@ -135,14 +156,56 @@ func drawsOf(draws []engine.Drawn) []store.Draw {
 	return out
 }
 
-// storedChoices returns the choices of each entry of stored, oldest first,
-// as the settings of a run state its stored cases.
-func storedChoices(stored store.Stored) [][]choice.Choice {
-	out := make([][]choice.Choice, len(stored.Entries))
+// storedCases returns each entry of stored as a stored case of a run, oldest
+// first: its choices, the comparison of a case with its counterexample, and
+// its counterexample as a trace.
+func storedCases(stored store.Stored) []engine.Stored {
+	out := make([]engine.Stored, len(stored.Entries))
 	for i, e := range stored.Entries {
-		out[i] = e.Choices
+		trace, _ := traceOf(e)
+		out[i] = engine.Stored{
+			Choices: e.Choices,
+			Matches: func(c *engine.Case) bool { return matches(e, c) },
+			Trace:   trace,
+		}
 	}
 	return out
+}
+
+// matches reports whether the case c decodes to the counterexample of e:
+// draws that [alike] reports alike, and the steps of e for an entry with
+// steps. An entry without steps records the draws alone, so the steps of c
+// do not count against it.
+func matches(e store.Entry, c *engine.Case) bool {
+	if !alike(e.Counterexample, drawsOf(c.Draws())) {
+		return false
+	}
+	return len(e.Steps) == 0 || slices.Equal(e.Steps, stepsOf(c.Steps()))
+}
+
+// traceOf returns the counterexample of e as the entries of a trace, in
+// request order, with the value that the typed literal of each draw decodes
+// to. It returns no trace and a fault at the first draw without a value or
+// with a value that is no typed literal.
+func traceOf(e store.Entry) ([]engine.Entry, error) {
+	trace := make([]engine.Entry, 0, len(e.Counterexample)+len(e.Steps))
+	for d, s := range e.Entries() {
+		at := fault.Index(len(trace))
+		if s != nil {
+			step := engine.MachineStep{Action: s.Action, Client: s.Client, Drain: s.Drain}
+			trace = append(trace, engine.Entry{Step: &step})
+			continue
+		}
+		if d.Value == nil {
+			return nil, fault.At(fault.New("the draw does not record a value"), at)
+		}
+		value, err := literal.Decode(d.Value)
+		if err != nil {
+			return nil, fault.At(err, at, fault.Field(valueMember))
+		}
+		trace = append(trace, engine.Entry{Label: d.Label, Value: value})
+	}
+	return trace, nil
 }
 
 // storeFaults returns the faults that a run notes about its store, after r
@@ -164,19 +227,44 @@ func (p property) skipped(stored store.Stored) []error {
 }
 
 // differences returns a fault of the property's operation at the file of
-// each stored entry whose case now decodes to other values than the entry
-// records. runs are the runs of the stored cases in the order of entries,
-// up to the one that ended the run.
-func (p property) differences(entries []store.Entry, runs []engine.Execution) []error {
-	var faults []error
+// each stored entry whose case of the choices decodes to other values than
+// the entry records. The fault of a run that replayed the counterexample of
+// the entry states the replay. The fault of a run that tested the values of
+// the choices has the refusal of the counterexample as its cause, unless
+// the case of the choices failed or ended with a fault. runs are the runs
+// of the stored cases in the order of entries, up to the one that ended the
+// run.
+func (p property) differences(entries []store.Entry, runs []engine.StoredRun) []error {
+	faults := make([]error, 0, len(runs))
 	for i, run := range runs {
-		if !alike(entries[i].Counterexample, drawsOf(run.Case.Draws())) {
-			faults = append(faults, fault.In(p.op, fault.At(
-				fault.New("the stored case decodes to other values than it records, and the run tested those"),
-				fault.Field(p.dir), fault.Field(entries[i].Name()))))
+		e := entries[i]
+		var note *fault.Error
+		switch {
+		case run.Traced:
+			note = fault.New(replayedReason)
+		case !matches(e, run.Case):
+			note = fault.New(testedReason)
+			if refusal := refusalOf(e, run); refusal != nil {
+				note = note.Because(fault.At(refusal, fault.Field(store.FieldCounterexample)))
+			}
+		default:
+			continue
 		}
+		faults = append(faults, fault.In(p.op, fault.At(note, fault.Field(p.dir), fault.Field(e.Name()))))
 	}
 	return faults
+}
+
+// refusalOf returns why run, the run of the stored case of e, did not count
+// the case of its trace: the refusal of the run, or the fault of a
+// counterexample that is no trace. It returns nil for a case of the choices
+// that failed or ended with a fault. Such a case counts without a trace.
+func refusalOf(e store.Entry, run engine.StoredRun) error {
+	if run.Refusal != nil || run.Status == engine.CaseFailed || run.Status == engine.CaseFaulted {
+		return run.Refusal
+	}
+	_, err := traceOf(e)
+	return err
 }
 
 // alike reports whether replayed states the labels of recorded in order,

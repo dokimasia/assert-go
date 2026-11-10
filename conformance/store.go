@@ -30,8 +30,8 @@ func checkStore(raw json.RawMessage, _ string) error {
 		Choices []json.RawMessage `json:"choices"`
 		// Identity is the identity of the failure to record.
 		Identity store.Identity `json:"identity"`
-		// Counterexample are the draws to record.
-		Counterexample []store.Draw `json:"counterexample"`
+		// Counterexample are the draws and the steps to record.
+		Counterexample recordedCounterexample `json:"counterexample"`
 		// Definition is the definition version to record.
 		Definition string `json:"definition"`
 		// Found is the date of discovery to record.
@@ -67,7 +67,8 @@ func checkStore(raw json.RawMessage, _ string) error {
 		Property:       v.Contract,
 		Identity:       v.Identity,
 		Choices:        choices,
-		Counterexample: v.Counterexample,
+		Counterexample: v.Counterexample.draws,
+		Steps:          v.Counterexample.steps,
 		Found:          found,
 	}
 	if entry.Name() != v.Name {
@@ -78,6 +79,49 @@ func checkStore(raw json.RawMessage, _ string) error {
 	data, _ := entry.MarshalJSON()
 	if !sameJSON(data, v.Entry) {
 		return fault.At(fault.New("the entry is %s, want %s", data, v.Entry), fault.Field(entryMember))
+	}
+	return nil
+}
+
+// recordedCounterexample is the counterexample that an entry of a store
+// records, as a vector states it: draw entries, each with a label and the
+// value where the entry records one, and step entries, each with an action,
+// a client in a concurrent section and true for drain in the drain.
+type recordedCounterexample struct {
+	// draws are the draws of the counterexample, in order.
+	draws []store.Draw
+	// steps are the steps of the counterexample, each with the number of
+	// draws before it.
+	steps []store.Step
+}
+
+// UnmarshalJSON reads the entries of a counterexample in request order. It
+// returns a fault for a counterexample that is no list of objects, and one
+// at the index of an entry that does not state a label or a step.
+func (r *recordedCounterexample) UnmarshalJSON(data []byte) error {
+	var entries []struct {
+		Label  *string         `json:"label"`
+		Value  json.RawMessage `json:"value"`
+		Step   *string         `json:"step"`
+		Client *int            `json:"client"`
+		Drain  bool            `json:"drain"`
+	}
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return fault.New("the counterexample is no list of entries").Because(err)
+	}
+	for i, e := range entries {
+		switch {
+		case e.Step != nil:
+			step := store.Step{Action: *e.Step, Client: -1, Drain: e.Drain, Draws: len(r.draws)}
+			if e.Client != nil {
+				step.Client = *e.Client
+			}
+			r.steps = append(r.steps, step)
+		case e.Label != nil:
+			r.draws = append(r.draws, store.Draw{Label: *e.Label, Value: e.Value})
+		default:
+			return fault.At(fault.New("the entry does not state a label or a step"), fault.Index(i))
+		}
 	}
 	return nil
 }

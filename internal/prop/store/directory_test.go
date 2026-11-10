@@ -72,7 +72,7 @@ func TestDirectory(t *testing.T) {
 		t.Run("returns the fault of each skipped file at the file's name", func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
-			write(t, dir, "later.json", `{"store": 2}`)
+			write(t, dir, "later.json", `{"store": 3}`)
 			got, err := store.Load(dir, contract)
 			assert.NoError(t, err, "a later format is no damage")
 			assert.Length(t, got.Skipped, 1, "one skipped file")
@@ -80,7 +80,7 @@ func TestDirectory(t *testing.T) {
 			f := assert.ErrorAs[*fault.Error](t, got.Skipped[0], "a fault")
 			assert.Equal(t, f.Path, fault.Path{fault.Field("later.json"), fault.Field("store")},
 				"the file and the field")
-			assert.Equal(t, f.Reason, "the entry is of format 2", "the reason to skip")
+			assert.Equal(t, f.Reason, "the entry is of format 3", "the reason to skip")
 		})
 
 		t.Run("leaves out the entries of another property", func(t *testing.T) {
@@ -174,6 +174,18 @@ func TestDirectory(t *testing.T) {
 			assert.NoError(t, err, "the store is read")
 			assert.Equal(t, len(got.Entries), 1, "one entry")
 			assert.True(t, sameChoices(got.Entries[0].Choices, pinned().Choices), "its choices")
+		})
+
+		t.Run("writes an entry with steps that the next run replays with its steps", func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			wrote, err := store.Save(dir, stepped())
+			assert.NoError(t, err, "the entry of format 2 is written")
+			assert.True(t, wrote, "a new file")
+			got, err := store.Load(dir, "the queue behaves like a slice")
+			assert.NoError(t, err, "the store is read")
+			assert.Length(t, got.Entries, 1, "one entry")
+			assert.Equal(t, got.Entries[0].Steps, stepped().Steps, "the steps with the draws before each")
 		})
 
 		t.Run("writes the file with mode 0o644 less the umask", func(t *testing.T) {

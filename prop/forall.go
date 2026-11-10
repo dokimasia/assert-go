@@ -31,9 +31,11 @@ func duplicate(op, dir, contract string) error {
 // oldest first, then the case whose every choice is its target, then random
 // cases of the seed with a prefix case and an edge case after each, until
 // [Cases] valid cases ran, the run tested every input of the domain, or ten
-// times as many cases were generated. A failing case is replayed, shrunk to
-// the smallest case that fails the same way, and explained. The options
-// state the run's settings.
+// times as many cases were generated. A stored case whose choices decode to
+// other values than its entry records runs the entry's counterexample in
+// their place, as the store section of the package states. A failing case
+// is replayed, shrunk to the smallest case that fails the same way, and
+// explained. The options state the run's settings.
 //
 // A run that found no failing case fails when it rejected more than ten
 // cases for every valid one, when no case requested an input, or when it
@@ -164,7 +166,7 @@ func (p property) run(tb assert.TB, run matcher.Running, body func(*Case)) {
 		p.fault(tb, run, err)
 		return
 	}
-	s.Stored = storedChoices(stored)
+	s.Stored = storedCases(stored)
 	var r engine.Result
 	var saved []error
 	if s.Budget > 0 {

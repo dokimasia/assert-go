@@ -117,7 +117,7 @@ func (p property) replayStored(seat assert.TB, run matcher.Running, setup runSet
 	seat.Helper()
 	s := setup.settings
 	s.Slot, s.Seat = run.Slot(), seat
-	s.Stored = storedChoices(stored)
+	s.Stored = storedCases(stored)
 	r := engine.RunStored(setup.body, s)
 	if err := setup.wrapper.fault(p.op); err != nil {
 		p.fault(seat, run, err)

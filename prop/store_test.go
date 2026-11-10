@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -19,13 +20,21 @@ import (
 	"go.dokimi.dev/assert/internal/literal"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/prop/choice"
+	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/internal/prop/store"
 	"go.dokimi.dev/assert/prop"
 )
 
-// decodedReason is the reason of the fault on a stored case that decodes
-// to other values than it records.
-const decodedReason = "the stored case decodes to other values than it records, and the run tested those"
+// The reasons of the fault on a stored case that decodes to other values
+// than it records.
+const (
+	// decodedReason is the reason of a stored case whose run tested the
+	// values of its choices.
+	decodedReason = "the stored case decodes to other values than it records, and the run tested those"
+	// replayedReason is the reason of a stored case whose run replayed the
+	// counterexample of its entry.
+	replayedReason = "the stored case decodes to other values than it records, and the run replayed its counterexample"
+)
 
 // unlistable is the name of a store that no file system lists on any
 // platform: it contains a NUL byte, which no file system accepts in a name.
@@ -135,6 +144,28 @@ func TestStore(t *testing.T) {
 			},
 		)
 
+		t.Run("writes the steps of a machine among the draws as an entry of format 2", func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			body := func(c *prop.Case) {
+				machine := (*engine.Case)(c)
+				machine.Step(engine.MachineStep{Action: "put", Client: -1})
+				c.Draw(prop.Integer(0, 9), drawn)
+				machine.Step(engine.MachineStep{Action: "get", Client: 1})
+				c.Report(assert.Failure{Assertion: big, Contract: fits}, true)
+			}
+			prop.ForAll(newTestSeat(t.Name()), contract, body, prop.Seed(7), prop.Store(dir))
+			entries := loaded(t, dir).Entries
+			if matcher.Mutated() {
+				assert.Empty(t, entries, unwritten)
+				return
+			}
+			assert.Length(t, entries, 1, "one entry")
+			want := []store.Step{{Action: "put", Client: -1}, {Action: "get", Client: 1, Draws: 1}}
+			assert.Equal(t, entries[0].Steps, want, "the steps with the draws before each")
+			assert.Contains(t, read(t, filepath.Join(dir, entries[0].Name())), `"store": 2,`, "an entry of format 2")
+		})
+
 		t.Run("writes an entry for each failure", func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
@@ -182,11 +213,11 @@ func TestStore(t *testing.T) {
 		t.Run("notes the fault of a file of a later format, and passes the run", func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
-			write(t, filepath.Join(dir, "later.json"), `{"store": 2}`)
+			write(t, filepath.Join(dir, "later.json"), `{"store": 3}`)
 			seat := newTestSeat(t.Name())
 			prop.ForAll(seat, contract, draws(prop.Integer(0, 9)), prop.Seed(7), prop.Store(dir))
 			assert.False(t, seat.Failed(), "the run passes")
-			expectOnlyFault(t, seat.Faults(), laterFault(forAllOp, dir, "later.json", "2"))
+			expectOnlyFault(t, seat.Faults(), laterFault(forAllOp, dir, "later.json", "3"))
 		})
 
 		t.Run("notes the fault of a stored case that decodes to other values than it records", func(t *testing.T) {
@@ -270,6 +301,162 @@ func TestStore(t *testing.T) {
 				seat := newTestSeat(t.Name())
 				prop.ForAll(seat, contract, failsFrom(900), prop.Seed(7), prop.Store(dir))
 				expectOnlyFault(t, seat.Faults(), decodedFault(dir, e))
+				assert.NoError(t, errors.Unwrap(seat.Faults()[0]), "the failing case of the choices runs no trace")
+			})
+		}
+
+		t.Run("notes no refusal of a stored case whose choices end with a fault", func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			e := entry(950)
+			e.Counterexample = []store.Draw{{Label: "other"}}
+			save(t, dir, e)
+			rec := assert.NewRecorder()
+			prop.ForAll(rec, contract, func(c *prop.Case) {
+				c.Draw(prop.Integer(0, 10000), drawn)
+				assert.Fault(c, errEnvironment)
+			}, prop.Seed(7), prop.Store(dir))
+			faults := rec.Faults()
+			assert.Length(t, faults, 2, "the note of the stored case and the fault that ends the call")
+			expectFault(t, faults[0], decodedFault(dir, e))
+			assert.NoError(t, errors.Unwrap(faults[0]), "the case of the choices that ends with a fault runs no trace")
+			assert.ErrorIs(t, faults[1], errEnvironment, "the fault of the body ends the call")
+		})
+
+		t.Run("replays the counterexample of a stored case whose choices decode to other values", func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			moved := entry(950)
+			moved.Choices = []choice.Choice{integer(3)}
+			save(t, dir, moved)
+			seat := newTestSeat(t.Name())
+			got := detailOfOn(seat, failsFrom(900), prop.Seed(7), prop.Store(dir))
+			assert.Equal(t, got[casesField], any(0), "the case of the counterexample in place of the case of 3")
+			assert.Equal(t, got[choicesField], any("prop1:AIQH"), "900, the minimal case of the counterexample")
+			expectOnlyFault(t, seat.Faults(), fault.Error{
+				Op: forAllOp, Path: fault.Path{fault.Field(dir), fault.Field(moved.Name())}, Reason: replayedReason,
+			})
+		})
+
+		untraced := []struct {
+			name      string
+			changed   func(*store.Entry)
+			body      func(*prop.Case)
+			wantCause fault.Error
+		}{
+			{
+				name:    "notes the refusal of a counterexample whose value the generator does not produce",
+				changed: func(e *store.Entry) { e.Choices = []choice.Choice{integer(3)} },
+				body:    draws(prop.Integer(0, 9)),
+				wantCause: fault.Error{
+					Path:   fault.Path{fault.Field("counterexample"), fault.Index(0), fault.Field("value")},
+					Kind:   engine.ErrCannotInvert,
+					Reason: "950 is outside [0, 9]",
+				},
+			},
+			{
+				name: "notes the refusal of a counterexample of a draw without a value",
+				changed: func(e *store.Entry) {
+					e.Choices = []choice.Choice{integer(3)}
+					e.Counterexample = []store.Draw{{Label: "other"}}
+				},
+				body: draws(prop.Integer(0, 9)),
+				wantCause: fault.Error{
+					Path:   fault.Path{fault.Field("counterexample"), fault.Index(0)},
+					Reason: "the draw does not record a value",
+				},
+			},
+			{
+				name:    "notes the refusal of a counterexample of steps that the body does not take",
+				changed: func(e *store.Entry) { e.Steps = []store.Step{{Action: "put", Client: -1}} },
+				body: func(c *prop.Case) {
+					(*engine.Case)(c).Step(engine.MachineStep{Action: "get", Client: -1})
+					c.Draw(prop.Integer(0, 10000), drawn)
+				},
+				wantCause: fault.Error{
+					Path:   fault.Path{fault.Field("counterexample"), fault.Index(0), fault.Field("label")},
+					Reason: `the draw labelled "value" takes the step entry of "put"`,
+				},
+			},
+		}
+		for _, tt := range untraced {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				dir := t.TempDir()
+				e := entry(950)
+				tt.changed(&e)
+				save(t, dir, e)
+				seat := newTestSeat(t.Name())
+				prop.ForAll(seat, contract, tt.body, prop.Seed(7), prop.Store(dir))
+				assert.False(t, seat.Failed(), "the run tests the passing values of the choices")
+				faults := seat.Faults()
+				expectOnlyFault(t, faults, decodedFault(dir, e))
+				expectFault(t, errors.Unwrap(faults[0]), tt.wantCause)
+			})
+		}
+
+		t.Run("notes the refusal of a counterexample whose value is no typed literal", func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			e := entry(950)
+			e.Choices = []choice.Choice{integer(3)}
+			e.Counterexample[0].Value = json.RawMessage(`{"type":"int","value":"950"}`)
+			write(t, filepath.Join(dir, e.Name()), document(e))
+			seat := newTestSeat(t.Name())
+			prop.ForAll(seat, contract, draws(prop.Integer(0, 9)), prop.Seed(7), prop.Store(dir))
+			faults := seat.Faults()
+			expectOnlyFault(t, faults, decodedFault(dir, e))
+			_, err := literal.Decode(e.Counterexample[0].Value)
+			decoding := assert.ErrorAs[*fault.Error](t, err, "the fault of the typed literal")
+			at := fault.Path{fault.Field("counterexample"), fault.Index(0), fault.Field("value")}
+			expectFault(t, errors.Unwrap(faults[0]), fault.Error{
+				Path: slices.Concat(at, decoding.Path), Kind: decoding.Kind, Reason: decoding.Reason,
+			})
+		})
+
+		t.Run("replays the client and the drain mark of each recorded step", func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			e := entry(950)
+			e.Choices = []choice.Choice{integer(3)}
+			e.Steps = []store.Step{{Action: "put", Client: 1}, {Action: "deliver", Client: -1, Drain: true}}
+			save(t, dir, e)
+			var followed []engine.MachineStep
+			prop.ForAll(newTestSeat(t.Name()), contract, func(c *prop.Case) {
+				if tr, ok := (*engine.Case)(c).Trace(); ok {
+					for step, next := tr.Next(); next; step, next = tr.Next() {
+						followed = append(followed, step)
+						tr.Take()
+					}
+				}
+				c.Draw(prop.Integer(0, 10000), drawn)
+			}, prop.Seed(7), prop.Store(dir))
+			want := []engine.MachineStep{{Action: "put", Client: 1}, {Action: "deliver", Client: -1, Drain: true}}
+			assert.Equal(t, followed, want, "the steps of the counterexample, before its draw")
+		})
+
+		steps := []struct {
+			name string
+			give []store.Step
+		}{
+			{name: "notes no fault of a stored case that takes the steps of its entry", give: []store.Step{{
+				Action: "put", Client: -1,
+			}}},
+			{name: "notes no fault of the steps of a stored case whose entry does not record steps"},
+		}
+		for _, tt := range steps {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				dir := t.TempDir()
+				e := entry(950)
+				e.Steps = tt.give
+				save(t, dir, e)
+				seat := newTestSeat(t.Name())
+				prop.ForAll(seat, contract, func(c *prop.Case) {
+					(*engine.Case)(c).Step(engine.MachineStep{Action: "put", Client: -1})
+					c.Draw(prop.Integer(0, 10000), drawn)
+				}, prop.Seed(7), prop.Store(dir))
+				assert.Empty(t, seat.Faults(), "the case of the choices matches the entry")
 			})
 		}
 

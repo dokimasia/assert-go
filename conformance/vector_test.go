@@ -15,14 +15,14 @@ import (
 	"go.dokimi.dev/assert/internal/fault"
 )
 
-// vectorCount is the number of vectors of the vendored definition: 35
+// vectorCount is the number of vectors of the vendored definition: 36
 // behaviour, 11 bridge, 12 coverage, 51 decoding, 4 draws, 36 fixtures, 79
 // forms, 33 generation, 7 golden-match-tree, 6 has-content, 5 has-mode, 44
-// inverse, 4 is-dir, 4 is-file, 32 linearizable, 5 links-to, 22 machines, 4
+// inverse, 4 is-dir, 4 is-file, 32 linearizable, 5 links-to, 25 machines, 4
 // path-absent, 10 recording, 12 seam, 34 serializable, 54 shapes, 38
-// shrinking, 34 snapshot-isolation, 21 store, 17 token, 5 tree-contains, 13
+// shrinking, 34 snapshot-isolation, 27 store, 17 token, 5 tree-contains, 13
 // tree-equal and 4 tree-unchanged vectors.
-const vectorCount = 636
+const vectorCount = 646
 
 // firstVector is the id of the first case of behaviour.json, the file whose
 // name sorts first.

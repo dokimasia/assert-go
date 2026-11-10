@@ -6,6 +6,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"iter"
 	"strings"
 	"time"
 
@@ -14,9 +15,15 @@ import (
 	"go.dokimi.dev/assert/internal/prop/token"
 )
 
-// Format is the format of the entries that this package writes and
-// replays.
-const Format = 1
+// The formats of the entries that this package writes and replays.
+const (
+	// Format is the format of an entry whose counterexample states draws
+	// alone.
+	Format = 1
+	// StepsFormat is the format of an entry whose counterexample states the
+	// steps of a machine among its draws.
+	StepsFormat = 2
+)
 
 // The bounds of an entry's form, which keep every language's verdict on a
 // file the same.
@@ -24,6 +31,9 @@ const (
 	// maxLine is the largest line of an identity, the largest signed
 	// 32-bit integer.
 	maxLine = 2147483647
+	// maxClient is the largest client of a step, the largest signed 32-bit
+	// integer.
+	maxClient = 2147483647
 	// maxDepth is the most levels of objects and arrays that a file nests,
 	// the root object being the first.
 	maxDepth = 64
@@ -75,10 +85,23 @@ func (i Identity) Valid() bool {
 // Draw is one value of an entry's counterexample.
 type Draw struct {
 	// Label is the label that the body drew the value under.
-	Label string `json:"label"`
+	Label string
 	// Value is the typed literal of the value, and nil for a value that no
 	// typed literal states.
-	Value json.RawMessage `json:"value,omitempty"`
+	Value json.RawMessage
+}
+
+// Step is one step of a machine in an entry's counterexample.
+type Step struct {
+	// Action is the name of the step's action.
+	Action string
+	// Client is the client of a step of a concurrent section, from 0 to
+	// 2^31 - 1, and -1 for any other step.
+	Client int
+	// Drain reports a step of the drain.
+	Drain bool
+	// Draws is the number of draws of the counterexample before the step.
+	Draws int
 }
 
 // Entry is one entry of a store: a property's minimal failing case.
@@ -94,6 +117,9 @@ type Entry struct {
 	Choices []choice.Choice
 	// Counterexample are the values that the case drew, in order.
 	Counterexample []Draw
+	// Steps are the steps of the machine of the case, in order, and empty
+	// for a case without one. An entry of [Format] has none.
+	Steps []Step
 	// Found is when the run wrote the entry. The entry keeps its UTC date.
 	Found time.Time
 }
@@ -111,10 +137,30 @@ type document struct {
 	Identity Identity `json:"identity"`
 	// Choices is the replay token of the case.
 	Choices string `json:"choices"`
-	// Counterexample are the drawn values, an empty list for none.
-	Counterexample []Draw `json:"counterexample"`
+	// Counterexample are the draw entries and the step entries in request
+	// order, an empty list for none.
+	Counterexample []counterexampleEntry `json:"counterexample"`
 	// Found is the UTC date, as YYYY-MM-DD.
 	Found string `json:"found"`
+}
+
+// counterexampleEntry is one entry of a counterexample as its JSON object. A
+// draw entry has a label and, when the draw has one, a value. A step entry
+// has an action, a client in a concurrent section and true for drain in the
+// drain.
+type counterexampleEntry struct {
+	// Label is the label of a draw entry, and nil for a step entry.
+	Label *string `json:"label,omitempty"`
+	// Value is the typed literal of a draw entry's value, and nil for a value
+	// that no typed literal states and for a step entry.
+	Value json.RawMessage `json:"value,omitempty"`
+	// Step is the action of a step entry, and nil for a draw entry.
+	Step *string `json:"step,omitempty"`
+	// Client is the client of a step of a concurrent section, and nil for any
+	// other entry.
+	Client *int `json:"client,omitempty"`
+	// Drain is true for a step of the drain, and false for any other entry.
+	Drain bool `json:"drain,omitempty"`
 }
 
 // Name returns the name of the entry's file: [random.Mix] of the
@@ -124,20 +170,66 @@ func (e Entry) Name() string {
 	return fmt.Sprintf("%016x%s", random.Mix(e.Property+"\x00"+token.Encode(e.Choices)), nameSuffix)
 }
 
-// MarshalJSON returns the entry as the JSON object of [Format]. It returns
+// MarshalJSON returns the entry as the JSON object of [StepsFormat] for an
+// entry with steps, and of [Format] for any other entry. The counterexample
+// lists each step before the draws that the case drew after it. It returns
 // an error when a draw's value is not JSON.
 func (e Entry) MarshalJSON() ([]byte, error) {
-	counterexample := e.Counterexample
-	if counterexample == nil {
-		counterexample = []Draw{}
+	format := Format
+	if len(e.Steps) > 0 {
+		format = StepsFormat
 	}
 	return json.Marshal(document{
-		Store:          Format,
+		Store:          format,
 		Definition:     e.Definition,
 		Property:       e.Property,
 		Identity:       e.Identity,
 		Choices:        token.Encode(e.Choices),
-		Counterexample: counterexample,
+		Counterexample: e.entries(),
 		Found:          e.Found.UTC().Format(time.DateOnly),
 	})
+}
+
+// Entries returns the draws and the steps of the counterexample in request
+// order. Each pair has a draw or a step, and nil in place of the other. The
+// steps that the case took before a draw come before it, and the steps
+// after the last draw come at the end.
+func (e Entry) Entries() iter.Seq2[*Draw, *Step] {
+	return func(yield func(*Draw, *Step) bool) {
+		steps := e.Steps
+		for i := range e.Counterexample {
+			for len(steps) > 0 && steps[0].Draws <= i {
+				if !yield(nil, &steps[0]) {
+					return
+				}
+				steps = steps[1:]
+			}
+			if !yield(&e.Counterexample[i], nil) {
+				return
+			}
+		}
+		for i := range steps {
+			if !yield(nil, &steps[i]) {
+				return
+			}
+		}
+	}
+}
+
+// entries returns the draws and the steps of the counterexample as the
+// entries of its JSON, in request order.
+func (e Entry) entries() []counterexampleEntry {
+	out := make([]counterexampleEntry, 0, len(e.Counterexample)+len(e.Steps))
+	for d, s := range e.Entries() {
+		if s == nil {
+			out = append(out, counterexampleEntry{Label: &d.Label, Value: d.Value})
+			continue
+		}
+		entry := counterexampleEntry{Step: &s.Action, Drain: s.Drain}
+		if s.Client >= 0 {
+			entry.Client = &s.Client
+		}
+		out = append(out, entry)
+	}
+	return out
 }

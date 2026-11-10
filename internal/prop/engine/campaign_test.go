@@ -245,7 +245,7 @@ func TestCampaign(t *testing.T) {
 			},
 			{
 				name:   "ends as flaky at a stored case whose replay passes",
-				adjust: func(s *engine.Settings) { s.Stored = [][]choice.Choice{integers(3)} },
+				adjust: func(s *engine.Settings) { s.Stored = []engine.Stored{{Choices: integers(3)}} },
 			},
 		}
 		for _, tt := range flaky {
@@ -324,6 +324,20 @@ func TestCampaign(t *testing.T) {
 			r := campaigned(func(c *engine.Case) { got = append(got, engine.Draw(c, digit, drawn)) }, s, shortCases)
 			assert.Equal(t, got[:3], []any{4, 5, 6}, "the entry's value, the example's, then the stored case's")
 			assert.Length(t, r.Stored, 1, "the run of the stored case")
+		})
+
+		t.Run("counts the trace of a stored case whose choices decode to other values", func(t *testing.T) {
+			t.Parallel()
+			var got []any
+			s := settled()
+			s.Stored = []engine.Stored{{
+				Choices: integers(6),
+				Matches: func(*engine.Case) bool { return false },
+				Trace:   []engine.Entry{{Label: drawn, Value: 4}},
+			}}
+			r := campaigned(func(c *engine.Case) { got = append(got, engine.Draw(c, digit, drawn)) }, s, shortCases)
+			assert.Equal(t, got[:2], []any{6, 4}, "the value of the choices, then the value of the trace")
+			assert.True(t, r.Stored[0].Traced, "the case of the trace counts")
 		})
 
 		t.Run("ends at a stored case that skips, with the run of the stored case", func(t *testing.T) {

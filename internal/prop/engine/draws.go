@@ -21,9 +21,9 @@ const (
 	stepMember = "step"
 )
 
-// Entry is one entry of a case of [Settings.Draws]: a draw entry, which
-// states the label of a draw and the value that the draw decodes to, or a
-// step entry, which states a step of a machine.
+// Entry is one entry of a trace, such as the entries of [Settings.Draws]
+// and the trace of a [Stored] case. A draw entry has the label of a draw and
+// the value that the draw decodes to. A step entry has a step of a machine.
 type Entry struct {
 	// Label is the label of the draw.
 	Label string
@@ -35,7 +35,7 @@ type Entry struct {
 	Step *MachineStep
 }
 
-// inverting is the provider of a case of [Settings.Draws]. Each draw takes
+// inverting is the provider of a case that follows a trace. Each draw takes
 // the next entry, and its requests take the choices that decode to the
 // entry's value under the draw's generator. A machine turns each step entry
 // into the choices of one step, which [Trace] serves to its requests. A
@@ -90,7 +90,7 @@ func (d *inverting) next(label string, inverse func(any) ([]choice.Choice, error
 	return choices, nil
 }
 
-// enterDraw starts a draw labelled label in the case of [Settings.Draws],
+// enterDraw starts a draw labelled label in a case that follows a trace,
 // whose generator's choices for a value inverse returns. The draw takes its
 // entry's choices, and a refused entry ends the case and the calling
 // goroutine.
@@ -105,32 +105,36 @@ func (c *Case) enterDraw(label string, inverse func(any) ([]choice.Choice, error
 	c.inverting.queue = choices
 }
 
-// executeDraws calls body once on the case of s.Draws, outside the case
-// tree, and returns how the case ended.
-func executeDraws(body Body, s Settings) Execution {
-	p := &inverting{entries: s.Draws}
+// executeTrace calls body once on a case that follows entries, outside the
+// case tree. It returns how the case ended, with the number of entries that
+// the draws and the steps of the case took.
+func executeTrace(body Body, s Settings, entries []Entry) (Execution, int) {
+	p := &inverting{entries: entries}
 	c := newCase(p, s, nil)
 	c.inverting = p
-	return finish(c, body)
+	e := finish(c, body)
+	return e, p.taken
 }
 
-// Trace is the trace that the case of [Settings.Draws] follows: its entries,
-// which its draws and its machine's steps take in order. A machine turns
-// each step entry into the choices of one step. It reads the next entry with
-// [Trace.Next], and takes it with [Trace.Take], which serves the choices of
-// the step to the step's requests, or refuses it with [Trace.Refuse].
+// Trace is the trace that a case follows, such as the case of
+// [Settings.Draws]. The draws and the steps of the case take its entries in
+// order. A machine turns each step entry into the choices of one step. It
+// reads the next entry with [Trace.Next], and takes it with [Trace.Take] or
+// refuses it with [Trace.Refuse]. Take serves the choices of the step to
+// the requests of the step.
 //
 // # Concurrency
 //
 // Every method is safe for concurrent use. A machine calls them on the
 // goroutine of the body.
 type Trace struct {
-	// c is the case of Settings.Draws.
+	// c is the case that follows the trace.
 	c *Case
 }
 
 // Trace returns the trace that the case follows, and false for a case that
-// follows none, which every case but the case of [Settings.Draws] is.
+// follows none. The case of [Settings.Draws] follows a trace, and so does
+// the case of the trace of a [Stored] case. No other case follows one.
 func (c *Case) Trace() (Trace, bool) {
 	return Trace{c: c}, c.inverting != nil
 }

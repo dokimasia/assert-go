@@ -13,6 +13,10 @@ import (
 	"go.dokimi.dev/assert/internal/fault"
 )
 
+// storedSeven is a stored case of the choice 7, whose entry records the
+// value 7 of the draw labelled value.
+const storedSeven = `{"choices":[7],"counterexample":[{"label":"value","value":{"type":"int","value":7}}]}`
+
 // TestBehaviour checks a behaviour vector: the run of a body under its
 // settings, with its stored cases and its replay, and the record of the
 // run. Written with testing rather than with this library, because a
@@ -48,10 +52,40 @@ func TestBehaviour(t *testing.T) {
 						`"failure":null,"choices":null,"others":null,"divergence":null,"coverage":null}`),
 			},
 			{
-				name:       "returns a fault at the stored case for stored choices of no stated kind",
-				give:       behaving(passingBody, `{"seed":"7","stored":[[7],[{}]]}`, passedDetail),
-				wantPath:   inVector(fault.Field(settingsAt), fault.Field("stored"), fault.Index(1), fault.Index(0)),
+				name: "returns a fault at the choices of a stored case for a choice of no stated kind",
+				give: behaving(
+					passingBody,
+					`{"seed":"7","stored":[`+storedSeven+`,{"choices":[{}],"counterexample":[]}]}`,
+					passedDetail,
+				),
+				wantPath: inVector(
+					fault.Field(settingsAt),
+					fault.Field("stored"),
+					fault.Index(1),
+					fault.Field(choicesAt),
+					fault.Index(0),
+				),
 				wantReason: "{} is no choice",
+			},
+			{
+				name:       "returns a fault for a stored case of choices without a counterexample",
+				give:       behaving(passingBody, `{"seed":"7","stored":[[7]]}`, passedDetail),
+				wantPath:   inVector(),
+				wantReason: notParsed,
+			},
+			{
+				name: "returns a fault for a stored counterexample that is no list",
+				give: behaving(passingBody, `{"seed":"7","stored":[{"choices":[7],"counterexample":7}]}`,
+					passedDetail),
+				wantPath:   inVector(),
+				wantReason: notParsed,
+			},
+			{
+				name: "returns a fault for a stored counterexample of an entry without a label and a step",
+				give: behaving(passingBody, `{"seed":"7","stored":[{"choices":[7],"counterexample":[{}]}]}`,
+					passedDetail),
+				wantPath:   inVector(),
+				wantReason: notParsed,
 			},
 			{
 				name:       "returns a fault at the replay for a replay token without the prefix",
@@ -97,7 +131,7 @@ func TestBehaviour(t *testing.T) {
 			if err := os.WriteFile(file, nil, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			raw := behaving(bigBody, `{"seed":"7","stored":[[950]]}`, passedDetail)
+			raw := behaving(bigBody, `{"seed":"7","stored":[`+storedSeven+`]}`, passedDetail)
 			v := conformance.Vector{Kind: conformance.Behaviour, ID: builtID, Raw: json.RawMessage(raw)}
 			expectFault(t, v.Check(file), inVector(fault.Field(settingsAt), fault.Field("stored"), fault.Index(0)),
 				"the store cannot be created")

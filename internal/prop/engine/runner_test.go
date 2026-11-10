@@ -14,6 +14,7 @@ import (
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/bench"
 	"go.dokimi.dev/assert/internal/enumtest"
+	"go.dokimi.dev/assert/internal/fault"
 	"go.dokimi.dev/assert/internal/prop/choice"
 	"go.dokimi.dev/assert/internal/prop/coverage"
 	"go.dokimi.dev/assert/internal/prop/engine"
@@ -405,7 +406,7 @@ func TestRunner(t *testing.T) {
 			{
 				name:   "returns a failure of a stored case before the simplest case runs",
 				body:   atLeast900,
-				adjust: func(s *engine.Settings) { s.Stored = [][]choice.Choice{integers(950)} },
+				adjust: func(s *engine.Settings) { s.Stored = []engine.Stored{{Choices: integers(950)}} },
 				want: reference{
 					explanation: []engine.Explained{
 						{Label: drawn, Value: 900, Relevance: engine.ValueMatters, NearestPassing: 899},
@@ -417,10 +418,12 @@ func TestRunner(t *testing.T) {
 				},
 			},
 			{
-				name:   "returns a failure of a later stored case after an earlier one passes",
-				body:   atLeast900,
-				adjust: func(s *engine.Settings) { s.Stored = [][]choice.Choice{integers(100), integers(950)} },
-				cases:  1,
+				name: "returns a failure of a later stored case after an earlier one passes",
+				body: atLeast900,
+				adjust: func(s *engine.Settings) {
+					s.Stored = []engine.Stored{{Choices: integers(100)}, {Choices: integers(950)}}
+				},
+				cases: 1,
 				want: reference{
 					explanation: []engine.Explained{
 						{Label: drawn, Value: 900, Relevance: engine.ValueMatters, NearestPassing: 899},
@@ -502,7 +505,8 @@ func TestRunner(t *testing.T) {
 		t.Run("returns the runs of the stored cases up to the failing one", func(t *testing.T) {
 			t.Parallel()
 			s := settled()
-			s.Stored, s.Shrink = [][]choice.Choice{integers(100), integers(950), integers(300)}, 0
+			s.Stored = []engine.Stored{{Choices: integers(100)}, {Choices: integers(950)}, {Choices: integers(300)}}
+			s.Shrink = 0
 			got := engine.Run(atLeast900, s)
 			assert.Length(t, got.Stored, 2, "the passing case and the failing one")
 			assert.Equal(t, drawValues(got.Stored[1].Case.Draws()), []any{950}, "the failing case's value")
@@ -881,7 +885,7 @@ func TestRunner(t *testing.T) {
 		t.Run("returns a pass that counts the stored cases", func(t *testing.T) {
 			t.Parallel()
 			s := settled()
-			s.Stored = [][]choice.Choice{integers(3), integers(4)}
+			s.Stored = []engine.Stored{{Choices: integers(3)}, {Choices: integers(4)}}
 			got := engine.RunStored(atLeast5, s)
 			want := engine.Result{Outcome: engine.Passed, Cases: 2, Seed: referenceSeed}
 			assert.Equal(t, summary(got), want, "a pass of both")
@@ -891,7 +895,7 @@ func TestRunner(t *testing.T) {
 		t.Run("returns the first failing stored case as found, with its token", func(t *testing.T) {
 			t.Parallel()
 			s := settled()
-			s.Stored = [][]choice.Choice{integers(3), integers(7), integers(9)}
+			s.Stored = []engine.Stored{{Choices: integers(3)}, {Choices: integers(7)}, {Choices: integers(9)}}
 			got := engine.RunStored(atLeast5, s)
 			want := engine.Result{Outcome: engine.Counterexample, Cases: 1, Seed: referenceSeed}
 			assert.Equal(t, summary(got), want, "a counterexample after one valid case")
@@ -903,7 +907,7 @@ func TestRunner(t *testing.T) {
 		t.Run("returns Skipped at the first stored case that skips, with the runs up to it", func(t *testing.T) {
 			t.Parallel()
 			s := settled()
-			s.Stored = [][]choice.Choice{integers(3), integers(7), integers(9)}
+			s.Stored = []engine.Stored{{Choices: integers(3)}, {Choices: integers(7)}, {Choices: integers(9)}}
 			got := engine.RunStored(func(c *engine.Case) {
 				if engine.Draw(c, digit, drawn) == 7 {
 					c.Skip("seven")
@@ -917,7 +921,7 @@ func TestRunner(t *testing.T) {
 		t.Run("returns the fault of the first stored case that ends with one", func(t *testing.T) {
 			t.Parallel()
 			s := settled()
-			s.Stored = [][]choice.Choice{integers(3), integers(7), integers(9)}
+			s.Stored = []engine.Stored{{Choices: integers(3)}, {Choices: integers(7)}, {Choices: integers(9)}}
 			got := engine.RunStored(func(c *engine.Case) {
 				if engine.Draw(c, digit, drawn) == 7 {
 					c.ReportFault(errEnvironment, true)
@@ -930,7 +934,7 @@ func TestRunner(t *testing.T) {
 		t.Run("records the calls of each case under stored", func(t *testing.T) {
 			t.Parallel()
 			s := settled()
-			s.Stored = [][]choice.Choice{integers(3), integers(4)}
+			s.Stored = []engine.Stored{{Choices: integers(3)}, {Choices: integers(4)}}
 			got := recordedRun(t, s, func(s engine.Settings) { engine.RunStored(ended(atLeast5), s) })
 			assert.Equal(t, got, []callRecord{{Run: 1, Phase: "stored"}, {Run: 2, Phase: "stored"}}, "both cases")
 		})
@@ -938,7 +942,7 @@ func TestRunner(t *testing.T) {
 		t.Run("replays each stored case under a Confirm of 1", func(t *testing.T) {
 			t.Parallel()
 			s := settled()
-			s.Stored, s.Confirm = [][]choice.Choice{integers(3), integers(4)}, 1
+			s.Stored, s.Confirm = []engine.Stored{{Choices: integers(3)}, {Choices: integers(4)}}, 1
 			got := recordedRun(t, s, func(s engine.Settings) { engine.RunStored(ended(atLeast5), s) })
 			want := []callRecord{
 				{Run: 1, Phase: "stored"},
@@ -948,6 +952,150 @@ func TestRunner(t *testing.T) {
 			}
 			assert.Equal(t, got, want, "each stored case and its replay")
 		})
+
+		never := func(*engine.Case) bool { return false }
+		always := func(*engine.Case) bool { return true }
+		traceOf := func(values ...int) []engine.Entry {
+			entries := make([]engine.Entry, len(values))
+			for i, v := range values {
+				entries[i] = engine.Entry{Label: drawn, Value: v}
+			}
+			return entries
+		}
+
+		t.Run(
+			"returns the failure of the trace of a stored case whose choices decode to other values",
+			func(t *testing.T) {
+				t.Parallel()
+				s := settled()
+				s.Stored = []engine.Stored{{Choices: integers(3), Matches: never, Trace: traceOf(7)}}
+				got := engine.RunStored(atLeast5, s)
+				want := engine.Result{Outcome: engine.Counterexample, Seed: referenceSeed}
+				assert.Equal(t, summary(got), want, "a counterexample of the trace, as found")
+				assert.Equal(t, drawValues(got.Failing.Case.Draws()), []any{7}, "the value of the trace")
+				assert.Equal(t, got.Token, "prop1:AAc", "the token of the case of the trace")
+				assert.Equal(t, []any{got.Stored[0].Traced, got.Stored[0].Refusal}, []any{true, nil},
+					"the case of the trace counts")
+			},
+		)
+
+		t.Run("counts the trace of a stored case that takes every entry and passes", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Stored = []engine.Stored{{Choices: integers(3), Matches: never, Trace: traceOf(4)}}
+			got := engine.RunStored(atLeast5, s)
+			assert.Equal(t, summary(got), engine.Result{Outcome: engine.Passed, Cases: 1, Seed: referenceSeed},
+				"a pass of one valid case")
+			assert.True(t, got.Stored[0].Traced, "the case of the trace counts")
+			assert.Equal(t, drawValues(got.Stored[0].Case.Draws()), []any{4}, "the value of the trace")
+		})
+
+		t.Run("returns the fault of the trace of a stored case that ends with one", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Stored = []engine.Stored{{Choices: integers(3), Matches: never, Trace: traceOf(7, 8)}}
+			got := engine.RunStored(func(c *engine.Case) {
+				if engine.Draw(c, digit, drawn) == 7 {
+					c.ReportFault(errEnvironment, true)
+				}
+			}, s)
+			assert.ErrorIs(t, got.Fault, errEnvironment, "the fault of the case of the trace")
+			assert.True(t, got.Stored[0].Traced, "a fault counts before the entry left untaken")
+		})
+
+		choicesCount := []struct {
+			name       string
+			give       engine.Stored
+			wantValue  int
+			wantPath   fault.Path
+			wantReason string
+		}{
+			{
+				name:      "counts the choices of a stored case that matches its entry",
+				give:      engine.Stored{Choices: integers(3), Matches: always, Trace: traceOf(7)},
+				wantValue: 3,
+			},
+			{
+				name:      "counts the choices of a stored case whose entry has no counterexample",
+				give:      engine.Stored{Choices: integers(3), Trace: traceOf(7)},
+				wantValue: 3,
+			},
+			{
+				name:      "counts the choices of a stored case without a trace",
+				give:      engine.Stored{Choices: integers(3), Matches: never},
+				wantValue: 3,
+			},
+			{
+				name: "counts the choices of a stored case whose trace the body refuses",
+				give: engine.Stored{
+					Choices: integers(3), Matches: never, Trace: []engine.Entry{{Label: "n", Value: 7}},
+				},
+				wantValue:  3,
+				wantPath:   fault.Path{fault.Index(0), fault.Field("label")},
+				wantReason: `the draw labelled "value" takes the entry labelled "n"`,
+			},
+			{
+				name:       "counts the choices of a stored case whose trace leaves an entry untaken",
+				give:       engine.Stored{Choices: integers(3), Matches: never, Trace: traceOf(4, 2)},
+				wantValue:  3,
+				wantPath:   fault.Path{fault.Index(1)},
+				wantReason: "the case leaves the entry untaken",
+			},
+		}
+		for _, tt := range choicesCount {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				s := settled()
+				s.Stored = []engine.Stored{tt.give}
+				got := engine.RunStored(atLeast5, s)
+				assert.Equal(t, summary(got), engine.Result{Outcome: engine.Passed, Cases: 1, Seed: referenceSeed},
+					"a pass of one valid case")
+				run := got.Stored[0]
+				assert.False(t, run.Traced, "the case of the choices counts")
+				assert.Equal(t, drawValues(run.Case.Draws()), []any{tt.wantValue}, "the value of the choices")
+				if tt.wantReason == "" {
+					assert.NoError(t, run.Refusal, "no trace ran")
+					return
+				}
+				f := assert.ErrorAs[*fault.Error](t, run.Refusal, "the refusal of the trace")
+				assert.Equal(t, []any{f.Path, f.Reason}, []any{tt.wantPath, tt.wantReason}, "the entry and why")
+			})
+		}
+
+		t.Run("counts a failing case of the choices without its trace", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Stored = []engine.Stored{{Choices: integers(7), Matches: never, Trace: traceOf(3)}}
+			got := engine.RunStored(atLeast5, s)
+			assert.Equal(t, drawValues(got.Failing.Case.Draws()), []any{7}, "the value of the choices")
+			assert.False(t, got.Stored[0].Traced, "the failing case of the choices counts")
+		})
+
+		recordings := []struct {
+			name string
+			give []engine.Entry
+			want []callRecord
+		}{
+			{
+				name: "records the calls of the case of the choices and of the trace that counts under stored",
+				give: traceOf(4),
+				want: []callRecord{{Run: 1, Phase: "stored"}, {Run: 2, Phase: "stored"}},
+			},
+			{
+				name: "records the calls of the case of the choices alone when the trace does not count",
+				give: traceOf(4, 2),
+				want: []callRecord{{Run: 1, Phase: "stored"}},
+			},
+		}
+		for _, tt := range recordings {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				s := settled()
+				s.Stored = []engine.Stored{{Choices: integers(3), Matches: never, Trace: tt.give}}
+				got := recordedRun(t, s, func(s engine.Settings) { engine.RunStored(ended(atLeast5), s) })
+				assert.Equal(t, got, tt.want, "the calls of the cases that the run records")
+			})
+		}
 	})
 
 	t.Run("Count", func(t *testing.T) {
