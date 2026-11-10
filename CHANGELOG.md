@@ -1,5 +1,12 @@
 # go.dokimi.dev/assert
 
+## 0.21.0
+
+### Minor Changes
+
+- 57081e8: Implement definition 16.3.0, whose store keeps the steps of a machine in entries of format 2.
+- 57081e8: Replay the recorded counterexample of a stored case whose choices decode to other values than its entry records.
+
 ## 0.20.0
 
 ### Minor Changes
