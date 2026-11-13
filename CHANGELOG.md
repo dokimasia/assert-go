@@ -1,5 +1,12 @@
 # go.dokimi.dev/assert
 
+## 0.23.0
+
+### Minor Changes
+
+- 7151489: Replay a draw of a `prop.OneOf`, `prop.Optional`, `prop.List`, `Generator.Filter` or `prop.Recursive` with a `prop.Composite` inside in a trace after the entries of the composite's draws, so its stored case replays its counterexample.
+- 7151489: Implement definition 16.5.0 and its machine subjects one-of-pair-fails-at-7-and-3 and pairs-fail-at-7-and-3.
+
 ## 0.22.0
 
 ### Minor Changes
