@@ -67,13 +67,15 @@ func OneOf[T any](gens ...Generator[T]) Generator[T] {
 		defer c.closeSpan(span)
 		return stated[c.Structure(bounds, 0).Magnitude()].decode(c)
 	}
-	return NewInvertible(oneOfID, decode, func(in Inversion, v any) ([]Step, T, error) {
+	oneOf := NewInvertible(oneOfID, decode, func(in Inversion, v any) ([]Step, T, error) {
 		steps, t, produced, unknown := firstBranch(in, stated, bounds, v)
 		if !produced {
 			return nil, t, noBranch(unknown, "none of the %d alternatives produces %v", len(stated), v)
 		}
 		return steps, t, nil
 	})
+	oneOf.composite = slices.ContainsFunc(stated, func(g Generator[T]) bool { return g.composite })
+	return oneOf
 }
 
 // Optional returns a generator of a pointer to a value of of, or nil: a
@@ -95,7 +97,7 @@ func Optional[T any](of Generator[T]) Generator[*T] {
 		v := of.decode(c)
 		return &v
 	}
-	return NewInvertible(optionalID, decode, func(in Inversion, v any) ([]Step, *T, error) {
+	optional := NewInvertible(optionalID, decode, func(in Inversion, v any) ([]Step, *T, error) {
 		if Absent(v) {
 			return []Step{bitStep(false)}, nil, nil
 		}
@@ -108,6 +110,8 @@ func Optional[T any](of Generator[T]) Generator[*T] {
 		}
 		return append([]Step{bitStep(true)}, steps...), &present, nil
 	})
+	optional.composite = of.composite
+	return optional
 }
 
 // Absent reports whether v is the value of an absent optional: nil, or a

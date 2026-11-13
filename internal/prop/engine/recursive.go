@@ -34,7 +34,8 @@ type recursion[T any] struct {
 // maxLeaves values from the base, every further position takes the base,
 // with bounds [0, 0]. Its simplest value is the base's simplest. Each
 // position runs backwards through the base, and through the extension when
-// the base does not produce the value. It panics when maxLeaves is below 1.
+// the base does not produce the value, by the rule of [OneOf] for a branch
+// through a composite. It panics when maxLeaves is below 1.
 func Recursive[T any](base Generator[T], extend func(self Generator[T]) Generator[T], maxLeaves int) Generator[T] {
 	if maxLeaves < 1 {
 		panic(fmt.Sprintf("prop: %s with %d leaves draws no base value", recursiveID, maxLeaves))
@@ -45,7 +46,9 @@ func Recursive[T any](base Generator[T], extend func(self Generator[T]) Generato
 		defer c.Enter(r)()
 		return r.position(c)
 	}
-	return NewInvertible(recursiveID, decode, r.invert)
+	recursive := NewInvertible(recursiveID, decode, r.invert)
+	recursive.composite = base.composite || r.extend.composite
+	return recursive
 }
 
 // position decodes one position of the value being decoded in c.

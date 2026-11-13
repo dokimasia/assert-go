@@ -59,7 +59,10 @@
 // an example of such an input states its values, and its draws take them
 // without a choice. The case of [Settings.Draws] runs each draw's generator
 // backwards from the draw's entry. A trace replays the draws of a composite
-// in place of the composite, which takes its own entry after theirs.
+// in place of the composite, which takes its own entry after theirs. A
+// one-of, an optional, a list, a dict, a filter or a recursive with a
+// composite inside runs backwards around the place of the composite, and
+// its draw takes its own entry after the entries of the composite's draws.
 //
 // # Generators outside this package
 //

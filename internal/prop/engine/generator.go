@@ -46,6 +46,10 @@ type Generator[T any] struct {
 	// from what the run states for the generators of types, for a generator
 	// of [Picking]. It is nil for any other generator.
 	pick func(using any) (Generator[T], bool)
+	// composite reports a [Composite], or a one-of, an optional, a list, a
+	// dict, a filter or a recursive that has one inside, at any depth. A
+	// draw through a composite takes its entry of a trace once it decodes.
+	composite bool
 }
 
 // erased is a generator with its type erased, as a draw records it for
@@ -112,7 +116,7 @@ func NewInvertible[T any](id string, decode func(*Case) T,
 // Erase returns g as a generator of any: the same id, choices, spans,
 // explain step and inverse, with each value of g as an any.
 func Erase[T any](g Generator[T]) Generator[any] {
-	e := Generator[any]{id: g.id, decode: g.erased.decode, erased: g.erased}
+	e := Generator[any]{id: g.id, decode: g.erased.decode, erased: g.erased, composite: g.composite}
 	if g.invert != nil {
 		e.invert = func(in Inversion, v any) ([]Step, any, error) {
 			steps, t, err := g.invert(in, v)
@@ -265,11 +269,12 @@ func (g Generator[T]) MapBack[U any](f func(T) U, back func(U) (T, error)) Gener
 			v = t
 		}
 		steps, t, err := g.inverse(in, v)
-		if err != nil {
-			return nil, zero, err
+		if err != nil || throughComposite(steps) {
+			return steps, zero, err
 		}
 		return steps, f(t), nil
 	}
+	mapped.composite = g.composite
 	return mapped
 }
 
@@ -278,7 +283,10 @@ func (g Generator[T]) MapBack[U any](f func(T) U, back func(U) (T, error)) Gener
 // from the case's record, so a replay of the record decodes the kept
 // value at its first attempt. After three rejected attempts the filter
 // rejects the case. It runs backwards through g's inverse, for a value
-// that keep reports true for, and states each value as g does.
+// that keep reports true for, and states each value as g does. A value
+// through a composite inside g is not tested, because the record of a
+// composite may not state the parts that keep reads, and the decode still
+// filters the value that the composite returns.
 func (g Generator[T]) Filter(keep func(T) bool) Generator[T] {
 	attempt := func(c *Case) T {
 		span := c.openSpan(filterID)
@@ -303,12 +311,13 @@ func (g Generator[T]) Filter(keep func(T) bool) Generator[T] {
 		if err != nil {
 			return nil, t, err
 		}
-		if !keep(t) {
+		if !throughComposite(steps) && !keep(t) {
 			return nil, t, uninvertible("the filter rejects %v", t)
 		}
 		return steps, t, nil
 	})
 	filtered.erased.neutral = g.erased.neutral
+	filtered.composite = g.composite
 	return filtered
 }
 
@@ -325,13 +334,20 @@ func (g Generator[T]) Bind[U any](f func(T) Generator[U]) Generator[U] {
 
 // Composite returns a generator whose value f returns from the case it
 // receives. f draws from other generators, in one span around them all. It
-// has no inverse.
+// has no inverse of its own: a value runs backwards to the place of the
+// composite, which makes no choice, so only a case that follows a trace
+// replays it, through the entries of the draws of f.
 func Composite[T any](f func(*Case) T) Generator[T] {
-	return NewGenerator(compositeID, func(c *Case) T {
+	g := NewInvertible(compositeID, func(c *Case) T {
 		span := c.openSpan(compositeID)
 		defer c.closeSpan(span)
 		return f(c)
+	}, func(Inversion, any) ([]Step, T, error) {
+		var zero T
+		return []Step{{Composite: true}}, zero, nil
 	})
+	g.composite = true
+	return g
 }
 
 // Just returns a generator of value alone. It makes no choice, and runs
@@ -356,7 +372,12 @@ func Just[T any](value T) Generator[T] {
 // choices are the ones that decode to the entry's value. A draw of a
 // [Composite] takes no entry when it starts. Its draws take theirs, and it
 // takes the next entry by its label alone once it decodes, as a case records
-// a composite after its draws. In an example of values, the draw takes the next value
+// a composite after its draws. A draw through a composite, of a one-of, an
+// optional, a list, a dict, a filter or a recursive that has one inside,
+// takes the first entry with its label up to the next step entry. When the
+// entry's value runs backwards through a composite, the draws of the
+// composite take the entries before it, and the draw takes it once it
+// decodes. In an example of values, the draw takes the next value
 // while one is left, and makes no choice and opens no span. A draw of a
 // generator of [Picking] draws from the generator that its pick returns,
 // where it returns one. The draw keeps what the run states for the
@@ -378,16 +399,21 @@ func Draw[T any](c *Case, g Generator[T], label string) T {
 			return t
 		}
 	}
-	composite := g.id == compositeID
-	if c.inverting != nil && !composite {
-		in := Inversion{using: c.currentUsing()}
-		c.enterDraw(label, func(v any) ([]choice.Choice, error) { return invert(in, g, v) })
+	if c.inverting != nil {
+		if g.id == compositeID {
+			c.enterComposite()
+		} else {
+			in := Inversion{using: c.currentUsing()}
+			c.enterDraw(label, g.composite, func(v any) ([]choice.Choice, bool, error) {
+				return invertThrough(in, g, v)
+			})
+		}
 	}
 	span := c.nextSpan()
 	defer c.closeDraw(c.openDraw(label))
 	v := g.decode(c)
-	if c.inverting != nil && composite {
-		c.leaveComposite(label)
+	if c.inverting != nil {
+		c.leaveDraw(label)
 	}
 	c.draw(label, v, span, g.erased)
 	return v

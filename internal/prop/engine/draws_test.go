@@ -276,6 +276,460 @@ func TestDraws(t *testing.T) {
 			})
 		}
 
+		digitOrPair := engine.OneOf(engine.Erase(count), engine.Erase(pair))
+		drawsDigitOrPair := func(c *engine.Case) []any { return []any{engine.Draw(c, digitOrPair, "pair")} }
+
+		t.Run("replays a one-of through a composite after the entries of the composite's draws", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Draws = []engine.Entry{
+				{Label: "a", Value: 7},
+				{Label: "b", Value: 3},
+				{Label: "pair", Value: []int{7, 3}},
+			}
+			got, calls := drawsRun(drawsDigitOrPair, s)
+			assert.NoError(t, got.Refused, "the one-of takes its entry once the pair decodes")
+			assert.Equal(t, calls[0].values, []any{[]int{7, 3}}, "the values of the entries of a and b")
+			assert.True(t, sameChoices(calls[0].choices, integers(1, 7, 3)), "the index of the pair, then a and b")
+		})
+
+		t.Run("takes the entry of an alternative without a composite when the draw starts", func(t *testing.T) {
+			t.Parallel()
+			pairFirst := engine.OneOf(engine.Erase(pair), engine.Erase(count))
+			s := settled()
+			s.Draws = []engine.Entry{{Label: "pair", Value: 7}, {Label: "x", Value: 5}}
+			_, calls := drawsRun(func(c *engine.Case) []any {
+				return []any{engine.Draw(c, pairFirst, "pair"), engine.Draw(c, count, "x")}
+			}, s)
+			assert.Equal(t, calls[0].values, []any{7, 5}, "the integer of the one-of, then x")
+			assert.True(t, sameChoices(calls[0].choices, integers(1, 7, 5)), "the index of the integer")
+		})
+
+		t.Run("serves the flags of a list of composites around the draws of each pair", func(t *testing.T) {
+			t.Parallel()
+			pairs := engine.List(pair, sizes(t, 0, 3))
+			s := settled()
+			s.Draws = []engine.Entry{
+				{Label: "a", Value: 1},
+				{Label: "b", Value: 2},
+				{Label: "a", Value: 7},
+				{Label: "b", Value: 3},
+				{Label: "pairs", Value: [][]int{{1, 2}, {7, 3}}},
+			}
+			got, calls := drawsRun(func(c *engine.Case) []any { return []any{engine.Draw(c, pairs, "pairs")} }, s)
+			assert.NoError(t, got.Refused, "the list takes its entry last")
+			assert.Equal(t, calls[0].values, []any{[][]int{{1, 2}, {7, 3}}}, "both pairs")
+			assert.True(t, sameChoices(calls[0].choices, integers(1, 1, 2, 1, 7, 3, 0)),
+				"a flag before each pair, and the stop")
+		})
+
+		optionals := []struct {
+			name      string
+			giveDraws []engine.Entry
+			want      []any
+		}{
+			{
+				name: "replays a present optional composite after the entries of its draws",
+				giveDraws: []engine.Entry{
+					{Label: "a", Value: 7},
+					{Label: "b", Value: 3},
+					{Label: "maybe", Value: []int{7, 3}},
+				},
+				want: []any{[]int{7, 3}},
+			},
+			{
+				name:      "takes the entry of an absent optional composite when the draw starts",
+				giveDraws: []engine.Entry{{Label: "maybe", Value: nil}},
+				want:      []any{[]int(nil)},
+			},
+		}
+		for _, tt := range optionals {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				maybe := engine.Optional(pair)
+				s := settled()
+				s.Draws = tt.giveDraws
+				got, calls := drawsRun(func(c *engine.Case) []any {
+					if v := engine.Draw(c, maybe, "maybe"); v != nil {
+						return []any{*v}
+					}
+					return []any{[]int(nil)}
+				}, s)
+				assert.NoError(t, got.Refused, "the optional takes its entry")
+				assert.Equal(t, calls[0].values, tt.want, "the pair, or no pair")
+			})
+		}
+
+		t.Run("does not test the recorded value of a filtered composite", func(t *testing.T) {
+			t.Parallel()
+			whole := pair.Filter(func(p []int) bool { return len(p) == 2 })
+			s := settled()
+			s.Draws = []engine.Entry{{Label: "a", Value: 7}, {Label: "b", Value: 3}, {Label: "pair", Value: []int{7}}}
+			got, calls := drawsRun(func(c *engine.Case) []any { return []any{engine.Draw(c, whole, "pair")} }, s)
+			assert.NoError(t, got.Refused, "the filter takes its entry once the pair decodes")
+			assert.Equal(t, calls[0].values, []any{[]int{7, 3}}, "the pair that the filter keeps")
+		})
+
+		t.Run("does not compare the recorded values of the composites of a unique list", func(t *testing.T) {
+			t.Parallel()
+			unique := engine.UniqueList(pair, sizes(t, 0, 3))
+			s := settled()
+			s.Draws = []engine.Entry{
+				{Label: "a", Value: 1},
+				{Label: "b", Value: 2},
+				{Label: "a", Value: 3},
+				{Label: "b", Value: 4},
+				{Label: "pairs", Value: [][]int{{0}, {0}}},
+			}
+			got, calls := drawsRun(func(c *engine.Case) []any { return []any{engine.Draw(c, unique, "pairs")} }, s)
+			assert.NoError(t, got.Refused, "the unique list takes its entry last")
+			assert.Equal(t, calls[0].values, []any{[][]int{{1, 2}, {3, 4}}}, "the two distinct pairs")
+		})
+
+		throughRefusals := []struct {
+			name       string
+			giveDraws  []engine.Entry
+			wantPath   fault.Path
+			wantReason string
+		}{
+			{
+				name: "refuses the entry that the composite leaves before the entry of the one-of at its label",
+				giveDraws: []engine.Entry{
+					{Label: "a", Value: 7},
+					{Label: "b", Value: 3},
+					{Label: "b", Value: 4},
+					{Label: "pair", Value: []int{7, 3}},
+				},
+				wantPath:   fault.Path{fault.Index(2), fault.Field("label")},
+				wantReason: `the draw labelled "pair" takes the entry labelled "b"`,
+			},
+			{
+				name: "refuses the next entry when the entry of the one-of follows a step entry",
+				giveDraws: []engine.Entry{
+					{Label: "a", Value: 7},
+					{Label: "b", Value: 3},
+					{Step: putStep},
+					{Label: "pair", Value: []int{7, 3}},
+				},
+				wantPath:   fault.Path{fault.Index(0), fault.Field("label")},
+				wantReason: `the draw labelled "pair" takes the entry labelled "a"`,
+			},
+			{
+				name:       "refuses the next entry when a later entry of the one-of has a value without a composite",
+				giveDraws:  []engine.Entry{{Label: "a", Value: 7}, {Label: "pair", Value: 5}},
+				wantPath:   fault.Path{fault.Index(0), fault.Field("label")},
+				wantReason: `the draw labelled "pair" takes the entry labelled "a"`,
+			},
+			{
+				name: "refuses an entry of the one-of without a value at the entry's value",
+				giveDraws: []engine.Entry{
+					{Label: "a", Value: 7},
+					{Label: "b", Value: 3},
+					{Label: "pair", Unstated: true},
+				},
+				wantPath:   fault.Path{fault.Index(2), fault.Field("value")},
+				wantReason: "the entry records no value",
+			},
+		}
+		for _, tt := range throughRefusals {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				s := settled()
+				s.Draws = tt.giveDraws
+				got, calls := drawsRun(drawsDigitOrPair, s)
+				f := assert.ErrorAs[*fault.Error](t, got.Refused, "a fault")
+				assert.Equal(t, []any{f.Path, f.Reason}, []any{tt.wantPath, tt.wantReason}, "the entry, and the reason")
+				assert.Length(t, calls, 1, "no other case runs")
+			})
+		}
+
+		t.Run("refuses the entry of a one-of that a draw inside takes at the entry's label", func(t *testing.T) {
+			t.Parallel()
+			sameLabel := engine.Composite(func(c *engine.Case) []int { return []int{engine.Draw(c, count, "pair")} })
+			single := engine.OneOf(sameLabel)
+			s := settled()
+			s.Draws = []engine.Entry{{Label: "pair", Value: 5}, {Label: "pair", Value: []int{5}}}
+			got, _ := drawsRun(func(c *engine.Case) []any { return []any{engine.Draw(c, single, "pair")} }, s)
+			f := assert.ErrorAs[*fault.Error](t, got.Refused, "a fault")
+			assert.Equal(t, []any{f.Path, f.Reason}, []any{
+				fault.Path{fault.Index(0), fault.Field("label")},
+				`a draw inside the draw labelled "pair" takes the entry of the draw`,
+			}, "the first entry's label, and the reason")
+		})
+
+		keyPair := engine.Composite(func(c *engine.Case) int { return engine.Draw(c, count, "k") })
+		sum := func(p []int) int { return p[0] + p[1] }
+		split := func(s int) ([]int, error) { return []int{s}, nil }
+		same := func(v int) int { return v }
+		digitBack := func(v int) (int, error) { return v, nil }
+		erasedList := func(self engine.Generator[any]) engine.Generator[any] {
+			return engine.Erase(engine.List(self, sizes(t, 0, 2)))
+		}
+		draws := func(g engine.Generator[any]) func(*engine.Case) []any {
+			return func(c *engine.Case) []any { return []any{engine.Draw(c, g, "g")} }
+		}
+		throughs := []struct {
+			name     string
+			giveDraw func(*engine.Case) []any
+		}{
+			{
+				name:     "takes a later entry for a one-of with a composite inside",
+				giveDraw: draws(engine.OneOf(engine.Erase(pair))),
+			},
+			{
+				name:     "takes a later entry for an optional with a composite inside",
+				giveDraw: draws(engine.Erase(engine.Optional(pair))),
+			},
+			{
+				name:     "takes a later entry for a list with a composite inside",
+				giveDraw: draws(engine.Erase(engine.List(pair, sizes(t, 0, 2)))),
+			},
+			{
+				name:     "takes a later entry for a unique list with a composite inside",
+				giveDraw: draws(engine.Erase(engine.UniqueList(pair, sizes(t, 0, 2)))),
+			},
+			{
+				name:     "takes a later entry for a dict with a composite key",
+				giveDraw: draws(engine.Erase(engine.Dict(keyPair, count, sizes(t, 0, 2)))),
+			},
+			{
+				name:     "takes a later entry for a dict with a composite value",
+				giveDraw: draws(engine.Erase(engine.Dict(count, pair, sizes(t, 0, 2)))),
+			},
+			{
+				name:     "takes a later entry for a filter of a composite",
+				giveDraw: draws(engine.Erase(pair.Filter(func([]int) bool { return true }))),
+			},
+			{
+				name:     "takes a later entry for a map back of a one-of with a composite inside",
+				giveDraw: draws(engine.Erase(engine.OneOf(pair).MapBack(sum, split))),
+			},
+			{
+				name:     "takes a later entry for a recursive with a composite base",
+				giveDraw: draws(engine.Recursive(engine.Erase(pair), erasedList, engine.DefaultMaxLeaves)),
+			},
+			{
+				name: "takes a later entry for a recursive with a composite inside its extension",
+				giveDraw: draws(
+					engine.Recursive(engine.Erase(count), func(self engine.Generator[any]) engine.Generator[any] {
+						return engine.OneOf(engine.Erase(pair), erasedList(self))
+					}, engine.DefaultMaxLeaves),
+				),
+			},
+		}
+		for _, tt := range throughs {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				s := settled()
+				s.Draws = []engine.Entry{{Label: "a", Value: 7}, {Label: "g", Unstated: true}}
+				got, _ := drawsRun(tt.giveDraw, s)
+				f := assert.ErrorAs[*fault.Error](t, got.Refused, "a fault")
+				assert.Equal(t, []any{f.Path, f.Reason}, []any{
+					fault.Path{fault.Index(1), fault.Field("value")},
+					"the entry records no value",
+				}, "the second entry's value, and the reason")
+			})
+		}
+
+		nexts := []struct {
+			name     string
+			giveDraw func(*engine.Case) []any
+		}{
+			{
+				name:     "takes the next entry for a one-of without a composite",
+				giveDraw: draws(engine.OneOf(engine.Erase(count))),
+			},
+			{
+				name:     "takes the next entry for an optional without a composite",
+				giveDraw: draws(engine.Erase(engine.Optional(count))),
+			},
+			{
+				name:     "takes the next entry for a list without a composite",
+				giveDraw: draws(engine.Erase(engine.List(count, sizes(t, 0, 2)))),
+			},
+			{
+				name:     "takes the next entry for a unique list without a composite",
+				giveDraw: draws(engine.Erase(engine.UniqueList(count, sizes(t, 0, 2)))),
+			},
+			{
+				name:     "takes the next entry for a dict without a composite",
+				giveDraw: draws(engine.Erase(engine.Dict(count, count, sizes(t, 0, 2)))),
+			},
+			{
+				name:     "takes the next entry for a filter without a composite",
+				giveDraw: draws(engine.Erase(count.Filter(func(int) bool { return true }))),
+			},
+			{
+				name:     "takes the next entry for a map back without a composite",
+				giveDraw: draws(engine.Erase(count.MapBack(same, digitBack))),
+			},
+			{
+				name:     "takes the next entry for an erased generator without a composite",
+				giveDraw: draws(engine.Erase(count)),
+			},
+			{
+				name:     "takes the next entry for a recursive without a composite",
+				giveDraw: draws(engine.Recursive(engine.Erase(count), erasedList, engine.DefaultMaxLeaves)),
+			},
+		}
+		for _, tt := range nexts {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				s := settled()
+				s.Draws = []engine.Entry{{Label: "a", Value: 7}, {Label: "g", Unstated: true}}
+				got, _ := drawsRun(tt.giveDraw, s)
+				f := assert.ErrorAs[*fault.Error](t, got.Refused, "a fault")
+				assert.Equal(t, []any{f.Path, f.Reason}, []any{
+					fault.Path{fault.Index(0), fault.Field("label")},
+					`the draw labelled "g" takes the entry labelled "a"`,
+				}, "the first entry's label, and the reason")
+			})
+		}
+
+		t.Run("does not map back the value of a one-of through a composite", func(t *testing.T) {
+			t.Parallel()
+			total := engine.OneOf(pair).MapBack(sum, split)
+			s := settled()
+			s.Draws = []engine.Entry{{Label: "a", Value: 7}, {Label: "b", Value: 3}, {Label: "sum", Value: 10}}
+			got, calls := drawsRun(func(c *engine.Case) []any { return []any{engine.Draw(c, total, "sum")} }, s)
+			assert.NoError(t, got.Refused, "the map back takes its entry once the pair decodes")
+			assert.Equal(t, calls[0].values, []any{10}, "the sum of the pair")
+		})
+
+		t.Run("takes the entry of a draw through a composite that draws nothing", func(t *testing.T) {
+			t.Parallel()
+			nothing := engine.OneOf(engine.Composite(func(*engine.Case) int { return 1 }))
+			s := settled()
+			s.Draws = []engine.Entry{{Label: "pair", Value: 1}, {Label: "x", Value: 5}}
+			got, calls := drawsRun(func(c *engine.Case) []any {
+				return []any{engine.Draw(c, nothing, "pair"), engine.Draw(c, count, "x")}
+			}, s)
+			assert.NoError(t, got.Refused, "each draw takes its entry")
+			assert.Equal(t, calls[0].values, []any{1, 5}, "the composite, then x")
+		})
+
+		t.Run("refuses the next entry when no later entry has the label at the next entry", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Draws = []engine.Entry{{Label: "x", Value: 5}, {Label: "a", Value: 7}}
+			got, _ := drawsRun(func(c *engine.Case) []any {
+				return []any{engine.Draw(c, count, "x"), engine.Draw(c, digitOrPair, "pair")}
+			}, s)
+			f := assert.ErrorAs[*fault.Error](t, got.Refused, "a fault")
+			assert.Equal(t, []any{f.Path, f.Reason}, []any{
+				fault.Path{fault.Index(1), fault.Field("label")},
+				`the draw labelled "pair" takes the entry labelled "a"`,
+			}, "the second entry's label, and the reason")
+		})
+
+		t.Run("serves the targets of each draw past the last entry and of a choice after them", func(t *testing.T) {
+			t.Parallel()
+			s := settled()
+			s.Draws = []engine.Entry{{Label: "count", Value: 4}}
+			_, calls := drawsRun(func(c *engine.Case) []any {
+				return []any{
+					engine.Draw(c, count, "count"),
+					engine.Draw(c, count, "x"),
+					engine.Draw(c, count, "y"),
+					c.Integer(digitRange).Magnitude(),
+				}
+			}, s)
+			assert.Equal(t, calls[0].values, []any{4, 0, 0, uint64(0)}, "the entry's value, then the targets")
+		})
+
+		emptyLabels := []struct {
+			name     string
+			giveDraw func(*engine.Case) []any
+			giveSeen []engine.Entry
+			wantPath fault.Path
+		}{
+			{
+				name:     "refuses a step entry for a draw labelled with the empty string",
+				giveDraw: func(c *engine.Case) []any { return []any{engine.Draw(c, count, "")} },
+				giveSeen: []engine.Entry{{Step: putStep}},
+				wantPath: fault.Path{fault.Index(0), fault.Field("label")},
+			},
+			{
+				name:     "refuses a step entry at the end of a composite labelled with the empty string",
+				giveDraw: func(c *engine.Case) []any { return []any{engine.Draw(c, pair, "")} },
+				giveSeen: []engine.Entry{{Label: "a", Value: 7}, {Label: "b", Value: 3}, {Step: putStep}},
+				wantPath: fault.Path{fault.Index(2), fault.Field("label")},
+			},
+		}
+		for _, tt := range emptyLabels {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				s := settled()
+				s.Draws = tt.giveSeen
+				got, _ := drawsRun(tt.giveDraw, s)
+				f := assert.ErrorAs[*fault.Error](t, got.Refused, "a fault")
+				assert.Equal(
+					t,
+					[]any{f.Path, f.Reason},
+					[]any{tt.wantPath, `the draw labelled "" takes the step entry of "put"`},
+					"the step entry's label, and the reason",
+				)
+			})
+		}
+
+		t.Run(
+			"refuses an entry whose choices the replay of the inverse does not decode at its value",
+			func(t *testing.T) {
+				t.Parallel()
+				liar := engine.NewInvertible("liar", func(c *engine.Case) int {
+					return int(c.Integer(digitRange).Magnitude())
+				}, func(engine.Inversion, any) ([]engine.Step, int, error) {
+					return []engine.Step{{Bounds: choice.OfInteger(digitRange), Value: integers(3)[0]}}, 5, nil
+				})
+				s := settled()
+				s.Draws = []engine.Entry{{Label: "x", Value: 5}}
+				got, _ := drawsRun(func(c *engine.Case) []any { return []any{engine.Draw(c, liar, "x")} }, s)
+				f := assert.ErrorAs[*fault.Error](t, got.Refused, "a fault")
+				assert.Equal(t, []any{f.Path, f.Reason}, []any{
+					fault.Path{fault.Index(0), fault.Field("value")},
+					"the choices of 5 decode to 3",
+				}, "the entry's value, and the reason")
+			},
+		)
+
+		dicts := []struct {
+			name      string
+			giveDraw  func(*engine.Case) []any
+			giveDraws []engine.Entry
+			wantPath  fault.Path
+		}{
+			{
+				name:     "refuses the entry of a dict with composite values at the entry's value",
+				giveDraw: draws(engine.Erase(engine.Dict(count, pair, sizes(t, 0, 2)))),
+				giveDraws: []engine.Entry{
+					{Label: "a", Value: 1},
+					{Label: "b", Value: 2},
+					{Label: "g", Value: map[int][]int{5: {1, 2}}},
+				},
+				wantPath: fault.Path{fault.Index(2), fault.Field("value"), fault.Key(5)},
+			},
+			{
+				name:      "refuses the entry of a dict with composite keys at the entry's value",
+				giveDraw:  draws(engine.Erase(engine.Dict(keyPair, count, sizes(t, 0, 2)))),
+				giveDraws: []engine.Entry{{Label: "k", Value: 5}, {Label: "g", Value: map[int]int{5: 1}}},
+				wantPath:  fault.Path{fault.Index(1), fault.Field("value"), fault.Key(5)},
+			},
+		}
+		for _, tt := range dicts {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				s := settled()
+				s.Draws = tt.giveDraws
+				got, _ := drawsRun(tt.giveDraw, s)
+				assert.ErrorIs(t, got.Refused, engine.ErrNoInverse, "the order of the entries of a map is unknown")
+				f := assert.ErrorAs[*fault.Error](t, got.Refused, "a fault")
+				assert.Equal(t, []any{f.Path, f.Reason}, []any{
+					tt.wantPath,
+					"a map does not state the order in which its composites drew",
+				}, "the entry's value at its key, and the reason")
+			})
+		}
+
 		t.Run("refuses a draw entry without a value at the entry's value", func(t *testing.T) {
 			t.Parallel()
 			s := settled()

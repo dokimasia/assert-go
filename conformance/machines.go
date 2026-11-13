@@ -13,6 +13,7 @@ import (
 	"go.dokimi.dev/assert"
 	"go.dokimi.dev/assert/history"
 	"go.dokimi.dev/assert/internal/fault"
+	"go.dokimi.dev/assert/internal/prop/engine"
 	"go.dokimi.dev/assert/prop"
 	"go.dokimi.dev/assert/stateful"
 )
@@ -53,8 +54,12 @@ const (
 	ticks      = 4
 	// advanceOp is the operation of the advance of the ticker subjects.
 	advanceOp = "advance"
-	// pairIdentity is the assertion of the failure of pair-fails-at-7-and-3.
+	// pairIdentity is the assertion of the failure of the subjects of the
+	// pair.
 	pairIdentity = "pair"
+	// failingDigit is the integer whose put fails in
+	// one-of-pair-fails-at-7-and-3.
+	failingDigit = 7
 )
 
 // The members of a machines vector that the path of a fault names.
@@ -82,9 +87,18 @@ var (
 	pairs = prop.Composite(func(c *prop.Case) []int {
 		return []int{c.Draw(digits, "a"), c.Draw(digits, "b")}
 	})
+	// digitOrPair are the inputs of the put of one-of-pair-fails-at-7-and-3:
+	// a one-of of a digit and the composite pair.
+	digitOrPair = prop.OneOf(
+		prop.Generator[any](engine.Erase(engine.Generator[int](digits))),
+		prop.Generator[any](engine.Erase(engine.Generator[[]int](pairs))),
+	)
+	// pairLists are the inputs of the put of pairs-fail-at-7-and-3: a list
+	// of 0 to 3 composite pairs.
+	pairLists = prop.List(pairs, prop.MinSize(0), prop.MaxSize(3))
 )
 
-// failingPair is the pair whose put fails in pair-fails-at-7-and-3.
+// failingPair is the pair whose put fails in the subjects of the pair.
 var failingPair = []int{7, 3}
 
 // errRefused is the error of an increment that counter-refuses-every-third
@@ -95,7 +109,7 @@ var errRefused = errors.New("conformance: refused")
 // options of a vector's setup.
 type machineSubject func(c *prop.Case, o machineOptions)
 
-// machineSubjects returns the thirteen machine subjects of the definition, by
+// machineSubjects returns the fifteen machine subjects of the definition, by
 // name, for one run. A subject that counts over the cases of a run starts
 // at 0 in each map that it returns.
 func machineSubjects() map[string]machineSubject {
@@ -115,28 +129,51 @@ func machineSubjects() map[string]machineSubject {
 		"ticker-skips-its-first-tick": func(c *prop.Case, o machineOptions) { ticker(c, o, true) },
 		"ticker":                      func(c *prop.Case, o machineOptions) { ticker(c, o, false) },
 		"spins-until-a-flag":          spinner,
-		"pair-fails-at-7-and-3":       pairFails,
+		"pair-fails-at-7-and-3": func(c *prop.Case, o machineOptions) {
+			pairFails(c, o, func(c *prop.Case) any { return c.Draw(pairs, "pair") })
+		},
+		"one-of-pair-fails-at-7-and-3": func(c *prop.Case, o machineOptions) {
+			pairFails(c, o, func(c *prop.Case) any { return c.Draw(digitOrPair, "pair") })
+		},
+		"pairs-fail-at-7-and-3": func(c *prop.Case, o machineOptions) {
+			pairFails(c, o, func(c *prop.Case) any { return c.Draw(pairLists, "pairs") })
+		},
 	}
 }
 
 // pairFails runs the machine without a spec whose actions are noop, which
-// does nothing, and put, whose input is a pair of digits that a composite
-// draws. put fails with the identity pair for the pair 7 and 3.
-func pairFails(c *prop.Case, o machineOptions) {
+// does nothing, and put, whose input draw draws. put fails with the identity
+// pair for the inputs that failsPut reports.
+func pairFails(c *prop.Case, o machineOptions, draw func(*prop.Case) any) {
 	stateful.Steps(c, marked(o, stateful.Machine[struct{}]{
 		Actions: []stateful.Action[struct{}]{{
 			Name: "noop",
 			Run:  func(*prop.Case, int, any) {},
 		}, {
 			Name:  putOp,
-			Input: func(c *prop.Case, _ struct{}) any { return c.Draw(pairs, "pair") },
+			Input: func(c *prop.Case, _ struct{}) any { return draw(c) },
 			Run: func(c *prop.Case, _ int, input any) {
-				if pair, _ := input.([]int); slices.Equal(pair, failingPair) {
+				if failsPut(input) {
 					c.Report(assert.Failure{Assertion: pairIdentity}, true)
 				}
 			},
 		}},
 	}), o.steps...)
+}
+
+// failsPut reports whether the put of a subject of the pair fails for
+// input: the integer 7, the pair 7 and 3, or a list of pairs that has the
+// pair.
+func failsPut(input any) bool {
+	switch v := input.(type) {
+	case int:
+		return v == failingDigit
+	case [][]int:
+		return slices.ContainsFunc(v, func(pair []int) bool { return slices.Equal(pair, failingPair) })
+	default:
+		pair, _ := v.([]int)
+		return slices.Equal(pair, failingPair)
+	}
 }
 
 // machinesVector is a machines vector: a subject, the options of its steps,

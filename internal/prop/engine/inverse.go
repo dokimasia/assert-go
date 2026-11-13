@@ -32,6 +32,11 @@ type Step struct {
 	Bounds choice.Bounds
 	// Value is the choice.
 	Value choice.Choice
+	// Composite marks the place of a [Composite], which makes no choice of
+	// its own. In a case that follows a trace the draws of the composite
+	// take their own entries, and the steps after the place serve the
+	// generator around the composite.
+	Composite bool
 }
 
 // Inversion is what the inverse of a generator passes to the inverse of
@@ -51,8 +56,10 @@ type Inversion struct {
 // Where more than one sequence of choices decodes to a value, the inverse
 // takes the first in a fixed order:
 //
-//   - A one-of takes its first alternative that produces the value, and a
-//     recursive value its base before its extension.
+//   - A one-of takes its first alternative that produces the value without
+//     a composite, and its first alternative through a composite only when
+//     no other alternative produces the value. A recursive value takes its
+//     base before its extension by the same rule.
 //   - A sampled-from takes the first equal value, and a permutation the
 //     smallest index at each swap.
 //   - An optional is absent before present, so an absent optional of an
@@ -71,6 +78,8 @@ type Inversion struct {
 // produces, as [2] does to the third element of a list. A generator built
 // with [Generator.Map], [Generator.Bind] or [Composite] has no inverse, and
 // Invert returns a fault of the kind [ErrNoInverse] for each of its values.
+// So does a value that runs backwards through a composite inside g, whose
+// draws only the entries of a trace state.
 // A filter, a collection, an optional and a shape pass on that fault of the
 // generator inside them. A one-of and a recursive generator return it when
 // none of their branches produces the value and one of them has no inverse.
@@ -94,6 +103,44 @@ func invert[T any](in Inversion, g Generator[T], v any) ([]choice.Choice, error)
 	if err != nil {
 		return nil, err
 	}
+	if throughComposite(steps) {
+		return nil, noInverse("%s has no inverse", compositeID)
+	}
+	return verified(in, g, v, steps, normal)
+}
+
+// invertThrough returns the choices of the requests of g around the
+// composites inside it for v in the inversion in, and whether v runs
+// backwards through one. A composite makes no choice, because its draws take
+// their own entries in a trace. A v without a composite has the choices that
+// invert returns, which a replay checks.
+func invertThrough[T any](in Inversion, g Generator[T], v any) ([]choice.Choice, bool, error) {
+	steps, normal, err := g.inverse(in, v)
+	if err != nil {
+		return nil, false, err
+	}
+	if !throughComposite(steps) {
+		choices, err := verified(in, g, v, steps, normal)
+		return choices, false, err
+	}
+	choices := make([]choice.Choice, 0, len(steps))
+	for _, s := range steps {
+		if !s.Composite {
+			choices = append(choices, s.Value)
+		}
+	}
+	return choices, true, nil
+}
+
+// throughComposite reports whether steps run backwards through a composite.
+func throughComposite(steps []Step) bool {
+	return slices.ContainsFunc(steps, func(s Step) bool { return s.Composite })
+}
+
+// verified returns the choices of steps, which decode to normal under g for
+// v in the inversion in, once a replay records them unchanged and decodes
+// normal.
+func verified[T any](in Inversion, g Generator[T], v any, steps []Step, normal T) ([]choice.Choice, error) {
 	choices := make([]choice.Choice, len(steps))
 	cost := 0
 	for i, s := range steps {
@@ -128,19 +175,27 @@ func noInverse(format string, args ...any) *fault.Error {
 
 // firstBranch returns the steps of the first of branches whose inverse in
 // the inversion in produces v, after the step of its index under bounds, and
-// the value they decode to. When no branch produces v, it reports false, and
-// whether one of the branches has no inverse.
+// the value they decode to. A branch through a composite produces every v,
+// so it counts only when no branch produces v without one. When no branch
+// produces v, it reports false, and unknown reports whether one of the
+// branches has no inverse.
 func firstBranch[T any](in Inversion, branches []Generator[T], bounds choice.IntegerBounds, v any) (
 	steps []Step, value T, produced, unknown bool,
 ) {
 	for i, g := range branches {
 		branch, t, err := g.inverse(in, v)
-		if err == nil {
+		if err != nil {
+			unknown = unknown || errors.Is(err, ErrNoInverse)
+			continue
+		}
+		if !throughComposite(branch) {
 			return append([]Step{indexStep(bounds, i)}, branch...), t, true, false
 		}
-		unknown = unknown || errors.Is(err, ErrNoInverse)
+		if !produced {
+			steps, value, produced = append([]Step{indexStep(bounds, i)}, branch...), t, true
+		}
 	}
-	return nil, value, false, unknown
+	return steps, value, produced, unknown
 }
 
 // noBranch returns the fault of a value that no branch of a generator

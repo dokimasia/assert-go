@@ -52,9 +52,11 @@ func List[T any](of Generator[T], sizes choice.Sizes) Generator[[]T] {
 		defer c.closeSpan(span)
 		return collect(c, sizes, ElementLabel, of.decode, nil, nil)
 	}
-	return NewInvertible(listID, decode, func(in Inversion, v any) ([]Step, []T, error) {
+	list := NewInvertible(listID, decode, func(in Inversion, v any) ([]Step, []T, error) {
 		return invertList(in, of, sizes, v, false)
 	})
+	list.composite = of.composite
+	return list
 }
 
 // UniqueList returns a generator of lists as [List] does, which discards an
@@ -67,15 +69,19 @@ func UniqueList[T any](of Generator[T], sizes choice.Sizes) Generator[[]T] {
 		defer c.closeSpan(span)
 		return collect(c, sizes, ElementLabel, of.decode, func(v T) string { return canonicalKey(v) }, nil)
 	}
-	return NewInvertible(listID, decode, func(in Inversion, v any) ([]Step, []T, error) {
+	list := NewInvertible(listID, decode, func(in Inversion, v any) ([]Step, []T, error) {
 		return invertList(in, of, sizes, v, true)
 	})
+	list.composite = of.composite
+	return list
 }
 
 // invertList returns the steps of a list of of's values under sizes that
 // decode to v, a slice or an array, in the inversion in, and the list they
 // decode to. A unique list refuses two elements that decode to equal values.
-// The fault of an element is at the element's index.
+// It does not compare an element through a composite, because the record of
+// a composite may not state its value, and the decode still discards a
+// repeated element. The fault of an element is at the element's index.
 func invertList[T any](in Inversion, of Generator[T], sizes choice.Sizes, v any, unique bool) (
 	[]Step, []T, error,
 ) {
@@ -92,7 +98,7 @@ func invertList[T any](in Inversion, of Generator[T], sizes choice.Sizes, v any,
 			return nil, nil, fault.At(err, fault.Index(i))
 		}
 		parts[i], list[i] = steps, t
-		if !unique {
+		if !unique || throughComposite(steps) {
 			continue
 		}
 		key := canonicalKey(list[i])
@@ -129,16 +135,20 @@ func Dict[K comparable, V any](keys Generator[K], values Generator[V], sizes cho
 		}
 		return m
 	}
-	return NewInvertible(dictID, decode, func(in Inversion, v any) ([]Step, map[K]V, error) {
+	dict := NewInvertible(dictID, decode, func(in Inversion, v any) ([]Step, map[K]V, error) {
 		return invertDict(in, keys, values, sizes, v)
 	})
+	dict.composite = keys.composite || values.composite
+	return dict
 }
 
 // invertDict returns the steps of a map of keys and values under sizes
 // that decode to v, a map, in the inversion in, and the map they decode to.
 // It refuses two keys that decode to equal keys. The fault of a value is at
 // its key, and so is the fault of a key that keys does not produce, whose
-// cause is the fault of keys.
+// cause is the fault of keys. An entry through a composite has no inverse
+// at its key: the map does not state the order in which the case drew its
+// entries, and the draws of the composites follow that order.
 func invertDict[K comparable, V any](in Inversion, keys Generator[K], values Generator[V], sizes choice.Sizes,
 	v any,
 ) ([]Step, map[K]V, error) {
@@ -159,6 +169,10 @@ func invertDict[K comparable, V any](in Inversion, keys Generator[K], values Gen
 		valueSteps, val, err := values.inverse(in, value.Interface())
 		if err != nil {
 			return nil, nil, fault.At(err, fault.Key(stated))
+		}
+		if throughComposite(keySteps) || throughComposite(valueSteps) {
+			refusal := noInverse("a map does not state the order in which its composites drew")
+			return nil, nil, fault.At(refusal, fault.Key(stated))
 		}
 		text := canonicalKey(k)
 		if _, repeated := seen[text]; repeated {

@@ -40,88 +40,175 @@ type Entry struct {
 }
 
 // inverting is the provider of a case that follows a trace. Each draw takes
-// the next entry, and its requests take the choices that decode to the
-// entry's value under the draw's generator. A machine turns each step entry
-// into the choices of one step, which [Trace] serves to its requests. A
-// request with no choice left, and every request once the entries run out,
-// takes its target, as a replay that runs out of choices does.
+// its entry, and its requests take the choices that decode to the entry's
+// value under the draw's generator. A machine turns each step entry into the
+// choices of one step, which [Trace] serves to its requests. A request with
+// no choice left, and every request once the entries run out, takes its
+// target, as a replay that runs out of choices does.
 type inverting struct {
 	// entries are the entries, in request order.
 	entries []Entry
 	// taken is the number of entries that draws and steps have taken.
 	taken int
-	// queue are the choices of the current draw or step that no request has
-	// taken.
-	queue []choice.Choice
+	// open are the draws in progress, the innermost last. The first stands
+	// for the requests outside every draw, such as the steps of a machine.
+	open []openDraw
 }
 
-// value returns the next choice of the current draw, fitted to r's bounds,
-// or r's target when none is left.
+// openDraw is a draw in progress in a case that follows a trace.
+type openDraw struct {
+	// queue are the choices of the draw that no request has taken.
+	queue []choice.Choice
+	// end is the index of the entry that a draw through a composite takes
+	// once it decodes, and -1 for every other draw.
+	end int
+	// byLabel reports a composite, which takes the next entry by its label
+	// alone once it decodes.
+	byLabel bool
+}
+
+// value returns the next choice of the innermost open draw, fitted to r's
+// bounds, or r's target when none is left.
 func (d *inverting) value(r request, _ int) choice.Choice {
-	if len(d.queue) == 0 {
+	open := &d.open[len(d.open)-1]
+	if len(open.queue) == 0 {
 		return r.bounds.Target()
 	}
-	v := d.queue[0]
-	d.queue = d.queue[1:]
+	v := open.queue[0]
+	open.queue = open.queue[1:]
 	return r.bounds.Coerce(v)
 }
 
-// next takes the entry of a draw labelled label, and returns the choices
-// that inverse returns for the entry's value, or the refusal of the entry.
-// A composite passes a nil inverse once its draws have taken their entries,
-// and takes its entry by its label alone. The refusal of a step entry and of
-// an entry of another label is a fault at the entry's label. The refusal of
-// an entry without a value is a fault at the entry's value, and so is the
-// fault of inverse for a value. The path of a refusal starts at the entry's
-// index. A draw past the last entry takes no choice.
-func (d *inverting) next(label string, inverse func(any) ([]choice.Choice, error)) ([]choice.Choice, error) {
+// enter opens a draw labelled label with the choices that inverse returns
+// for the value of its entry, or returns the refusal of the entry. A draw
+// through a composite takes the first entry with its label up to the next
+// step entry. When inverse reports a value through a composite, the draw
+// takes that entry once it decodes. Every other draw takes the next entry
+// now. The refusal of a step entry and of an entry of another label is a
+// fault at the label of the next entry. The refusal of an entry without a
+// value is a fault at the entry's value, and so is the fault of inverse for
+// a value. The path of a refusal starts at the entry's index. A draw past
+// the last entry takes no choice.
+func (d *inverting) enter(label string, through bool, inverse func(any) ([]choice.Choice, bool, error)) error {
 	if d.taken == len(d.entries) {
-		return nil, nil
+		d.open = append(d.open, openDraw{end: -1})
+		return nil
 	}
-	at := fault.Index(d.taken)
-	entry := d.entries[d.taken]
-	d.taken++
-	if entry.Step != nil {
-		refusal := fault.New("the draw labelled %q takes the step entry of %q", label, entry.Step.Action)
-		return nil, fault.At(refusal, at, fault.Field(labelMember))
+	at := d.taken
+	if through {
+		at = d.find(label)
 	}
-	if entry.Label != label {
-		refusal := fault.New("the draw labelled %q takes the entry labelled %q", label, entry.Label)
-		return nil, fault.At(refusal, at, fault.Field(labelMember))
-	}
-	if inverse == nil {
-		return nil, nil
+	entry := d.entries[at]
+	if entry.Step != nil || entry.Label != label {
+		return d.refusal(at, label)
 	}
 	if entry.Unstated {
-		return nil, fault.At(fault.New("the entry records no value"), at, fault.Field(valueMember))
+		return fault.At(fault.New("the entry records no value"), fault.Index(at), fault.Field(valueMember))
 	}
-	choices, err := inverse(entry.Value)
+	choices, composite, err := inverse(entry.Value)
 	if err != nil {
-		return nil, fault.At(err, at, fault.Field(valueMember))
+		return fault.At(err, fault.Index(at), fault.Field(valueMember))
 	}
-	return choices, nil
+	if composite {
+		d.open = append(d.open, openDraw{queue: choices, end: at})
+		return nil
+	}
+	if at != d.taken {
+		return d.refusal(d.taken, label)
+	}
+	d.taken++
+	d.open = append(d.open, openDraw{queue: choices, end: -1})
+	return nil
+}
+
+// leave ends the innermost open draw, labelled label, and takes its entry
+// once it decodes. A composite takes the next entry by its label alone. A
+// draw through a composite takes its entry, which must be the next one, once
+// the draws inside it have taken the entries before it. When a draw inside
+// took that entry, the refusal is at the entry's label.
+func (d *inverting) leave(label string) error {
+	ended := d.open[len(d.open)-1]
+	d.open = d.open[:len(d.open)-1]
+	switch {
+	case ended.byLabel && d.taken < len(d.entries):
+		return d.take(label)
+	case d.taken < ended.end:
+		return d.refusal(d.taken, label)
+	case ended.end >= 0 && d.taken > ended.end:
+		refusal := fault.New("a draw inside the draw labelled %q takes the entry of the draw", label)
+		return fault.At(refusal, fault.Index(ended.end), fault.Field(labelMember))
+	case ended.end >= 0:
+		d.taken++
+	}
+	return nil
+}
+
+// take takes the next entry, a draw entry labelled label, or returns its
+// refusal.
+func (d *inverting) take(label string) error {
+	entry := d.entries[d.taken]
+	if entry.Step != nil || entry.Label != label {
+		return d.refusal(d.taken, label)
+	}
+	d.taken++
+	return nil
+}
+
+// find returns the index of the first draw entry labelled label from the
+// next entry up to the next step entry, and the index of the next entry when
+// there is none.
+func (d *inverting) find(label string) int {
+	for at := d.taken; at < len(d.entries); at++ {
+		entry := d.entries[at]
+		if entry.Step != nil {
+			break
+		}
+		if entry.Label == label {
+			return at
+		}
+	}
+	return d.taken
+}
+
+// refusal returns the refusal of the entry with index for a draw labelled
+// label: a fault at the entry's label that names the step of a step entry or
+// the label of a draw entry.
+func (d *inverting) refusal(index int, label string) error {
+	entry := d.entries[index]
+	refusal := fault.New("the draw labelled %q takes the entry labelled %q", label, entry.Label)
+	if entry.Step != nil {
+		refusal = fault.New("the draw labelled %q takes the step entry of %q", label, entry.Step.Action)
+	}
+	return fault.At(refusal, fault.Index(index), fault.Field(labelMember))
 }
 
 // enterDraw starts a draw labelled label in a case that follows a trace,
-// whose generator's choices for a value inverse returns. The draw takes its
-// entry's choices, and a refused entry ends the case and the calling
+// whose generator's choices for a value inverse returns. through reports a
+// draw through a composite. A refused entry ends the case and the calling
 // goroutine.
-func (c *Case) enterDraw(label string, inverse func(any) ([]choice.Choice, error)) {
-	choices, refusal := c.inverting.next(label, inverse)
+func (c *Case) enterDraw(label string, through bool, inverse func(any) ([]choice.Choice, bool, error)) {
+	refusal := c.inverting.enter(label, through, inverse)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if refusal != nil {
 		c.refusal = refusal
 		c.halt(refused)
 	}
-	c.inverting.queue = choices
 }
 
-// leaveComposite takes the entry of a composite labelled label in a case
-// that follows a trace, once the draws of the composite have taken theirs.
-// A refused entry ends the case and the calling goroutine.
-func (c *Case) leaveComposite(label string) {
-	_, refusal := c.inverting.next(label, nil)
+// enterComposite starts the draw of a composite in a case that follows a
+// trace. The composite takes no entry until it decodes.
+func (c *Case) enterComposite() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.inverting.open = append(c.inverting.open, openDraw{end: -1, byLabel: true})
+}
+
+// leaveDraw ends the draw labelled label in a case that follows a trace,
+// and takes its entry where it takes one once it decodes. A refused entry
+// ends the case and the calling goroutine.
+func (c *Case) leaveDraw(label string) {
+	refusal := c.inverting.leave(label)
 	if refusal == nil {
 		return
 	}
@@ -135,7 +222,7 @@ func (c *Case) leaveComposite(label string) {
 // case tree. It returns how the case ended, with the number of entries that
 // the draws and the steps of the case took.
 func executeTrace(body Body, s Settings, entries []Entry) (Execution, int) {
-	p := &inverting{entries: entries}
+	p := &inverting{entries: entries, open: []openDraw{{end: -1}}}
 	c := newCase(p, s, nil)
 	c.inverting = p
 	e := finish(c, body)
@@ -179,9 +266,9 @@ func (t Trace) Names(action string) bool {
 func (t Trace) Prepare(values ...uint64) {
 	t.c.mu.Lock()
 	defer t.c.mu.Unlock()
-	d := t.c.inverting
+	open := &t.c.inverting.open[len(t.c.inverting.open)-1]
 	for _, v := range values {
-		d.queue = append(d.queue, choice.Choice{Kind: choice.Integer, Integer: choice.UintOf(v)})
+		open.queue = append(open.queue, choice.Choice{Kind: choice.Integer, Integer: choice.UintOf(v)})
 	}
 }
 

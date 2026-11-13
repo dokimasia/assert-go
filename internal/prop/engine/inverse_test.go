@@ -598,6 +598,14 @@ func TestInverse(t *testing.T) {
 				wantReason: "composite has no inverse",
 			},
 			{
+				name: "returns an error for a one-of through a composite",
+				give: func() ([]choice.Choice, error) {
+					pair := engine.Composite(func(c *engine.Case) int { return engine.Draw(c, digit, drawn) })
+					return engine.Invert(engine.OneOf(pair), 8)
+				},
+				wantReason: "composite has no inverse",
+			},
+			{
 				name: "returns an error for a generator built with NewGenerator",
 				give: func() ([]choice.Choice, error) {
 					return engine.Invert(engine.NewGenerator("pair", decodePair), [2]uint64{3, 4})

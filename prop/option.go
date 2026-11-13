@@ -172,12 +172,17 @@ func Explain(enabled bool) Option {
 // of package stateful turns each step entry into the choices of one step. A
 // draw of a [Composite] takes no entry when it starts. Its draws take
 // theirs, and it then takes its own entry by its label, as a store entry
-// records a composite after its draws. A draw past the last entry takes
-// its target. A draw whose label differs from
-// its entry's, a draw whose generator does not produce the entry's value,
-// and a step entry that the machine cannot take at its position fail the
-// test before any other case runs, and the failure names the entry. Entries
-// that are no such array fail the test without a run.
+// records a composite after its draws. A draw of a [OneOf], an [Optional],
+// a [List], a [Dict], a [Generator.Filter] or a [Recursive] with a
+// composite inside takes the first entry with its label up to the next step
+// entry. When the entry's value runs backwards through the composite, the
+// draws of the composite take the entries before it, and the draw takes it
+// once it decodes. A draw past the last entry takes its target. A draw
+// whose label differs from its entry's, a draw whose generator does not
+// produce the entry's value, and a step entry that the machine cannot take
+// at its position fail the test before any other case runs, and the failure
+// names the entry. Entries that are no such array fail the test without a
+// run.
 func Draws(entries string) Option {
 	return Option{set: func(c config) config {
 		c.draws, c.drawn = entries, true
