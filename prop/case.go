@@ -51,11 +51,11 @@ import (
 //
 // # Allocation contract
 //
-// Helper, Clock, Assume, Classify of a counted label, Target of a scored
-// label and Rand allocate nothing. Observe and Cleanup allocate only to grow
-// the case's record, and Logf and Skipf allocate the message they format as
-// well. ReportFault allocates nothing besides what the property's seat
-// allocates for a noted fault.
+// Helper, Clock, Failed, Assume, Classify of a counted label, Target of a
+// scored label and Rand allocate nothing. Observe and Cleanup allocate only
+// to grow the case's record, and Logf and Skipf allocate the message they
+// format as well. ReportFault allocates nothing besides what the property's
+// seat allocates for a noted fault.
 // History allocates the history on its first call. A recording Report
 // allocates twice, for the record's sentence and the message formatted
 // from it. Errorf allocates five times: the message, the frames searched
@@ -113,6 +113,14 @@ func (c *Case) ReportFault(err error, ending bool) {
 // without one.
 func (c *Case) Clock() assert.Clock {
 	return (*engine.Case)(c).Clock()
+}
+
+// Failed reports whether the case has failed: whether it kept a record, or a
+// fault ended a call of its body. A noted fault, a rejection and a skip are
+// no failure. A cleanup of the case also reads a panic that ended the body,
+// so a helper keeps the data of a failing case through [assert.Failed].
+func (c *Case) Failed() bool {
+	return (*engine.Case)(c).Failed()
 }
 
 // Assume rejects the case when condition is false, which ends the calling

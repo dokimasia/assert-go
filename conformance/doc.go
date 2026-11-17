@@ -70,6 +70,12 @@
 //     compares the detail of the record. A passing check reports no record,
 //     so the runner checks the steps of a pass through two more checks
 //     under a budget of the steps and of one step less.
+//   - [Resume] records a script through one history up to the events of each
+//     check, and checks each prefix through Linearizable with one
+//     [go.dokimi.dev/assert/history.Checkpoint]. It compares the verdict, the
+//     detail of a failure and the calls of the spec's Next of each check, and
+//     compares the steps of a pass with the calls of Next of a check of every
+//     call.
 //   - [Serializable] and [SnapshotIsolation] check a recorded script of
 //     list-append transactions through
 //     [go.dokimi.dev/assert/history.Serializable] or
@@ -79,7 +85,7 @@
 // # Machines
 //
 // [Vectors] returns the vectors of machines too. [Machines] runs one of the
-// six machine subjects of the definition, which the runner builds natively,
+// 15 machine subjects of the definition, which the runner builds natively,
 // through [go.dokimi.dev/assert/stateful.Steps] in a run of
 // [go.dokimi.dev/assert/prop.ForAll], under the vector's setup, settings and
 // trace. It compares the detail of the run, each step of the

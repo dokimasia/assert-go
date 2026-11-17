@@ -20,12 +20,13 @@ import (
 // builtID is the id of a vector or a case that a test builds.
 const builtID = "built-by-the-test"
 
-// kinds are the twenty-nine kinds of a vector.
+// kinds are the thirty kinds of a vector.
 var kinds = []conformance.VectorKind{
 	conformance.Decoding, conformance.Generation, conformance.Shrinking, conformance.Coverage,
 	conformance.Bridge, conformance.Token, conformance.Behaviour, conformance.Store, conformance.Shapes,
 	conformance.Inverse, conformance.Draws, conformance.Fixtures, conformance.Forms, conformance.CallRecords,
-	conformance.Seam, conformance.Linearizable, conformance.Serializable, conformance.SnapshotIsolation,
+	conformance.Seam, conformance.Linearizable, conformance.Resume, conformance.Serializable,
+	conformance.SnapshotIsolation,
 	conformance.Machines, conformance.TreeEqual, conformance.TreeContains, conformance.TreeUnchanged,
 	conformance.GoldenMatchTree, conformance.PathAbsent, conformance.IsFile, conformance.IsDir,
 	conformance.LinksTo, conformance.HasContent, conformance.HasMode,

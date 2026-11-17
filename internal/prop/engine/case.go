@@ -330,6 +330,19 @@ func (c *Case) Clock() assert.Clock {
 	return c.recorder.Clock()
 }
 
+// Failed reports whether the case has failed: whether it kept a record, or a
+// fault ended a call of its body. A noted fault, a rejection and a skip are
+// no failure. The case keeps a panic that ends its body before its cleanups
+// run, so a cleanup also reads that panic.
+func (c *Case) Failed() bool {
+	if c.recorder.Failed() {
+		return true
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.fault != nil || c.panicked != nil
+}
+
 // Assume rejects the case when condition is false, which ends the calling
 // goroutine. A rejected case is not counted and not shrunk.
 func (c *Case) Assume(condition bool) {

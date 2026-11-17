@@ -16,7 +16,8 @@ import (
 // fault that ended the check, and the reason of its skip. Its Calls keep the
 // records of the check's calls, for the call of Rejects. Its context derives
 // from the context of the seat of Rejects, and ends with the check. Its
-// cleanups run when the check ends.
+// cleanups run when the check ends, and its Failed reports whether the check
+// failed.
 //
 // Fatalf, Skipf, an aborting record and a fault that ends its call end the
 // calling goroutine once they are kept, as a test's Fatalf ends a test, so
@@ -92,6 +93,16 @@ func (r *rejection) Skipf(format string, args ...any) {
 	runtime.Goexit()
 }
 
+// Failed reports whether the check has failed: whether it received a failure
+// or a fault that ended a call. A cleanup of the check also reads a panic that
+// ended the check.
+func (r *rejection) Failed() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.failed || r.fault != nil
+}
+
 // mark marks the check failed.
 func (r *rejection) mark() {
 	r.mu.Lock()
@@ -141,14 +152,18 @@ func (r *rejection) skip() (reason string, skipped bool) {
 // returns no record. A skip is no verdict on the implementation. When fn
 // fails and then skips, Rejects passes and returns fn's records.
 //
+// fn's seat has Failed, which reports whether fn has received a failure or
+// a fault that ended a call. A noted fault and a skip are no failure. A
+// panic in fn marks the seat failed before the cleanups run.
+//
 //	got := matcher.Rejects(seat, matcher.Fatal, "an unbounded pool fails the check",
 //	    func(s matcher.Seat) { handsOutEveryItem(s, unboundedPool{}) })
 //
 // # Concurrency
 //
 // fn runs on a goroutine of its own, and Rejects returns once that
-// goroutine has ended. A panic in fn is not recovered: it stops the
-// process.
+// goroutine has ended. A panic in fn passes through the cleanups of fn, and
+// then stops the process.
 //
 // # Allocation contract
 //
@@ -165,6 +180,7 @@ func Rejects(seat Seat, mode Mode, msg string, fn func(Seat)) []Failure {
 	go func() {
 		defer close(done)
 		defer r.finish()
+		defer failOnPanic(r.mark)
 		fn(r)
 	}()
 	<-done

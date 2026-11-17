@@ -117,6 +117,17 @@ func (b *bodyContext) end() {
 	}
 }
 
+// failOnPanic calls mark when a panic ends a body, and raises the panic
+// again with the same value. The goroutine of the body defers it after the
+// finish of the body's seat, so mark marks the seat failed before the body's
+// cleanups run. A Goexit is no panic, and recover returns nil for it.
+func failOnPanic(mark func()) {
+	if v := recover(); v != nil {
+		mark()
+		panic(v)
+	}
+}
+
 // FaultReporter is a [Seat] that takes a fault as the error it is, rather
 // than as the writer's text of it, as a [Reporter] takes a failure's record.
 //

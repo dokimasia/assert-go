@@ -183,6 +183,31 @@ func stream(tb assert.TB) string {
 }
 ```
 
+`assert.Failed(tb)` reports whether the test of a helper's seat has failed.
+It calls `Failed` of the first seat of the chain that has the method. A
+`*testing.T` reports a failure of the test or of a subtest. A case of a
+property, the check of `Rejects` and each attempt of `Eventually` report a
+failure, or a fault that ended a call, of their body. A cleanup of the body
+also reads a panic that ended the body. The package testing runs the
+cleanups of a test without parallel subtests before it marks a test that
+panicked failed, so such a cleanup reads false. On a chain without
+`Failed`, the helper ends the call with a fault. A helper keeps the data of
+a failed test for a developer to read:
+
+```go
+func scratch(tb assert.TB) string {
+    tb.Helper()
+    dir, err := os.MkdirTemp("", "store-*")
+    assert.NoError(tb, err, "the scratch directory exists")
+    assert.Cleanup(tb, func() {
+        if !assert.Failed(tb) {
+            os.RemoveAll(dir)
+        }
+    })
+    return dir
+}
+```
+
 A helper that refuses its arguments ends its call with `assert.Fault`. The
 faults of this module end their calls the same way. The first seat of the
 chain that is an `assert.FaultReporter` receives the fault as the error it
@@ -936,16 +961,18 @@ holds itself to it on every run:
   record of each case must state the assertion, the message, the
   verdict and the surface, and on a failure the same fields as typed
   literals.
-- **Properties.** 430 vectors state how the property engine decodes,
+- **Properties.** 452 vectors state how the property engine decodes,
   generates and shrinks inputs, decides coverage, encodes replay tokens,
   stores failures, reports a run and records its calls, shared with
   every other implementation.
-- **Histories.** 108 vectors state the events that a history records, the
+- **Histories.** 119 vectors state the events that a history records, the
   history that `FromIntervals` builds from a log, the verdict, the steps
   and the record of each check of a history against a named spec, and
   the verdict and the record of each isolation check of a history of
-  transactions, shared with every other implementation.
-- **Machines.** 14 vectors state the steps that seven machine subjects
+  transactions. They also state the calls of the spec's `Next` that each
+  check of a growing history makes with a checkpoint. Every other
+  implementation shares them.
+- **Machines.** 36 vectors state the steps that 15 machine subjects
   take, the counterexample that a failure shrinks to, a race that the
   task scheduler finds, the traces that a run follows or refuses, and the
   step that a flaky run's divergence names, shared with every other

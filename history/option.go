@@ -125,13 +125,14 @@ func Final[S any](states *[]S) Option {
 // keeps the searches of a passing check of the same history under the same
 // budget, memo limit and Whole. The events since that check must not
 // complete a call that the search read as pending, and must not join the
-// partition to another. The continued search takes the steps that a search
-// of every call of the partition takes after the order that the kept search
-// found, so the check reports what a check of every call reports: its
-// verdict, its steps, the partition that it reports, its frontier and its
-// final states. Every other partition searches from its first call. After a
-// check that does not pass, cp does not keep a search. A nil cp changes
-// nothing.
+// partition to another. The memo of the search must not contain more
+// configurations than the grown partition may store within the memo limit.
+// The continued search takes the steps that a search of every call of the
+// partition takes after the order that the kept search found, so the check
+// reports what a check of every call reports: its verdict, its steps, the
+// partition that it reports, its frontier and its final states. Every other
+// partition searches from its first call. After a check that does not pass,
+// cp does not keep a search. A nil cp changes nothing.
 //
 // Pass the same spec to every check that passes cp. The kept searches
 // contain the states that the spec of the earlier checks left.

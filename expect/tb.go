@@ -52,6 +52,19 @@ func Skipf(tb TB, format string, args ...any) {
 	assert.Skipf(tb, format, args...)
 }
 
+// Failed reports whether the test of tb has failed, in the same way as
+// [go.dokimi.dev/assert.Failed]. It returns the result of the method Failed of
+// tb, or of the first seat that tb wraps with the method. On a chain without
+// the method, Failed ends the call with a fault.
+//
+// # Allocation contract
+//
+// Failed allocates nothing besides what the method Failed of tb allocates.
+func Failed(tb TB) bool {
+	tb.Helper()
+	return assert.Failed(tb)
+}
+
 // WriteRecord writes record into the output of the test of tb in the same way
 // as [go.dokimi.dev/assert.WriteRecord]. record is the JSON text of one record
 // of kind. For a refused kind or record, WriteRecord ends the call with a

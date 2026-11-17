@@ -171,6 +171,52 @@ func TestWaiting(t *testing.T) {
 		}
 	})
 
+	t.Run("Eventually hands an attempt a seat that reports a failure once the attempt records one", func(t *testing.T) {
+		t.Parallel()
+
+		var before, after bool
+		matcher.Eventually(&matchertest.Seat{}, matcher.Fatal, 0, matchertest.ShortInterval, func(trial matcher.Seat) {
+			before = trial.(failer).Failed()
+			matcher.True(trial, matcher.Soft, false, matchertest.InnerReason)
+			after = trial.(failer).Failed()
+		}, "the body settles")
+		if before || !after {
+			t.Fatalf("the seat of the attempt reported %v before the failure and %v after it, want false and true",
+				before, after)
+		}
+	})
+
+	t.Run("Eventually hands the cleanups of an attempt a seat that reports a failure that ends it", func(t *testing.T) {
+		t.Parallel()
+
+		var failed bool
+		matcher.Eventually(&matchertest.Seat{}, matcher.Fatal, 0, matchertest.ShortInterval, func(trial matcher.Seat) {
+			matcher.Cleanup(trial, "assert.Cleanup", func() { failed = trial.(failer).Failed() })
+			matcher.True(trial, matcher.Fatal, false, matchertest.InnerReason)
+		}, "the body settles")
+		if !failed {
+			t.Fatal("a cleanup read no failure of an attempt that an aborting failure ended")
+		}
+	})
+
+	t.Run("Eventually hands the cleanups of an attempt a seat that reports a panic that ends it", func(t *testing.T) {
+		t.Parallel()
+
+		var failed bool
+		raised := matchertest.Raised(func() {
+			matcher.Eventually(&matchertest.Seat{}, matcher.Fatal,
+				matchertest.PatientTimeout, matchertest.ShortInterval,
+				func(trial matcher.Seat) {
+					matcher.Cleanup(trial, "assert.Cleanup", func() { failed = trial.(failer).Failed() })
+					panic(matchertest.ErrSample)
+				}, "the panic propagates")
+		})
+		if err, _ := raised.(error); !errors.Is(err, matchertest.ErrSample) || !failed {
+			t.Fatalf("recovered %v, and a cleanup read the failure %v, want the body's panic after a failure",
+				raised, failed)
+		}
+	})
+
 	// The attempt passes and hands its seat to a goroutine, which reports a
 	// failure on it after Eventually has read the attempt's outcome.
 	t.Run("Eventually ignores a failure that a goroutine reports on an ended attempt", func(t *testing.T) {

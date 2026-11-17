@@ -34,6 +34,19 @@ func (skippingSeat) Errorf(string, ...any) {}
 // Skipf drops the reason.
 func (skippingSeat) Skipf(string, ...any) {}
 
+// forwardingSeat is a seat that passes each message to a recorder. It does
+// not have Failed.
+type forwardingSeat struct {
+	r *expect.Recorder
+}
+
+func (s forwardingSeat) Helper()                           { s.r.Helper() }
+func (s forwardingSeat) Fatalf(format string, args ...any) { s.r.Fatalf(format, args...) }
+func (s forwardingSeat) Errorf(format string, args ...any) { s.r.Errorf(format, args...) }
+
+// tbFailed keeps the result of a call of Failed.
+var tbFailed bool
+
 func TestTB(t *testing.T) {
 	t.Parallel()
 
@@ -82,6 +95,28 @@ func TestTB(t *testing.T) {
 		})
 	})
 
+	t.Run("Failed", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns whether the seat failed, as the aborting surface does", func(t *testing.T) {
+			t.Parallel()
+
+			r := expect.NewRecorder()
+			before := expect.Failed(r)
+			r.Errorf("the write fails")
+			expect.False(t, before, "no failure before the first")
+			expect.True(t, expect.Failed(r), "the failure of the recorder")
+		})
+
+		t.Run("ends the call with a fault without the method, as the aborting surface does", func(t *testing.T) {
+			t.Parallel()
+
+			r := expect.NewRecorder()
+			expect.False(t, expect.Failed(forwardingSeat{r: r}), "no result without the method")
+			expect.Equal(t, r.Message(), "assert.Failed: the seat has no Failed", "the fault of the aborting surface")
+		})
+	})
+
 	t.Run("WriteRecord", func(t *testing.T) {
 		t.Parallel()
 
@@ -97,13 +132,13 @@ func TestTB(t *testing.T) {
 	})
 }
 
-// TestTBAllocs checks the allocation ceilings of Context, Cleanup, Skipf and
-// WriteRecord.
+// TestTBAllocs checks the allocation ceilings of Context, Cleanup, Skipf,
+// Failed and WriteRecord.
 func TestTBAllocs(t *testing.T) {
 	alloctest.Check(t, tbCases())
 }
 
-// BenchmarkTB measures Context, Cleanup, Skipf and WriteRecord.
+// BenchmarkTB measures Context, Cleanup, Skipf, Failed and WriteRecord.
 func BenchmarkTB(b *testing.B) {
 	for _, c := range tbCases() {
 		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
@@ -113,12 +148,13 @@ func BenchmarkTB(b *testing.B) {
 // noCleanup is a function that the allocation case of Cleanup registers.
 func noCleanup() {}
 
-// tbCases returns the allocation cases of Context, Cleanup, Skipf and
+// tbCases returns the allocation cases of Context, Cleanup, Skipf, Failed and
 // WriteRecord, each with its ceiling. Context reads the context of a recorder.
 // Cleanup registers a function with a recorder, which then runs it. The
 // recorder keeps the capacity of its list of cleanups, so the registration
 // allocates nothing after the first call. Skipf runs on a seat whose Skipf
-// does nothing. WriteRecord runs on a recorder, which writes nothing.
+// does nothing. Failed reads a recorder. WriteRecord runs on a recorder,
+// which writes nothing.
 func tbCases() []alloctest.Case {
 	seat := expect.NewRecorder().WithContext(context.Background())
 	cleaning := expect.NewRecorder()
@@ -129,6 +165,7 @@ func tbCases() []alloctest.Case {
 			cleaning.RunCleanups()
 		}},
 		{Name: "Skipf", Call: func(assert.TB) { expect.Skipf(skippingSeat{}, "the stack does not run") }},
+		{Name: "Failed", Call: func(assert.TB) { tbFailed = expect.Failed(seat) }},
 		{Name: "WriteRecord", Allocs: 2, Call: func(assert.TB) {
 			expect.WriteRecord(seat, "dokimi.suite", `{"seed":"7"}`)
 		}},

@@ -7,9 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
+	"strings"
 	"testing"
 
+	"go.dokimi.dev/assert/internal/childtest"
 	"go.dokimi.dev/assert/internal/matcher"
 	"go.dokimi.dev/assert/internal/matchertest"
 )
@@ -274,6 +277,80 @@ func TestRejects(t *testing.T) {
 			matcher.Cleanup(check, "assert.Cleanup", tr.step("late"))
 			if got := tr.ran(); !slices.Equal(got, []string{"late"}) {
 				t.Fatalf("a cleanup after the check ran %v, want the cleanup at once", got)
+			}
+		})
+
+		t.Run("hands the check a seat that reports a failure once the check records one", func(t *testing.T) {
+			t.Parallel()
+
+			var before, after bool
+			matcher.Rejects(&matchertest.Seat{}, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				before = s.(failer).Failed()
+				matcher.True(s, matcher.Soft, false, "the check fails")
+				after = s.(failer).Failed()
+			})
+			if before || !after {
+				t.Fatalf("the seat of the check reported %v before the failure and %v after it, want false and true",
+					before, after)
+			}
+		})
+
+		t.Run("hands the check a seat that reports no failure for a noted fault", func(t *testing.T) {
+			t.Parallel()
+
+			var failed bool
+			matcher.Rejects(&matchertest.Seat{}, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				matcher.NoteFault(s, errors.New("the store refuses the replay"))
+				failed = s.(failer).Failed()
+				s.Errorf("the check fails")
+			})
+			if failed {
+				t.Fatal("the seat of the check reported a failure after a noted fault")
+			}
+		})
+
+		t.Run("hands the cleanups a seat that reports a fault that ends the check", func(t *testing.T) {
+			t.Parallel()
+
+			var failed bool
+			matcher.Rejects(&matchertest.Seat{}, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				matcher.Cleanup(s, "assert.Cleanup", func() { failed = s.(failer).Failed() })
+				matcher.End(s, errors.New("the check refuses its subject's configuration"))
+			})
+			if !failed {
+				t.Fatal("a cleanup read no failure of a check that a fault ended")
+			}
+		})
+
+		t.Run("hands the cleanups a seat that reports no failure for a skip", func(t *testing.T) {
+			t.Parallel()
+
+			failed := true
+			matcher.Rejects(&matchertest.Seat{}, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+				matcher.Cleanup(s, "assert.Cleanup", func() { failed = s.(failer).Failed() })
+				s.(skipper).Skipf("the check needs a disk")
+			})
+			if failed {
+				t.Fatal("a cleanup read a failure of a check that skipped")
+			}
+		})
+
+		t.Run("hands the cleanups a seat that reports a panic that ends the check", func(t *testing.T) {
+			t.Parallel()
+			if childtest.InChild(t) {
+				matcher.Rejects(&matchertest.Seat{}, matcher.Fatal, "the check fails", func(s matcher.Seat) {
+					matcher.Cleanup(s, "assert.Cleanup", func() {
+						fmt.Fprintf(os.Stdout, "the cleanup reads the failure %v\n", s.(failer).Failed())
+					})
+					panic(matchertest.ErrSample)
+				})
+				return
+			}
+			out, err := childtest.Run(t, t.Name())
+			if err == nil || !strings.Contains(out, "panic: ") ||
+				!strings.Contains(out, "the cleanup reads the failure true") {
+
+				t.Fatalf("the child exits with %v, want a panic after a cleanup that reads the failure:\n%s", err, out)
 			}
 		})
 	})

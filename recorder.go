@@ -384,7 +384,9 @@ func (r *Recorder) Errorf(format string, args ...any) {
 }
 
 // Failed reports whether any failure arrived, through either
-// [Recorder.Fatalf] or [Recorder.Errorf].
+// [Recorder.Fatalf] or [Recorder.Errorf]. A record of [Recorder.Report] and a
+// fault that ends its call through [Recorder.ReportFault] arrive through
+// them, and a noted fault does not.
 //
 // # Allocation contract
 //

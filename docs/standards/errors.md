@@ -214,7 +214,10 @@ type Error struct {
   `Concurrently`, a goroutine of `RunParallel`, a function of the spec in
   `Linearizable`, a task of the task scheduler, whose panic `Run` and
   `Advance` raise again, and a call of the history that the seam runner
-  of `conformance` makes to read the entry that a script refuses.
+  of `conformance` makes to read the entry that a script refuses. The
+  goroutine of the check of `Rejects` and of each attempt of `Eventually`
+  recovers a panic of the body too. It marks the seat of the body failed
+  before the cleanups run, and raises the panic again.
 
 ## Writing
 

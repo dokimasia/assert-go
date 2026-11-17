@@ -19,10 +19,10 @@ import (
 // behaviour, 11 bridge, 12 coverage, 51 decoding, 4 draws, 36 fixtures, 79
 // forms, 33 generation, 7 golden-match-tree, 6 has-content, 5 has-mode, 44
 // inverse, 4 is-dir, 4 is-file, 32 linearizable, 5 links-to, 36 machines, 4
-// path-absent, 10 recording, 12 seam, 34 serializable, 54 shapes, 38
-// shrinking, 34 snapshot-isolation, 27 store, 17 token, 5 tree-contains, 13
-// tree-equal and 4 tree-unchanged vectors.
-const vectorCount = 657
+// path-absent, 10 recording, 7 resume, 12 seam, 34 serializable, 54 shapes,
+// 38 shrinking, 34 snapshot-isolation, 27 store, 17 token, 5 tree-contains,
+// 13 tree-equal and 4 tree-unchanged vectors.
+const vectorCount = 664
 
 // firstVector is the id of the first case of behaviour.json, the file whose
 // name sorts first.
@@ -40,7 +40,7 @@ const (
 	// vectorsAllocs is the ceiling of the allocations of Vectors: those of
 	// its contract, the two that the JSON decoder's pooled state adds, and
 	// one that a collection during the count adds when it empties the pool.
-	vectorsAllocs = 2200
+	vectorsAllocs = 2300
 	// checkAllocs is the ceiling of the allocations of Check on emptyToken:
 	// the struct that the vector decodes into, and the token that Encode
 	// returns.
@@ -59,7 +59,7 @@ func TestVector(t *testing.T) {
 	t.Run("Valid", func(t *testing.T) {
 		t.Parallel()
 
-		t.Run("reports true for each of the twenty-nine kinds", func(t *testing.T) {
+		t.Run("reports true for each of the thirty kinds", func(t *testing.T) {
 			t.Parallel()
 			for _, k := range kinds {
 				if !k.Valid() {
@@ -129,7 +129,7 @@ func TestVector(t *testing.T) {
 			})
 		}
 
-		t.Run("returns a fault at the vector's id for a vector of a kind outside the twenty-nine", func(t *testing.T) {
+		t.Run("returns a fault at the vector's id for a vector of a kind outside the thirty", func(t *testing.T) {
 			t.Parallel()
 			expectFault(t, check(t, "fuzzing", emptyToken), inVector(), `"fuzzing" is no vector kind`)
 		})
@@ -187,7 +187,7 @@ func BenchmarkVector(b *testing.B) {
 		for c.Loop() {
 			got = conformance.Token.Valid()
 		}
-		assert.True(b, got, "token is one of the twenty-nine kinds")
+		assert.True(b, got, "token is one of the thirty kinds")
 	})
 
 	b.Run("Vectors", func(b *testing.B) {

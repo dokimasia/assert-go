@@ -106,7 +106,8 @@ func checkSeam(raw json.RawMessage, _ string) error {
 // at the script for a malformed entry, and at the member refused for a
 // refusal that differs.
 func fromScript(script []json.RawMessage, refused *int) (*history.History, error) {
-	h, entry, err := record(script)
+	h := history.New()
+	entry, err := record(h, map[int]history.Call{}, script, 0)
 	if err != nil {
 		return nil, fault.At(err, fault.Field(scriptMember))
 	}
@@ -128,39 +129,53 @@ func fromScript(script []json.RawMessage, refused *int) (*history.History, error
 // through a history. It returns a fault at the member history for a
 // malformed entry, and for an entry that the seam refuses.
 func historyOf(script []json.RawMessage) (*history.History, error) {
-	h, refused, err := record(script)
-	if err != nil {
-		return nil, fault.At(err, fault.Field(historyMember))
-	}
-	if refused != -1 {
-		return nil, fault.At(fault.New("the seam refuses the entry"), fault.Field(historyMember), fault.Index(refused))
+	h := history.New()
+	if err := extend(h, map[int]history.Call{}, script, 0); err != nil {
+		return nil, err
 	}
 	return h, nil
 }
 
-// record records script through a history, and returns the history and the
+// extend records the entries of script on h, as historyOf records a history,
+// from the entry first of the history of the vector on. calls maps the number
+// of each call that the entries before first opened to the call. It returns
+// a fault at the member history for a malformed entry, and for an entry that
+// the seam refuses.
+func extend(h *history.History, calls map[int]history.Call, script []json.RawMessage, first int) error {
+	refused, err := record(h, calls, script, first)
+	if err != nil {
+		return fault.At(err, fault.Field(historyMember))
+	}
+	if refused != -1 {
+		return fault.At(fault.New("the seam refuses the entry"), fault.Field(historyMember), fault.Index(refused))
+	}
+	return nil
+}
+
+// record records the entries of script on h, and returns the index of the
 // entry whose call of the seam panics as a usage error, or -1 when the seam
-// refuses none. It records no entry after the refused one. It returns a
-// fault at the entry for an entry that states no call of the seam, a value
-// that is no typed literal, and a completion of a call that the script did
-// not open.
-func record(script []json.RawMessage) (*history.History, int, error) {
-	h := history.New()
-	calls := map[int]history.Call{}
+// refuses none. calls maps the number of each call that the script opened to
+// the call, and record adds the calls that the entries open. first is the
+// index of the first entry in the whole script, from which the index of a
+// refused entry and of a fault counts. record records no entry after the
+// refused one. It returns a fault at the entry for an entry that states no
+// call of the seam, a value that is no typed literal, and a completion of a
+// call that the script did not open.
+func record(h *history.History, calls map[int]history.Call, script []json.RawMessage, first int) (int, error) {
 	for i, raw := range script {
 		var e scriptEntry
 		if err := decode(raw, &e); err != nil {
-			return nil, 0, fault.At(err, fault.Index(i))
+			return 0, fault.At(err, fault.Index(first+i))
 		}
 		apply, err := e.call(h, calls)
 		if err != nil {
-			return nil, 0, fault.At(err, fault.Index(i))
+			return 0, fault.At(err, fault.Index(first+i))
 		}
 		if refuses(apply) {
-			return h, i, nil
+			return first + i, nil
 		}
 	}
-	return h, -1, nil
+	return -1, nil
 }
 
 // call returns the call of the seam that e states, on h and on the calls

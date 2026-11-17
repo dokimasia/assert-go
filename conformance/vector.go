@@ -129,6 +129,10 @@ const (
 	// Linearizable checks a history against a named spec, and states the
 	// verdict and the detail of its record.
 	Linearizable VectorKind = "linearizable"
+	// Resume checks the prefixes of a history against a named spec through
+	// one checkpoint, and states the verdict, the detail of the record and
+	// the calls of the spec's Next of each check.
+	Resume VectorKind = "resume"
 	// Serializable checks a history of list-append transactions for the
 	// anomalies that serializability forbids, and states the verdict and the
 	// detail of its record.
@@ -182,7 +186,7 @@ const (
 // vector its workspace, and a golden-match-tree vector its golden tree.
 type runner func(raw json.RawMessage, dir string) error
 
-// runners maps each of the twenty-nine kinds to its runner.
+// runners maps each of the thirty kinds to its runner.
 var runners = map[VectorKind]runner{
 	Decoding:          checkDecoding,
 	Generation:        checkGeneration,
@@ -200,6 +204,7 @@ var runners = map[VectorKind]runner{
 	CallRecords:       checkRecording,
 	Seam:              checkSeam,
 	Linearizable:      checkLinearizable,
+	Resume:            checkResume,
 	Serializable:      checkSerializable,
 	SnapshotIsolation: checkSnapshotIsolation,
 	Machines:          checkMachines,
@@ -215,8 +220,7 @@ var runners = map[VectorKind]runner{
 	HasMode:           checkFiles(hasModeCall),
 }
 
-// Valid reports whether k is one of the twenty-nine kinds. It allocates
-// nothing.
+// Valid reports whether k is one of the thirty kinds. It allocates nothing.
 func (k VectorKind) Valid() bool {
 	_, ok := runners[k]
 	return ok
@@ -245,13 +249,13 @@ type Vector struct {
 // Vectors returns every vector of the vendored definition, the files in
 // the order of their names and each file's cases in order. A vector takes
 // the kind that its file states, and [Vector.Check] refuses a kind outside
-// the twenty-nine.
+// the thirty.
 //
 // # Allocation contract
 //
-// Vectors allocates 1,728 times on the vendored definition: the names that
+// Vectors allocates 1,818 times on the vendored definition: the names that
 // the four globs return, the open file and the copy of each of the
-// twenty-nine files, the two structs that each file decodes into with their
+// thirty files, the two structs that each file decodes into with their
 // lists of cases, a copy of each case's JSON, each case's id, and the growth
 // of the list that it returns. The JSON decoder's pooled state, which a
 // garbage collection or a move of the goroutine to another processor leaves
@@ -296,9 +300,9 @@ func Vectors() []Vector {
 // It returns a fault whose path starts at the vector's ID and leads through
 // the vector's JSON to the part at fault. That part is an input that does
 // not parse or that the vocabulary does not state, or an output that
-// differs from the run. A vector of a kind outside the twenty-nine has a
-// fault at its ID alone, and so does a golden-match-tree vector whose dir is
-// not the working directory.
+// differs from the run. A vector of a kind outside the thirty has a fault at
+// its ID alone, and so does a golden-match-tree vector whose dir is not the
+// working directory.
 //
 // # Allocation contract
 //

@@ -30,9 +30,9 @@ func init() {
 // returns the wrapped seat or nil. An assertion calls Helper, Fatalf and
 // Errorf of the seat itself. It looks for every other method on the seat and
 // then on each seat that Unwrap returns, in order. Report, Logf, Skipf,
-// Clock, Context and Cleanup are such methods. The first seat that has the
-// method provides it. The first seat that keeps call records receives the
-// call records. A wrapper declares each method that it changes:
+// Failed, Clock, Context and Cleanup are such methods. The first seat that
+// has the method provides it. The first seat that keeps call records
+// receives the call records. A wrapper declares each method that it changes:
 //
 //	// handle is the seat of a check, with the clock that the check controls.
 //	type handle struct {
@@ -153,6 +153,49 @@ func Cleanup(tb TB, f func()) {
 func Skipf(tb TB, format string, args ...any) {
 	tb.Helper()
 	matcher.Skip(tb, "assert.Skipf", format, args...)
+}
+
+// Failed reports whether the test of tb has failed. It returns the result of
+// the method Failed of tb, or of the first seat that tb wraps with the method.
+// The doc comment of [TB] describes the chain. These seats have the method:
+//
+//   - A *testing.T, a *testing.B and a *testing.F report a failure of the
+//     test or of one of its subtests. The package testing marks a test that
+//     panicked failed before the cleanups of the test only when the test has
+//     parallel subtests, so a cleanup of any other test that panicked reads
+//     false.
+//   - A *prop.Case reports a failure, or a fault that ended a call, of its
+//     body. A cleanup of the case also reads a panic that ended the body.
+//   - The seat that [Rejects] hands its check and the seat of each attempt of
+//     [Eventually] report a failure, or a fault that ended a call, of the
+//     body. A cleanup of the body also reads a panic that ended the body.
+//   - A [Recorder] reports a failure, or a fault that ended a call.
+//
+// A fault that a call notes and runs on past is no failure. On a chain
+// without the method, Failed ends the call with a fault as [Fault] ends one.
+// It returns false where the seat lets the call return.
+//
+// A helper keeps the data of a failed test, so that a developer reads it:
+//
+//	func scratch(tb assert.TB) string {
+//	    tb.Helper()
+//	    dir, err := os.MkdirTemp("", "store-*")
+//	    assert.NoError(tb, err, "the scratch directory exists")
+//	    assert.Cleanup(tb, func() {
+//	        if !assert.Failed(tb) {
+//	            os.RemoveAll(dir)
+//	        }
+//	    })
+//	    return dir
+//	}
+//
+// # Allocation contract
+//
+// Failed allocates nothing besides what the method Failed of tb allocates. On
+// a chain without the method, it allocates the fault and its text.
+func Failed(tb TB) bool {
+	tb.Helper()
+	return matcher.Failed(tb, "assert.Failed")
 }
 
 // WriteRecord writes record into the output of the test of tb. record is the

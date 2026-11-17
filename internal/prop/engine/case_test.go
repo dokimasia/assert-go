@@ -380,6 +380,62 @@ func TestCase(t *testing.T) {
 		})
 	})
 
+	t.Run("Failed", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("reports a failure once the body records one", func(t *testing.T) {
+			t.Parallel()
+			var before, after bool
+			engine.Replay(func(c *engine.Case) {
+				before = c.Failed()
+				c.Report(reported, false)
+				after = c.Failed()
+			}, nil, nil)
+			assert.False(t, before, "no failure before the record")
+			assert.True(t, after, "the failure of the record")
+		})
+
+		t.Run("reports no failure for a noted fault", func(t *testing.T) {
+			t.Parallel()
+			var failed bool
+			engine.Replay(func(c *engine.Case) {
+				c.ReportFault(errEnvironment, false)
+				failed = c.Failed()
+			}, nil, nil)
+			assert.False(t, failed, "a noted fault is no failure")
+		})
+
+		t.Run("reports a fault that ends a call of the body to a cleanup", func(t *testing.T) {
+			t.Parallel()
+			var failed bool
+			engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { failed = c.Failed() })
+				c.ReportFault(errEnvironment, true)
+			}, nil, nil)
+			assert.True(t, failed, "the fault that ended the body")
+		})
+
+		t.Run("reports a panic that ends the body to a cleanup", func(t *testing.T) {
+			t.Parallel()
+			var failed bool
+			engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { failed = c.Failed() })
+				panic("broken ledger")
+			}, nil, nil)
+			assert.True(t, failed, "the panic that ended the body")
+		})
+
+		t.Run("reports no failure to a cleanup of a case that skips", func(t *testing.T) {
+			t.Parallel()
+			failed := true
+			engine.Replay(func(c *engine.Case) {
+				c.Cleanup(func() { failed = c.Failed() })
+				c.Skip("unsupported")
+			}, nil, nil)
+			assert.False(t, failed, "a skip is no failure")
+		})
+	})
+
 	t.Run("Classify", func(t *testing.T) {
 		t.Parallel()
 
@@ -970,6 +1026,7 @@ func TestCaseAllocs(t *testing.T) {
 		"a case whose body raises a panic again")
 	assert.MaxAllocs(t, func() { c.Errorf("late") }, errorfAllocs, "Errorf allocates its message and its frames")
 	assert.MaxAllocs(t, func() { _ = c.Clock() }, 0, "Clock allocates nothing")
+	assert.MaxAllocs(t, func() { _ = c.Failed() }, 0, "Failed allocates nothing")
 	assert.MaxAllocs(t, func() { c.Assume(true) }, 0, "Assume allocates nothing")
 	skip := func(c *engine.Case) { c.Skip("unsupported") }
 	assert.MaxAllocs(t, func() { engine.Replay(skip, nil, nil) }, skipCaseAllocs, "a case that calls Skip")
@@ -1084,6 +1141,17 @@ func BenchmarkCase(b *testing.B) {
 			got = cs.Clock()
 		}
 		assert.Equal[assert.Clock](b, got, assert.System{}, "the runtime clock")
+	})
+
+	b.Run("Failed", func(b *testing.B) {
+		var got bool
+		cs := leaked()
+		c := bench.Start(b).MaxAllocs(0)
+		defer c.End()
+		for c.Loop() {
+			got = cs.Failed()
+		}
+		assert.True(b, got, "the record of the case")
 	})
 
 	b.Run("Assume", func(b *testing.B) {

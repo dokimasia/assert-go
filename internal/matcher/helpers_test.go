@@ -170,6 +170,13 @@ func (s *fatalWrapper) Fatalf(format string, args ...any) {
 	s.fatals = append(s.fatals, fmt.Sprintf(format, args...))
 }
 
+// failer is the seat of a body that reports whether the body failed, as the
+// seat of Rejects and the seat of an attempt of Eventually do.
+type failer interface {
+	// Failed reports whether the body failed.
+	Failed() bool
+}
+
 // skippingSeat is a seat that keeps the reason of each skip, as a test of
 // the package testing logs it, and records what was reported.
 type skippingSeat struct {

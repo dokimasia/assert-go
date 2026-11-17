@@ -6,6 +6,8 @@ package assert_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -71,6 +73,17 @@ type skippingSeat struct {
 
 // Skipf drops the reason.
 func (skippingSeat) Skipf(string, ...any) {}
+
+// passingSeat is a seat whose Failed reports false.
+type passingSeat struct {
+	bareSeat
+}
+
+// Failed reports false.
+func (passingSeat) Failed() bool { return false }
+
+// tbFailed keeps the result of a call of Failed.
+var tbFailed bool
 
 func TestTB(t *testing.T) {
 	t.Parallel()
@@ -280,6 +293,100 @@ func TestTB(t *testing.T) {
 		})
 	})
 
+	t.Run("Failed", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("returns false for a recorder that has not failed", func(t *testing.T) {
+			t.Parallel()
+
+			if assert.Failed(assert.NewRecorder()) {
+				t.Fatal("Failed of a new recorder returned true")
+			}
+		})
+
+		t.Run("returns true for a recorder after a failure", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			assert.True(r, false, "the write succeeds")
+			if !assert.Failed(r) {
+				t.Fatal("Failed of a recorder after a failure returned false")
+			}
+		})
+
+		t.Run("returns Failed of the first seat of the chain that has the method", func(t *testing.T) {
+			t.Parallel()
+
+			r := assert.NewRecorder()
+			r.Errorf("the write fails")
+			if !assert.Failed(wrapped{wrapped{r}}) {
+				t.Fatal("Failed of a wrapper of a recorder that failed returned false")
+			}
+		})
+
+		t.Run("returns true in a cleanup of a *testing.T after a subtest failed", func(t *testing.T) {
+			t.Parallel()
+			if childtest.InChild(t) {
+				t.Cleanup(func() { fmt.Fprintf(os.Stdout, "the cleanup reads the failure %v\n", assert.Failed(t)) })
+				t.Run("subtest", func(t *testing.T) {
+					t.Parallel()
+					t.Error("the subtest fails")
+				})
+				return
+			}
+			out, err := childtest.Run(t, t.Name())
+			if err == nil || !strings.Contains(out, "the cleanup reads the failure true") {
+				t.Fatalf("the child exits with %v, want a failure that the cleanup reads:\n%s", err, out)
+			}
+		})
+
+		// The package testing runs the cleanups of a test without parallel
+		// subtests before it marks a test that panicked failed.
+		t.Run("returns false in a cleanup of a *testing.T whose test panicked", func(t *testing.T) {
+			t.Parallel()
+			if childtest.InChild(t) {
+				t.Cleanup(func() { fmt.Fprintf(os.Stdout, "the cleanup reads the failure %v\n", assert.Failed(t)) })
+				panic("the ledger is corrupt")
+			}
+			out, err := childtest.Run(t, t.Name())
+			if err == nil || !strings.Contains(out, "the cleanup reads the failure false") {
+				t.Fatalf("the child exits with %v, want a panic after a cleanup that reads no failure:\n%s", err, out)
+			}
+		})
+
+		// The package testing marks a test with a parallel subtest failed before
+		// it runs the cleanups of the test.
+		t.Run("returns true in a cleanup of a *testing.T with a parallel subtest whose test panicked",
+			func(t *testing.T) {
+				t.Parallel()
+				if childtest.InChild(t) {
+					t.Cleanup(func() { fmt.Fprintf(os.Stdout, "the cleanup reads the failure %v\n", assert.Failed(t)) })
+					t.Run("subtest", func(t *testing.T) { t.Parallel() })
+					panic("the ledger is corrupt")
+				}
+				out, err := childtest.Run(t, t.Name())
+				if err == nil || !strings.Contains(out, "the cleanup reads the failure true") {
+					t.Fatalf("the child exits with %v, want a panic after a cleanup that reads the failure:\n%s",
+						err, out)
+				}
+			})
+
+		t.Run("ends the call with a fault on a chain without the method", func(t *testing.T) {
+			t.Parallel()
+
+			seat := &faultSeat{}
+			got := assert.Failed(wrapped{seat})
+
+			var f *fault.Error
+			if got || len(seat.faults) != 1 || !errors.As(seat.faults[0], &f) || f.Op != "assert.Failed" ||
+				f.Reason != "the seat has no Failed" {
+
+				t.Fatalf("Failed returned %v and reported %v, want false and the fault of assert.Failed",
+					got, seat.faults)
+			}
+		})
+	})
+
 	t.Run("WriteRecord", func(t *testing.T) {
 		t.Parallel()
 
@@ -390,29 +497,30 @@ func TestTB(t *testing.T) {
 	})
 }
 
-// TestTBAllocs checks the allocation ceilings of Context, Cleanup, Skipf and
-// WriteRecord.
+// TestTBAllocs checks the allocation ceilings of Context, Cleanup, Skipf,
+// Failed and WriteRecord.
 func TestTBAllocs(t *testing.T) {
 	alloctest.Check(t, tbCases())
 }
 
-// BenchmarkTB measures Context, Cleanup, Skipf and WriteRecord.
+// BenchmarkTB measures Context, Cleanup, Skipf, Failed and WriteRecord.
 func BenchmarkTB(b *testing.B) {
 	for _, c := range tbCases() {
 		b.Run(c.Name, func(b *testing.B) { alloctest.Measure(b, c) })
 	}
 }
 
-// tbCases returns the allocation cases of Context, Cleanup, Skipf and
+// tbCases returns the allocation cases of Context, Cleanup, Skipf, Failed and
 // WriteRecord, each with its ceiling. Context reads the context of a recorder.
-// Cleanup and Skipf run on seats whose methods do nothing. WriteRecord runs on
-// a recorder, which writes nothing.
+// Cleanup, Skipf and Failed run on seats whose methods do nothing. WriteRecord
+// runs on a recorder, which writes nothing.
 func tbCases() []alloctest.Case {
 	seat := assert.NewRecorder().WithContext(context.Background())
 	return []alloctest.Case{
 		{Name: "Context", Call: func(assert.TB) { tbContext = assert.Context(seat) }},
 		{Name: "Cleanup", Call: func(assert.TB) { assert.Cleanup(cleaningSeat{}, noCleanup) }},
 		{Name: "Skipf", Call: func(assert.TB) { assert.Skipf(skippingSeat{}, "the stack does not run") }},
+		{Name: "Failed", Call: func(assert.TB) { tbFailed = assert.Failed(passingSeat{}) }},
 		{Name: "WriteRecord", Allocs: 2, Call: func(assert.TB) {
 			assert.WriteRecord(seat, "dokimi.suite", `{"seed":"7"}`)
 		}},

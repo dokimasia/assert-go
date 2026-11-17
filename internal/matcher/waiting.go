@@ -29,7 +29,8 @@ type calls = record.Calls
 // Fatalf does, so an aborting assertion stops the trial at its first
 // failure. A trial runs on a goroutine of its own for that reason. Its
 // context derives from the context of the retrying assertion's seat, and
-// ends with the trial. Its cleanups run when the trial ends.
+// ends with the trial. Its cleanups run when the trial ends, and its Failed
+// reports whether the trial failed.
 type probe struct {
 	calls
 	bodyContext
@@ -48,6 +49,14 @@ func (p *probe) Fatalf(format string, args ...any) {
 
 func (p *probe) Errorf(format string, args ...any) { p.record(format, args...) }
 
+// Failed reports whether the trial has failed. A fault that ends a call fails
+// the trial through Fatalf. A cleanup of the trial also reads a panic that
+// ended the trial.
+func (p *probe) Failed() bool {
+	_, failed := p.outcome()
+	return failed
+}
+
 func (p *probe) record(format string, args ...any) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -56,6 +65,15 @@ func (p *probe) record(format string, args ...any) {
 		p.failed = true
 		p.msg = fmt.Sprintf(format, args...)
 	}
+}
+
+// mark marks the trial failed without a message, as a panic that ends the
+// trial fails it.
+func (p *probe) mark() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.failed = true
 }
 
 // outcome reports whether the trial failed, and with what.
@@ -70,9 +88,9 @@ func (p *probe) outcome() (msg string, failed bool) {
 // call that slot started and whose context derives from the context of
 // seat, on a goroutine of its own. Once fn has returned or a fatal failure
 // has ended it, the goroutine cancels the probe's context and runs the
-// probe's cleanups, and trial returns the probe. A panic in fn panics again
-// on the calling goroutine with the same value, so it is not taken for a
-// failed attempt.
+// probe's cleanups, and trial returns the probe. A panic in fn marks the
+// probe failed before the cleanups run. It panics again on the calling
+// goroutine with the same value, so it is not taken for a failed attempt.
 func trial(seat Seat, fn func(Seat), slot *record.Slot) *probe {
 	p := &probe{parent: seat}
 	record.Run(&p.calls, slot, nil)
@@ -82,6 +100,7 @@ func trial(seat Seat, fn func(Seat), slot *record.Slot) *probe {
 		// fatal failure ended through runtime.Goexit.
 		defer func() { ended <- recover() }()
 		defer p.finish()
+		defer failOnPanic(p.mark)
 		fn(p)
 	}()
 	raised := <-ended
@@ -105,7 +124,9 @@ func trial(seat Seat, fn func(Seat), slot *record.Slot) *probe {
 // reads it, and Eventually cancels it when the attempt ends. The attempt's
 // seat has Cleanup: the functions that an attempt registers run on its
 // goroutine when it ends, after the cancel and before the next attempt. A
-// failure in one fails the attempt.
+// failure in one fails the attempt. The attempt's seat has Failed, which
+// reports whether the attempt has failed. A cleanup of an attempt that a
+// panic ended reads the attempt as failed.
 //
 //	matcher.Eventually(seat, matcher.Fatal, 5*time.Second, 100*time.Millisecond,
 //	    func(s matcher.Seat) {
