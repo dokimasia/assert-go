@@ -1,5 +1,13 @@
 # go.dokimi.dev/assert
 
+## 0.24.0
+
+### Minor Changes
+
+- 9efd532: Add the method `Failed` to `*prop.Case` and to the seats of the bodies of `Rejects` and `Eventually`.
+- 9efd532: Implement definition 16.6.0 and run its seven `resume` vectors in `conformance`.
+- 9efd532: Add `assert.Failed` and `expect.Failed` to report whether the test of any seat that has `Failed` has failed.
+
 ## 0.23.0
 
 ### Minor Changes
